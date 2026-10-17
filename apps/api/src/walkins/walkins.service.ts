@@ -26,7 +26,10 @@ import { appointmentTurns, cleanTurnRules, DEFAULT_TURN_RULES, latePenalty, legT
 import { AuditService } from '../audit/audit.service';
 import { hasCapability } from '../auth/capabilities';
 import { tzPartsOf } from '../common/salon-time';
-import { inPromoWindow, salonYmd } from '../settings/promo-window';
+import { inPromoWindow, salonYmd, type PromoWindow } from '../settings/promo-window';
+import { DATE_DISCOUNTS_KEY, FIRST_VISIT_DISCOUNT_KEY, WEEKDAY_DISCOUNTS_KEY } from '../settings/settings.constants';
+import { appliesOn, channelOfSource, dateRulesFor, programFor, type SaleChannel } from '../settings/promo-channel';
+import { promoPct, type PromoSettings, type SalonDay } from '../display/checkin-pricing';
 
 /**
  * One queue change at a time per salon. Two techs pressing "Xong" in the same
@@ -150,10 +153,10 @@ export class WalkinsService {
 
   /** Menu rows with what the legs need: zone (name + category) and turn value. */
   private async menuRows(tenantId: string, ids: string[]) {
-    type Row = { id: string; name: string; priceCents: number; discountPercent: number | null; durationMinutes: number; turnValue?: number | null; category?: { name: string } | null };
+    type Row = { id: string; name: string; priceCents: number; discountPercent: number | null; durationMinutes: number; turnValue?: number | null; category?: { id?: string; name: string } | null };
     const uniq = [...new Set(ids.filter(Boolean))];
     if (!uniq.length) return new Map<string, Row>();
-    const select = { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true, category: { select: { name: true } } };
+    const select = { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true, category: { select: { id: true, name: true } } };
     let rows: Row[];
     try {
       rows = await this.db.service.findMany({ where: { tenantId, id: { in: uniq } }, select: { ...select, turnValue: true } });
@@ -164,14 +167,20 @@ export class WalkinsService {
     return new Map((rows ?? []).map((r) => [r.id, r]));
   }
 
-  /** Snapshot a service into a ticket line (net price after its own discount). */
-  private async buildItem(tenantId: string, serviceId: string, staffId: string | null): Promise<LegItem & { zone: Zone }> {
+  /**
+   * Snapshot a service into a ticket line: its own discount first, then the
+   * promotion this ticket gets today (ticketPromo) on what is left — the same
+   * two steps, in the same order, as the booking page and the kiosk.
+   */
+  private async buildItem(tenantId: string, serviceId: string, staffId: string | null, promo?: (categoryId: string | null) => number): Promise<LegItem & { zone: Zone }> {
     const svc = (await this.menuRows(tenantId, [serviceId])).get(serviceId);
     if (!svc) throw new BadRequestException('Service not found');
     const d = Math.min(90, Math.max(0, svc.discountPercent ?? 0));
     const net = d > 0 ? Math.round((svc.priceCents * (100 - d)) / 100) : svc.priceCents;
+    const p = promo ? Math.min(90, Math.max(0, Math.round(promo(svc.category?.id ?? null) || 0))) : 0;
+    const price = p > 0 ? Math.round((net * (100 - p)) / 100) : net;
     return {
-      lineId: randomUUID(), serviceId: svc.id, name: svc.name, priceCents: net, durationMinutes: svc.durationMinutes, staffId,
+      lineId: randomUUID(), serviceId: svc.id, name: svc.name, priceCents: price, durationMinutes: svc.durationMinutes, staffId,
       zone: zoneOf(svc.name, svc.category?.name),
       turnValue: typeof svc.turnValue === 'number' ? svc.turnValue : 1,
     };
@@ -485,11 +494,6 @@ export class WalkinsService {
     // Every service the customer asked for, in the order picked. The first one
     // stays the ticket's headline service.
     const wanted = [...new Set([...(serviceId ? [serviceId] : []), ...(dto.serviceIds ?? [])])].filter(Boolean);
-    const lines: (LegItem & { zone: Zone })[] = [];
-    for (const sid of wanted) {
-      try { lines.push(await this.buildItem(tenantId, sid, staffId)); } catch { /* removed from the menu */ }
-    }
-    const items = attachLines([], lines);
     // Find-or-create a CRM customer by phone/email so the walk-in earns loyalty
     // and is remarketable, with the birthday for the birthday campaign.
     // A customer picked from the records links by id — only one of THIS
@@ -506,6 +510,14 @@ export class WalkinsService {
           birthDate: dto.birthDate,
         })
       : null);
+    // Priced once we know who she is: today's walk-in promotion, or her
+    // first-visit tier when that is better (one best %, never both).
+    const promo = await this.ticketPromo(tenantId, 'walkin', { customerId: linked?.id ?? null });
+    const lines: (LegItem & { zone: Zone })[] = [];
+    for (const sid of wanted) {
+      try { lines.push(await this.buildItem(tenantId, sid, staffId, promo)); } catch { /* removed from the menu */ }
+    }
+    const items = attachLines([], lines);
     // A PARTY is one ticket per person, linked by a groupId: each guest has
     // their own services, their own technician and their own line at the
     // till, and the board shows them side by side as one group.
@@ -537,6 +549,7 @@ export class WalkinsService {
     // the booking, or the midnight sweep marks a customer who came as a no-show.
     await linkWalkInToBooking(this.prisma as never, tenantId, created.id, linked?.id ?? null).catch(() => null);
     const guestIds: string[] = [];
+    let guestPromo: ((categoryId: string | null) => number) | undefined;
     let anyRequested = !!staffId;
     for (let i = 0; i < guests.length; i++) {
       const g = guests[i] ?? {};
@@ -546,7 +559,8 @@ export class WalkinsService {
       anyRequested = anyRequested || !!gStaff;
       const gLines: (LegItem & { zone: Zone })[] = [];
       for (const sid of [...new Set((g.serviceIds ?? []).filter(Boolean))]) {
-        try { gLines.push(await this.buildItem(tenantId, sid, gStaff)); } catch { /* removed from the menu */ }
+        // A guest has no record of her own: today's walk-in promotion only.
+        try { gLines.push(await this.buildItem(tenantId, sid, gStaff, guestPromo ??= await this.ticketPromo(tenantId, 'walkin'))); } catch { /* removed from the menu */ }
       }
       const row = await this.prisma.walkIn.create({
         data: {
@@ -1122,7 +1136,9 @@ export class WalkinsService {
         select: { id: true, orderNumber: true, walkInId: true, walkInIds: true, items: { select: { walkInId: true, walkInLineId: true } } } as never,
       }) as unknown as Promise<{ id: string; orderNumber: number; walkInId: string | null; walkInIds?: string[]; items: { walkInId: string | null; walkInLineId: string | null }[] }[]>,
       this.prisma.staffMember.findMany({ where: { tenantId, isActive: true }, select: { id: true, firstName: true, lastName: true } }),
-      this.groupPromoFor(tenantId, tickets.length),
+      // A party that BOOKED was priced with its group tier at booking (and keeps
+      // that price at the till); only a party that walked in is offered it here.
+      this.groupPromoFor(tenantId, tickets.length, tickets.some((t) => (t as { appointmentId?: string | null }).appointmentId) ? 'online' : 'walkin'),
     ]);
     const tag = partyTags([...f.open, ...f.doneToday] as unknown as (TicketLike & { groupId?: string | null })[]).get(groupId)?.tag ?? null;
     const now = new Date();
@@ -1168,11 +1184,12 @@ export class WalkinsService {
    * rule the booking page quotes; here it is offered at the till, where a party
    * that walked in without booking would otherwise never get it.
    */
-  private async groupPromoFor(tenantId: string, size: number): Promise<{ percent: number; minSize: number; message: string } | null> {
+  private async groupPromoFor(tenantId: string, size: number, where: SaleChannel = 'walkin'): Promise<{ percent: number; minSize: number; message: string } | null> {
     try {
-      if (size < 2) return null;
+      if (size < 2 || where !== 'walkin') return null;
       const gr = await this.settings.getGroupDiscount(tenantId);
-      if (!gr?.enabled || !Array.isArray(gr.tiers)) return null;
+      // Online-only group deals are not for a party that walked in.
+      if (!gr?.enabled || !Array.isArray(gr.tiers) || !appliesOn(gr, 'walkin')) return null;
       const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone ?? null;
       if (!inPromoWindow(gr, salonYmd(new Date(), tz))) return null;
       let best: { percent: number; minSize: number } | null = null;
@@ -1184,6 +1201,97 @@ export class WalkinsService {
     } catch { return null; }
   }
 
+  /**
+   * The promotion on a ticket line (Services → Khuyến mãi), ONE best %, never
+   * stacked: today's weekday or date sale the salon runs for this channel
+   * (walk-ins, or everywhere) and the first-visit tier once the customer is
+   * known. Group deals are offered at the till (groupPromoFor). Best-effort:
+   * a promotion that cannot be read never blocks a ticket.
+   */
+  private async ticketPromo(
+    tenantId: string,
+    where: SaleChannel,
+    who: { customerId?: string | null; excludeWalkInId?: string | null; excludeAppointmentId?: string | null } = {},
+  ): Promise<(categoryId: string | null) => number> {
+    try {
+      const rows = await this.prisma.setting.findMany({
+        where: { tenantId, key: { in: [WEEKDAY_DISCOUNTS_KEY, DATE_DISCOUNTS_KEY, FIRST_VISIT_DISCOUNT_KEY] } },
+        select: { key: true, value: true },
+      });
+      if (!Array.isArray(rows) || !rows.length) return () => 0;
+      const byKey = new Map<string, unknown>(rows.map((r) => [r.key, r.value as unknown] as [string, unknown]));
+      const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone ?? null;
+      const now = new Date();
+      const wdName = new Intl.DateTimeFormat('en-US', { timeZone: tz || 'UTC', weekday: 'short' }).format(now);
+      const day: SalonDay = {
+        dayKey: salonYmd(now, tz),
+        weekday: ({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 } as Record<string, number>)[wdName] ?? now.getDay(),
+      };
+      const promos: PromoSettings = {
+        weekday: (programFor(byKey.get(WEEKDAY_DISCOUNTS_KEY) as PromoSettings['weekday'], where) ?? null) as PromoSettings['weekday'],
+        dates: (dateRulesFor(byKey.get(DATE_DISCOUNTS_KEY) as { rules?: { appliesTo?: unknown }[] } | null, where) ?? null) as unknown as PromoSettings['dates'],
+      };
+      const program = await this.visitTierPct(tenantId, byKey.get(FIRST_VISIT_DISCOUNT_KEY), where, day.dayKey, who);
+      return (categoryId) => Math.max(promoPct(promos, day, categoryId), program);
+    } catch {
+      return () => 0;
+    }
+  }
+
+  /** The promotion for a line added to an existing ticket: a seated booking keeps its booking's channel. */
+  private ticketPromoFor(w: { id: string; tenantId: string; customerId?: string | null; appointmentId?: string | null; source?: string | null }) {
+    const where: SaleChannel = w.appointmentId ? channelOfSource(w.source) : 'walkin';
+    return this.ticketPromo(w.tenantId, where, { customerId: w.customerId ?? null, excludeWalkInId: w.id, excludeAppointmentId: w.appointmentId ?? null });
+  }
+
+  /**
+   * The visit tier this customer reaches (Khuyến mãi → Khách mới / tri ân):
+   * visit number = her finished visits (bookings that arrived or completed,
+   * walk-ins that were done) + 1. Zero when the programme is off, not for this
+   * channel, outside its dates, or she is not on file.
+   */
+  private async visitTierPct(
+    tenantId: string,
+    saved: unknown,
+    where: SaleChannel,
+    dayKey: string,
+    who: { customerId?: string | null; excludeWalkInId?: string | null; excludeAppointmentId?: string | null },
+  ): Promise<number> {
+    const fv = saved as ({ enabled?: boolean; percent?: number; rules?: { visit?: number; percent?: number }[] } & PromoWindow) | undefined;
+    if (!who.customerId || !fv?.enabled || !appliesOn(fv, where) || !inPromoWindow(fv, dayKey)) return 0;
+    const rules = Array.isArray(fv.rules) && fv.rules.length ? fv.rules : ((fv.percent ?? 0) > 0 ? [{ visit: 1, percent: fv.percent }] : []);
+    if (!rules.length) return 0;
+    const [appts, walks] = await Promise.all([
+      this.prisma.appointment.count({
+        where: {
+          tenantId, customerId: who.customerId, status: { in: [AppointmentStatus.ARRIVED, AppointmentStatus.COMPLETED] },
+          ...(who.excludeAppointmentId ? { id: { not: who.excludeAppointmentId } } : {}),
+        },
+      }),
+      // A walk-in that was a seated booking is already counted as that booking.
+      this.prisma.walkIn.count({
+        where: {
+          tenantId, customerId: who.customerId, status: WalkInStatus.DONE, appointmentId: null,
+          ...(who.excludeWalkInId ? { id: { not: who.excludeWalkInId } } : {}),
+        } as never,
+      }),
+    ]);
+    const hit = rules.find((r) => (r?.visit ?? 0) === appts + walks + 1);
+    return hit && (hit.percent ?? 0) > 0 ? Math.min(90, Math.round(hit.percent!)) : 0;
+  }
+
+  /** The kiosk's first-visit tier for a customer it just identified (0 when none). */
+  async walkInVisitTierPct(tenantId: string, customerId: string | null): Promise<number> {
+    try {
+      if (!customerId) return 0;
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: FIRST_VISIT_DISCOUNT_KEY } }, select: { value: true } });
+      const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone ?? null;
+      return await this.visitTierPct(tenantId, row?.value, 'walkin', salonYmd(new Date(), tz), { customerId });
+    } catch {
+      return 0;
+    }
+  }
+
   /** Check in an online booking: place the customer on the floor as a ticket
    *  linked back to the appointment, and mark the appointment ARRIVED. Its
    *  booked technicians take their legs; the rest goes through the dispatcher,
@@ -1193,7 +1301,7 @@ export class WalkinsService {
     const appt = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, tenantId },
       select: {
-        id: true, customerId: true, source: true, assignedStaffId: true, addons: true, startTime: true, groupId: true,
+        id: true, customerId: true, source: true, assignedStaffId: true, addons: true, startTime: true, groupId: true, priceCents: true,
         customer: { select: { firstName: true, lastName: true, phone: true } },
         service: { select: { id: true, name: true } },
       },
@@ -1205,14 +1313,32 @@ export class WalkinsService {
     if (onFloor) return this.row(tenantId, onFloor.id);
     const custName = appt.customer ? `${appt.customer.firstName}${appt.customer.lastName ? ' ' + appt.customer.lastName : ''}`.trim() : null;
     // Every service of the booking, each with the technician it was booked with.
-    const extraLines = (Array.isArray(appt.addons) ? (appt.addons as unknown as { id?: string; kind?: string; staffMemberId?: string | null }[]) : [])
-      .filter((a) => a?.kind === 'service' && a?.id);
-    const lines: (LegItem & { zone: Zone })[] = appt.service
-      ? [await this.buildItem(tenantId, appt.service.id, appt.assignedStaffId ?? null)]
-      : [];
+    type BookedLine = { id?: string; kind?: string; name?: string; priceCents?: number; staffMemberId?: string | null };
+    const booked = Array.isArray(appt.addons) ? (appt.addons as unknown as BookedLine[]) : [];
+    const extraLines = booked.filter((a) => a?.kind === 'service' && a?.id);
+    // The price she was QUOTED is the price at the till — her booking's
+    // promotion (online-only sale, first visit, group…) and its add-ons
+    // included. Re-pricing from the menu here dropped every booking promotion
+    // the moment the customer sat down.
+    const cents = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : null);
+    const addOnNames = booked.filter((a) => a && a.kind !== 'service').map((a) => String(a.name ?? '').trim()).filter(Boolean);
+    const extrasCents = extraLines.reduce((sum, a) => sum + (cents(a.priceCents) ?? 0), 0);
+    const totalCents = cents((appt as { priceCents?: unknown }).priceCents);
+    const primaryCents = totalCents != null && totalCents >= extrasCents ? totalCents - extrasCents : null;
+    const lines: (LegItem & { zone: Zone })[] = [];
+    if (appt.service) {
+      const it = await this.buildItem(tenantId, appt.service.id, appt.assignedStaffId ?? null);
+      lines.push({
+        ...it,
+        ...(primaryCents != null ? { priceCents: primaryCents } : null),
+        ...(addOnNames.length ? { name: `${it.name} + ${addOnNames.join(' + ')}`.slice(0, 160) } : null),
+      });
+    }
     for (const line of extraLines) {
       try {
-        lines.push(await this.buildItem(tenantId, line.id!, line.staffMemberId ?? appt.assignedStaffId ?? null));
+        const it = await this.buildItem(tenantId, line.id!, line.staffMemberId ?? appt.assignedStaffId ?? null);
+        const c = cents(line.priceCents);
+        lines.push(c != null ? { ...it, priceCents: c } : it);
       } catch {
         // A service deleted since the booking was taken shouldn't block check-in.
       }
@@ -1388,7 +1514,8 @@ export class WalkinsService {
     const ids = [...new Set([...(serviceId ? [serviceId] : []), ...(serviceIds ?? [])])].filter(Boolean);
     const tech = staffId ? await this.techOf(w.tenantId, staffId) : null;
     const lines: (LegItem & { zone: Zone })[] = [];
-    for (const sid of ids) lines.push(await this.buildItem(w.tenantId, sid, tech));
+    const promo = await this.ticketPromoFor(w);
+    for (const sid of ids) lines.push(await this.buildItem(w.tenantId, sid, tech, promo));
     await serial(w.tenantId, async () => {
       const fresh = await this.mine(user, id);
       const t = fresh as unknown as TicketLike;
@@ -1447,7 +1574,7 @@ export class WalkinsService {
       if (idx < 0) throw new NotFoundException('Line not found');
       let line = { ...items[idx] };
       if (dto.serviceId && dto.serviceId !== line.serviceId) {
-        const svc = await this.buildItem(fresh.tenantId, dto.serviceId, line.staffId);
+        const svc = await this.buildItem(fresh.tenantId, dto.serviceId, line.staffId, await this.ticketPromoFor(fresh));
         // Keep the line's identity and its place in its leg.
         line = { ...line, serviceId: svc.serviceId, name: svc.name, priceCents: svc.priceCents, durationMinutes: svc.durationMinutes, turnValue: svc.turnValue };
         if (!line.legId) line.zone = svc.zone;

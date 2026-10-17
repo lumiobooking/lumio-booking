@@ -13,6 +13,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { verifyCaptcha } from '../common/security/turnstile';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
+import { appliesOn, dateRulesFor, programFor } from '../settings/promo-channel';
 
 /**
  * Hosted "online booking link" flow. Unlike the WordPress plugin (which is
@@ -197,15 +198,17 @@ export class PublicSalonController {
       timezone: tenant.timezone,
       branding: brandingPublic,
       booking,
-      weekdayDiscounts,
-      dateDiscounts,
+      // The booking page shows (and quotes) only what a customer booking
+      // online gets: walk-in-only promotions stay off it.
+      weekdayDiscounts: programFor(weekdayDiscounts, 'online') ?? weekdayDiscounts,
+      dateDiscounts: dateRulesFor(dateDiscounts, 'online') ?? dateDiscounts,
       deposit,
       // Shown only when a real online provider can take it (see createBooking).
       ...(partyDep.enabled && (await this.hub.onlineProviderFor(tenant.id).catch(() => null)) ? { partyDeposit: partyDep } : {}),
       // Program promos (public-safe): shown as banners; the % is applied
       // server-side at booking time so it can never be spoofed client-side.
-      firstVisit: firstVisit.enabled && (firstVisit.rules?.length ?? 0) > 0 ? firstVisit : { enabled: false, percent: 0, message: '', rules: [] },
-      groupDiscount: groupDiscount.enabled && groupDiscount.tiers.length > 0 ? groupDiscount : { enabled: false, message: '', tiers: [] },
+      firstVisit: firstVisit.enabled && (firstVisit.rules?.length ?? 0) > 0 && appliesOn(firstVisit, 'online') ? firstVisit : { enabled: false, percent: 0, message: '', rules: [] },
+      groupDiscount: groupDiscount.enabled && groupDiscount.tiers.length > 0 && appliesOn(groupDiscount, 'online') ? groupDiscount : { enabled: false, message: '', tiers: [] },
       // Card surcharge (dual pricing) — only the two public-safe fields, no secrets.
       cardFee: { enabled: !!pos?.cardSurchargeEnabled && (pos?.cardSurchargePercent ?? 0) > 0, percent: pos?.cardSurchargePercent ?? 0 },
       analytics,

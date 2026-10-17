@@ -198,13 +198,21 @@ export function planComments(args: {
 }
 
 /** The offer running today, as one line for %promo% — or null when none runs. */
+/** "… khi đặt lịch online" / "… for walk-ins": who the promotion is for (settings/promo-channel). */
+function promoFor(x: { appliesTo?: unknown } | null | undefined, vi: boolean): string {
+  const c = x?.appliesTo;
+  if (c === 'online') return vi ? ' khi đặt lịch online' : ' when you book online';
+  if (c === 'walkin') return vi ? ' cho khách walk-in' : ' for walk-ins';
+  return '';
+}
+
 export function promoLine(p: {
   today: string; // salon-local YYYY-MM-DD
   weekday: number; // 0 = Sunday, salon-local
-  dates?: { enabled: boolean; rules: { startDate: string; endDate: string | null; percent: number; label?: string }[] } | null;
-  weekdays?: { enabled: boolean; message?: string; rules: { weekday?: number; day?: number; percent: number }[]; startDate?: string | null; endDate?: string | null } | null;
-  firstVisit?: { enabled: boolean; percent: number; message?: string; startDate?: string | null; endDate?: string | null } | null;
-  group?: { enabled: boolean; message?: string; tiers: { minSize: number; percent: number }[]; startDate?: string | null; endDate?: string | null } | null;
+  dates?: { enabled: boolean; rules: { startDate: string; endDate: string | null; percent: number; label?: string; appliesTo?: string }[] } | null;
+  weekdays?: { enabled: boolean; message?: string; rules: { weekday?: number; day?: number; percent: number }[]; startDate?: string | null; endDate?: string | null; appliesTo?: string } | null;
+  firstVisit?: { enabled: boolean; percent: number; message?: string; startDate?: string | null; endDate?: string | null; appliesTo?: string } | null;
+  group?: { enabled: boolean; message?: string; tiers: { minSize: number; percent: number }[]; startDate?: string | null; endDate?: string | null; appliesTo?: string } | null;
 }, vi: boolean): string | null {
   const inWin = (s?: string | null, e?: string | null) => (!s || s <= p.today) && (!e || e >= p.today);
   // 1. A named date promo running today beats everything: it has a name and an end.
@@ -216,22 +224,22 @@ export function promoLine(p: {
       const until = live.endDate && live.endDate !== live.startDate ? live.endDate : null;
       const d = until ? `${until.slice(8, 10)}/${until.slice(5, 7)}` : null;
       return vi
-        ? `Giảm ${live.percent}%${name ? ` · ${name}` : ''}${d ? ` đến ${d}` : ' hôm nay'}`
-        : `${live.percent}% off${name ? ` · ${name}` : ''}${d ? ` until ${d}` : ' today'}`;
+        ? `Giảm ${live.percent}%${promoFor(live, vi)}${name ? ` · ${name}` : ''}${d ? ` đến ${d}` : ' hôm nay'}`
+        : `${live.percent}% off${promoFor(live, vi)}${name ? ` · ${name}` : ''}${d ? ` until ${d}` : ' today'}`;
     }
   }
   // 2. Today's weekday discount.
   if (p.weekdays?.enabled && inWin(p.weekdays.startDate, p.weekdays.endDate)) {
     const r = p.weekdays.rules.find((x) => (x.weekday ?? x.day) === p.weekday && x.percent > 0);
-    if (r) return vi ? `Giảm ${r.percent}% hôm nay` : `${r.percent}% off today`;
+    if (r) return vi ? `Giảm ${r.percent}% hôm nay${promoFor(p.weekdays, vi)}` : `${r.percent}% off today${promoFor(p.weekdays, vi)}`;
   }
   // 3. Standing programmes.
   if (p.firstVisit?.enabled && p.firstVisit.percent > 0 && inWin(p.firstVisit.startDate, p.firstVisit.endDate)) {
-    return vi ? `Khách mới giảm ${p.firstVisit.percent}%` : `${p.firstVisit.percent}% off your first visit`;
+    return vi ? `Khách mới giảm ${p.firstVisit.percent}%${promoFor(p.firstVisit, vi)}` : `${p.firstVisit.percent}% off your first visit${promoFor(p.firstVisit, vi)}`;
   }
   if (p.group?.enabled && p.group.tiers.length && inWin(p.group.startDate, p.group.endDate)) {
     const t = [...p.group.tiers].sort((a, b) => a.minSize - b.minSize)[0];
-    return vi ? `Nhóm từ ${t.minSize} người giảm ${t.percent}%` : `Groups of ${t.minSize}+ get ${t.percent}% off`;
+    return vi ? `Nhóm từ ${t.minSize} người giảm ${t.percent}%${promoFor(p.group, vi)}` : `Groups of ${t.minSize}+ get ${t.percent}% off${promoFor(p.group, vi)}`;
   }
   return null;
 }

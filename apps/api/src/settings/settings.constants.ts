@@ -28,6 +28,9 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettings = {
 // prominently on the booking page and applied to the price the customer pays.
 export const WEEKDAY_DISCOUNTS_KEY = 'weekday_discounts';
 
+/** Who a promotion is for: the whole salon, online bookings only, or walk-ins only (settings/promo-channel.ts). */
+export type PromoAudience = 'all' | 'online' | 'walkin';
+
 export interface WeekdayDiscountRule {
   day: number; // 0 = Sunday … 6 = Saturday (salon-local weekday)
   categoryId: string | null; // null = all categories
@@ -41,6 +44,8 @@ export interface WeekdayDiscounts {
   /** Optional run dates (salon-local YYYY-MM-DD, inclusive). Empty = open-ended. */
   startDate?: string | null;
   endDate?: string | null;
+  /** Where it applies; missing = the whole salon. */
+  appliesTo?: PromoAudience;
 }
 
 export const DEFAULT_WEEKDAY_DISCOUNTS: WeekdayDiscounts = {
@@ -69,6 +74,8 @@ export interface FirstVisitDiscount {
   /** Optional run dates (salon-local YYYY-MM-DD, inclusive). Empty = open-ended. */
   startDate?: string | null;
   endDate?: string | null;
+  /** Where it applies; missing = the whole salon. */
+  appliesTo?: PromoAudience;
 }
 
 export const DEFAULT_FIRST_VISIT_DISCOUNT: FirstVisitDiscount = {
@@ -95,6 +102,8 @@ export interface GroupDiscount {
   /** Optional run dates (salon-local YYYY-MM-DD, inclusive). Empty = open-ended. */
   startDate?: string | null;
   endDate?: string | null;
+  /** Where it applies; missing = the whole salon. */
+  appliesTo?: PromoAudience;
 }
 
 export const DEFAULT_GROUP_DISCOUNT: GroupDiscount = {
@@ -119,6 +128,8 @@ export interface DateDiscountRule {
   categoryId: string | null; // null = all categories
   percent: number; // 1–90
   label?: string; // optional promo name, e.g. "Grand opening"
+  /** Where this sale applies; missing = the whole salon. */
+  appliesTo?: PromoAudience;
 }
 
 export interface DateDiscounts {

@@ -463,6 +463,53 @@ const runBody = (r: RunWindow) => ({ startDate: r.startDate || null, endDate: r.
  * empty end = until switched off. The dates are the salon's calendar days and
  * bound the day of the VISIT.
  */
+/**
+ * WHO A PROMOTION IS FOR. Three audiences, said in the salon's words:
+ * the whole salon, customers who book themselves online, or walk-ins. The
+ * server applies it the same way (apps/api settings/promo-channel.ts); a
+ * promotion saved before this existed is the whole salon.
+ */
+type Audience = 'all' | 'online' | 'walkin';
+const AUDIENCES: { key: Audience; vi: string; en: string; hintVi: string; hintEn: string }[] = [
+  { key: 'all', vi: 'Toàn hệ thống', en: 'Everywhere',
+    hintVi: 'Khách tự đặt online, lịch tiệm đặt hộ (khách gọi điện) và khách walk-in đều được giảm.',
+    hintEn: 'Online bookings, bookings the desk takes for a caller, and walk-ins all get it.' },
+  { key: 'online', vi: 'Chỉ đặt lịch online', en: 'Online bookings only',
+    hintVi: 'Chỉ khách tự đặt: trang đặt lịch, website, Google, chat bot, AI nghe máy. Khách walk-in và lịch tiệm đặt hộ KHÔNG được giảm.',
+    hintEn: 'Only customers who book themselves: booking page, website, Google, chat bot, AI phone. Walk-ins and desk bookings do NOT get it.' },
+  { key: 'walkin', vi: 'Chỉ khách walk-in', en: 'Walk-ins only',
+    hintVi: 'Chỉ khách vãng lai: thêm ở quầy hoặc quét QR check-in. Không hiện và không áp dụng trên trang đặt lịch online.',
+    hintEn: 'Only walk-ins: added at the desk or checked in by QR. Not shown or applied on the online booking page.' },
+];
+function audienceOf(x: unknown): Audience {
+  const v = x && typeof x === 'object' ? (x as { appliesTo?: unknown }).appliesTo : undefined;
+  return v === 'online' || v === 'walkin' ? v : 'all';
+}
+function audienceLabel(a: Audience, vi: boolean): string {
+  const it = AUDIENCES.find((x) => x.key === a) ?? AUDIENCES[0];
+  return vi ? it.vi : it.en;
+}
+function AudiencePick({ value, onChange, vi }: { value: Audience; onChange: (v: Audience) => void; vi: boolean }) {
+  const cur = AUDIENCES.find((a) => a.key === value) ?? AUDIENCES[0];
+  return (
+    <div style={{ margin: '0 0 12px' }}>
+      <span style={ui.label}>{vi ? 'Áp dụng cho' : 'Applies to'}</span>
+      <div role="radiogroup" aria-label={vi ? 'Áp dụng cho' : 'Applies to'} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {AUDIENCES.map((a) => {
+          const on = value === a.key;
+          return (
+            <button key={a.key} type="button" role="radio" aria-checked={on} onClick={() => onChange(a.key)}
+              style={{ padding: '7px 13px', borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: `1px solid ${on ? '#6366f1' : 'var(--c475569)'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#ffffff' : 'var(--ccbd5e1)' }}>
+              {vi ? a.vi : a.en}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6, lineHeight: 1.45 }}>{vi ? cur.hintVi : cur.hintEn}</div>
+    </div>
+  );
+}
+
 function RunDates({ value, onChange, vi }: { value: RunWindow; onChange: (v: RunWindow) => void; vi: boolean }) {
   const today = new Date().toLocaleDateString('en-CA');
   const bad = !!value.startDate && !!value.endDate && value.endDate < value.startDate;
@@ -599,7 +646,7 @@ function PromoBoard({ token, categories, promos, sel, onSel, onSaved, vi }: {
     }
     return liveDateRules(promos).sort((a, b) => a.startDate.localeCompare(b.startDate)).map((r) => {
       const range = r.endDate && r.endDate !== r.startDate ? `${fmtD(r.startDate)}–${fmtD(r.endDate)}` : fmtD(r.startDate);
-      return `${r.label ? `${r.label} · ` : ''}${range} −${r.percent}%${r.categoryId ? ` · ${catLabel(r.categoryId)}` : ''}`;
+      return `${r.label ? `${r.label} · ` : ''}${range} −${r.percent}%${r.categoryId ? ` · ${catLabel(r.categoryId)}` : ''}${audienceOf(r) !== 'all' ? ` · ${audienceLabel(audienceOf(r), vi)}` : ''}`;
     });
   };
 
@@ -613,7 +660,7 @@ function PromoBoard({ token, categories, promos, sel, onSel, onSaved, vi }: {
     <div>
       {runningToday.length > 0 && (
         <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: '#dcfce7', color: '#166534', fontSize: 13.5, fontWeight: 600 }}>
-          🎉 {vi ? 'Đang chạy hôm nay:' : 'Running today:'} {runningToday.map((r) => `${r.label || (vi ? 'Giảm giá' : 'Sale')} −${r.percent}%`).join(' · ')}
+          🎉 {vi ? 'Đang chạy hôm nay:' : 'Running today:'} {runningToday.map((r) => `${r.label || (vi ? 'Giảm giá' : 'Sale')} −${r.percent}% (${audienceLabel(audienceOf(r), vi)})`).join(' · ')}
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
@@ -623,6 +670,9 @@ function PromoBoard({ token, categories, promos, sel, onSel, onSaved, vi }: {
           const ended = !!w?.endDate && w.endDate < today;
           const upcoming = on && !!w?.startDate && w.startDate > today;
           const ls = on ? lines(k) : [];
+          // Who it is for: one audience per programme; a date sale per rule.
+          const auds = k === 'date' ? [...new Set(liveDateRules(promos).map((r) => audienceOf(r)))] : [audienceOf(k === 'weekday' ? promos.weekday : k === 'firstVisit' ? promos.firstVisit : promos.group)];
+          const audText = auds.length === 1 ? audienceLabel(auds[0], vi) : (vi ? 'Theo từng đợt' : 'Per sale');
           const span = on && w && (w.startDate || w.endDate)
             ? (w.startDate && w.endDate ? `${fmtD(w.startDate)}–${fmtD(w.endDate)}` : w.endDate ? (vi ? `đến ${fmtD(w.endDate)}` : `until ${fmtD(w.endDate)}`) : (vi ? `từ ${fmtD(w.startDate!)}` : `from ${fmtD(w.startDate!)}`))
             : '';
@@ -636,6 +686,11 @@ function PromoBoard({ token, categories, promos, sel, onSel, onSaved, vi }: {
                 color: on ? (upcoming ? 'var(--ink-warn)' : 'var(--ink-good)') : 'var(--c94a3b8)' }}>
                 {on ? (upcoming ? (vi ? '◷ Sắp chạy' : '◷ Scheduled') : (vi ? '● Đang bật' : '● On')) : ended ? (vi ? 'Đã kết thúc' : 'Ended') : (vi ? 'Đang tắt' : 'Off')}
               </span>
+              {on && (
+                <span style={{ alignSelf: 'flex-start', fontSize: 11.5, fontWeight: 700, borderRadius: 999, padding: '2px 9px', background: 'var(--wash-blue)', color: 'var(--ink-link)' }}>
+                  {vi ? 'Áp dụng: ' : 'For: '}{audText}
+                </span>
+              )}
               <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
                 {ls.length ? ls.join(' · ') + (span ? ` · 📅 ${span}` : '') : hintFor(k, vi)}
               </span>
@@ -1408,6 +1463,7 @@ function WeekdayDiscountCard({ token, categories, defaultOpen, onSaved }: { toke
   const [message, setMessage] = useState('');
   const [run, setRun] = useState<RunWindow>({ startDate: '', endDate: '' });
   const [rules, setRules] = useState<DiscRule[]>([]);
+  const [aud, setAud] = useState<Audience>('all');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -1416,7 +1472,7 @@ function WeekdayDiscountCard({ token, categories, defaultOpen, onSaved }: { toke
     apiFetch<{ weekdayDiscounts?: { enabled: boolean; message: string; rules: DiscRule[]; startDate?: string | null; endDate?: string | null } }>('/settings', { token })
       .then((s) => {
         const w = s.weekdayDiscounts;
-        if (w) { setEnabled(!!w.enabled); setMessage(w.message || ''); setRules(Array.isArray(w.rules) ? w.rules : []); setRun(runOf(w)); }
+        if (w) { setEnabled(!!w.enabled); setMessage(w.message || ''); setRules(Array.isArray(w.rules) ? w.rules : []); setRun(runOf(w)); setAud(audienceOf(w)); }
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
@@ -1425,7 +1481,7 @@ function WeekdayDiscountCard({ token, categories, defaultOpen, onSaved }: { toke
   function upd(i: number, patch: Partial<DiscRule>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/weekday-discounts', { method: 'PATCH', token, body: { enabled, message, rules, ...runBody(run) } }); setMsg(t('sv.saved')); onSaved?.(); }
+    try { await apiFetch('/settings/weekday-discounts', { method: 'PATCH', token, body: { enabled, message, rules, appliesTo: aud, ...runBody(run) } }); setMsg(t('sv.saved')); onSaved?.(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -1442,6 +1498,7 @@ function WeekdayDiscountCard({ token, categories, defaultOpen, onSaved }: { toke
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.weekdayEnable')}</span>
           </label>
+          <AudiencePick value={aud} onChange={setAud} vi={lang === 'vi'} />
           <RunDates value={run} onChange={setRun} vi={lang === 'vi'} />
           <label style={{ display: 'block', marginBottom: 12 }}>
             <span style={ui.label}>{t('sv.weekdayHeadline')}</span>
@@ -1487,6 +1544,7 @@ function FirstVisitDiscountCard({ token, defaultOpen, onSaved }: { token: string
   const [message, setMessage] = useState('');
   const [run, setRun] = useState<RunWindow>({ startDate: '', endDate: '' });
   const [rules, setRules] = useState<VisitTier[]>([{ visit: 1, percent: 10 }]);
+  const [aud, setAud] = useState<Audience>('all');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -1496,7 +1554,7 @@ function FirstVisitDiscountCard({ token, defaultOpen, onSaved }: { token: string
       .then((s) => {
         const f = s.firstVisitDiscount;
         if (f) {
-          setEnabled(!!f.enabled); setMessage(f.message || ''); setRun(runOf(f));
+          setEnabled(!!f.enabled); setMessage(f.message || ''); setRun(runOf(f)); setAud(audienceOf(f));
           setRules(Array.isArray(f.rules) && f.rules.length ? f.rules : [{ visit: 1, percent: f.percent || 10 }]);
         }
         setLoaded(true);
@@ -1507,7 +1565,7 @@ function FirstVisitDiscountCard({ token, defaultOpen, onSaved }: { token: string
   function upd(i: number, patch: Partial<VisitTier>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/first-visit-discount', { method: 'PATCH', token, body: { enabled, message, rules, ...runBody(run) } }); setMsg(t('sv.saved')); onSaved?.(); }
+    try { await apiFetch('/settings/first-visit-discount', { method: 'PATCH', token, body: { enabled, message, rules, appliesTo: aud, ...runBody(run) } }); setMsg(t('sv.saved')); onSaved?.(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -1524,6 +1582,7 @@ function FirstVisitDiscountCard({ token, defaultOpen, onSaved }: { token: string
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.fvEnable')}</span>
           </label>
+          <AudiencePick value={aud} onChange={setAud} vi={lang === 'vi'} />
           <RunDates value={run} onChange={setRun} vi={lang === 'vi'} />
           <label style={{ display: 'block', marginBottom: 12 }}>
             <span style={ui.label}>{t('sv.fvHeadline')}</span>
@@ -1563,6 +1622,7 @@ function GroupDiscountCard({ token, defaultOpen, onSaved }: { token: string; def
   const [message, setMessage] = useState('');
   const [run, setRun] = useState<RunWindow>({ startDate: '', endDate: '' });
   const [tiers, setTiers] = useState<GroupTier[]>([{ minSize: 2, percent: 10 }, { minSize: 3, percent: 15 }]);
+  const [aud, setAud] = useState<Audience>('all');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -1571,7 +1631,7 @@ function GroupDiscountCard({ token, defaultOpen, onSaved }: { token: string; def
     apiFetch<{ groupDiscount?: { enabled: boolean; message: string; tiers: GroupTier[]; startDate?: string | null; endDate?: string | null } }>('/settings', { token })
       .then((s) => {
         const g = s.groupDiscount;
-        if (g) { setEnabled(!!g.enabled); setMessage(g.message || ''); if (Array.isArray(g.tiers) && g.tiers.length) setTiers(g.tiers); setRun(runOf(g)); }
+        if (g) { setEnabled(!!g.enabled); setMessage(g.message || ''); if (Array.isArray(g.tiers) && g.tiers.length) setTiers(g.tiers); setRun(runOf(g)); setAud(audienceOf(g)); }
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
@@ -1580,7 +1640,7 @@ function GroupDiscountCard({ token, defaultOpen, onSaved }: { token: string; def
   function upd(i: number, patch: Partial<GroupTier>) { setTiers(tiers.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/group-discount', { method: 'PATCH', token, body: { enabled, message, tiers, ...runBody(run) } }); setMsg(t('sv.saved')); onSaved?.(); }
+    try { await apiFetch('/settings/group-discount', { method: 'PATCH', token, body: { enabled, message, tiers, appliesTo: aud, ...runBody(run) } }); setMsg(t('sv.saved')); onSaved?.(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -1597,6 +1657,7 @@ function GroupDiscountCard({ token, defaultOpen, onSaved }: { token: string; def
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.grEnable')}</span>
           </label>
+          <AudiencePick value={aud} onChange={setAud} vi={lang === 'vi'} />
           <RunDates value={run} onChange={setRun} vi={lang === 'vi'} />
           <label style={{ display: 'block', marginBottom: 12 }}>
             <span style={ui.label}>{t('sv.grHeadline')}</span>
@@ -1625,7 +1686,7 @@ function GroupDiscountCard({ token, defaultOpen, onSaved }: { token: string; def
 }
 
 // ---- Specific-date discounts (one-off dates / ranges) ----------------------
-interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
+interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string; appliesTo?: Audience }
 
 function DateDiscountCard({ token, categories, defaultOpen, onSaved }: { token: string; categories: Category[]; defaultOpen?: boolean; onSaved?: () => void }) {
   const { lang } = useLang();
@@ -1688,16 +1749,26 @@ function DateDiscountCard({ token, categories, defaultOpen, onSaved }: { token: 
                   <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.percentOff')}</span>
                 </div>
                 <input value={r.label ?? ''} onChange={(e) => upd(i, { label: e.target.value })} placeholder={t('sv.dateLabelPh')} style={{ ...ui.input, width: 150 }} />
+                <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{lang === 'vi' ? 'Áp dụng cho' : 'Applies to'}
+                  <select value={audienceOf(r)} onChange={(e) => upd(i, { appliesTo: e.target.value as Audience })} style={{ ...ui.input, width: 'auto', display: 'block', marginTop: 3 }}>
+                    {AUDIENCES.map((a) => <option key={a.key} value={a.key}>{lang === 'vi' ? a.vi : a.en}</option>)}
+                  </select>
+                </label>
                 <button onClick={() => setRules(rules.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>{t('sv.remove')}</button>
               </div>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setRules([...rules, { startDate: today, endDate: null, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>{t('sv.dateAddRule')}</button>
+            <button onClick={() => setRules([...rules, { startDate: today, endDate: null, categoryId: null, percent: 10, appliesTo: 'all' }])} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>{t('sv.dateAddRule')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
             {msg && <span style={{ color: msg.startsWith('✓') ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
           <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('sv.dateHint')}</p>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+            {lang === 'vi'
+              ? 'Áp dụng cho — Toàn hệ thống: online + lịch tiệm đặt hộ + walk-in · Chỉ đặt lịch online: khách tự đặt trên web/Google/chat bot/AI nghe máy · Chỉ khách walk-in: thêm ở quầy hoặc quét QR check-in.'
+              : 'Applies to — Everywhere: online + desk bookings + walk-ins · Online bookings only: customers booking themselves (web, Google, chat bot, AI phone) · Walk-ins only: added at the desk or checked in by QR.'}
+          </p>
         </div>
       )}
     </div>

@@ -10,7 +10,8 @@ import { liveEvents } from '../common/live-events';
 import { linkWalkInToBooking } from '../walkins/booking-link';
 import { dayKeyTz, weekdayTz } from '../common/salon-time';
 import { WEEKDAY_DISCOUNTS_KEY, DATE_DISCOUNTS_KEY } from '../settings/settings.constants';
-import { priceService, promoBanner, PromoSettings, SalonDay } from './checkin-pricing';
+import { netCents, priceService, promoBanner, PromoSettings, SalonDay } from './checkin-pricing';
+import { dateRulesFor, programFor } from '../settings/promo-channel';
 
 // Server-only split used to attribute the after-payment QR tip across the ticket's
 // technician(s). Never exposed to the paired device.
@@ -84,9 +85,10 @@ export class DisplayService {
         select: { key: true, value: true },
       });
       const byKey = new Map<string, unknown>(rows.map((r) => [r.key, r.value] as [string, unknown]));
+      // The kiosk is a walk-in: online-only promotions are not quoted here.
       return {
-        weekday: (byKey.get(WEEKDAY_DISCOUNTS_KEY) ?? null) as PromoSettings['weekday'],
-        dates: (byKey.get(DATE_DISCOUNTS_KEY) ?? null) as PromoSettings['dates'],
+        weekday: (programFor(byKey.get(WEEKDAY_DISCOUNTS_KEY) as PromoSettings['weekday'], 'walkin') ?? null) as PromoSettings['weekday'],
+        dates: (dateRulesFor(byKey.get(DATE_DISCOUNTS_KEY) as { rules?: { appliesTo?: unknown }[] } | null, 'walkin') ?? null) as unknown as PromoSettings['dates'],
       };
     } catch {
       return {};
@@ -150,7 +152,8 @@ export class DisplayService {
     // on the wall and $52 on the receipt; and the weekday promotion was never
     // applied to a walk-in at all, only to online bookings.
     const byId = new Map(svcs.map((sv) => [sv.id, sv] as const));
-    const itemsFor = (ids: string[] | undefined) => [...new Set(ids ?? [])].slice(0, 12)
+    // `visitPct`: her first-visit tier, when better than today's promotion (one best %, never both).
+    const itemsFor = (ids: string[] | undefined, visitPct = 0) => [...new Set(ids ?? [])].slice(0, 12)
       .map((id) => byId.get(id))
       .filter((sv): sv is (typeof svcs)[number] => !!sv)
       .map((sv) => {
@@ -159,7 +162,7 @@ export class DisplayService {
           lineId: randomBytes(12).toString('base64url'),
           serviceId: sv.id,
           name: sv.name,
-          priceCents: priced.netCents,
+          priceCents: visitPct > priced.promoPercent ? netCents(sv.priceCents, priced.discountPercent, visitPct) : priced.netCents,
           durationMinutes: sv.durationMinutes,
           staffId: null as string | null,
         };
@@ -175,7 +178,10 @@ export class DisplayService {
     const fullName = `${name}${dto.lastName?.trim() ? ' ' + dto.lastName.trim() : ''}`.slice(0, 80);
     const guestNames = guests.map((g, i) => (g?.firstName ?? '').trim().slice(0, 80) || `Guest ${i + 2}`);
     const partyNote = party > 1 ? `Party of ${party}: ${[name, ...guestNames].join(', ')}` : '';
-    const mainItems = itemsFor(dto.serviceIds);
+    const visitPct = linked?.id && typeof this.walkins?.walkInVisitTierPct === 'function'
+      ? await this.walkins.walkInVisitTierPct(tenantId, linked.id).catch(() => 0)
+      : 0;
+    const mainItems = itemsFor(dto.serviceIds, visitPct);
     // One party, one groupId: the floor shows them together and the till can
     // bill them on one receipt or several.
     const groupId = guests.length ? `ci-${randomUUID()}` : null;

@@ -55,6 +55,7 @@ import { matchMissedToVisits, pairTicketWithBooking } from '../walkins/booking-l
 import { dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { openTimesFor, type BusyBlock } from './open-times';
 import { hasPromoWindow, inPromoWindow, salonYmd, type PromoWindow } from '../settings/promo-window';
+import { appliesOn, channelOfSource, type SaleChannel } from '../settings/promo-channel';
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
@@ -183,7 +184,7 @@ export class BookingsService {
    * nothing applies. Read straight from the settings rows to avoid a cross-module
    * dependency.
    */
-  private async promoDiscountPercent(tenantId: string, start: Date, categoryId: string | null): Promise<number> {
+  private async promoDiscountPercent(tenantId: string, start: Date, categoryId: string | null, where: SaleChannel = 'online'): Promise<number> {
     try {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
       const tz = tenant?.timezone || 'UTC';
@@ -196,7 +197,8 @@ export class BookingsService {
       // Recurring weekday rules (matched by salon-local weekday).
       const wd = wdRow?.value as ({ enabled?: boolean; rules?: Array<{ day: number; categoryId: string | null; percent: number }> } & PromoWindow) | undefined;
       // Run dates bound the whole weekday program (e.g. "Tuesdays −10% until Oct 25").
-      if (wd?.enabled && Array.isArray(wd.rules) && inPromoWindow(wd, salonYmd(start, tz))) {
+      // …and only where the salon runs it (online only / walk-ins only / everywhere).
+      if (wd?.enabled && Array.isArray(wd.rules) && appliesOn(wd, where) && inPromoWindow(wd, salonYmd(start, tz))) {
         // en-US on purpose: this reads the weekday NAME back into an index via
         // the map below. It is a parser, not something anybody sees.
         const wdName = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(start);
@@ -215,6 +217,7 @@ export class BookingsService {
         const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(start);
         for (const r of dt.rules) {
           if (!r?.startDate) continue;
+          if (!appliesOn(r, where)) continue;
           if (r.categoryId && r.categoryId !== categoryId) continue;
           const end = r.endDate || r.startDate;
           if (r.startDate <= localDate && localDate <= end && r.percent > best) best = r.percent;
@@ -231,7 +234,7 @@ export class BookingsService {
    *  and group size (party of 2+). Returns the single BEST % — program promos
    *  never stack with each other or with weekday/date rules (max wins), and a
    *  promo lookup failure must never break booking. */
-  private async programDiscountPercent(tenantId: string, dto: CreateBookingDto, visitAt?: Date): Promise<number> {
+  private async programDiscountPercent(tenantId: string, dto: CreateBookingDto, visitAt?: Date, where: SaleChannel = 'online'): Promise<number> {
     let best = 0;
     try {
       // The salon-local day of the visit, for programs with run dates. Looked
@@ -261,7 +264,7 @@ export class BookingsService {
       const rawPhone = (dto.customerPhone || '').trim();
       const phone = (await this.normalizedPhone(tenantId, rawPhone)) ?? '';
       const email = (dto.customerEmail || '').trim().toLowerCase();
-      if (fv?.enabled && (phone || email) && (await running(fv))) {
+      if (fv?.enabled && (phone || email) && appliesOn(fv, where) && (await running(fv))) {
         const rules = Array.isArray(fv.rules) && fv.rules.length
           ? fv.rules
           : ((fv.percent ?? 0) > 0 ? [{ visit: 1, percent: fv.percent! }] : []);
@@ -286,7 +289,7 @@ export class BookingsService {
       // Group size — best tier whose minSize the party reaches.
       const gr = grRow?.value as ({ enabled?: boolean; tiers?: Array<{ minSize?: number; percent?: number }> } & PromoWindow) | undefined;
       const size = dto.partySize ?? 1;
-      if (gr?.enabled && Array.isArray(gr.tiers) && size >= 2 && (await running(gr))) {
+      if (gr?.enabled && Array.isArray(gr.tiers) && size >= 2 && appliesOn(gr, where) && (await running(gr))) {
         for (const t of gr.tiers) {
           if ((t?.minSize ?? 99) <= size && (t?.percent ?? 0) > best) best = t.percent!;
         }
@@ -598,12 +601,15 @@ export class BookingsService {
 
     // Program promos that don't depend on the category (first visit / group).
     // Policy: ONE best promo % per line — never stacked on top of weekday/date.
-    const programPct = await this.programDiscountPercent(tenantId, dto, start);
+    // The customer booking herself is "online"; a booking the desk takes for a
+    // caller gets only the promotions the salon runs everywhere.
+    const saleWhere: SaleChannel = isPublicBooking ? 'online' : 'desk';
+    const programPct = await this.programDiscountPercent(tenantId, dto, start, saleWhere);
 
     // Primary service: its own discount, then the best promo for its category.
     const primaryDisc = Math.min(90, Math.max(0, service.discountPercent ?? 0));
     const primaryNet = Math.round((service.priceCents * (100 - primaryDisc)) / 100);
-    const primaryWd = Math.max(await this.promoDiscountPercent(tenantId, start, service.categoryId), programPct);
+    const primaryWd = Math.max(await this.promoDiscountPercent(tenantId, start, service.categoryId, saleWhere), programPct);
     const primaryFinal = Math.round((primaryNet * (100 - primaryWd)) / 100);
 
     // Extra services in the SAME visit (multi-service). The first service stays
@@ -624,7 +630,7 @@ export class BookingsService {
     for (const s of extraServices) {
       const disc = Math.min(90, Math.max(0, s.discountPercent ?? 0));
       const net = Math.round((s.priceCents * (100 - disc)) / 100);
-      const wd = Math.max(await this.promoDiscountPercent(tenantId, start, s.categoryId), programPct);
+      const wd = Math.max(await this.promoDiscountPercent(tenantId, start, s.categoryId, saleWhere), programPct);
       extraItems.push({ id: s.id, name: s.name, priceCents: Math.round((net * (100 - wd)) / 100), durationMinutes: s.durationMinutes, kind: 'service' });
     }
     const extraPrice = extraItems.reduce((sum, x) => sum + x.priceCents, 0);
@@ -1198,13 +1204,13 @@ export class BookingsService {
       // Prisma client this was written against, and a field access that
       // compiles in exactly one of the two places is not worth a group tier.
       partySize: (appt as { partySize?: number }).partySize ?? 1,
-    } as unknown as CreateBookingDto, appt.startTime);
+    } as unknown as CreateBookingDto, appt.startTime, channelOfSource(appt.source));
 
     const items: { id: string; name: string; priceCents: number; durationMinutes: number; kind: 'service' }[] = [];
     for (const s of services) {
       const disc = Math.min(90, Math.max(0, s.discountPercent ?? 0));
       const net = Math.round((s.priceCents * (100 - disc)) / 100);
-      const wd = Math.max(await this.promoDiscountPercent(tenantId, appt.startTime, s.categoryId), programPct);
+      const wd = Math.max(await this.promoDiscountPercent(tenantId, appt.startTime, s.categoryId, channelOfSource(appt.source)), programPct);
       items.push({
         id: s.id, name: s.name, kind: 'service',
         priceCents: Math.round((net * (100 - wd)) / 100),
@@ -3252,7 +3258,7 @@ export class BookingsService {
       for (const sv of svcs) {
         const disc = Math.min(90, Math.max(0, sv.discountPercent ?? 0));
         const net = Math.round((sv.priceCents * (100 - disc)) / 100);
-        const wd = await this.promoDiscountPercent(tenantId, b.startTime, sv.categoryId);
+        const wd = await this.promoDiscountPercent(tenantId, b.startTime, sv.categoryId, channelOfSource(b.source));
         added.push({
           id: sv.id, name: sv.name, durationMinutes: sv.durationMinutes, kind: 'service',
           priceCents: Math.round((net * (100 - wd)) / 100),

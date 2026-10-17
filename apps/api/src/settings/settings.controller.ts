@@ -185,7 +185,7 @@ export class SettingsController {
   @Patch('weekday-discounts')
   updateWeekdayDiscounts(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; message?: string; rules?: Array<{ day: number; categoryId: string | null; percent: number }>; startDate?: string | null; endDate?: string | null },
+    @Body() dto: { enabled?: boolean; message?: string; rules?: Array<{ day: number; categoryId: string | null; percent: number }>; startDate?: string | null; endDate?: string | null; appliesTo?: string },
   ) {
     return this.settings.updateWeekdayDiscounts(user, dto);
   }
@@ -193,7 +193,7 @@ export class SettingsController {
   @Patch('first-visit-discount')
   updateFirstVisitDiscount(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; percent?: number; message?: string; rules?: Array<{ visit?: number; percent?: number }>; startDate?: string | null; endDate?: string | null },
+    @Body() dto: { enabled?: boolean; percent?: number; message?: string; rules?: Array<{ visit?: number; percent?: number }>; startDate?: string | null; endDate?: string | null; appliesTo?: string },
   ) {
     return this.settings.updateFirstVisitDiscount(user, dto);
   }
@@ -201,7 +201,7 @@ export class SettingsController {
   @Patch('group-discount')
   updateGroupDiscount(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; message?: string; tiers?: Array<{ minSize?: number; percent?: number }>; startDate?: string | null; endDate?: string | null },
+    @Body() dto: { enabled?: boolean; message?: string; tiers?: Array<{ minSize?: number; percent?: number }>; startDate?: string | null; endDate?: string | null; appliesTo?: string },
   ) {
     return this.settings.updateGroupDiscount(user, dto);
   }
@@ -209,9 +209,9 @@ export class SettingsController {
   @Patch('date-discounts')
   updateDateDiscounts(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; rules?: Array<{ startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }> },
+    @Body() dto: { enabled?: boolean; rules?: Array<{ startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string; appliesTo?: string }> },
   ) {
-    return this.settings.updateDateDiscounts(user, dto);
+    return this.settings.updateDateDiscounts(user, dto as never);
   }
 
   // The printed bill: header text, what to show, paper, language, footer.

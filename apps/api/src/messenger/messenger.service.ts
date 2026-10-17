@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { discountRules, promoKnowledge, type PromoInputs } from './promo-knowledge';
 import { isPagePostChange, requestChannelSync } from '../marketing/sync-signals';
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
@@ -4864,9 +4865,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         }
       }
       const promos = services.filter((sv) => sv.discountPercent > 0);
-      out.push(promos.length
-        ? `CURRENT PROMOTIONS: ${promos.map((p) => `${p.name} −${p.discountPercent}%`).join(', ')} — mention these when they fit; never invent any other discount.`
-        : 'No service-level discount is set on the menu. Do not invent a discount — only mention an offer if the salon\'s own notes above state one, and only within its dates.');
+      // The salon's promotions (Services → Promotions) that a booking made in
+      // this chat is charged — online-only and everywhere ones, never
+      // walk-in-only. They outrank any older note that names another percent.
+      const promoLines = await this.chatPromoLines(tenantId, services).catch(() => [] as string[]);
+      out.push(...discountRules(promoLines, promos.map((p) => `${p.name} −${p.discountPercent}%`)));
     }
     if (staff.length) {
       out.push(`TEAM (${staff.length}): ${staff.map((st) => `${st.firstName}${st.lastName ? ' ' + st.lastName : ''}`).join(', ')}.`);
@@ -4916,6 +4919,25 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * and after that date it is simply not in the prompt: the bot cannot
    * remember what it was never told.
    */
+  /** The salon's promotions as the chat sees them (promo-knowledge.ts): this salon's settings only, read under its own id. */
+  private async chatPromoLines(tenantId: string, services: { categoryId?: string | null; category: { name: string } | null }[]): Promise<string[]> {
+    const rows = await this.prisma.setting.findMany({
+      where: { tenantId, key: { in: ['weekday_discounts', 'date_discounts', 'first_visit_discount', 'group_discount'] } },
+      select: { key: true, value: true },
+    });
+    if (!Array.isArray(rows) || !rows.length) return [];
+    const by = new Map<string, unknown>(rows.map((r) => [r.key, r.value as unknown] as [string, unknown]));
+    const names = new Map<string, string>();
+    for (const sv of services) if (sv.categoryId && sv.category?.name) names.set(sv.categoryId, sv.category.name);
+    const inputs: PromoInputs = {
+      weekday: (by.get('weekday_discounts') ?? null) as PromoInputs['weekday'],
+      dates: (by.get('date_discounts') ?? null) as PromoInputs['dates'],
+      firstVisit: (by.get('first_visit_discount') ?? null) as PromoInputs['firstVisit'],
+      group: (by.get('group_discount') ?? null) as PromoInputs['group'],
+    };
+    return promoKnowledge(inputs, { today: dayKeyTz(new Date(), await this.tzOf(tenantId)), categoryName: (id) => names.get(id) }, 'online');
+  }
+
   private factsText(botFacts: unknown, tz: string): string {
     if (!Array.isArray(botFacts)) return '';
     const today = dayKeyTz(new Date(), tz);

@@ -106,8 +106,16 @@ export default function AgencyGoogleBookPage() {
     return c;
   }, [board]);
   const links = useMemo(() => {
-    const c = { linked: 0, error: 0, other: 0 };
-    for (const r of board?.rows ?? []) { const s = r.bookingLink?.state; if (s === 'linked') c.linked++; else if (s === 'error') c.error++; else c.other++; }
+    const c = { linked: 0, error: 0, other: 0, topError: '' as string, topCount: 0 };
+    const why = new Map<string, number>();
+    for (const r of board?.rows ?? []) {
+      const s = r.bookingLink?.state;
+      if (s === 'linked') c.linked++;
+      else if (s === 'error') { c.error++; const k = r.bookingLink?.reason ?? ''; why.set(k, (why.get(k) ?? 0) + 1); }
+      else c.other++;
+    }
+    // The error most salons share is usually ONE setting to fix (an API not enabled), not N problems.
+    for (const [k, n] of why) if (n > c.topCount) { c.topError = k; c.topCount = n; }
     return c;
   }, [board]);
   const rows = useMemo(() => {
@@ -138,6 +146,11 @@ export default function AgencyGoogleBookPage() {
             <div style={{ fontSize: 13, color: C.sub }}><b style={{ color: C.good }}>{links.linked}</b> đã gắn · <b style={{ color: links.error ? C.bad : C.sub }}>{links.error}</b> lỗi · {links.other} chưa gắn{board.lastLinkRun ? ` · chạy lúc ${when(board.lastLinkRun.at)}` : ''}</div>
           </div>
           <div style={{ fontSize: 12.5, color: C.sub, marginTop: 6, lineHeight: 1.55 }}>
+            {links.topCount > 0 && (
+              <div style={{ margin: '0 0 8px', padding: '9px 12px', borderRadius: 10, background: 'var(--wash-red)', color: 'var(--ink-bad)', fontWeight: 700, fontSize: 13 }}>
+                {links.topCount} tiệm lỗi cùng lý do: {links.topError || 'không rõ'}
+              </div>
+            )}
             Lumio đặt trang đặt lịch của tiệm (<code>lumiobooking.com/&lt;tiệm&gt;/gbp</code>) làm <b>link đặt lịch ưu tiên</b> trên chính hồ sơ Google của tiệm — đúng ô “Bookings → link đặt lịch” chủ tiệm tự điền — qua Place Actions API, tự chạy mỗi đêm. Trên Google Maps/Search, khách thấy nút/ô “Đặt lịch hẹn · Book” mở thẳng trang đặt lịch của tiệm. Tiệm được gắn khi: đang bật, đã nối đúng hồ sơ Google của mình, có dịch vụ đặt online. Nút đặt ngay <i>trong</i> Google (Reserve with Google) vẫn chỉ dành cho đối tác Google duyệt.
           </div>
         </section>
@@ -211,6 +224,7 @@ export default function AgencyGoogleBookPage() {
                     <span title={r.bookingLink?.reason ?? r.bookingLink?.uri ?? ''} style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 9px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: lk.bg, color: lk.ink, whiteSpace: 'nowrap', justifySelf: 'start' }}>{lk.label}</span>
                   ); })()}
                   <div style={{ fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {r.bookingLink?.state === 'error' && r.bookingLink.reason ? <span style={{ color: 'var(--ink-bad)' }}>Link: {r.bookingLink.reason} · </span> : null}
                     {r.status === 'ready' ? `${r.feedable} dịch vụ vào feed${warns.length ? ` · ${warns.length} lưu ý` : ''}` : errors[0]?.message ?? warns[0]?.message ?? ''}
                     {errors.length > 1 ? ` · +${errors.length - 1} lỗi` : ''}
                   </div>

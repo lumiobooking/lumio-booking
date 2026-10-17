@@ -95,7 +95,9 @@ describe('wired into the screens', () => {
   it('the walk-ins page shows "waiting to pay" apart from the chairs', () => {
     const src = read('app', 'salon', 'walkins', 'page.tsx');
     expect(src).toMatch(/filter\(\(w\) => !w\.awaitingPayment && w\.phase !== 'BETWEEN'\)/);
-    expect(src).toMatch(/const toPay = board\.serving\.filter\(\(w\) => w\.awaitingPayment\)/);
+    // Walk-in 2.0: waiting to pay is its own column.
+    expect(src).toMatch(/const toPay = \(board\?\.serving \?\? \[\]\)\.filter\(\(w\) => w\.awaitingPayment\)/);
+    expect(src).toMatch(/id="wi-topay"/);
   });
 });
 

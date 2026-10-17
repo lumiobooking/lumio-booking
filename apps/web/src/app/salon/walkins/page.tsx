@@ -20,6 +20,7 @@ import { TurnDrawer } from '../../../components/TurnDrawer';
 import { DeskPolicyPanel } from '../../../components/DeskPolicyPanel';
 import { CustomerPicker, type CustomerHistoryView, type CustomerLookupRow, type PickedCustomer } from '../../../components/CustomerPicker';
 import { ServicePicker } from '../../../components/ServicePicker';
+import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
 
 interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string }
 /** One part of a visit done by one technician (hands, feet, …) — see walkin-legs.ts in the API. */
@@ -1443,6 +1444,8 @@ function WalkInTicketSheet({ w, staff, services, t, currency, restricted, requir
         </div>
 
         <div style={{ padding: 16 }}>
+          {/* Massage / spa: forms signed or missing, the client's cautions, the SOAP note. */}
+          <ClientFormsPanel walkInId={w.id} />
           {legs.length > 0 && (
             <LegsPanel w={w} legs={legs} staff={staff} restricted={restricted} t={t} onLeg={onLeg} onLegDone={onLegDone} />
           )}

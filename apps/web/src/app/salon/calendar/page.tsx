@@ -25,6 +25,7 @@ import { C, Seg, IconBtn, Icon, btn, onIndigo, Popover, Sheet, DayStrip, MonthPi
 import { applyFilters, facetCounts, activeFilterCount, NO_FILTERS, stripDays, suggestStart, isClosedDay, capacityMinutes, loadOf, bookedMinutes, addDays, type CalFilters, type HoursDay } from '../../../lib/cal-day';
 import { minutesInZone } from '../../../lib/salon-card';
 import { NewBookingModal, type NewBookingPrefill } from '../../../components/NewBookingModal';
+import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string; staffMemberId?: string }
 /** Pill/label text: primary service plus a +N badge for the extra lines. */
@@ -913,6 +914,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
           </span>
         </div>
         <ServiceLines b={b} onAction={onAction} editable={active} />
+        <div style={{ marginTop: 12 }}><ClientFormsPanel appointmentId={b.id} /></div>
 
         {/* Status is editable in BOTH directions and at ANY status: pressing
             Complete by mistake used to leave the front desk with no way back. */}

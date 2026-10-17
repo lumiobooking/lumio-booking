@@ -238,6 +238,8 @@ const PATH_CAPS: [string, Capability][] = [
   ['referral', 'billing'],
   // the customer's own data
   ['customers', 'customers'],
+  // Massage intake, consent and SOAP notes: health data, the client's own.
+  ['client-forms', 'customers'],
   ['search', 'customers'],
   ['bookings', 'bookings'],
   ['walkins', 'walkins'],

@@ -51,7 +51,7 @@ const GROUP_KEY: Record<string, string> = {
 const HREF_CAP: Record<string, string> = {
   '/salon': 'dashboard', '/salon/pos': 'pos', '/salon/orders': 'orders',
   '/salon/calendar': 'calendar', '/salon/bookings': 'bookings', '/salon/walkins': 'walkins', '/salon/front-desk': 'walkins',
-  '/salon/tables': 'bookings', '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/services': 'services',
+  '/salon/tables': 'bookings', '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/forms': 'customers', '/salon/services': 'services',
   '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/staff': 'staff', '/salon/stations': 'staff', '/salon/payroll': 'payroll',
   '/salon/reviews': 'reviews', '/salon/feedback': 'reviews', '/salon/marketing': 'marketing', '/salon/content': 'marketing', '/salon/channels': 'marketing', '/salon/inventory': 'inventory',
   '/salon/pos/report': 'reports', '/salon/pos/shifts': 'reports', '/salon/reports': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
@@ -257,6 +257,8 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     && (!item.team || isTeam)
     && (item.biz !== 'restaurant' || isRestaurant)
     && !hiddenHrefsFor(industry).includes(item.href)
+    // Intake / consent / SOAP paperwork is a massage and spa thing; a nail salon never sees it.
+    && (item.href !== '/salon/forms' || industry === 'MASSAGE' || industry === 'SPA')
     // An unknown market counts as North America: every salon here before
     // Vietnam is in it, and a request still in flight must never blank out a
     // screen someone uses every day.

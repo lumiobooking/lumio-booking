@@ -3721,3 +3721,65 @@ model TurnAdjustment {
   @@index([tenantId, staffId, day])
   @@map("turn_adjustments")
 }
+
+// Massage / spa paperwork (client-forms/): a signed intake, consent or SOAP
+// note. Never edited once signed — corrections are appended to `addenda`.
+// `snapshot` is the form exactly as it was shown, in the language shown.
+model ClientFormEntry {
+  id              String   @id @default(uuid())
+  tenantId        String
+  customerId      String?
+  // intake | cupping | hot_stone | soap
+  kind            String
+  templateVersion Int      @default(1)
+  lang            String   @default("en")
+  answers         Json     @default("{}")
+  snapshot        Json     @default("{}")
+  // The drawn signature, a PNG data URL.
+  signatureData   String?
+  signedName      String?
+  // client | staff
+  signerRole      String   @default("client")
+  staffId         String?
+  userId          String?
+  appointmentId   String?
+  walkInId        String?
+  linkId          String?
+  // salon | sms | staff
+  source          String   @default("salon")
+  ip              String?
+  userAgent       String?
+  addenda         Json     @default("[]")
+  signedAt        DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, customerId, kind])
+  @@index([tenantId, appointmentId])
+  @@index([tenantId, walkInId])
+  @@index([tenantId, signedAt])
+  @@index([tenantId, linkId])
+  @@map("client_form_entries")
+}
+
+// A link a client signs their forms through: on the salon's iPad or by text.
+// The random token is the only credential; the salon is read from the row.
+model ClientFormLink {
+  id            String    @id @default(uuid())
+  tenantId      String
+  token         String    @unique
+  customerId    String?
+  appointmentId String?
+  walkInId      String?
+  // The forms this link asks for: ["intake", "cupping"]
+  kinds         Json      @default("[]")
+  lang          String?
+  expiresAt     DateTime
+  sentAt        DateTime?
+  sentTo        String?
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([tenantId, appointmentId])
+  @@index([tenantId, walkInId])
+  @@map("client_form_links")
+}

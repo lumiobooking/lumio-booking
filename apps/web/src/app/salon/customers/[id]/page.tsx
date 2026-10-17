@@ -11,6 +11,7 @@ import { useLang, tr } from '../../../../lib/i18n';
 import { ind } from '../../../../lib/ui-industry';
 import { IndustryRecordCard } from '../../../../components/IndustryRecordCard';
 import { PastHistoryCard, type Past } from '../../../../components/PastHistoryCard';
+import { ClientFormsPanel } from '../../../../components/forms/ClientFormsPanel';
 import { uiLocale } from '../../../../lib/datetime';
 
 interface Pay { id: string; amountCents: number; currency: string; status: string; type: string; createdAt: string }
@@ -151,6 +152,8 @@ function Inner() {
       {/* The record this line of business keeps: patient record, lead, guest notes, lash map… */}
       <IndustryRecordCard token={token} customerId={c.id} values={c.industryFields} vi={lang === 'vi'} onSaved={load} />
       <PastHistoryCard token={token} customerId={c.id} past={c.past} smsConsent={c.smsConsent} currency={currency} vi={lang === 'vi'} isOwner={isOwner} onSaved={load} />
+      {/* Massage / spa: intake, consent and SOAP notes on file (draws nothing elsewhere). */}
+      <ClientFormsPanel customerId={c.id} />
 
       {/* Her habits — the same profile the chat bot reads to offer "same as last time?". */}
       {c.profile && c.profile.visits >= 2 && (() => {

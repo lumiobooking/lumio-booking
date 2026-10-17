@@ -80,6 +80,7 @@ const P: Record<string, React.ReactNode> = {
   wand: <><path d="m4 20 10.5-10.5" /><path d="m12.8 7.8 3.4 3.4" /><path d="M17.5 3v3M16 4.5h3M20.5 9.5v2.2M19.4 10.6h2.2M9.5 3.5v2M8.5 4.5h2" /></>,
   share: <><circle cx="6.5" cy="12" r="2.5" /><circle cx="17.5" cy="6" r="2.5" /><circle cx="17.5" cy="18" r="2.5" /><path d="m8.7 10.8 6.6-3.6M8.7 13.2l6.6 3.6" /></>,
   docCheck: <><path d="M6.5 3h8L19 7.5V21h-12.5V3Z" /><path d="M14 3v5h5" /><path d="m9.3 14.6 2 2 3.8-4.1" /></>,
+  formSign: <><rect x="5" y="4.5" width="14" height="16.5" rx="2" /><path d="M9 4.5V3h6v1.5" /><path d="M8.5 10h7M8.5 13.2h4.5" /><path d="M8.3 17.8c1-1.4 1.9-1.4 2.4-.3.4.9 1.1.9 1.8-.1l.9-1" /></>,
   award: <><circle cx="12" cy="9" r="5.5" /><circle cx="12" cy="9" r="2.2" /><path d="m9 13.7-1.5 7.3 4.5-2.4 4.5 2.4-1.5-7.3" /></>,
   starChat: <><path d="M4 5h16v11.5h-9.5L6 20.5v-4H4V5Z" /><path d="m12 7.6 1.1 2.2 2.4.3-1.8 1.7.5 2.4-2.2-1.2-2.2 1.2.5-2.4-1.8-1.7 2.4-.3L12 7.6Z" /></>,
   headset: <><path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2" /><rect x="3.5" y="13" width="4" height="6" rx="1.5" /><rect x="16.5" y="13" width="4" height="6" rx="1.5" /><path d="M18.5 19c0 1.3-1.5 2-4 2H13" /></>,

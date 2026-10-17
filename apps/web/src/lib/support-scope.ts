@@ -39,6 +39,7 @@ export const SUPPORT_HREF_CAP: Record<string, string> = {
   '/salon/waitlist': 'waitlist',
   '/salon/activity': 'bookings',
   '/salon/customers': 'customers',
+  '/salon/forms': 'customers', // massage intake / consent / SOAP — client health data
 
   // the till
   '/salon/pos': 'pos',

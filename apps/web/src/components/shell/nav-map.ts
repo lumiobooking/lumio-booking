@@ -44,6 +44,8 @@ export const GROUPS: NavGroup[] = [
     { href: '/salon/customers', label: 'Customers', icon: 'users' },
     // Two-button feedback after every visit: the owner's cases and each tech's scorecard.
     { href: '/salon/feedback', label: 'Feedback', icon: 'thumbs' },
+    // Massage / spa paperwork: intake, consent and SOAP notes (massage & spa salons only).
+    { href: '/salon/forms', label: 'Client forms', icon: 'formSign' },
     { href: '/salon/services', label: 'Services', icon: 'nailPolish' },
     { href: '/salon/products', label: 'Products', icon: 'bag', feature: 'pos' },
     { href: '/salon/gift-cards', label: 'Gift cards', icon: 'gift', feature: 'pos' },
@@ -129,7 +131,7 @@ export const SECTIONS: Section[] = [
     hrefs: ['/salon', '/salon/front-desk', '/salon/calendar', '/salon/bookings', '/salon/walkins', '/salon/pos', '/salon/orders', '/salon/waitlist', '/salon/activity', '/salon/tables', '/salon/menu'],
     lessUsed: ['/salon/waitlist', '/salon/activity'] },
   { id: 'clients', vi: 'Khách hàng', en: 'Clients', viDesc: 'Khách, tin nhắn, góp ý', enDesc: 'Clients, messages, feedback', icon: 'users',
-    hrefs: ['/salon/customers', '/salon/inbox', '/salon/feedback', '/salon/reviews', '/salon/gift-cards'] },
+    hrefs: ['/salon/customers', '/salon/forms', '/salon/inbox', '/salon/feedback', '/salon/reviews', '/salon/gift-cards'] },
   { id: 'catalog', vi: 'Dịch vụ & Thợ', en: 'Services & team', viDesc: 'Menu, sản phẩm, đội thợ', enDesc: 'Menu, products, team', icon: 'nailPolish',
     hrefs: ['/salon/services', '/salon/products', '/salon/inventory', '/salon/staff', '/salon/stations'] },
   { id: 'growth', vi: 'Marketing & AI', en: 'Marketing & AI', viDesc: 'Kéo khách mới, giữ khách cũ', enDesc: 'Win and keep clients', icon: 'megaphone',

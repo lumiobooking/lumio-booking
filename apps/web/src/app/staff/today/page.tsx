@@ -25,6 +25,7 @@ import { BOTTOM_SAFE, IC, Icon, L, SectionLabel, Sheet, TAB_H, Toast, fmtTurns, 
 import { ClockCard } from '../../../components/staff/ClockCard';
 import { NextVisitClient, NextVisitSheet } from '../../../components/staff/NextVisitSheet';
 import { BookingSheet, StaffBooking, bookingName, bookingServices, bookingMinutes, canStart } from '../../../components/staff/BookingSheet';
+import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
 
 interface Item { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null; legId?: string }
 interface Leg {
@@ -503,6 +504,9 @@ function NowCard({ w, me, vi, currency, techNames, busy, inlineFinish, onFinish,
           </div>
         );
       })}
+
+      {/* Massage / spa: the client's cautions before starting, the SOAP note after. */}
+      <div style={{ marginTop: 12 }}><ClientFormsPanel walkInId={w.id} returnTo="/staff/today" /></div>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
         <button type="button" disabled={busy} onClick={onAdd} style={{ ...st.ghost, flex: 1, padding: '0 10px' }}><Icon d={IC.plus} size={18} stroke={2.2} />{L(vi, 'Thêm dịch vụ', 'Add service')}</button>

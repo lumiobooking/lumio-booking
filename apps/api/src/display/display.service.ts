@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { ClientFormsService } from '../client-forms/client-forms.service';
 import { randomBytes, randomUUID } from 'crypto';
 import { Prisma, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,6 +32,8 @@ export class DisplayService {
     private readonly customers: CustomersService,
     // Optional so the unit tests can build the service with a bare prisma.
     @Optional() private readonly walkins?: WalkinsService,
+    // Massage / spa: the thank-you screen offers "sign your forms" (client-forms/).
+    @Optional() private readonly forms?: ClientFormsService,
   ) {}
 
   /** Resolve a paired device's token to its tenant, or 404. */
@@ -239,9 +242,15 @@ export class DisplayService {
     if (!staffId && typeof this.walkins?.etaFor === 'function') {
       try { estimate = await this.walkins.etaFor(tenantId, walkIn.id); } catch { estimate = null; }
     }
+    // Massage / spa: forms still to sign — a link the iPad opens right here.
+    let formsToken: string | null = null;
+    if (this.forms) {
+      try { formsToken = (await this.forms.kioskLink(tenantId, walkIn.id))?.token ?? null; } catch { formsToken = null; }
+    }
     return {
       ok: true, id: walkIn.id, queued: !staffId, seated: !!staffId,
       ...(estimate ? { estimate } : {}),
+      ...(formsToken ? { formsToken } : {}),
       ...(guestIds.length ? { guestIds, guestsSeated } : {}),
     };
   }

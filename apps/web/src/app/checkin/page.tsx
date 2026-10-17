@@ -97,6 +97,8 @@ export default function CheckInKiosk() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   // Walk-in 2.0: "about how long?" from the floor, shown on the thank-you screen.
   const [eta, setEta] = useState<{ min: number; max: number } | null>(null);
+  // Massage / spa: forms still to sign for this ticket — signed right here, on the iPad.
+  const [formsToken, setFormsToken] = useState<string | null>(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', email: '', birthDate: '', partySize: 1, note: '' });
   const [picked, setPicked] = useState<string[]>([]);
   // Everyone after the person holding the phone, each with their own services.
@@ -220,7 +222,7 @@ export default function CheckInKiosk() {
     if (!token || busy) return;
     setBusy(true); setErr(null);
     try {
-      const res = await apiFetch<{ estimate?: { min: number; max: number } | null }>(`/display/checkin/${token}`, {
+      const res = await apiFetch<{ estimate?: { min: number; max: number } | null; formsToken?: string }>(`/display/checkin/${token}`, {
         method: 'POST',
         body: {
           firstName: form.firstName.trim(),
@@ -236,8 +238,10 @@ export default function CheckInKiosk() {
         },
       });
       setEta(res?.estimate ?? null);
+      setFormsToken(res?.formsToken ?? null);
       setStep(4);
-      window.setTimeout(reset, 7000); // thank-you screen, then ready for the next person
+      // thank-you screen, then ready for the next person (longer when there are forms to sign)
+      window.setTimeout(reset, res?.formsToken ? 60000 : 7000);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Something went wrong. Please ask the front desk.');
     } finally {
@@ -297,7 +301,14 @@ export default function CheckInKiosk() {
               Estimated wait: about {eta.min}–{eta.max} minutes
             </p>
           )}
-          <button onClick={reset} style={{ ...ghostBtn, marginTop: 32 }}>Check in someone else</button>
+          {formsToken && (
+            <div style={{ marginTop: 28 }}>
+              <button onClick={() => { window.location.href = `/sign/${formsToken}?return=${encodeURIComponent('/checkin')}`; }} style={{ ...primary(accent), width: '100%' }}>
+                ✍ Please sign your forms (1 min) · Ký phiếu
+              </button>
+            </div>
+          )}
+          <button onClick={reset} style={{ ...ghostBtn, marginTop: formsToken ? 16 : 32 }}>Check in someone else</button>
         </div>
       </main>
     );

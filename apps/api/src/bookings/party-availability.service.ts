@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { matchTech } from './tech-match';
 import { AppointmentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -133,10 +134,16 @@ export class PartyAvailabilityService {
       let techId: string | null = null; let techName: string | null = null;
       const wantTech = String(p.technician ?? '').trim();
       if (wantTech && !/^(any|anyone|no preference|none)$/i.test(wantTech)) {
-        const key = wantTech.toLowerCase();
-        const hits = ctx.staff.filter((s) => s.firstName.toLowerCase() === key || `${s.firstName} ${s.lastName ?? ''}`.trim().toLowerCase() === key);
-        if (hits.length !== 1) return { error: `There is no single technician called "${wantTech}" here (team: ${ctx.staff.map((s) => s.firstName).join(', ') || 'none listed'}). Tell the customer and ask whether anyone else is fine.` };
-        techId = hits[0].id; techName = hits[0].firstName;
+        // Case, accents, a trailing space in the saved name and speech-recognition
+        // spellings ("Sung" for Sang) are forgiven — but never a guess between two people.
+        const m = matchTech(wantTech, ctx.staff);
+        if (!m.tech) {
+          const team = ctx.staff.map((s) => s.firstName.trim()).join(', ') || 'none listed';
+          return { error: m.candidates.length
+            ? `"${wantTech}" could be ${m.candidates.map((s) => s.firstName.trim()).join(' or ')}. Ask the customer which one they mean.`
+            : `There is no technician called "${wantTech}" here (team: ${team}). The name may have been misheard: say the team names and ask who they meant, or whether anyone is fine.` };
+        }
+        techId = m.tech.id; techName = m.tech.firstName.trim();
       }
       members.push({ firstName, items, techId, techName });
     }

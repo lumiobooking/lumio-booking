@@ -13,6 +13,7 @@ import { ui } from '../../../lib/ui';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { useLang } from '../../../lib/i18n';
 import { AiNotesBox } from '../../../components/AiNotesBox';
+import { VoicePicker, type VoiceOpt } from '../../../components/VoicePicker';
 import { uiLocale } from '../../../lib/datetime';
 
 interface CustomHour { day: number; enabled: boolean; start: string; end: string }
@@ -25,6 +26,8 @@ interface VConf {
   transferNumber: string;
   schedule: string; customHours: CustomHour[] | null;
   noAnswerAction: string; awayMessage: string; voicemailSms: string;
+  /** Chosen voices, one per language, comma-separated ('' = defaults); the list to choose from. */
+  voice?: string; voices?: VoiceOpt[];
 }
 interface VCall {
   id: string; fromNumber: string | null; outcome: string; appointmentId: string | null;
@@ -180,6 +183,7 @@ const DICT: Record<string, { vi: string; en: string }> = {
   langEn: { vi: 'Tiếng Anh (US)', en: 'English (US)' },
   langEnAu: { vi: 'Tiếng Anh (Úc)', en: 'English (Australia)' },
   langVi: { vi: 'Tiếng Việt', en: 'Vietnamese' },
+  voicePick: { vi: 'Giọng của trợ lý AI — chọn từ trẻ tới lớn tuổi', en: 'Assistant voice — from young to older' },
   aiInstruction: { vi: 'Ghi chú thêm cho trợ lý (tùy chọn)', en: 'Extra notes for the assistant (optional)' },
   aiInstructionPh: { vi: 'vd: luôn mời khách thử dịch vụ dip; cuối tuần rất đông.', en: 'e.g. always suggest dip powder; weekends are very busy.' },
   faqReuse: {
@@ -268,6 +272,7 @@ function Inner() {
         mode: c.mode, forwardNumbers: c.forwardNumbers, ringSeconds: c.ringSeconds, transferNumber: c.transferNumber ?? '',
         schedule: c.schedule, customHours: c.customHours ?? undefined,
         noAnswerAction: c.noAnswerAction, awayMessage: c.awayMessage, voicemailSms: c.voicemailSms,
+        voice: c.voice ?? '',
         ...patch,
       } });
       setC(next); setSaved(true); setTimeout(() => setSaved(false), 2000);
@@ -590,6 +595,13 @@ function Inner() {
           <option value="vi-VN">{t('langVi')}</option>
           <option value="bilingual">{t('langBi')}</option>
         </select>
+
+        {(c.voices?.length ?? 0) > 0 && (
+          <>
+            <label style={ui.label}>{t('voicePick')}</label>
+            <VoicePicker vi={lang === 'vi'} language={c.language} voices={c.voices ?? []} value={c.voice ?? ''} onChange={(v) => setC({ ...c, voice: v })} />
+          </>
+        )}
 
         <AiNotesBox token={token} vi={lang === 'vi'} />
         <label style={ui.label}>{t('aiInstruction')}</label>

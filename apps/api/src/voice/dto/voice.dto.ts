@@ -31,6 +31,9 @@ export class UpdateVoiceDto {
   @IsOptional() @IsIn(['voicemail', 'message', 'hangup']) noAnswerAction?: string;
   @IsOptional() @IsString() @MaxLength(500) awayMessage?: string;
   @IsOptional() @IsString() @MaxLength(32) voicemailSms?: string;
+
+  // The assistant's voice: names from the voice list, one per language, comma-separated ('' = defaults).
+  @IsOptional() @IsString() @MaxLength(200) voice?: string;
 }
 
 /** Super Admin: assign a Lumio-owned voice number to a tenant. */

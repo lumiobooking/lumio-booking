@@ -13,6 +13,8 @@
  * apologised in English every time it mis-heard something.
  */
 
+import { parseVoices, pickVoice } from './voice-catalog';
+
 export type LangCode = 'en-US' | 'vi-VN';
 export const BILINGUAL = 'bilingual';
 
@@ -61,10 +63,13 @@ export function menuLines(salonName: string): { en: string; vi: string } {
  * voices carry real vi-VN models; the voice name itself encodes the locale.
  */
 export function voiceFor(lang: string, configuredVoice: string | null | undefined): { voice: string | null; sayLanguage: string | null } {
-  // A configured voice wins ONLY when it can actually speak the turn's
-  // language. On a bilingual line the salon's chosen (English) voice must not
-  // read the Vietnamese half — that is the alice bug reborn through settings.
-  if (configuredVoice && (lang !== 'vi-VN' || /vi-VN/i.test(configuredVoice))) {
+  // The salon's picks (voice-catalog: one voice per language) — each turn gets
+  // the one that speaks its language; Vietnamese is never read by an English voice.
+  const picked = pickVoice(lang, configuredVoice);
+  if (picked) return { voice: picked, sayLanguage: lang === 'vi-VN' ? 'vi-VN' : null };
+  // A legacy free-text voice from before the list: same rule as always —
+  // it wins ONLY when it can actually speak the turn's language (the alice bug).
+  if (configuredVoice && !parseVoices(configuredVoice).length && (lang !== 'vi-VN' || /vi-VN/i.test(configuredVoice))) {
     return { voice: configuredVoice, sayLanguage: null };
   }
   // Neural defaults: Wavenet vi / Polly Neural en — the closest to a human

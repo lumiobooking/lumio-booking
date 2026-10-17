@@ -178,7 +178,7 @@ describe('checking the book before offering a time', () => {
     const { tool } = makeSvc({ appts: [busyKim] });
     expect(await tool('check_availability', { date: DAY, time: '14:00', people: [{ services: ['S2'], technician: 'Kim' }] })).toMatch(/^NOT OPEN/);
     expect(await tool('check_availability', { date: DAY, time: '14:00', people: [{ services: ['S2'], technician: 'Lily' }] })).toMatch(/^OPEN/);
-    expect(await tool('check_availability', { date: DAY, time: '14:00', people: [{ services: ['S2'], technician: 'Zoe' }] })).toMatch(/no single technician called "Zoe"/);
+    expect(await tool('check_availability', { date: DAY, time: '14:00', people: [{ services: ['S2'], technician: 'Zoe' }] })).toMatch(/no technician called "Zoe"/);
   });
 });
 

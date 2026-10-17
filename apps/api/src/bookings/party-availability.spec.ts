@@ -57,7 +57,7 @@ describe('one diary for every AI door', () => {
     const out = await svc.describe('t1', TZ, { date: DAY, time: '14:00', people: [{ services: ['gel'], technician: 'Kim' }] }, ctx);
     expect(out).toMatch(/^OPEN/);
     for (const w of wheres) expect(w.tenantId).toBe('t1');
-    expect(await svc.describe('t1', TZ, { date: DAY, time: '14:00', people: [{ services: ['gel'], technician: 'Zoe' }] }, ctx)).toMatch(/no single technician called "Zoe"/);
+    expect(await svc.describe('t1', TZ, { date: DAY, time: '14:00', people: [{ services: ['gel'], technician: 'Zoe' }] }, ctx)).toMatch(/no technician called "Zoe"/);
   });
 
   it('a service the model cannot name exactly is a question, not a guess', async () => {

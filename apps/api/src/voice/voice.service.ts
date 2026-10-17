@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { chosenIndustry, personaFor } from '../common/business-persona';
+import { VOICE_CATALOG, cleanVoiceSetting, parseVoices } from './voice-catalog';
 import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor, agentFallbackLines, transferLines } from './voice-lang';
 import { isTransientStatus } from '../messenger/agent-fallback';
 import { Prisma, NotificationChannel, NotificationStatus, AppointmentStatus } from '@prisma/client';
@@ -81,6 +82,8 @@ export interface UpdateVoiceInput {
   mode?: string; forwardNumbers?: string; ringSeconds?: number; transferNumber?: string;
   schedule?: string; customHours?: { day: number; enabled?: boolean; start?: string; end?: string }[];
   noAnswerAction?: string; awayMessage?: string; voicemailSms?: string;
+  /** Voice picks from VOICE_CATALOG, one per language (comma-separated or a list); '' = defaults. */
+  voice?: string | string[];
 }
 interface BotFact { label: string; value: string; on: boolean }
 /** What the tools need from the turn that called them: the coded menu, who works here, and which booking flow applies. */
@@ -1015,7 +1018,9 @@ export class VoiceService implements OnModuleInit {
     // menu is searched with get_services, so the assistant never books "the
     // nearest thing it can see".
     const { locale: menuLocale } = await this.localeInfo(tenantId);
-    const shown = menuRows.slice(0, 40);
+    // The whole menu (up to 150 lines): with a 40-line cut, a 43-service salon's
+    // "TAP Gel" sat at 42–43 — the assistant never saw it and could not book it.
+    const shown = menuRows.slice(0, 150);
     const servicesBlock = shown.length
       ? 'Menu (pass the code, e.g. S3, to the tools; never say a code out loud):\n' +
         shown.map((s, i) => `- ${serviceCode(i)} ${s.name} — ${formatMoneyShort(s.priceCents, (s as { currency?: string }).currency ?? 'USD', menuLocale)}${(s as { priceFrom?: boolean }).priceFrom ? ' and up (a starting price — say it that way)' : ''}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''}`).join('\n') +
@@ -1608,6 +1613,8 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       noAnswerAction: line?.noAnswerAction ?? 'voicemail',
       awayMessage: line?.awayMessage ?? '',
       voicemailSms: line?.voicemailSms ?? '',
+      voice: parseVoices(line?.voice).map((v) => v.id).join(','),
+      voices: VOICE_CATALOG,
       aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
       webhookUrl: `${this.apiBase()}/api/voice/incoming`,
       calls,
@@ -1679,6 +1686,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       awayMessage: typeof dto.awayMessage === 'string' ? dto.awayMessage.slice(0, 500) : cur?.awayMessage ?? null,
       voicemailSms: typeof dto.voicemailSms === 'string' ? (toE164(dto.voicemailSms, dial) || null) : cur?.voicemailSms ?? null,
       transferNumber,
+      voice: dto.voice !== undefined ? cleanVoiceSetting(dto.voice) : cur?.voice ?? null,
     };
     if (data.enabled && !cur?.lumioNumber) {
       throw new BadRequestException('No Lumio phone number is assigned yet. Contact Lumio to provision your AI hotline number.');

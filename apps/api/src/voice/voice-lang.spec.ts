@@ -81,7 +81,7 @@ describe('the mouth matches the language', () => {
     // English Polly on a VIETNAMESE turn: overridden — it cannot speak it.
     expect(voiceFor('vi-VN', 'Polly.Joanna')).toEqual({ voice: 'Google.vi-VN-Wavenet-A', sayLanguage: 'vi-VN' });
     // A Vietnamese-capable configured voice is respected.
-    expect(voiceFor('vi-VN', 'Google.vi-VN-Wavenet-D')).toEqual({ voice: 'Google.vi-VN-Wavenet-D', sayLanguage: null });
+    expect(voiceFor('vi-VN', 'Google.vi-VN-Wavenet-D')).toEqual({ voice: 'Google.vi-VN-Wavenet-D', sayLanguage: 'vi-VN' });
   });
   it('English default is neural too — the robotic Twilio default is retired', () => {
     expect(voiceFor('en-US', null)).toEqual({ voice: 'Polly.Joanna-Neural', sayLanguage: null });

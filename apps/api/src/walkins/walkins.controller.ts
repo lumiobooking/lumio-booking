@@ -18,6 +18,12 @@ class CompanionDto {
   @IsOptional() @IsString() assignedStaffId?: string;
 }
 
+/** Walk-in 2.0: closing a finished visit with no receipt in Lumio. */
+class CloseUnpaidDto {
+  @IsOptional() @IsIn(['paid_elsewhere', 'pay_later', 'free_redo', 'mistake', 'other']) reason?: string;
+  @IsOptional() @IsString() @MaxLength(200) note?: string;
+}
+
 class AddWalkInDto {
   @IsOptional() @IsString() customerId?: string;
   @IsOptional() @IsString() @MaxLength(80) customerName?: string;
@@ -274,6 +280,12 @@ export class WalkinsController {
   @Patch(':id/done')
   done(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.nudge(user, id, this.walkins.done(user, id));
+  }
+
+  // Walk-in 2.0: close a finished visit without a receipt in Lumio, with a reason.
+  @Patch(':id/close-unpaid')
+  closeUnpaid(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: CloseUnpaidDto) {
+    return this.nudge(user, id, this.walkins.closeUnpaid(user, id, body?.reason, body?.note));
   }
 
   @Patch(':id/cancel')

@@ -11,6 +11,7 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useLiveEvents } from '../../../lib/useLiveEvents';
 import { useIsMobile } from '../../../lib/responsive';
 import { FloorStats, TechBoard } from './TechBoard';
+import { techState, ticketTech, ticketTimeline, turnLine } from '../../../lib/walkin-floor';
 import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
 import { clockIn } from '../../../lib/desk-time';
 import { salonTz, uiLocale } from '../../../lib/datetime';
@@ -65,8 +66,16 @@ interface StaffTurn {
   onBreak?: boolean;
   /** Services she does; empty = all of them. */
   skills?: string[];
+  /** Walk-in 2.0: place in the turn line, request-only, next booking today. */
+  rank?: number | null;
+  manualOnly?: boolean;
+  nextBookingAt?: string | null;
 }
-interface Board { waiting: WalkIn[]; serving: WalkIn[]; done?: WalkIn[]; staff: StaffTurn[]; nextUpStaffId: string | null; restricted?: string[] }
+interface Board {
+  waiting: WalkIn[]; serving: WalkIn[]; done?: WalkIn[]; staff: StaffTurn[]; nextUpStaffId: string | null; restricted?: string[];
+  today?: { count: number; serviceCents: number };
+  frequent?: Record<string, string[]>;
+}
 
 /** Turns can be halves (a small add-on is worth ½): 1.5 → "1½". */
 function fmtTurns(n: number): string {
@@ -528,6 +537,12 @@ function Inner() {
     try { await apiFetch(`/walkins/${id}/services/${lineId}`, { method: 'DELETE', token }); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
   }
+  /** Walk-in 2.0: a finished visit closed without a receipt in Lumio, with its reason. */
+  async function closeUnpaid(id: string, reason: string) {
+    setError(null);
+    try { await apiFetch(`/walkins/${id}/close-unpaid`, { method: 'PATCH', token, body: { reason } }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
+  }
   async function setStationFor(id: string, station: string) {
     setError(null);
     try { await apiFetch(`/walkins/${id}/station`, { method: 'PATCH', token, body: { station } }); await load(); }
@@ -687,8 +702,9 @@ function Inner() {
       </div>
 
       {board && (
-        <FloorStats board={board} vi={lang === 'vi'}
-          onLongest={(id) => { setFocusId(id); if (view === 'list') setOpenWait(id); }} />
+        <FloorStats board={board} vi={lang === 'vi'} currency={currency} isMobile={isMobile}
+          onLongest={(id) => { setFocusId(id); if (view === 'list') setOpenWait(id); }}
+          onToPay={() => { if (view !== 'list') setView('list'); window.setTimeout(() => document.getElementById('wi-topay')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }} />
       )}
 
       {/* Wide screens: the intake form is a drawer over the right edge, so the
@@ -771,12 +787,17 @@ function Inner() {
           // anything yet" — the queue, which reception acts on, sat below the
           // fold. Same information at a third of the height.
           : { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-          {staff.map((s) => {
-            const isNext = s.nextUp;
+          {turnLine(staff).map((s) => {
+            // Walk-in 2.0: the line in the salon's own turn order, each with
+            // what she is doing and a booking coming up — display only.
+            const st = techState(s);
+            const isNext = st.kind === 'next';
             const border = isNext ? '#22c55e' : s.busy ? '#f59e0b' : 'var(--c334155)';
-            const status = isNext ? t('wi.nextUp') : s.busy ? (s.busyFor != null ? `${isMobile ? '○' : t('wi.serving') + ' ·'} ${t('wi.freeIn').replace('{m}', String(s.busyFor))}` : t('wi.serving')) : s.onBreak ? `☕ ${t('wi.onBreak')}` : t('wi.free');
+            const status = isNext ? t('wi.nextUp') : s.busy ? (s.busyFor != null ? `${isMobile ? '○' : t('wi.serving') + ' ·'} ${t('wi.freeIn').replace('{m}', String(s.busyFor))}` : t('wi.serving')) : s.onBreak ? `☕ ${t('wi.onBreak')}` : st.kind === 'request' ? (vi ? 'Chỉ khách request' : 'Requests only') : t('wi.free');
+            const soon = st.bookingSoon ? clockIn(st.bookingSoon, salonTz() || null, vi) : '';
             return (
-              <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: 12, opacity: s.onBreak && !s.busy ? 0.6 : 1, padding: isMobile ? '10px 8px' : '8px 12px', textAlign: 'center', ...(isMobile ? { flex: '0 0 104px' } : { flex: '0 0 auto', minWidth: 108 }) }}>
+              <div key={s.id} style={{ position: 'relative', background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: 12, opacity: s.onBreak && !s.busy ? 0.6 : 1, padding: isMobile ? '10px 8px' : '8px 12px', textAlign: 'center', ...(isMobile ? { flex: '0 0 104px' } : { flex: '0 0 auto', minWidth: 118 }) }}>
+                {s.rank != null && <span aria-label={vi ? `thứ ${s.rank} trong hàng tua` : `#${s.rank} in the turn line`} style={{ position: 'absolute', top: 5, left: 7, fontSize: 10.5, fontWeight: 800, color: isNext ? 'var(--ink-good)' : 'var(--c64748b)' }}>{s.rank}</span>}
                 <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--cf8fafc)', lineHeight: 1.1, margin: '3px 0 2px' }}>
                   {fmtTurns(s.turns)}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--c94a3b8)', marginLeft: 4 }}>{t('wi.turns')}</span>
@@ -784,6 +805,7 @@ function Inner() {
                 <div style={{ fontSize: 11, fontWeight: 600, color: isNext ? 'var(--ink-good)' : s.busy ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
                   {status}
                 </div>
+                {soon && <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-link)', marginTop: 1 }}>{vi ? `Có hẹn ${soon}` : `Booking ${soon}`}</div>}
               </div>
             );
           })}
@@ -801,7 +823,7 @@ function Inner() {
           they have waited — and one button to seat them with the up-next
           tech already chosen. A row opens to its full ticket on tap. Twenty
           customers fit on one screen; the phone stacks the two lists. */}
-      <div style={isMobile ? undefined : { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>
+      <div style={isMobile ? undefined : { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: 18, alignItems: 'start' }}>
       <div>
       <div style={listHead}>
         <span>{t('wi.waiting')}</span>
@@ -825,47 +847,66 @@ function Inner() {
       )}
       </div>
       <div>
-      <div style={listHead}>
-        <span>{t('wi.inService')}</span>
-        <span style={countPill((board?.serving ?? []).filter((w) => !w.awaitingPayment).length)}>{(board?.serving ?? []).filter((w) => !w.awaitingPayment).length}</span>
-      </div>
-      {(!board || board.serving.length === 0) ? (
-        <div style={{ ...ui.card, color: 'var(--c64748b)', marginBottom: 20, padding: '16px 18px', fontSize: 13.5 }}>{t('wi.noInService')}</div>
-      ) : (() => {
-        // A customer whose hands are done and whose feet wait for a technician
-        // is not "in service" — she is sitting there. Shown apart, so the desk
-        // sees at a glance who is stuck between two parts of a visit.
-        // Waiting to pay is NOT in a chair: the technician is finished and free
-        // (the turn board says "Rảnh"). Listing it under "Đang làm" with a green
-        // dot made the two halves of this screen contradict each other.
-        const inChair = board.serving.filter((w) => !w.awaitingPayment && w.phase !== 'BETWEEN');
-        const between = board.serving.filter((w) => !w.awaitingPayment && w.phase === 'BETWEEN');
-        const toPay = board.serving.filter((w) => w.awaitingPayment);
-        return (
-          <div style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-            {inChair.map((w) => (
-              <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
-            ))}
-            {between.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'var(--wash-amber-2)', borderBottom: '1px solid var(--line)', fontSize: 12, fontWeight: 600, color: 'var(--ink-warn)' }}>
-                <span>⏸ {t('wi.between')}</span>
-                <span style={{ marginLeft: 'auto' }}>{between.length}</span>
-              </div>
-            )}
-            {between.map((w) => (
-              <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
-            ))}
-            {toPay.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'rgba(239,68,68,0.10)', borderBottom: '1px solid var(--line)', fontSize: 12, fontWeight: 600, color: 'var(--ink-bad)' }}>
-                <span>💳 {uiLocale().startsWith('vi') ? 'Chờ thanh toán — thợ đã rảnh' : 'Waiting to pay — technician is free'}</span>
-                <span style={{ marginLeft: 'auto' }}>{toPay.length}</span>
-              </div>
-            )}
-            {toPay.map((w) => (
-              <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
-            ))}
+      {(() => {
+        // Walk-in 2.0: one ticket, one column. "Đang làm" is only who is in a
+        // chair (or between two parts); waiting to pay has its own column.
+        const inChair = (board?.serving ?? []).filter((w) => !w.awaitingPayment && w.phase !== 'BETWEEN');
+        const between = (board?.serving ?? []).filter((w) => !w.awaitingPayment && w.phase === 'BETWEEN');
+        const n = inChair.length + between.length;
+        return (<>
+          <div style={listHead}>
+            <span>{t('wi.inService')}</span>
+            <span style={countPill(n)}>{n}</span>
           </div>
-        );
+          {n === 0 ? (
+            <div style={{ ...ui.card, color: 'var(--c64748b)', marginBottom: 20, padding: '16px 18px', fontSize: 13.5 }}>{t('wi.noInService')}</div>
+          ) : (
+            <div style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
+              {inChair.map((w) => (
+                <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
+              ))}
+              {between.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'var(--wash-amber-2)', borderBottom: '1px solid var(--line)', fontSize: 12, fontWeight: 600, color: 'var(--ink-warn)' }}>
+                  <span>⏸ {t('wi.between')}</span>
+                  <span style={{ marginLeft: 'auto' }}>{between.length}</span>
+                </div>
+              )}
+              {between.map((w) => (
+                <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
+              ))}
+            </div>
+          )}
+        </>);
+      })()}
+      </div>
+      <div id="wi-topay" style={{ scrollMarginTop: 80 }}>
+      {(() => {
+        const toPay = (board?.serving ?? []).filter((w) => w.awaitingPayment);
+        // Missing a service first: those are the ones that cannot be rung up.
+        const ordered = [...toPay.filter((w) => (w.items ?? []).length === 0), ...toPay.filter((w) => (w.items ?? []).length > 0)];
+        return (<>
+          <div style={listHead}>
+            <span>{vi ? 'Chờ tính tiền' : 'Waiting to pay'}</span>
+            <span style={{ ...countPill(toPay.length), ...(toPay.length ? { background: '#f59e0b', color: '#111827' } : null) }}>{toPay.length}</span>
+            <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500, color: 'var(--c64748b)' }}>{vi ? 'thợ đã rảnh' : 'tech is free'}</span>
+          </div>
+          {toPay.length === 0 ? (
+            <div style={{ ...ui.card, color: 'var(--c64748b)', marginBottom: 20, padding: '16px 18px', fontSize: 13.5 }}>{vi ? 'Không có khách chờ tính tiền.' : 'Nobody waiting to pay.'}</div>
+          ) : (
+            <div style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
+              {ordered.map((w) => {
+                const techId = ticketTech(w);
+                return (
+                  <ToPayRow key={w.id} w={w} staff={staff} services={services} currency={currency} vi={vi}
+                    usual={(board?.frequent?.[techId ?? ''] ?? [])}
+                    onAdd={(serviceId) => addServiceLine(w.id, serviceId, techId ?? '')}
+                    onOpen={() => setOpenId(w.id)}
+                    onCloseUnpaid={(reason) => closeUnpaid(w.id, reason)} />
+                );
+              })}
+            </div>
+          )}
+        </>);
       })()}
       </div>
       </div>
@@ -1070,6 +1111,116 @@ function ServingRow({ w, staff, currency, t, isMobile, onOpen }: {
   );
 }
 
+const CLOSE_REASONS: { key: string; vi: string; en: string }[] = [
+  { key: 'paid_elsewhere', vi: 'Đã thu ở máy khác', en: 'Paid on another machine' },
+  { key: 'pay_later', vi: 'Khách trả sau', en: 'Pays later' },
+  { key: 'free_redo', vi: 'Miễn phí / làm lại', en: 'Free / redo' },
+  { key: 'mistake', vi: 'Tạo nhầm', en: 'Created by mistake' },
+  { key: 'other', vi: 'Khác', en: 'Other' },
+];
+
+/**
+ * WALK-IN 2.0 — one customer waiting to pay. A visit with no service cannot
+ * be rung up, so it says so and offers what this technician usually does, one
+ * tap each; "Đóng không thu" closes it without a receipt, with a reason.
+ */
+function ToPayRow({ w, staff, services, currency, vi, usual, onAdd, onOpen, onCloseUnpaid }: {
+  w: WalkIn; staff: StaffTurn[]; services: Service[]; currency: string; vi: boolean;
+  usual: string[];
+  onAdd: (serviceId: string) => Promise<void> | void;
+  onOpen: () => void;
+  onCloseUnpaid: (reason: string) => Promise<void> | void;
+}) {
+  const [closing, setClosing] = useState(false);
+  const [reason, setReason] = useState('paid_elsewhere');
+  const [busy, setBusy] = useState<string | null>(null);
+  const items = w.items ?? [];
+  const missing = items.length === 0;
+  const total = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
+  const techId = ticketTech(w);
+  const techName = staff.find((s) => s.id === techId)?.name ?? fullName(w.assignedStaff) ?? '';
+  const doneAt = (w.legs ?? []).map((l) => l.doneAt).filter(Boolean).sort().pop() ?? null;
+  const usualSvcs = usual.map((id) => services.find((x) => x.id === id)).filter((x): x is Service => !!x).slice(0, 4);
+  const checkoutHref = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
+  const run = async (key: string, fn: () => Promise<void> | void) => { if (busy) return; setBusy(key); try { await fn(); } finally { setBusy(null); } };
+  return (
+    <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--line)', display: 'grid', gap: 8, background: missing ? 'var(--wash-amber)' : undefined }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <button type="button" onClick={onOpen} style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left', minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
+          <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>
+            {techName ? `${techName} · ` : ''}{doneAt ? `${vi ? 'xong' : 'done'} ${clockIn(doneAt, salonTz() || null, vi)}` : cameInText(w)}
+          </div>
+        </button>
+        {w.group && <PartyChip group={w.group} />}
+        {missing
+          ? <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-warn)', whiteSpace: 'nowrap' }}>⚠ {vi ? 'Thiếu dịch vụ' : 'No service'}</span>
+          : <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink-good)', whiteSpace: 'nowrap' }}>{formatPrice(total, currency)}</span>}
+      </div>
+      {!missing && <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{items.map((it) => it.name).join(' · ')}</div>}
+      {missing && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {usualSvcs.length > 0 && <span style={{ fontSize: 11.5, color: 'var(--ink-warn)', fontWeight: 600 }}>{techName ? (vi ? `${techName} hay làm:` : `${techName} usually does:`) : (vi ? 'Hay làm:' : 'Usual:')}</span>}
+          {usualSvcs.map((sv) => (
+            <button key={sv.id} type="button" disabled={!!busy} onClick={() => run(sv.id, () => onAdd(sv.id))}
+              style={{ border: '1px dashed var(--c94a3b8)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', borderRadius: 999, padding: '6px 11px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', opacity: busy && busy !== sv.id ? 0.5 : 1 }}>
+              {busy === sv.id ? '…' : `+ ${sv.name}${sv.priceCents ? ` ${formatPrice(sv.priceCents, currency)}` : ''}`}
+            </button>
+          ))}
+          <button type="button" onClick={onOpen} style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ink-link)', borderRadius: 999, padding: '6px 11px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>{vi ? 'Chọn dịch vụ khác…' : 'Other service…'}</button>
+        </div>
+      )}
+      {!closing ? (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {missing
+            ? <span style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, opacity: 0.45, cursor: 'not-allowed' }} title={vi ? 'Chọn dịch vụ trước' : 'Pick a service first'}>{vi ? 'Thu tiền' : 'Check out'}</span>
+            : <a href={checkoutHref} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, textDecoration: 'none', whiteSpace: 'nowrap' }}>{vi ? 'Thu tiền' : 'Check out'}</a>}
+          <button type="button" onClick={() => setClosing(true)} style={{ border: 0, background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '7px 4px' }}>{vi ? 'Đóng không thu…' : 'Close without payment…'}</button>
+          <button type="button" onClick={onOpen} style={{ marginLeft: 'auto', padding: '7px 10px', background: 'transparent', border: '1px solid var(--c334155)', borderRadius: 8, color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 12.5, whiteSpace: 'nowrap' }}>{vi ? 'Chi tiết' : 'Details'} ›</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', fontWeight: 600 }} htmlFor={`cu-${w.id}`}>{vi ? 'Lý do' : 'Reason'}</label>
+          <select id={`cu-${w.id}`} value={reason} onChange={(e) => setReason(e.target.value)} style={{ ...ui.input, width: 'auto', marginBottom: 0, padding: '7px 10px', fontSize: 13 }}>
+            {CLOSE_REASONS.map((r) => <option key={r.key} value={r.key}>{vi ? r.vi : r.en}</option>)}
+          </select>
+          <button type="button" disabled={!!busy} onClick={() => run('close', () => onCloseUnpaid(reason))} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{busy === 'close' ? '…' : (vi ? 'Đóng phiếu' : 'Close ticket')}</button>
+          <button type="button" onClick={() => setClosing(false)} style={{ border: 0, background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, cursor: 'pointer' }}>{vi ? 'Thôi' : 'Cancel'}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The ticket's story, from its own fields (Walk-in 2.0 drawer). */
+function TicketTimeline({ w, staff, vi }: { w: WalkIn; staff: StaffTurn[]; vi: boolean }) {
+  const ev = ticketTimeline(w);
+  const nameOf = (id: string | null) => (id ? staff.find((s) => s.id === id)?.name ?? '' : '');
+  const label = (e: (typeof ev)[number]) => {
+    const who = nameOf(e.staffId);
+    const what = e.text.join(', ');
+    if (e.kind === 'in') return vi ? 'Khách vào' : 'Came in';
+    if (e.kind === 'start') return `${who || (vi ? 'Thợ' : 'Tech')} ${vi ? 'bắt đầu' : 'started'}${what ? ` · ${what}` : ''}`;
+    if (e.kind === 'done') return `${who || (vi ? 'Thợ' : 'Tech')} ${vi ? 'xong' : 'finished'}${what ? ` · ${what}` : ''}`;
+    return vi ? 'Chờ tính tiền' : 'Waiting to pay';
+  };
+  const dot = { in: '#6366f1', start: '#22c55e', done: '#94a3b8', pay: '#f59e0b' } as const;
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 8 }}>{vi ? 'Lịch sử phiếu' : 'Ticket history'}</div>
+      <div style={{ display: 'grid', gap: 6 }}>
+        {ev.map((e, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '52px 10px minmax(0, 1fr)', gap: 8, alignItems: 'center', fontSize: 12.5 }}>
+            <span style={{ color: 'var(--c94a3b8)', fontVariantNumeric: 'tabular-nums' }}>{clockIn(e.at, salonTz() || null, vi)}</span>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot[e.kind] }} />
+            <span style={{ color: 'var(--ce2e8f0)' }}>{label(e)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const listHead: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '0 0 8px' };
 const countPill = (n: number): CSSProperties => ({
   minWidth: 22, height: 22, padding: '0 7px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -1196,6 +1347,7 @@ function WalkInTicketSheet({ w, staff, services, t, currency, restricted, onLeg,
                 style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 10, padding: '12px 14px', fontSize: 15, cursor: 'pointer' }}>🗑</button>
             )}
           </div>
+          <TicketTimeline w={w} staff={staff} vi={uiLocale().startsWith('vi')} />
         </div>
       </div>
     </div>

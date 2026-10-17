@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { ui, formatPrice } from '../../../lib/ui';
 import { PartyChip } from '../../../components/PartyChip';
 
@@ -25,32 +25,50 @@ import { ind } from '../../../lib/ui-industry';
 
 export type { BoardData } from '../../../lib/walkin-floor';
 
-export function FloorStats({ board, vi, onLongest }: { board: BoardData; vi: boolean; onLongest: (id: string) => void }) {
+export function FloorStats({ board, vi, currency, isMobile, onLongest, onToPay }: {
+  board: BoardData; vi: boolean; currency: string; isMobile?: boolean;
+  onLongest: (id: string) => void;
+  /** Scroll to the "Chờ tính tiền" column. */
+  onToPay?: () => void;
+}) {
   const L = (v: string, e: string) => ind(vi ? v : e);
   const s = floorSummary(board);
-  const stat = (n: number | string, label: string, tone?: string) => (
-    <div style={{ display: 'grid', gap: 1, minWidth: 0 }}>
-      <span style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.1, color: tone ?? 'var(--cf8fafc)', fontVariantNumeric: 'tabular-nums' }}>{n}</span>
-      <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{label}</span>
+  // Walk-in 2.0: five numbers that always agree with the columns below.
+  const tile = (n: ReactNode, label: string, sub: string, tone?: 'warn') => (
+    <div style={{ ...ui.card, margin: 0, padding: isMobile ? '10px 12px' : '12px 16px', display: 'grid', gap: 2, minWidth: 0,
+      ...(tone === 'warn' ? { borderColor: '#f59e0b', background: 'var(--wash-amber-2)' } : null) }}>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: tone === 'warn' ? 'var(--ink-warn)' : 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, lineHeight: 1.1, color: tone === 'warn' ? 'var(--ink-warn)' : 'var(--cf8fafc)', fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+      <span style={{ fontSize: 11.5, color: tone === 'warn' ? 'var(--ink-warn)' : 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span>
     </div>
   );
+  const total = board.staff.length;
   return (
-    <div style={{ ...ui.card, padding: '12px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
-      {stat(s.waiting, L('Đang chờ', 'Waiting'), s.waiting ? 'var(--ink-warn)' : undefined)}
-      {stat(s.inChair, L('Đang làm', 'In a chair'), s.inChair ? 'var(--ink-good)' : undefined)}
-      {s.between > 0 && stat(s.between, L('Chờ phần tiếp', 'Between parts'), 'var(--ink-warn)')}
-      {stat(`${s.free}/${board.staff.length}`, L('Thợ rảnh', 'Techs free'))}
-      {s.next && (
-        <div style={{ display: 'grid', gap: 1, minWidth: 0 }}>
-          <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink-good)', whiteSpace: 'nowrap', lineHeight: 1.45 }}>● {s.next.name}</span>
-          <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L('Tới lượt', 'Up next')}</span>
-        </div>
-      )}
-      {s.longest && (
-        <button type="button" onClick={() => onLongest(s.longest!.w.id)}
-          style={{ marginLeft: 'auto', border: '1px solid #f59e0b', background: 'var(--wash-amber-2)', color: 'var(--ink-warn)', borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-          ⚠ {(s.longest.w.customerName || L('Khách', 'A client'))} {L('chờ', 'waiting')} {s.longest.m}′
+    <div style={{ marginBottom: 14, display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(5, minmax(0, 1fr))', gap: 10 }}>
+        {tile(s.waiting, L('Đang chờ', 'Waiting'), s.waiting ? L(`lâu nhất ${s.longestMin}′`, `longest ${s.longestMin}′`) : L('không ai chờ', 'nobody waiting'))}
+        {tile(s.inChair + s.between, L('Đang làm', 'In service'), s.between ? L(`${s.between} chờ phần tiếp`, `${s.between} between parts`) : L(`${s.inChair} khách trên ghế`, `${s.inChair} in a chair`))}
+        <button type="button" onClick={onToPay} style={{ all: 'unset', cursor: s.toPay ? 'pointer' : 'default', display: 'grid' }} aria-label={L('Tới cột chờ tính tiền', 'Go to waiting to pay')}>
+          {tile(s.toPay, L('Chờ tính tiền', 'Waiting to pay'), s.missing ? L(`${s.missing} phiếu thiếu dịch vụ`, `${s.missing} missing services`) : L('thợ đã rảnh', 'tech is free'), s.toPay ? 'warn' : undefined)}
         </button>
+        {tile(s.doneCount, L('Xong hôm nay', 'Done today'), formatPrice(s.doneCents, currency))}
+        {tile(<>{s.free}<span style={{ fontSize: 16, color: 'var(--c94a3b8)' }}>/{total}</span></>, L('Thợ rảnh', 'Techs free'), s.next ? L(`tới lượt: ${s.next.name}`, `up next: ${s.next.name}`) : s.onBreak ? L(`${s.onBreak} đang nghỉ`, `${s.onBreak} on break`) : '—')}
+      </div>
+      {(s.missing > 0 || s.longest) && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {s.missing > 0 && (
+            <button type="button" onClick={onToPay}
+              style={{ border: '1px solid #f59e0b', background: 'var(--wash-amber-2)', color: 'var(--ink-warn)', borderRadius: 10, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}>
+              ⚠ {L(`${s.missing} khách đã xong nhưng chưa có dịch vụ — chọn dịch vụ để tính tiền`, `${s.missing} finished visit(s) have no service — pick one to check out`)} →
+            </button>
+          )}
+          {s.longest && (
+            <button type="button" onClick={() => onLongest(s.longest!.w.id)}
+              style={{ border: '1px solid #f59e0b', background: 'var(--wash-amber-2)', color: 'var(--ink-warn)', borderRadius: 10, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              ⏱ {(s.longest.w.customerName || L('Khách', 'A client'))} {L('chờ', 'waiting')} {s.longest.m}′
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -72,7 +90,8 @@ export function TechBoard({ board, vi, currency, isMobile, onAssign, onOpen, onC
   const between = board.serving.filter((w) => w.phase === 'BETWEEN');
   const byTech = useMemo(() => {
     const m = new Map<string, BoardWalkIn[]>();
-    for (const w of board.serving) for (const id of techsOn(w)) m.set(id, [...(m.get(id) ?? []), w]);
+    // Waiting to pay is not on a technician any more — she is free (Walk-in 2.0).
+    for (const w of board.serving) if (!w.awaitingPayment) for (const id of techsOn(w)) m.set(id, [...(m.get(id) ?? []), w]);
     return m;
   }, [board.serving]);
 

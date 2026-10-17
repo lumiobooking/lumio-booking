@@ -11,9 +11,26 @@ export interface BoardWalkIn {
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null; legs?: Leg[]; phase?: string;
   /** The party this ticket belongs to (friends who came in together), or null. */
   group?: { tag: string; size: number; waiting: number; serving: number; done: number } | null;
+  /** Finished in the chair: the bill is open, the technician is free. */
+  awaitingPayment?: boolean;
 }
-export interface BoardStaff { id: string; name: string; turns: number; busy: boolean; nextUp: boolean; busyFor?: number | null }
-export interface BoardData { waiting: BoardWalkIn[]; serving: BoardWalkIn[]; staff: BoardStaff[]; nextUpStaffId: string | null }
+export interface BoardStaff {
+  id: string; name: string; turns: number; busy: boolean; nextUp: boolean; busyFor?: number | null;
+  onBreak?: boolean;
+  /** Place in the turn line (1 = next by the salon's rules); null = on a break / outside the rotation. */
+  rank?: number | null;
+  /** Only takes clients who ask for her by name (the owner outside the rotation). */
+  manualOnly?: boolean;
+  /** Her next booking today that has not started (ISO). */
+  nextBookingAt?: string | null;
+}
+export interface BoardData {
+  waiting: BoardWalkIn[]; serving: BoardWalkIn[]; staff: BoardStaff[]; nextUpStaffId: string | null;
+  /** Finished today: how many and their services' money. */
+  today?: { count: number; serviceCents: number };
+  /** What each technician usually does: staffId → serviceIds, most frequent first. */
+  frequent?: Record<string, string[]>;
+}
 
 /** Every technician keeps one colour, on this board and wherever else she appears. */
 export const TECH_COLORS = ['#16a34a', '#ec4899', '#3b82f6', '#f59e0b', '#8b5cf6', '#06b6d4', '#ef4444', '#14b8a6', '#a855f7', '#84cc16'];
@@ -42,13 +59,73 @@ export function techsOn(w: BoardWalkIn): string[] {
 
 /** The numbers a front desk wants first, and the longest wait (if too long). */
 export function floorSummary(board: BoardData) {
-  const between = board.serving.filter((w) => w.phase === 'BETWEEN');
-  const inChair = board.serving.length - between.length;
-  const free = board.staff.filter((s) => !s.busy).length;
+  // One ticket, one place: waiting to pay is NOT in a chair (the technician is
+  // free) — counting it as "Đang làm" made the top line say 17 while the
+  // Đang làm column said 0.
+  const toPayList = board.serving.filter((w) => w.awaitingPayment);
+  const between = board.serving.filter((w) => !w.awaitingPayment && w.phase === 'BETWEEN');
+  const inChair = board.serving.filter((w) => !w.awaitingPayment && w.phase !== 'BETWEEN').length;
+  const free = board.staff.filter((s) => !s.busy && !s.onBreak).length;
+  const onBreak = board.staff.filter((s) => s.onBreak && !s.busy).length;
+  const missing = toPayList.filter((w) => (w.items ?? []).length === 0).length;
   const longest = [...board.waiting, ...between]
     .map((w) => ({ w, m: mins(w.phase === 'BETWEEN' ? (w.assignedAt ?? w.createdAt) : w.createdAt) }))
     .sort((a, b) => b.m - a.m)[0];
   const next = board.staff.find((s) => s.id === board.nextUpStaffId) ?? null;
-  return { waiting: board.waiting.length, inChair, between: between.length, free, next, longest: longest && longest.m >= LONG_WAIT_MIN ? longest : null };
+  return {
+    waiting: board.waiting.length, inChair, between: between.length, free, next,
+    longest: longest && longest.m >= LONG_WAIT_MIN ? longest : null,
+    longestMin: longest?.m ?? 0,
+    toPay: toPayList.length, missing, onBreak,
+    doneCount: board.today?.count ?? 0, doneCents: board.today?.serviceCents ?? 0,
+  };
 }
 
+/** The turn line as the desk reads it: in the rules' order, then everyone outside it. */
+export function turnLine<T extends BoardStaff>(staff: T[]): T[] {
+  const ranked = staff.filter((s) => s.rank != null).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
+  return [...ranked, ...staff.filter((s) => s.rank == null)];
+}
+
+/**
+ * One technician's state in a few words: up next, free, busy (and for how
+ * long), a booking soon (within `soonMin`), on a break, request-only.
+ * `bookingSoon` is the booking time when it is close enough to matter.
+ */
+export function techState(s: BoardStaff, now = Date.now(), soonMin = 90): { kind: 'next' | 'free' | 'busy' | 'break' | 'request'; busyFor: number | null; bookingSoon: string | null } {
+  const at = s.nextBookingAt ? Date.parse(s.nextBookingAt) : NaN;
+  const bookingSoon = Number.isFinite(at) && at - now >= 0 && at - now <= soonMin * 60000 ? (s.nextBookingAt as string) : null;
+  const kind = s.busy ? 'busy' : s.onBreak ? 'break' : s.manualOnly ? 'request' : s.nextUp ? 'next' : 'free';
+  return { kind, busyFor: s.busy ? (s.busyFor ?? null) : null, bookingSoon };
+}
+
+/** The technician a finished ticket belongs to (her last part), for "what she usually does". */
+export function ticketTech(w: BoardWalkIn): string | null {
+  const legs = (w.legs ?? []).filter((l) => l.staffId);
+  if (legs.length) return legs[legs.length - 1].staffId;
+  return w.assignedStaff?.id ?? null;
+}
+
+
+export interface TimelineLeg { legId: string; status: string; staffId: string | null; names: string[]; startedAt?: string | null; doneAt?: string | null }
+export interface TimelineTicket { createdAt: string; arrivedAt?: string | null; assignedAt: string | null; awaitingPayment?: boolean; status: string; legs?: TimelineLeg[] }
+export interface TimelineEvent { at: string; kind: 'in' | 'start' | 'done' | 'pay'; staffId: string | null; text: string[] }
+
+/**
+ * A ticket's story from its own fields — came in, each part started and
+ * finished by whom, waiting to pay — oldest first. Nothing invented: a step
+ * with no time is left out.
+ */
+export function ticketTimeline(w: TimelineTicket): TimelineEvent[] {
+  const ev: TimelineEvent[] = [{ at: w.arrivedAt ?? w.createdAt, kind: 'in', staffId: null, text: [] }];
+  for (const l of w.legs ?? []) {
+    if (l.startedAt) ev.push({ at: l.startedAt, kind: 'start', staffId: l.staffId, text: l.names });
+    if (l.doneAt) ev.push({ at: l.doneAt, kind: 'done', staffId: l.staffId, text: l.names });
+  }
+  if (!(w.legs ?? []).some((l) => l.startedAt) && w.assignedAt) ev.push({ at: w.assignedAt, kind: 'start', staffId: null, text: [] });
+  if (w.awaitingPayment) {
+    const last = [...ev].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
+    ev.push({ at: last.at, kind: 'pay', staffId: null, text: [] });
+  }
+  return ev.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || (a.kind === 'pay' ? 1 : b.kind === 'pay' ? -1 : 0));
+}

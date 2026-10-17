@@ -52,3 +52,58 @@ describe('small things', () => {
   it('half turns read as ½', () => { expect(fmtTurns(2.5)).toBe('2½'); expect(fmtTurns(0.5)).toBe('½'); expect(fmtTurns(3)).toBe('3'); });
   it('each tech keeps one colour', () => { expect(techColor(staff, 'tina')).toBe(techColor(staff, 'tina')); expect(techColor(staff, 'kim')).not.toBe(techColor(staff, 'tina')); });
 });
+
+describe('Walk-in 2.0 — one ticket, one place', () => {
+  const ago2 = (m: number) => new Date(Date.now() - m * 60000).toISOString();
+  const w2 = (id: string, o: Partial<BoardWalkIn> = {}): BoardWalkIn => ({
+    id, customerName: id, partySize: 1, status: 'SERVING', createdAt: ago2(30), assignedAt: ago2(20), station: null, customerId: null,
+    items: [], service: null, assignedStaff: { id: 'kim', firstName: 'Kim', lastName: null }, ...o,
+  });
+  it('waiting to pay is not "in a chair"; a tech on a break is not free; missing services are counted', () => {
+    const b: BoardData = {
+      waiting: [], nextUpStaffId: 'kim', today: { count: 18, serviceCents: 124800 },
+      serving: [
+        w2('chair', { items: [{ lineId: '1', name: 'Gel', priceCents: 3500 }] }),
+        w2('pay1', { awaitingPayment: true }),
+        w2('pay2', { awaitingPayment: true, items: [{ lineId: '2', name: 'Pedi', priceCents: 4500 }] }),
+      ],
+      staff: [
+        { id: 'kim', name: 'Kim', turns: 2, busy: true, nextUp: false },
+        { id: 'tina', name: 'Tina', turns: 3, busy: false, nextUp: true },
+        { id: 'jen', name: 'Jen', turns: 3, busy: false, nextUp: false, onBreak: true },
+      ],
+    };
+    expect(floorSummary(b)).toMatchObject({ inChair: 1, toPay: 2, missing: 1, free: 1, onBreak: 1, doneCount: 18, doneCents: 124800 });
+  });
+  it('the turn line follows the rules\' order; state reads busy, break, request, a booking soon', async () => {
+    const { turnLine, techState, ticketTech } = await import('./walkin-floor');
+    const now = Date.parse('2026-10-17T20:00:00Z');
+    const line = turnLine([
+      { id: 'a', name: 'A', turns: 3, busy: false, nextUp: false, rank: 2 },
+      { id: 'b', name: 'B', turns: 1, busy: false, nextUp: true, rank: 1 },
+      { id: 'c', name: 'C', turns: 3, busy: false, nextUp: false, onBreak: true, rank: null },
+    ]);
+    expect(line.map((s) => s.id)).toEqual(['b', 'a', 'c']);
+    expect(techState({ id: 'x', name: 'X', turns: 0, busy: true, nextUp: false, busyFor: 12, nextBookingAt: '2026-10-17T20:45:00Z' }, now)).toEqual({ kind: 'busy', busyFor: 12, bookingSoon: '2026-10-17T20:45:00Z' });
+    expect(techState({ id: 'x', name: 'X', turns: 0, busy: false, nextUp: false, nextBookingAt: '2026-10-17T23:45:00Z' }, now).bookingSoon).toBeNull();
+    expect(techState({ id: 'x', name: 'X', turns: 0, busy: false, nextUp: false, manualOnly: true }, now).kind).toBe('request');
+    expect(ticketTech(w2('t', { legs: [
+      { legId: 'h', status: 'DONE', staffId: 'kim', names: [], zone: 'HAND', lineIds: ['1'] },
+      { legId: 'f', status: 'DONE', staffId: 'tina', names: [], zone: 'FOOT', lineIds: ['2'] },
+    ] }))).toBe('tina');
+  });
+});
+
+describe('a ticket\'s story', () => {
+  it('came in, parts started and finished in order, then waiting to pay', async () => {
+    const { ticketTimeline } = await import('./walkin-floor');
+    const ev = ticketTimeline({
+      createdAt: '2026-10-17T19:00:00Z', arrivedAt: '2026-10-17T18:58:00Z', assignedAt: '2026-10-17T19:05:00Z', status: 'SERVING', awaitingPayment: true,
+      legs: [
+        { legId: 'f', status: 'DONE', staffId: 'tina', names: ['Pedi'], startedAt: '2026-10-17T19:20:00Z', doneAt: '2026-10-17T20:00:00Z' },
+        { legId: 'h', status: 'DONE', staffId: 'kim', names: ['Gel'], startedAt: '2026-10-17T19:05:00Z', doneAt: '2026-10-17T19:40:00Z' },
+      ],
+    });
+    expect(ev.map((e) => `${e.kind}:${e.staffId ?? '-'}`)).toEqual(['in:-', 'start:kim', 'start:tina', 'done:kim', 'done:tina', 'pay:-']);
+  });
+});

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { cleanCloseReason, frequentServices, nextBookingByStaff, todayTotals, turnOrder } from './desk-board';
 import { AppointmentStatus, OrderStatus, Prisma, UserRole, WalkInStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1041,6 +1042,17 @@ export class WalkinsService {
     // Next up = the free technician the dispatcher would pick for a plain job.
     const free = f.techs.filter((t) => !busy.has(t.id) && !f.onBreak.has(t.id));
     const nextUpStaffId = pickTech(free, [], f.turns, f.pick)?.id ?? null;
+    // Walk-in 2.0: the whole line in turn order, each technician's next booking,
+    // what she usually does, and today's totals. Display only — dispatch is unchanged.
+    const order = turnOrder(f.techs, f.turns, f.pick, f.onBreak);
+    const rankOf = new Map(order.map((id, i) => [id, i + 1]));
+    const nextBooking = nextBookingByStaff(bookedRaw.map((a) => ({ startTime: a.startTime, staffId: a.assignedStaff?.id ?? null })), now);
+    const recent = await (this.prisma.walkIn.findMany({
+      where: { tenantId, status: WalkInStatus.DONE, doneAt: { gte: new Date(now.getTime() - 30 * 86_400_000) } },
+      select: { assignedStaffId: true, items: true }, orderBy: { doneAt: 'desc' }, take: 600,
+    }) as Promise<{ assignedStaffId: string | null; items: unknown }[]>).catch(() => [] as { assignedStaffId: string | null; items: unknown }[]);
+    const frequent = frequentServices(recent, 4);
+    const totals = todayTotals(f.doneToday as unknown as { items: unknown }[]);
     const staff = f.staff.map((s) => ({
       id: s.id,
       name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`,
@@ -1053,6 +1065,9 @@ export class WalkinsService {
       // Services she does; empty = everything (nobody ticked boxes yet).
       skills: f.skills.get(s.id) ?? [],
       nextUp: s.id === nextUpStaffId,
+      rank: rankOf.get(s.id) ?? null,
+      manualOnly: f.manualOnly.has(s.id),
+      nextBookingAt: nextBooking.get(s.id) ?? null,
     }));
 
     // Finished today, most recent first: a ticket marked Done by mistake (or done
@@ -1062,7 +1077,7 @@ export class WalkinsService {
     const unpaid = await this.unpaidEarlier(tenantId, f.today).catch(() => []);
     // The salon's timezone: every clock on the desk is read in it, never in
     // the browser's (a manager in Vietnam saw 10:00 AM bookings as 0:00).
-    return { waiting, serving, booked, done, unpaid, staff, nextUpStaffId, restricted: [...f.restricted], timezone: tenantRow?.timezone ?? null };
+    return { waiting, serving, booked, done, unpaid, staff, nextUpStaffId, restricted: [...f.restricted], timezone: tenantRow?.timezone ?? null, today: totals, frequent };
   }
 
   /**
@@ -1812,6 +1827,27 @@ export class WalkinsService {
     });
     // After the save, and swallowing its own failure: finishing a customer must
     // succeed even if the queue cannot be drained this second.
+    await this.settle(w.tenantId);
+    return this.row(w.tenantId, w.id);
+  }
+
+  /**
+   * ĐÓNG KHÔNG THU TIỀN. The visit happened but no receipt will be rung up in
+   * Lumio (paid on another machine, pays later, a free redo, a mistake): every
+   * part is finished (so the turn counts as it would have), the bill is closed
+   * so it stops sitting at the till, and the reason is kept for the end-of-day
+   * check. This salon's ticket only.
+   */
+  async closeUnpaid(user: AuthenticatedUser, id: string, reason: unknown, note?: string) {
+    const why = cleanCloseReason(reason);
+    const w = await this.mine(user, id);
+    if (w.status === WalkInStatus.CANCELLED) throw new BadRequestException('This visit was cancelled');
+    if (w.status !== WalkInStatus.DONE) await this.done(user, id);
+    await this.prisma.walkIn.updateMany({
+      where: { id: w.id, tenantId: w.tenantId },
+      data: { status: WalkInStatus.DONE, awaitingPayment: false, ...(w.doneAt ? {} : { doneAt: new Date() }) },
+    });
+    await this.audit?.log({ tenantId: w.tenantId, userId: user.userId, action: 'walkin.closed_unpaid', resourceType: 'walk_in', resourceId: w.id, metadata: { reason: why, note: String(note ?? '').slice(0, 200) || null } });
     await this.settle(w.tenantId);
     return this.row(w.tenantId, w.id);
   }

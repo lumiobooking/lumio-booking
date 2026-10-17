@@ -61,7 +61,9 @@ import {
  */
 const NEW_TAGS_MAX = 8;
 
-type Tab = 'all' | 'mine' | 'renew' | 'down' | 'adswarn' | 'none';
+type Tab = 'all' | 'mine' | 'renew' | 'down' | 'adswarn' | 'none' | 'parked';
+/** Paused and stopped salons live in their own tab, never mixed into the working lists. */
+const isParked = (stage: string | null | undefined) => stage === 'paused' || stage === 'stopped';
 type SortKey = 'work' | 'growth' | 'bookings' | 'pkg' | 'end' | 'name';
 const SORTS: { key: SortKey; label: string }[] = [
   { key: 'work', label: 'Cần làm trước' },
@@ -86,15 +88,18 @@ const RENEW_SECTIONS: { key: RenewState; title: string; dot: string; note?: stri
 
 /**
  * The table's columns on a wide screen:
- * Tiệm · Thời hạn · Booking tháng này · Hiệu quả · Ads · Gói · Nhóm · Trạng thái · Bước tiếp · (gia hạn, chi tiết, vào).
- * The channel squares moved onto the salon's second line to make room.
+ * Tiệm (tên → chi tiết · Vào) · Bước tiếp · Booking tháng này · Hiệu quả · Ads · Gói · Nhóm · Trạng thái · (gia hạn, chi tiết).
+ * "Bước tiếp" — the hand-off staff change most — sits right after the name;
+ * the term moved into the salon's detail panel (the row's edge colour and the
+ * renewal button still flag an expiring one).
  */
-const COLS = 'minmax(220px, 1.5fr) 118px 136px 168px 186px 122px 90px 104px 150px 128px';
+const COLS = 'minmax(270px, 1.6fr) 158px 136px 168px 186px 122px 90px 104px 96px';
 /** Below this the fixed columns do not fit and the table scrolls sideways. */
-const TABLE_MIN = 1460;
+const TABLE_MIN = 1470;
 
 const cssFor = `
 .ag-row:hover { background: var(--c162032) !important; }
+.ag-name:hover { text-decoration: underline; text-underline-offset: 3px; }
 .ag-next:hover { filter: brightness(1.12); }
 .ag-next:focus-within { outline: 2px solid #6366f1; outline-offset: 1px; }
 .ag-row:focus-visible { outline: 2px solid #6366f1; outline-offset: -2px; }
@@ -262,6 +267,8 @@ export default function AgencyPage() {
   const base = useMemo(() => rows.filter((r) => {
     const f = facts.get(r.id)!;
     if (needle) return `${r.name} ${r.slug}`.toLowerCase().includes(needle);
+    if (activeTab === 'parked') return isParked(f.stage);
+    if (isParked(f.stage)) return false;
     if (activeTab === 'mine') return f.team === myTeam;
     if (activeTab === 'none') return f.team === '';
     if (activeTab === 'renew') return f.renew !== null;
@@ -311,8 +318,9 @@ export default function AgencyPage() {
 
   /** The numbers on the tabs, and on the renewal line. */
   const tabCounts = useMemo(() => {
-    let mine = 0; let none = 0; let renewAll = 0; let expired = 0; let soon = 0; let down = 0; let adswarn = 0;
+    let mine = 0; let none = 0; let renewAll = 0; let expired = 0; let soon = 0; let down = 0; let adswarn = 0; let parked = 0;
     for (const f of facts.values()) {
+      if (isParked(f.stage)) { parked++; continue; }
       if (myTeam && f.team === myTeam) mine++;
       if (f.team === '') none++;
       if (f.renew !== null) renewAll++;
@@ -320,10 +328,11 @@ export default function AgencyPage() {
       if (f.ads === 'warn') adswarn++;
     }
     for (const r of rows) {
+      if (isParked(facts.get(r.id)?.stage)) continue;
       if (!needsRenewal(r.serviceTerm, today)) continue;
       if (termStatus(r.serviceTerm, today).state === 'expired') expired++; else soon++;
     }
-    return { all: rows.length, mine, none, renewAll, expired, soon, need: expired + soon, down, adswarn };
+    return { all: rows.length - parked, mine, none, renewAll, expired, soon, need: expired + soon, down, adswarn, parked };
   }, [facts, rows, myTeam, today]);
   const waitingHere = useMemo(() => [...facts.values()].filter((f) => f.flags.includes('waiting')).length, [facts]);
   /** How many of the salons on screen arrived this week. Decides the tags. */
@@ -656,6 +665,7 @@ export default function AgencyPage() {
     { key: 'down', label: 'Đang giảm', n: tabCounts.down, badge: tabCounts.down > 0 },
     ...(tabCounts.adswarn > 0 ? [{ key: 'adswarn' as Tab, label: phone ? 'Ads chưa hiệu quả' : 'Ads chưa ra booking', n: tabCounts.adswarn, badge: true }] : []),
     { key: 'none', label: 'Chưa giao', n: tabCounts.none },
+    ...(tabCounts.parked > 0 ? [{ key: 'parked' as Tab, label: phone ? 'Tạm ngưng' : 'Tạm ngưng · Ngưng', n: tabCounts.parked }] : []),
   ];
 
   const resultLine = (
@@ -900,7 +910,7 @@ export default function AgencyPage() {
               <div style={{ minWidth: TABLE_MIN }}>
               <div style={{ display: 'grid', gridTemplateColumns: picking ? `28px ${COLS}` : COLS, columnGap: 14, alignItems: 'center', height: 40, padding: '0 14px 0 18px', background: C.soft, borderBottom: `1px solid ${C.line}` }}>
                 {picking && <span />}
-                {['Tiệm', 'Thời hạn', 'Booking tháng này', 'Hiệu quả', 'Ads', 'Gói', 'Nhóm', 'Trạng thái', 'Bước tiếp', ''].map((h) => (
+                {['Tiệm', 'Bước tiếp', 'Booking tháng này', 'Hiệu quả', 'Ads', 'Gói', 'Nhóm', 'Trạng thái', ''].map((h) => (
                   <span key={h || 'act'} style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.5, color: C.muted, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</span>
                 ))}
               </div>
@@ -1186,13 +1196,34 @@ function joinSep(parts: React.ReactNode[]) {
   return out;
 }
 
+/** The salon's name: opens its detail panel (term, package, team, notes…). */
+function NameLink({ p, size }: { p: RowProps; size: number }) {
+  return (
+    <button type="button" className="ag-name" title="Xem chi tiết tiệm (thời hạn, gói, nhóm…)"
+      onClick={(e) => { e.stopPropagation(); if (p.picking) p.onCheck(); else p.onOpen(); }}
+      style={{ border: 0, background: 'transparent', padding: 0, fontFamily: 'inherit', fontSize: size, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, cursor: 'pointer', textAlign: 'left' }}>
+      {p.t.name}
+    </button>
+  );
+}
+
+/** Straight into the salon, right beside its name. */
+function EnterBtn({ p }: { p: RowProps }) {
+  if (p.picking) return null;
+  const suspended = p.t.status === 'SUSPENDED';
+  return (
+    <button type="button" disabled={suspended} title={suspended ? 'Tiệm đang bị khoá — mở lại ở Super Admin' : 'Vào tiệm — mở phiên setup 8 tiếng'}
+      onClick={(e) => { e.stopPropagation(); p.onEnter(); }}
+      style={{ flexShrink: 0, height: 22, padding: '0 8px', borderRadius: 999, border: `1px solid ${suspended ? C.line : '#6366f1'}`, background: 'transparent', color: suspended ? C.muted : C.link, fontFamily: 'inherit', fontSize: 11.5, fontWeight: 700, cursor: suspended ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+      {p.opening ? '…' : 'Vào ↗'}
+    </button>
+  );
+}
+
 /** Computer: one table row, fixed columns. */
 function WideRow(p: RowProps) {
   const { t, today, term } = p;
-  const st = termStatus(t.serviceTerm, today);
-  const loud = term === 'expired' || term === 'soon';
   const shell = rowShell(p);
-  const suspended = t.status === 'SUSPENDED';
   return (
     <div {...shell} style={{
       ...shell.style, display: 'grid', gridTemplateColumns: p.picking ? `28px ${COLS}` : COLS, columnGap: 14, alignItems: 'center',
@@ -1202,7 +1233,8 @@ function WideRow(p: RowProps) {
       {p.picking && <Checkbox p={p} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{t.name}</span>
+          <NameLink p={p} size={14} />
+          <EnterBtn p={p} />
           <MarketChip code={marketOf(t)} />
           <Tags t={t} fresh={p.fresh} />
         </span>
@@ -1214,29 +1246,16 @@ function WideRow(p: RowProps) {
           <span style={{ marginLeft: 2, display: 'inline-flex' }}><ChannelSquares t={t} size={12} /></span>
         </span>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <TermText term={t.serviceTerm} today={today} />
-        {loud && st.end && <span style={{ fontSize: 11.5, color: C.muted }}>{fmtDay(st.end, today)}</span>}
-      </div>
+      <div style={{ minWidth: 0, display: 'flex' }}><NextPicker next={t.workNext} onChange={p.onNext} disabled={p.picking} /></div>
       <div style={{ minWidth: 0 }}><BookingsCell pulse={t.pulse} /></div>
       <div style={{ minWidth: 0, overflow: 'hidden' }}><GrowthText pulse={t.pulse} /></div>
       <div style={{ minWidth: 0, overflow: 'hidden' }}><AdsText pulse={t.pulse} /></div>
       <div style={{ minWidth: 0, overflow: 'hidden' }}><PackageText pkg={p.pkg} /></div>
       <div style={{ fontSize: 13, color: p.team ? C.body : C.warn, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.team || 'Chưa giao'}</div>
       <div style={{ minWidth: 0 }}><StageText stage={t.opsStage ?? 'running'} /></div>
-      <div style={{ minWidth: 0, display: 'flex' }}><NextPicker next={t.workNext} onChange={p.onNext} disabled={p.picking} /></div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
         {!p.picking && <RenewAction term={t.serviceTerm} today={today} onTell={p.onTell} />}
-        {!p.picking && (
-          <>
-            <MoreBtn onOpen={p.onOpen} />
-            <button type="button" disabled={suspended} title={suspended ? 'Tiệm đang bị khoá — mở lại ở Super Admin' : 'Vào tiệm — mở phiên setup 8 tiếng'}
-              onClick={(e) => { e.stopPropagation(); p.onEnter(); }}
-              style={{ border: 0, background: 'transparent', padding: '6px 2px 6px 4px', color: suspended ? C.muted : C.link, fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: suspended ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
-              {p.opening ? '…' : 'Vào →'}
-            </button>
-          </>
-        )}
+        {!p.picking && <MoreBtn onOpen={p.onOpen} />}
       </div>
     </div>
   );
@@ -1253,7 +1272,8 @@ function TabletRow(p: RowProps) {
       <Checkbox p={p} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{t.name}</span>
+          <NameLink p={p} size={15} />
+          <EnterBtn p={p} />
           <MarketChip code={marketOf(t)} />
           <Tags t={t} fresh={p.fresh} />
         </span>

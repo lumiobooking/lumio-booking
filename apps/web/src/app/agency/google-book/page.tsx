@@ -16,9 +16,20 @@ import { apiFetch } from '../../../lib/api';
 import { C } from '../AgencyParts';
 
 interface Issue { code: string; level: 'error' | 'warn'; message: string; serviceId?: string; serviceName?: string }
-interface Row { id: string; name: string; slug: string; status: 'ready' | 'fix' | 'off'; feedable: number; issues: Issue[]; profileTitle: string | null; profileAt: string | null; mapsUrl: string | null }
+interface BookingLink { state: 'linked' | 'skipped' | 'error' | 'removed'; uri: string | null; at: string; reason?: string; others?: number }
+interface Row { id: string; name: string; slug: string; status: 'ready' | 'fix' | 'off'; feedable: number; issues: Issue[]; profileTitle: string | null; profileAt: string | null; mapsUrl: string | null; bookingLink?: BookingLink | null }
+interface LinkRun { at: string; linked: number; skipped: number; failed: number; removed: number }
 interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string }
-interface Board { rows: Row[]; lastRun: RunReport | null; sftpConfigured: boolean; partnerId: string | null }
+interface Board { rows: Row[]; lastRun: RunReport | null; lastLinkRun?: LinkRun | null; sftpConfigured: boolean; partnerId: string | null }
+
+/** The salon's own "Book" link on Google (Place Actions API), as the last run left it. */
+const LINK_LOOK: Record<BookingLink['state'] | 'none', { label: string; ink: string; bg: string }> = {
+  linked: { label: '🔗 Đã gắn Đặt lịch', ink: 'var(--ink-good)', bg: 'rgba(34,197,94,.14)' },
+  error: { label: 'Lỗi gắn link', ink: 'var(--ink-bad)', bg: 'var(--wash-red)' },
+  skipped: { label: 'Chưa gắn', ink: 'var(--c94a3b8)', bg: 'var(--c1e293b)' },
+  removed: { label: 'Đã gỡ link', ink: 'var(--c94a3b8)', bg: 'var(--c1e293b)' },
+  none: { label: 'Chưa chạy', ink: 'var(--c94a3b8)', bg: 'var(--c1e293b)' },
+};
 
 const LOOK = {
   ready: { label: 'Sẵn sàng', ink: 'var(--ink-good)', bg: 'rgba(34,197,94,.14)' },
@@ -94,6 +105,11 @@ export default function AgencyGoogleBookPage() {
     for (const r of board?.rows ?? []) { c.all++; c[r.status]++; }
     return c;
   }, [board]);
+  const links = useMemo(() => {
+    const c = { linked: 0, error: 0, other: 0 };
+    for (const r of board?.rows ?? []) { const s = r.bookingLink?.state; if (s === 'linked') c.linked++; else if (s === 'error') c.error++; else c.other++; }
+    return c;
+  }, [board]);
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return (board?.rows ?? []).filter((r) => (filter === 'all' || r.status === filter) && (!needle || `${r.name} ${r.slug}`.toLowerCase().includes(needle)))
@@ -111,9 +127,20 @@ export default function AgencyGoogleBookPage() {
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: C.ink }}>Nút “Đặt lịch” trên Google</h1>
           <span style={{ fontSize: 13, color: C.sub }}>feed Actions Center · {counts.ready} sẵn sàng · {counts.fix} cần sửa · {counts.off} tắt</span>
           <span style={{ flex: 1 }} />
+          <button type="button" onClick={() => act('links', '/support/google-book/booking-links/sync')} disabled={busy === 'links'} style={primary}>{busy === 'links' ? 'Đang gắn…' : '🔗 Gắn nút Đặt lịch cho mọi tiệm'}</button>
           <button type="button" onClick={download} disabled={busy === 'dl'} style={ghost}>{busy === 'dl' ? '…' : '⬇ Tải 6 file feed hôm nay'}</button>
           <button type="button" onClick={() => act('run', '/support/google-book/run')} disabled={busy === 'run'} style={primary}>{busy === 'run' ? 'Đang chạy…' : '▶ Tạo & upload ngay'}</button>
         </div>
+
+        <section style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: C.ink }}>Link “Đặt lịch” trên hồ sơ Google của từng tiệm</div>
+            <div style={{ fontSize: 13, color: C.sub }}><b style={{ color: C.good }}>{links.linked}</b> đã gắn · <b style={{ color: links.error ? C.bad : C.sub }}>{links.error}</b> lỗi · {links.other} chưa gắn{board.lastLinkRun ? ` · chạy lúc ${when(board.lastLinkRun.at)}` : ''}</div>
+          </div>
+          <div style={{ fontSize: 12.5, color: C.sub, marginTop: 6, lineHeight: 1.55 }}>
+            Lumio đặt trang đặt lịch của tiệm (<code>lumiobooking.com/&lt;tiệm&gt;/gbp</code>) làm <b>link đặt lịch ưu tiên</b> trên chính hồ sơ Google của tiệm — đúng ô “Bookings → link đặt lịch” chủ tiệm tự điền — qua Place Actions API, tự chạy mỗi đêm. Trên Google Maps/Search, khách thấy nút/ô “Đặt lịch hẹn · Book” mở thẳng trang đặt lịch của tiệm. Tiệm được gắn khi: đang bật, đã nối đúng hồ sơ Google của mình, có dịch vụ đặt online. Nút đặt ngay <i>trong</i> Google (Reserve with Google) vẫn chỉ dành cho đối tác Google duyệt.
+          </div>
+        </section>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 14 }}>
           <Tile label="Lần chạy cuối" value={run ? when(run.at) : 'chưa chạy'} sub={run ? `${run.ready} tiệm vào feed · ${run.held} giữ lại${run.error ? ` · ${run.error}` : ''}` : 'chạy hằng đêm ~03:00 UTC khi RWG_FEED_AUTORUN=true'} tone={run?.error ? 'warn' : 'ok'} />
@@ -174,17 +201,23 @@ export default function AgencyGoogleBookPage() {
             return (
               <div key={r.id} style={{ borderBottom: `1px solid ${C.line}` }}>
                 <div role="button" tabIndex={0} onClick={() => setOpen(isOpen ? null : r.id)} onKeyDown={(e) => { if (e.key === 'Enter') setOpen(isOpen ? null : r.id); }}
-                  style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1.4fr) 120px minmax(0, 2fr) 110px', gap: 14, alignItems: 'center', padding: '11px 16px', cursor: 'pointer' }}>
+                  style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1.4fr) 120px 150px minmax(0, 2fr) 170px', gap: 14, alignItems: 'center', padding: '11px 16px', cursor: 'pointer' }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
                     <div style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>/{r.slug}{r.profileTitle ? ` · Google: ${r.profileTitle}` : ''}{r.mapsUrl && <> · <a href={r.mapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: C.link }}>Maps ↗</a></>}</div>
                   </div>
                   <span style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 9px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: look.bg, color: look.ink, whiteSpace: 'nowrap', justifySelf: 'start' }}>{look.label}</span>
+                  {(() => { const lk = LINK_LOOK[r.bookingLink?.state ?? 'none']; return (
+                    <span title={r.bookingLink?.reason ?? r.bookingLink?.uri ?? ''} style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 9px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: lk.bg, color: lk.ink, whiteSpace: 'nowrap', justifySelf: 'start' }}>{lk.label}</span>
+                  ); })()}
                   <div style={{ fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {r.status === 'ready' ? `${r.feedable} dịch vụ vào feed${warns.length ? ` · ${warns.length} lưu ý` : ''}` : errors[0]?.message ?? warns[0]?.message ?? ''}
                     {errors.length > 1 ? ` · +${errors.length - 1} lỗi` : ''}
                   </div>
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); void act(`bl-${r.id}`, `/support/google-book/tenants/${r.id}/booking-link`); }} style={ghost} title="Gắn / làm mới link Đặt lịch trên hồ sơ Google của tiệm">
+                      {busy === `bl-${r.id}` ? '…' : '🔗 Gắn link'}
+                    </button>
                     <button type="button" onClick={(e) => { e.stopPropagation(); void act(`en-${r.id}`, `/support/google-book/tenants/${r.id}/enabled`, { enabled: r.status === 'off' }); }} style={ghost}>
                       {busy === `en-${r.id}` ? '…' : r.status === 'off' ? 'Bật' : 'Tắt'}
                     </button>
@@ -192,6 +225,13 @@ export default function AgencyGoogleBookPage() {
                 </div>
                 {isOpen && (
                   <div style={{ padding: '0 16px 14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ fontSize: 13, padding: '7px 10px', borderRadius: 8, background: C.soft, border: `1px solid ${C.line}`, color: C.body }}>
+                      <b style={{ color: C.ink2 }}>Link Đặt lịch trên Google:</b>{' '}
+                      {r.bookingLink?.state === 'linked' && r.bookingLink.uri
+                        ? <>đã gắn <a href={r.bookingLink.uri} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: C.link }}>{r.bookingLink.uri}</a> làm link ưu tiên{r.bookingLink.others ? ` · hồ sơ còn ${r.bookingLink.others} link đặt lịch khác (của chủ tiệm/đối tác, Lumio không đụng)` : ''}</>
+                        : r.bookingLink?.reason ?? 'chưa chạy — bấm “🔗 Gắn link”.'}
+                      {r.bookingLink?.at ? <span style={{ color: C.muted }}> · {when(r.bookingLink.at)}</span> : null}
+                    </div>
                     {r.issues.length === 0 && <div style={{ fontSize: 13, color: C.good }}>✓ Không có gì phải sửa.</div>}
                     {r.issues.map((i, n) => (
                       <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '7px 10px', borderRadius: 8, background: C.soft, border: `1px solid ${C.line}` }}>

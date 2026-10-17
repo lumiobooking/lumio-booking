@@ -16,6 +16,7 @@ import { oauthBase } from '../common/public-url.util';
 type GStatus = 'NEW' | 'DRAFTED' | 'REPLIED' | 'NEEDS_ATTENTION' | 'SKIPPED';
 
 const GBR_KEY = 'googleReviews';
+import { otherBookingLinks, placeActionsError, planBookingLink, type PlaceLink } from './place-action-links';
 const SCOPE = 'https://www.googleapis.com/auth/business.manage';
 const STAR_MAP: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 
@@ -645,6 +646,53 @@ export class GoogleReviewsService {
       this.logger.warn(`Could not read the Google profile for tenant ${tenantId}: ${String(e).slice(0, 120)}`);
       return null;
     }
+  }
+
+  /**
+   * THE "BOOK" LINK ON THE SALON'S GOOGLE PROFILE (place-action-links.ts).
+   *
+   * Makes `uri` the preferred appointment link of the location linked to THIS
+   * salon — the same thing the owner would add under Business Profile →
+   * Bookings — through the Place Actions API, with the salon's own consented
+   * connection. Reads and writes only that one location: every link it
+   * changes came from that location's own list and is checked to belong to
+   * it. Throws, in words the agency can act on, when Google refuses.
+   */
+  async syncBookingActionLink(tenantId: string, uri: string, ownHosts: string[], wanted = true): Promise<{ steps: string[]; others: number }> {
+    const s = await this.getSettings(tenantId);
+    if (!s.connected || !s.refreshToken || !s.locationId) throw new BadRequestException('Tiệm chưa nối hồ sơ Google.');
+    const tok = await this.accessToken(s);
+    const root = 'https://mybusinessplaceactions.googleapis.com/v1';
+    const location = bareLocationId(s.locationId);
+    const base = `${root}/${location}/placeActionLinks`;
+    const call = async (method: string, url: string, body?: unknown): Promise<Record<string, unknown>> => {
+      const r = await fetch(url, {
+        method,
+        headers: { authorization: `Bearer ${tok}`, ...(body ? { 'content-type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(15_000),
+      });
+      const text = await r.text().catch(() => '');
+      if (!r.ok) throw new BadRequestException(placeActionsError(r.status, text));
+      try { return text ? (JSON.parse(text) as Record<string, unknown>) : {}; } catch { return {}; }
+    };
+    const existing: PlaceLink[] = [];
+    let page = '';
+    for (let i = 0; i < 5; i += 1) {
+      const j = await call('GET', `${base}?pageSize=100${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`);
+      existing.push(...((j.placeActionLinks as PlaceLink[] | undefined) ?? []));
+      page = String(j.nextPageToken ?? '');
+      if (!page) break;
+    }
+    const steps = planBookingLink(existing, uri, ownHosts, wanted);
+    for (const st of steps) {
+      if (st.op === 'create') { await call('POST', base, { uri: st.uri, placeActionType: 'APPOINTMENT', isPreferred: true }); continue; }
+      // Never a link of another location, whatever came back.
+      if (!st.name.startsWith(`${location}/`)) continue;
+      if (st.op === 'delete') await call('DELETE', `${root}/${st.name}`);
+      else await call('PATCH', `${root}/${st.name}?updateMask=isPreferred`, { isPreferred: true });
+    }
+    return { steps: steps.map((x) => x.op), others: otherBookingLinks(existing, ownHosts) };
   }
 
   /**

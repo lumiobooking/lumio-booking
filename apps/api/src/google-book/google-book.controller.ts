@@ -19,7 +19,7 @@ export class GoogleBookController {
   @Get('readiness')
   async readiness() {
     const rows = await this.svc.readiness();
-    return { rows, lastRun: this.svc.getLastRun(), sftpConfigured: Boolean(process.env.RWG_SFTP_HOST && process.env.RWG_SFTP_USER && process.env.RWG_SFTP_KEY), partnerId: process.env.NEXT_PUBLIC_RWG_PARTNER_ID ?? null };
+    return { rows, lastRun: this.svc.getLastRun(), lastLinkRun: this.svc.getLastLinkRun(), sftpConfigured: Boolean(process.env.RWG_SFTP_HOST && process.env.RWG_SFTP_USER && process.env.RWG_SFTP_KEY), partnerId: process.env.NEXT_PUBLIC_RWG_PARTNER_ID ?? null };
   }
 
   /** One salon in detail, optionally re-reading its Google listing. */
@@ -41,6 +41,18 @@ export class GoogleBookController {
   @Post('tenants/:id/services/:serviceId/fix-name')
   fixServiceName(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('serviceId') serviceId: string) {
     return this.svc.fixServiceName(id, serviceId, user.userId);
+  }
+
+  /** Put (or refresh) this salon's "Book" link on its own Google profile now. */
+  @Post('tenants/:id/booking-link')
+  bookingLink(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.syncBookingLink(id, user.userId);
+  }
+
+  /** The same for every live salon (it also runs every night). */
+  @Post('booking-links/sync')
+  syncBookingLinks() {
+    return this.svc.syncAllBookingLinks();
   }
 
   /** Today's six feed files, to download and upload by hand (sandbox, or before SFTP is set up). */

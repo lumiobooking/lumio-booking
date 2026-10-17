@@ -34,6 +34,24 @@ const DEFAULT: GoogleBookSetting = { enabled: true };
 
 export interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string }
 
+/**
+ * THE "BOOK" LINK ON EACH SALON'S GOOGLE PROFILE — the part that does not wait
+ * for Google to accept Lumio as an Actions Center partner. The salon's own
+ * appointment link (Business Profile → Bookings) is set to its Lumio booking
+ * page (/{slug}/gbp, which tags the visit as Google Maps) through the Place
+ * Actions API, every night and on demand. One row per salon records how it went.
+ */
+export const GBP_BOOKING_LINK_KEY = 'gbp_booking_link';
+export interface BookingLinkState { state: 'linked' | 'skipped' | 'error' | 'removed'; uri: string | null; at: string; reason?: string; others?: number }
+export interface LinkRunReport { at: string; linked: number; skipped: number; failed: number; removed: number }
+
+/** Why a salon gets no Book link: switched off, nothing to book, or the Google profile is not hers. Null = it gets one. */
+export function bookingLinkBlock(lint: TenantLint): string | null {
+  if (lint.status === 'off') return lint.issues[0]?.message ?? 'Đang tắt';
+  const hit = lint.issues.find((i) => i.code === 'google_not_linked' || i.code === 'google_mismatch' || i.code === 'no_services');
+  return hit ? hit.message : null;
+}
+
 /** Same business by name: a shared distinctive word, or the very same name once case and punctuation go ("T U Nails"). */
 export function sameBusinessName(a: string, b: string): boolean {
   const fold = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -58,6 +76,7 @@ function mapsUrlOf(p: { mapsUri?: string | null; placeId?: string | null } | nul
 export class GoogleBookService {
   private readonly logger = new Logger('GoogleBook');
   private lastRun: RunReport | null = null;
+  private lastLinkRun: LinkRunReport | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -79,6 +98,78 @@ export class GoogleBookService {
     await this.audit.log({ tenantId, userId, action: 'google_book.toggled', resourceType: 'setting', resourceId: GOOGLE_BOOK_KEY, metadata: value });
     return value;
   }
+
+  /** The salon's booking page as its Google "Book" link: the /gbp path marks the visit as Google Maps. */
+  bookingUri(slug: string): string { return `${this.webUrl()}/${encodeURIComponent(slug)}/gbp`; }
+
+  /** Lumio's own hosts: a link on one of these is Lumio's to replace. */
+  private ownHosts(): string[] {
+    const hosts = new Set<string>(['lumiobooking.com']);
+    for (const u of [process.env.WEB_URL, process.env.NEXT_PUBLIC_WEB_URL, this.webUrl()]) {
+      try { if (u) hosts.add(new URL(u).host.toLowerCase()); } catch { /* not a URL */ }
+    }
+    return [...hosts];
+  }
+
+  async bookingLinkState(tenantId: string): Promise<BookingLinkState | null> {
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: GBP_BOOKING_LINK_KEY } } }).catch(() => null);
+    return (row?.value ?? null) as BookingLinkState | null;
+  }
+
+  /**
+   * Put (or keep) the salon's Lumio booking page as the preferred "Book" link
+   * on ITS OWN Google profile. Only a salon that is on, linked to its own
+   * listing and has something to book gets one; a salon switched off has
+   * Lumio's link taken back off. Never throws: the result is recorded.
+   */
+  async syncBookingLink(tenantId: string, userId: string | null = null): Promise<BookingLinkState> {
+    const at = new Date().toISOString();
+    let out: BookingLinkState;
+    try {
+      const { tenant, lint } = await this.inspect(tenantId);
+      const uri = this.bookingUri(tenant.slug);
+      const block = bookingLinkBlock(lint);
+      const prev = await this.bookingLinkState(tenantId);
+      if (block && lint.issues.some((i) => i.code === 'disabled') && prev?.state === 'linked') {
+        await this.google.syncBookingActionLink(tenantId, uri, this.ownHosts(), false);
+        out = { state: 'removed', uri: null, at, reason: block };
+      } else if (block) {
+        out = { state: 'skipped', uri: null, at, reason: block };
+      } else {
+        const r = await this.google.syncBookingActionLink(tenantId, uri, this.ownHosts(), true);
+        out = { state: 'linked', uri, at, others: r.others };
+      }
+    } catch (e) {
+      out = { state: 'error', uri: null, at, reason: (e instanceof Error ? e.message : String(e)).slice(0, 300) };
+    }
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: GBP_BOOKING_LINK_KEY } },
+      create: { tenantId, key: GBP_BOOKING_LINK_KEY, value: out as never },
+      update: { value: out as never },
+    }).catch(() => undefined);
+    if (userId) {
+      await this.audit.log({ tenantId, userId, action: 'google_book.booking_link', resourceType: 'setting', resourceId: GBP_BOOKING_LINK_KEY, metadata: { state: out.state, uri: out.uri } }).catch(() => undefined);
+    }
+    return out;
+  }
+
+  /** Every live salon, one by one (each under its own id and its own Google connection). */
+  async syncAllBookingLinks(): Promise<LinkRunReport> {
+    const rows = await this.prisma.tenant.findMany({ where: { deletedAt: null, status: TenantStatus.ACTIVE }, select: { id: true }, orderBy: { name: 'asc' }, take: 2000 });
+    const rep: LinkRunReport = { at: new Date().toISOString(), linked: 0, skipped: 0, failed: 0, removed: 0 };
+    for (const r of rows) {
+      const s = await this.syncBookingLink(r.id);
+      if (s.state === 'linked') rep.linked += 1;
+      else if (s.state === 'removed') rep.removed += 1;
+      else if (s.state === 'error') rep.failed += 1;
+      else rep.skipped += 1;
+    }
+    this.lastLinkRun = rep;
+    this.logger.log(`Google Book links: ${rep.linked} linked, ${rep.skipped} skipped, ${rep.failed} failed, ${rep.removed} removed.`);
+    return rep;
+  }
+
+  getLastLinkRun(): LinkRunReport | null { return this.lastLinkRun; }
 
   /** The cached listing, refreshed from Google when older than a week (or forced). */
   async profile(tenantId: string, force = false): Promise<GbpProfile | null> {
@@ -144,13 +235,13 @@ export class GoogleBookService {
   }
 
   /** Every live salon, inspected. The agency's readiness board. */
-  async readiness(): Promise<{ id: string; name: string; slug: string; status: TenantLint['status']; feedable: number; issues: TenantLint['issues']; profileTitle: string | null; profileAt: string | null; mapsUrl: string | null }[]> {
+  async readiness(): Promise<{ id: string; name: string; slug: string; status: TenantLint['status']; feedable: number; issues: TenantLint['issues']; profileTitle: string | null; profileAt: string | null; mapsUrl: string | null; bookingLink: BookingLinkState | null }[]> {
     const rows = await this.prisma.tenant.findMany({ where: { deletedAt: null, status: TenantStatus.ACTIVE }, select: { id: true }, orderBy: { name: 'asc' }, take: 2000 });
     const out: Awaited<ReturnType<GoogleBookService['readiness']>> = [];
     for (const r of rows) {
       try {
         const { tenant, lint, profile } = await this.inspect(r.id);
-        out.push({ id: tenant.id, name: tenant.name, slug: tenant.slug, status: lint.status, feedable: lint.feedable, issues: lint.issues, profileTitle: profile?.title ?? null, profileAt: profile?.fetchedAt ?? null, mapsUrl: mapsUrlOf(profile) });
+        out.push({ id: tenant.id, name: tenant.name, slug: tenant.slug, status: lint.status, feedable: lint.feedable, issues: lint.issues, profileTitle: profile?.title ?? null, profileAt: profile?.fetchedAt ?? null, mapsUrl: mapsUrlOf(profile), bookingLink: await this.bookingLinkState(r.id) });
       } catch (e) {
         this.logger.warn(`readiness: ${r.id}: ${String(e).slice(0, 120)}`);
       }
@@ -179,6 +270,9 @@ export class GoogleBookService {
    */
   async runDaily(now = new Date()): Promise<RunReport> {
     const report: RunReport = { at: now.toISOString(), tenants: 0, ready: 0, held: 0, files: [], uploaded: false };
+    // The Book link on each salon's own profile does not depend on the partner
+    // feed (or on SFTP): it runs first, every night.
+    try { await this.syncAllBookingLinks(); } catch (e) { this.logger.warn(`Booking links: ${String(e).slice(0, 160)}`); }
     try {
       const { files, ready, held } = await this.buildFeeds(now);
       report.tenants = ready.length + held.length; report.ready = ready.length; report.held = held.length; report.files = files.map((f) => f.name);

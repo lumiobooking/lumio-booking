@@ -26,6 +26,16 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
+
+/** The desk corrects who a booking is for. */
+class BookingContactDto {
+  @IsString() @MaxLength(80) firstName!: string;
+  @IsOptional() @IsString() @MaxLength(80) lastName?: string;
+  @IsOptional() @IsString() @MaxLength(40) phone?: string;
+  @IsOptional() @IsString() @MaxLength(160) email?: string;
+  @IsOptional() @IsString() @MaxLength(10) birthDate?: string;
+}
 
 /**
  * Bookings. Roles are applied PER METHOD (method-level @Roles overrides any
@@ -241,6 +251,14 @@ export class BookingsController {
     @Body() dto: RescheduleBookingDto,
   ) {
     return this.bookings.reschedule(user, id, dto.startTime, dto.outsideHours === true);
+  }
+
+  // The client wants their name / phone / email corrected.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Patch(':id/contact')
+  contact(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: BookingContactDto) {
+    return this.bookings.updateContact(user, id, dto);
   }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)

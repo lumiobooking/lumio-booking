@@ -98,6 +98,15 @@ class UpdateLineDto {
   @IsOptional() @IsString() staffId?: string;
 }
 
+class ContactDto {
+  @IsString() @MaxLength(80) firstName!: string;
+  @IsOptional() @IsString() @MaxLength(80) lastName?: string;
+  @IsOptional() @IsString() @MaxLength(40) phone?: string;
+  @IsOptional() @IsString() @MaxLength(160) email?: string;
+  @IsOptional() @IsString() @MaxLength(10) birthDate?: string;
+  @IsOptional() @IsString() @MaxLength(300) note?: string;
+}
+
 class StationDto {
   @IsOptional() @IsString() @MaxLength(24) station?: string;
 }
@@ -267,6 +276,12 @@ export class WalkinsController {
   @Patch(':id/legs/:legId/done')
   doneLeg(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('legId') legId: string) {
     return this.nudge(user, id, this.walkins.doneLeg(user, id, legId));
+  }
+
+  // The client asks to correct their name / phone / email after checking in.
+  @Patch(':id/contact')
+  contact(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ContactDto) {
+    return this.nudge(user, id, this.walkins.updateContact(user, id, dto));
   }
 
   @Patch(':id/station')

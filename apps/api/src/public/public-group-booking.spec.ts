@@ -20,10 +20,10 @@ const SERVICES: Row[] = [
   { id: 'theirs', tenantId: 't2', isActive: true },
 ];
 
-function make(o: { failGuest?: string } = {}) {
+function make(o: { failGuest?: string; businessType?: string } = {}) {
   const created: Row[] = [];
   const prisma: any = {
-    tenant: { findFirst: async () => ({ id: 't1', status: 'ACTIVE', billingExempt: true, accessUntil: null }) },
+    tenant: { findFirst: async () => ({ id: 't1', status: 'ACTIVE', billingExempt: true, accessUntil: null, businessType: o.businessType ?? 'SALON' }) },
     service: { count: async ({ where }: Row) => SERVICES.filter((s) => s.tenantId === where.tenantId && s.isActive && where.id.in.includes(s.id)).length },
   };
   const bookings: any = {
@@ -82,6 +82,23 @@ describe('online group booking', () => {
     expect(created).toHaveLength(1);
     expect(r.booking.id).toBe('ap1');
     expect(r.guests).toEqual([{ name: 'Lisa', ok: false, error: 'No slot' }]);
+  });
+
+  it('"People: 3" with nobody named books three people, each priced and served', async () => {
+    const { ctl, created } = make();
+    const r: any = await ctl.createBooking('glow', { ...base, serviceIds: ['gel', 'pedi'], partySize: 3 } as never);
+    expect(created).toHaveLength(3);
+    expect(created.slice(1).map((c) => c.dto.serviceIds)).toEqual([['gel', 'pedi'], ['gel', 'pedi']]);
+    expect(created.slice(1).map((c) => c.dto.customerFirstName)).toEqual(['Guest 2', 'Guest 3']);
+    for (const c of created) { expect(c.dto.partySize).toBe(3); expect(c.tenantId).toBe('t1'); }
+    expect(r.guests).toHaveLength(2);
+  });
+
+  it('a restaurant\'s party of 6 is still one table', async () => {
+    const { ctl, created } = make({ businessType: 'RESTAURANT' });
+    await ctl.createBooking('glow', { ...base, partySize: 6 } as never);
+    expect(created).toHaveLength(1);
+    expect(created[0].dto.partySize).toBe(6);
   });
 
   it('a single booking is unchanged — no group, no guests field', async () => {

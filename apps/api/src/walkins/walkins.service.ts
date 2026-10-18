@@ -1435,6 +1435,29 @@ export class WalkinsService {
     return this.prisma.walkIn.update({ where: { id: w.id }, data: { station: val }, include: INCLUDE });
   }
 
+  /**
+   * The desk corrects the name / phone / email / note on a checked-in ticket.
+   * The client record is corrected too (customers.correctVisitContact), and a
+   * ticket checked in from a booking moves its booking along with it.
+   */
+  async updateContact(user: AuthenticatedUser, id: string, dto: { firstName: string; lastName?: string; phone?: string; email?: string; birthDate?: string; note?: string }) {
+    const w = await this.mine(user, id);
+    const tenantId = w.tenantId;
+    const res = await this.customers.correctVisitContact(tenantId, w.customerId ?? null, dto);
+    const name = [dto.firstName.trim(), (dto.lastName ?? '').trim()].filter(Boolean).join(' ').slice(0, 80);
+    const phone = (dto.phone ?? '').trim().slice(0, 40);
+    const data: Record<string, unknown> = { customerName: name, customerId: res.customerId ?? w.customerId ?? null };
+    if (phone) data.phone = phone;
+    if (dto.note !== undefined) data.note = dto.note.trim().slice(0, 300) || null;
+    const row = await this.prisma.walkIn.update({ where: { id: w.id }, data: data as never, include: INCLUDE });
+    const apptId = (w as { appointmentId?: string | null }).appointmentId;
+    if (apptId && res.customerId) {
+      await this.prisma.appointment.updateMany({ where: { id: apptId, tenantId }, data: { customerId: res.customerId } });
+    }
+    await this.audit?.log({ tenantId, userId: user.userId, action: 'walkin.contact_updated', resourceType: 'walk_in', resourceId: w.id, metadata: { switched: res.switched } });
+    return { ...row, contact: { switched: res.switched, emailSkipped: res.emailSkipped } };
+  }
+
   /** Move a walk-in to a managed chair (drag on the floor) — or clear it (empty id). */
   async moveToStation(user: AuthenticatedUser, id: string, stationId?: string) {
     const w = await this.mine(user, id);

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CustomersModule } from '../customers/customers.module';
 import { BookingsController } from './bookings.controller';
 import { PublicAppointmentController } from './public-appointment.controller';
 import { BookingsService } from './bookings.service';
@@ -14,7 +15,7 @@ import { MaintenanceModule } from '../maintenance/maintenance.module';
 import { PushModule } from '../push/push.module';
 
 @Module({
-  imports: [MaintenanceModule, AssignmentModule, NotificationsModule, SettingsModule, PaymentsModule, ReferralModule, PushModule],
+  imports: [MaintenanceModule, AssignmentModule, NotificationsModule, SettingsModule, PaymentsModule, ReferralModule, PushModule, CustomersModule],
   controllers: [BookingsController, PublicAppointmentController],
   providers: [BookingsService, ReminderService, HousekeepingService, PartyAvailabilityService],
   exports: [BookingsService, PartyAvailabilityService], // reused by PublicModule (WordPress plugin flow)

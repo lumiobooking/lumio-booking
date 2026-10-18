@@ -13,7 +13,7 @@ type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-exp
 
 function make(provider: string | null) {
   const charged: Row[] = [];
-  const prisma: Row = { tenant: { findFirst: async () => ({ id: 't1', status: 'ACTIVE', billingExempt: true, accessUntil: null }) } };
+  const prisma: Row = { tenant: { findFirst: async () => ({ id: 't1', status: 'ACTIVE', billingExempt: true, accessUntil: null, businessType: 'RESTAURANT' }) } }; // a bistro: one table for the party
   const bookings: Row = { createForTenant: async () => ({ id: 'ap1', customerId: 'c1', priceCents: 0, partySize: 10 }) };
   const payments: Row = {
     depositFor: async (_t: string, appt: Row, _d: Row, party: Row) => partyDepositCents(appt.partySize, party as never),

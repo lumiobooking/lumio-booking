@@ -14,6 +14,7 @@ import { RateLimit } from '../common/security/rate-limit.guard';
 import { verifyCaptcha } from '../common/security/turnstile';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { appliesOn, dateRulesFor, programFor } from '../settings/promo-channel';
+import { partyGuests } from './party-guests';
 
 /**
  * Hosted "online booking link" flow. Unlike the WordPress plugin (which is
@@ -355,7 +356,10 @@ export class PublicSalonController {
     // captcha, all the public checks) and their guests, who ride on that
     // validated booking and are written server-side with the same time and
     // group. Their services are checked first, so a bad id books nobody.
-    const guests = Array.isArray(dto.guests) ? dto.guests.slice(0, 9) : [];
+    // "People: 3" with nobody named: the other two are guests with the
+    // booker's services (party-guests.ts) — a restaurant's table keeps its number.
+    const biz = await this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { businessType: true } as never }).catch(() => null) as { businessType?: string } | null;
+    const guests = partyGuests(dto as never, biz?.businessType === 'RESTAURANT');
     const groupId = guests.length ? `web-${randomUUID()}` : undefined;
     const partySize = guests.length + 1;
     if (guests.length) {

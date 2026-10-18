@@ -21,6 +21,7 @@ import { DeskPolicyPanel } from '../../../components/DeskPolicyPanel';
 import { CustomerPicker, type CustomerHistoryView, type CustomerLookupRow, type PickedCustomer } from '../../../components/CustomerPicker';
 import { ServicePicker } from '../../../components/ServicePicker';
 import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
+import { VisitContactEditor, splitName } from '../../../components/VisitContactEditor';
 
 interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string }
 /** One part of a visit done by one technician (hands, feet, …) — see walkin-legs.ts in the API. */
@@ -1399,6 +1400,9 @@ function WalkInTicketSheet({ w, staff, services, t, currency, restricted, requir
   const [extra, setExtra] = useState(String(w.extraMinutes ?? ''));
   const [station, setStation] = useState(w.station ?? '');
   const [busy, setBusy] = useState(false);
+  // The client wants their name / phone corrected after checking in.
+  const [editing, setEditing] = useState(false);
+  const [contactMsg, setContactMsg] = useState<string | null>(null);
   const items = w.items ?? [];
   const legs = w.legs ?? [];
   const subtotal = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
@@ -1425,7 +1429,11 @@ function WalkInTicketSheet({ w, staff, services, t, currency, restricted, requir
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(560px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, background: 'var(--c111827)', zIndex: 1 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
+              <button type="button" onClick={() => { setEditing((x) => !x); setContactMsg(null); }}
+                style={{ flexShrink: 0, background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: 8, color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, padding: '3px 8px', cursor: 'pointer' }}>✎ {t('wi.editInfo')}</button>
+            </div>
             {!onNow.length && (w.phase === 'BETWEEN' || w.status === 'WAITING')
               ? <div style={{ color: 'var(--ink-warn)', fontSize: 12, marginTop: 2, fontWeight: 600 }}>{w.phase === 'BETWEEN' ? `⏸ ${t('wi.between')}` : t('wi.legWaiting')}</div>
               : <div style={{ color: 'var(--c94a3b8)', fontSize: 12, marginTop: 2 }}>{t('wi.tech')} <strong style={{ color: 'var(--ccbd5e1)' }}>{onNow.length ? onNow.join(' + ') : fullName(w.assignedStaff) || '—'}</strong></div>}
@@ -1445,6 +1453,13 @@ function WalkInTicketSheet({ w, staff, services, t, currency, restricted, requir
 
         <div style={{ padding: 16 }}>
           {/* Massage / spa: forms signed or missing, the client's cautions, the SOAP note. */}
+          {editing && (
+            <VisitContactEditor kind="walkin" id={w.id} withNote
+              initial={{ ...splitName(w.customerName), phone: w.phone, note: w.note }}
+              onCancel={() => setEditing(false)}
+              onSaved={(r) => { setEditing(false); setContactMsg(r.switched ? t('wi.contactSwitched') : r.emailSkipped ? t('wi.emailSkipped') : null); }} />
+          )}
+          {contactMsg && <div style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ink-link)' }}>{contactMsg}</div>}
           <ClientFormsPanel walkInId={w.id} />
           {legs.length > 0 && (
             <LegsPanel w={w} legs={legs} staff={staff} restricted={restricted} t={t} onLeg={onLeg} onLegDone={onLegDone} />

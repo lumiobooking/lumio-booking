@@ -377,6 +377,64 @@ export class CustomersService {
       ?? null;
   }
 
+  /**
+   * The desk corrects who a booked / checked-in visit is for ("my name is
+   * spelled Ngoc", "use my new number"). Returns the customer the visit
+   * should point to — always one of THIS salon's records:
+   *
+   *   - the phone now belongs to ANOTHER of the salon's clients → that client
+   *     (the visit was filed under the wrong person; nobody is renamed);
+   *   - otherwise the visit's own client → corrected in place (an email that
+   *     another client already uses is left alone, and said so);
+   *   - no client yet (a guest of a party) → found or created from the new
+   *     phone / email, or none when there is neither.
+   */
+  async correctVisitContact(
+    tenantId: string,
+    currentId: string | null,
+    input: { firstName: string; lastName?: string | null; phone?: string | null; email?: string | null; birthDate?: string | null },
+  ): Promise<{ customerId: string | null; switched: boolean; emailSkipped: boolean }> {
+    const firstName = (input.firstName ?? '').trim().slice(0, 80);
+    if (!firstName) throw new BadRequestException('A name is required.');
+    const lastName = input.lastName === undefined ? undefined : ((input.lastName ?? '').trim().slice(0, 80) || null);
+    const phone = this.normPhone(input.phone);
+    const email = (input.email ?? '').trim().toLowerCase() || null;
+    const birth = (() => {
+      if (!input.birthDate) return null;
+      const d = new Date(input.birthDate);
+      return isNaN(d.getTime()) ? null : d;
+    })();
+    const current = currentId ? await this.prisma.customer.findFirst({ where: { id: currentId, tenantId }, select: { id: true } }) : null;
+
+    const other = phone ? await this.findByPhone(tenantId, phone) : null;
+    if (other && other.id !== current?.id) {
+      // Filed under the wrong person: point the visit at the right one and
+      // fill in only what that record is missing.
+      const patch: Record<string, unknown> = {};
+      if (!other.firstName || other.firstName === 'Walk-in') patch.firstName = firstName;
+      if (birth && !other.birthDate) patch.birthDate = birth;
+      if (Object.keys(patch).length) await this.prisma.customer.updateMany({ where: { id: other.id, tenantId }, data: patch });
+      return { customerId: other.id, switched: true, emailSkipped: false };
+    }
+
+    if (current) {
+      const data: Record<string, unknown> = { firstName };
+      if (lastName !== undefined) data.lastName = lastName;
+      if (phone) data.phone = phone;
+      if (birth) data.birthDate = birth;
+      let emailSkipped = false;
+      if (email) {
+        const taken = await this.prisma.customer.findFirst({ where: { tenantId, email: { equals: email, mode: 'insensitive' }, NOT: { id: current.id } }, select: { id: true } });
+        if (taken) emailSkipped = true; else data.email = email;
+      }
+      await this.prisma.customer.updateMany({ where: { id: current.id, tenantId }, data: data as never });
+      return { customerId: current.id, switched: false, emailSkipped };
+    }
+
+    const made = await this.findOrCreateByContact(tenantId, { firstName, lastName: lastName ?? null, phone, email, birthDate: input.birthDate ?? null });
+    return { customerId: made?.id ?? null, switched: !!made, emailSkipped: false };
+  }
+
   /** Front-desk quick-add (POS): find-or-create by phone/email, return a brief. */
   async quickCreate(
     user: AuthenticatedUser,

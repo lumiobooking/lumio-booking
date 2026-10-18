@@ -947,6 +947,21 @@ export default function PublicBookingPage() {
         }),
       ]
     : null;
+  // "People: 3" on the details step. The other two become guests with the
+  // same services — their own price, their own technician — exactly like
+  // "Bringing friends?"; a group needs a time with that many free techs,
+  // so the time is picked again. (A bare number used to book ONE person's
+  // price for the whole party.)
+  const setPeople = (n: number) => {
+    const want = Math.max(1, Math.min(10, Math.round(n) || 1));
+    const have = extraGuests.length + 1;
+    if (want === have) return;
+    const mine = [serviceId, ...extraServiceIds.filter((x) => x !== serviceId)].filter(Boolean);
+    setExtraGuests((gs) => (want > have
+      ? [...gs, ...Array.from({ length: want - have }, () => ({ name: '', serviceIds: [...mine] }))]
+      : gs.slice(0, want - 1)));
+    setActiveGuest(0); setStaffId(''); setSlot(null); setStep(3);
+  };
   const removeFor = (who: number, id: string) => {
     if (who === 0) { removeLine(id); return; }
     setExtraGuests((gs) => gs.map((g, k) => (k === who - 1 ? { ...g, serviceIds: g.serviceIds.filter((x) => x !== id) } : g)));
@@ -1307,6 +1322,7 @@ export default function PublicBookingPage() {
                   form={form} setForm={setForm} smsConsent={smsConsent} setSmsConsent={setSmsConsent}
                   accent={accent} error={error} infoOk={infoOk} isMobile={isMobile}
                   address={askAddress ? address : undefined} setAddress={setAddress}
+                  people={visitCart.length === 0 ? { count: isGroup ? extraGuests.length + 1 : 1, onChange: setPeople } : null}
                 />
                 {/* The escape hatch for "I also want another day/time" — offered
                     AFTER a visit is fully specified, never asked up front. Groups
@@ -2375,7 +2391,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, dealOn, staffId, 
 // ---------------------------------------------------------------------------
 // Step 4 · Confirm — appointment card, services, your details, payment.
 // ---------------------------------------------------------------------------
-function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile, party, address, setAddress }: {
+function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile, party, address, setAddress, people }: {
   salon: Salon | null; slot: Slot; employee: Staff | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; party?: Party | null;
   depositCents: number; cardFee?: { enabled: boolean; percent: number }; rules: BookingRules; paymentType: 'PAY_ONLINE' | 'PAY_LATER'; setPaymentType: (v: 'PAY_ONLINE' | 'PAY_LATER') => void;
   form: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string };
@@ -2383,6 +2399,8 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
   smsConsent: boolean; setSmsConsent: (v: boolean) => void; accent: string; error: string | null; infoOk: boolean; isMobile: boolean;
   /** Home services: the client's address (undefined = not asked). */
   address?: string; setAddress?: (v: string) => void;
+  /** How many people — each becomes a booked guest with the same services (null = several visits, one person). */
+  people?: { count: number; onChange: (n: number) => void } | null;
 }) {
   const showPhoneError = form.phone.trim().length > 0 && !isValidPhone(form.phone);
   const showEmailError = form.email.trim().length > 0 && !isValidEmail(form.email);
@@ -2463,7 +2481,20 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           {address !== undefined && setAddress && (
             <Field label={bt('Service address (optional)')}><input style={inputStyle} value={address} maxLength={300} onChange={(e) => setAddress(e.target.value)} placeholder={bt('Street, city')} autoComplete="street-address" /></Field>
           )}
-          <Field label={bt("People")}><input style={inputStyle} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></Field>
+          {people && (
+            <Field label={bt("People")}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button type="button" aria-label={bt('Fewer people')} disabled={people.count <= 1} onClick={() => people.onChange(people.count - 1)}
+                  style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid #dbe2ee', background: SOFT, color: INK, fontSize: 22, fontWeight: 700, cursor: people.count <= 1 ? 'default' : 'pointer', opacity: people.count <= 1 ? 0.45 : 1 }}>−</button>
+                <span style={{ minWidth: 28, textAlign: 'center', fontSize: 18, fontWeight: 800, color: INK }}>{people.count}</span>
+                <button type="button" aria-label={bt('More people')} disabled={people.count >= 10} onClick={() => people.onChange(people.count + 1)}
+                  style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid #dbe2ee', background: SOFT, color: INK, fontSize: 22, fontWeight: 700, cursor: people.count >= 10 ? 'default' : 'pointer', opacity: people.count >= 10 ? 0.45 : 1 }}>+</button>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.45 }}>
+                {bt('Everyone gets the same services, priced per person. Each guest can change theirs.')} {bt('Changing the number of people asks for the time again (each person needs a technician).')}
+              </div>
+            </Field>
+          )}
           <Field label={bt("🎂 Birthday (optional)")}><BirthdayInput value={form.birthDate} onChange={(iso) => setForm({ ...form, birthDate: iso })} /></Field>
         </div>
 

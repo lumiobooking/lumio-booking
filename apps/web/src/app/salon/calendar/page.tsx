@@ -26,6 +26,8 @@ import { applyFilters, facetCounts, activeFilterCount, NO_FILTERS, stripDays, su
 import { minutesInZone } from '../../../lib/salon-card';
 import { NewBookingModal, type NewBookingPrefill } from '../../../components/NewBookingModal';
 import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
+import { VisitContactEditor } from '../../../components/VisitContactEditor';
+import { notify } from '../../../lib/feedback';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string; staffMemberId?: string }
 /** Pill/label text: primary service plus a +N badge for the extra lines. */
@@ -793,7 +795,7 @@ function Inner() {
       })()}
 
       {selected && (
-        <BookingDetail booking={selected} all={bookings} tz={tz} onClose={() => setSelected(null)} onAction={action} />
+        <BookingDetail booking={selected} all={bookings} tz={tz} onClose={() => setSelected(null)} onAction={action} onReload={() => { setSelected(null); void load(); }} />
       )}
       {bookModal}
     </section>
@@ -833,10 +835,13 @@ function segBtn(active: boolean): React.CSSProperties {
   return { border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : 'var(--c94a3b8)' };
 }
 
-function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
+function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
   booking: Booking; all: Booking[]; tz?: string; onClose: () => void; onAction: (id: string, path: string, body?: unknown) => void;
+  /** After the client's details were corrected: reload the calendar. */
+  onReload?: () => void;
 }) {
   const { lang } = useLang();
+  const [editing, setEditing] = useState(false);
   const t = (k: string) => tr(k, lang);
   const locale = uiLocale(); // dates always render US month/day/year
   const start = new Date(b.startTime);
@@ -922,7 +927,24 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
         <VisitEditor b={b} onAction={onAction} />
 
         <div style={{ borderTop: '1px solid var(--c1f2937)', margin: '16px 0 12px' }} />
-        <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginBottom: 6, fontWeight: 600 }}>{t('cal.customer')}</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+          <span style={{ fontSize: 13, color: 'var(--c94a3b8)', fontWeight: 600 }}>{t('cal.customer')}</span>
+          {b.customer && (
+            <button type="button" onClick={() => setEditing((x) => !x)}
+              style={{ background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: 8, color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, padding: '3px 8px', cursor: 'pointer' }}>✎ {tr('wi.editInfo', lang)}</button>
+          )}
+        </div>
+        {editing && b.customer && (
+          <VisitContactEditor kind="booking" id={b.id}
+            initial={{ firstName: b.customer.firstName, lastName: b.customer.lastName, phone: b.customer.phone, email: b.customer.email }}
+            onCancel={() => setEditing(false)}
+            onSaved={(r) => {
+              setEditing(false);
+              if (r.switched) window.setTimeout(() => notify('info', tr('wi.contactSwitched', lang)), 0);
+              else if (r.emailSkipped) window.setTimeout(() => notify('info', tr('wi.emailSkipped', lang)), 0);
+              onReload?.();
+            }} />
+        )}
         <DetailRow label={t('cal.dName')} value={fullName} />
         {b.customer?.phone && <DetailRow label={t('cal.dPhone')} value={b.customer.phone} />}
         {b.customer?.email && <DetailRow label={t('cal.dEmail')} value={b.customer.email} />}

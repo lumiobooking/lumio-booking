@@ -5,7 +5,9 @@ import {
   ConflictException,
   ForbiddenException,
   Logger,
+  Optional,
 } from '@nestjs/common';
+import { CustomersService } from '../customers/customers.service';
 import { pastStartProblem } from './past-start';
 import { createHmac } from 'crypto';
 import { signingSecret } from '../common/secret.util';
@@ -119,6 +121,8 @@ export class BookingsService {
     private readonly referral: ReferralService,
     private readonly push: PushService,
     private readonly trash: TrashService,
+    // Correcting a booking's contact (updateContact). Optional so the unit tests build it bare.
+    @Optional() private readonly customers?: CustomersService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -127,6 +131,34 @@ export class BookingsService {
       throw new NotFoundException('No tenant context');
     }
     return id;
+  }
+
+  /**
+   * The desk corrects who a booking is for — name, phone, email, birthday.
+   * The client record is corrected (or the booking moves to the client the
+   * phone belongs to), and a ticket already checked in follows.
+   */
+  async updateContact(user: AuthenticatedUser, id: string, dto: { firstName: string; lastName?: string; phone?: string; email?: string; birthDate?: string }) {
+    const tenantId = this.tenantId(user);
+    if (!this.customers) throw new BadRequestException('Not available');
+    const appt = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { id: true, customerId: true } });
+    if (!appt) throw new NotFoundException('Booking not found');
+    if (dto.phone?.trim() && !isValidPhoneNumber(dto.phone.trim())) {
+      throw new BadRequestException('Please enter a valid phone number (8–15 digits).');
+    }
+    const res = await this.customers.correctVisitContact(tenantId, appt.customerId, dto);
+    const customerId = res.customerId ?? appt.customerId;
+    if (customerId !== appt.customerId) {
+      await this.prisma.appointment.updateMany({ where: { id: appt.id, tenantId }, data: { customerId } });
+    }
+    const name = [dto.firstName.trim(), (dto.lastName ?? '').trim()].filter(Boolean).join(' ').slice(0, 80);
+    const phone = (dto.phone ?? '').trim().slice(0, 40);
+    await this.prisma.walkIn.updateMany({
+      where: { tenantId, appointmentId: appt.id },
+      data: { customerName: name, customerId, ...(phone ? { phone } : {}) } as never,
+    }).catch(() => undefined);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'booking.contact_updated', resourceType: 'appointment', resourceId: appt.id, metadata: { switched: res.switched } });
+    return { id: appt.id, customerId, switched: res.switched, emailSkipped: res.emailSkipped };
   }
 
   /**

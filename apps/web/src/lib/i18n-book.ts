@@ -86,10 +86,6 @@ const VI: Record<string, string> = {
   'Birthday': 'Sinh nhật',
   'Notes': 'Ghi chú',
   'People': 'Số người',
-  'Everyone gets the same services, priced per person. Each guest can change theirs.': 'Mỗi người cùng dịch vụ, giá tính theo từng người. Có thể đổi dịch vụ cho từng khách.',
-  'Changing the number of people asks for the time again (each person needs a technician).': 'Đổi số người sẽ chọn lại giờ (mỗi người cần một thợ).',
-  'Fewer people': 'Bớt người',
-  'More people': 'Thêm người',
   'Name': 'Họ tên',
 
   // ---- validation --------------------------------------------------------

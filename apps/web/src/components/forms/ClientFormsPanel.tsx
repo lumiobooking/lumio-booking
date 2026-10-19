@@ -16,11 +16,14 @@ import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
 import { useLang } from '../../lib/i18n';
 import { kindLabel, type CustomerForms, type FormNeed, type VisitForms } from '../../lib/client-forms';
-import { EntryViewer, SoapSheet } from './FormModal';
+import { EntryViewer, FormModal, SoapSheet } from './FormModal';
+import { SignFlow } from './SignFlow';
 
-export function ClientFormsPanel({ appointmentId, walkInId, customerId, returnTo }: {
+const PAPER_GROUND = '#f5f3ef';
+
+export function ClientFormsPanel({ appointmentId, walkInId, customerId }: {
   appointmentId?: string | null; walkInId?: string | null; customerId?: string | null;
-  /** Where "sign on this device" comes back to (defaults to this page). */
+  /** Kept for callers; signing on this device now happens in a popup, so nothing navigates away. */
   returnTo?: string;
 }) {
   const { token } = useAuth();
@@ -34,6 +37,8 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId, returnTo
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  // "Sign on this device": the client signs in a popup over this screen.
+  const [signing, setSigning] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!token) return;
@@ -46,6 +51,8 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId, returnTo
   }, [token, visitMode, appointmentId, walkInId, customerId, vi]);
 
   useEffect(() => { load(); }, [load, tick]);
+  // Signed in the popup: show ✓ at once (the popup stays on its thank-you card).
+  const onSigned = useCallback(() => setTick((x) => x + 1), []);
 
   const enabled = visitMode ? !!visit?.enabled : !!file?.enabled;
   const needs: FormNeed[] = (visitMode ? visit?.needs : file?.needs) ?? [];
@@ -61,9 +68,9 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId, returnTo
     setBusy(true); setMsg(null);
     try {
       const r = await apiFetch<{ token: string }>('/client-forms/links', { method: 'POST', token, body: linkBody() });
-      const back = returnTo ?? `${window.location.pathname}${window.location.search}`;
-      window.location.href = `/sign/${r.token}?return=${encodeURIComponent(back)}`;
-    } catch (e) { setMsg(e instanceof Error ? e.message : 'Error'); setBusy(false); }
+      setSigning(r.token);
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Error'); }
+    finally { setBusy(false); }
   };
   const sendSms = async () => {
     setBusy(true); setMsg(null);
@@ -160,6 +167,18 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId, returnTo
       )}
 
       {open && <EntryViewer token={token} vi={vi} id={open} onClose={() => setOpen(null)} />}
+      {signing && (
+        <FormModal title={vi ? 'Khách ký phiếu' : 'Client signs'} onClose={() => { setSigning(null); setTick((x) => x + 1); }}>
+          {/* Paper, whatever the theme: this is the client's page, handed across the counter. */}
+          <div style={{ background: PAPER_GROUND, borderRadius: 12, padding: '14px 12px' }}>
+            <SignFlow token={signing} embedded onFinished={onSigned} />
+          </div>
+          <button type="button" onClick={() => { setSigning(null); setTick((x) => x + 1); }}
+            style={{ marginTop: 12, width: '100%', minHeight: 44, borderRadius: 12, border: '1px solid var(--line-strong)', background: 'transparent', color: 'var(--ce2e8f0)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+            {vi ? 'Đóng' : 'Close'}
+          </button>
+        </FormModal>
+      )}
       {soap && (
         <SoapSheet token={token} vi={vi} appointmentId={appointmentId} walkInId={walkInId} customerId={custId}
           onClose={() => setSoap(false)} onSaved={() => setTick((x) => x + 1)} />

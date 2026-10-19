@@ -109,6 +109,7 @@ const NEVER_CACHE: RegExp[] = [
   /^\/messenger\/(threads|activity|turns|leads)(\/|$)/, // the inbox: list, one conversation, turns
   /^\/walkins\/(board|party|my)(\/|$)/,                 // the floor and the till's party view
   /^\/notifications(\/|$)/,                              // the bell
+  /^\/client-forms\/(visit|customers)(\/|$)/,             // signed / missing — must flip to ✓ the moment the client signs
   /^\/(tiktok|google-reviews|messenger)$/,               // connection status — must show a connect the moment it lands
 ];
 

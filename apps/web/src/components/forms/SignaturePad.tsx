@@ -60,7 +60,7 @@ export function SignaturePad({ onChange, palette, vi, height = 160 }: { onChange
     if (!drawing.current) return;
     drawing.current = false;
     last.current = null;
-    if (ink.current > 60 && ref.current) {
+    if (ink.current > 25 && ref.current) {
       setEmpty(false);
       onChange(ref.current.toDataURL('image/png'));
     }

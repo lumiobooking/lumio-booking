@@ -14,7 +14,7 @@
 // do it, and only the times when they are actually free.
 // ===========================================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -463,12 +463,7 @@ export default function PublicBookingPage() {
   ];
   // What the open tab shows: the booker's add-ons, or the friend's whose tab is open.
   const viewGuest = activeGuest > 0 ? extraGuests[activeGuest - 1] ?? null : null;
-  const viewAddons = viewGuest ? guestAddons(viewGuest) : serviceAddons;
   const viewAddonIds = viewGuest ? (viewGuest.addonIds ?? []) : addonIds;
-  const viewAsk = viewAddons.filter((a) => a.askAtBooking);
-  const viewFor = (viewGuest ? viewGuest.serviceIds : (serviceId ? [serviceId, ...extraServiceIds] : []))
-    .filter((id) => (services.find((sv) => sv.id === id)?.addons ?? []).length > 0)
-    .map((id) => services.find((sv) => sv.id === id)?.name ?? '').filter(Boolean).join(' & ');
   const setViewAddonIds = (fn: (p: string[]) => string[]) => {
     if (!viewGuest) { setAddonIds(fn); return; }
     const k = activeGuest - 1;
@@ -983,6 +978,72 @@ export default function PublicBookingPage() {
     setSlot(null);
   };
 
+  // The add-ons of ONE picked service, shown right under its card (it used to
+  // sit below the whole menu, where nobody scrolled to it): the salon's
+  // "ask first" questions, then the extras to tick — the same blocks as
+  // before. A shared extra appears once, under the first picked service.
+  const addonOwner = new Map<string, string>();
+  for (const id of (viewGuest ? viewGuest.serviceIds : pickedServiceIds)) {
+    for (const a of services.find((sv) => sv.id === id)?.addons ?? []) if (!addonOwner.has(a.id)) addonOwner.set(a.id, id);
+  }
+  const addonBlockFor = (sv: Service) => {
+    const mine = (sv.addons ?? []).filter((a) => addonOwner.get(a.id) === sv.id);
+    if (!mine.length) return null;
+    const asks = mine.filter((a) => a.askAtBooking);
+    const opts = mine.filter((a) => !a.askAtBooking);
+    return (
+      <div style={{ margin: '0 0 6px' }}>
+                  {asks.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <SectionLabel accent={accent}>A quick question</SectionLabel>
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        {asks.map((a) => {
+                          const yes = viewAddonIds.includes(a.id);
+                          const no = !yes && askAnswers[askKey(activeGuest, a.id)] === 'no';
+                          const pick = (v: 'yes' | 'no') => {
+                            setAskAnswers((p) => ({ ...p, [askKey(activeGuest, a.id)]: v }));
+                            setViewAddonIds((p) => (v === 'yes' ? (p.includes(a.id) ? p : [...p, a.id]) : p.filter((x) => x !== a.id)));
+                            setSlot(null);
+                          };
+                          return (
+                            <div key={a.id} style={{ ...rowCard, display: 'block', borderColor: yes || no ? '#e6eaf2' : accent, background: '#fff' }}>
+                              <div style={rowTitle}>Would you like {a.name}?</div>
+                              <div style={rowMeta}>{a.durationMinutes > 0 && <>⏳ +{a.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span> </>}<b style={{ color: accent }}>+{fmt(a.priceCents)}</b>{a.durationMinutes > 0 ? ' · we block the extra time so you are never rushed' : ''}</div>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                                <button type="button" onClick={() => pick('yes')} style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: `2px solid ${yes ? accent : '#e6eaf2'}`, background: yes ? '#fffaf0' : '#fff', color: '#1e293b', fontWeight: 700, cursor: 'pointer' }}>Yes, please</button>
+                                <button type="button" onClick={() => pick('no')} style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: `2px solid ${no ? accent : '#e6eaf2'}`, background: no ? '#fffaf0' : '#fff', color: '#1e293b', fontWeight: 700, cursor: 'pointer' }}>No, thanks</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {opts.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <SectionLabel accent={accent}>Add-ons for {sv.name}</SectionLabel>
+                      <div style={{ display: 'grid', gap: 10, alignContent: 'start', alignItems: 'start', gridAutoRows: 'min-content' }}>
+                        {opts.map((a) => {
+                          const on = viewAddonIds.includes(a.id);
+                          return (
+                            <button key={a.id} type="button" className="lumio-row"
+                              onClick={() => { setViewAddonIds((p) => p.includes(a.id) ? p.filter((x) => x !== a.id) : [...p, a.id]); setSlot(null); }}
+                              style={{ ...rowCard, borderColor: on ? accent : '#e6eaf2', background: on ? '#fffaf0' : '#fff' }}>
+                              <span style={{ flex: 1, textAlign: 'left' }}>
+                                <span style={rowTitle}>{a.name}</span>
+                                <span style={rowMeta}>{a.durationMinutes > 0 && <>⏳ {a.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span> </>}<b style={{ color: accent }}>+{salon?.cardFee?.enabled && salon.cardFee.percent > 0 ? <>💵 </> : null}{fmt(a.priceCents)}</b>{salon?.cardFee?.enabled && salon.cardFee.percent > 0 && <span style={{ color: '#8fa0bb', fontWeight: 600 }}> · 💳 +{fmt(Math.round(a.priceCents * (1 + salon.cardFee.percent / 100)))}</span>}</span>
+                              </span>
+                              <PlusCheck on={on} accent={accent} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+      </div>
+    );
+  };
+
   const ctaLabel =
     step === 4 ? (submitting ? bt("Booking\u2026") : isGroup ? btf('Book for {n}', { n: extraGuests.length + 1 }) : visitCart.length > 0 ? btf('Book {n} visits', { n: visitCart.length + 1 }) : bt("Book")) :
     step === 1 ? (pickedServiceIds.length > 0 ? (isGroup ? btf('Book for {n}', { n: extraGuests.length + 1 }) : bt('Book for Me')) : bt("Select a service")) : bt("Continue");
@@ -1236,57 +1297,11 @@ export default function PublicBookingPage() {
                     }}
                     fmt={fmt} accent={accent} cardFee={salon?.cardFee} dealFor={menuDeal}
                     subscribe={subscribe} pinning={pinning} stickyTop={fullscreen ? 58 : 64}
+                    renderAfter={addonBlockFor}
                   />
                   {walkInOnly.length > 0 && (
                     <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 12, background: '#f8fafc', border: '1px dashed #cbd5e1', color: '#475569', fontSize: 13, lineHeight: 1.5 }}>
                       <b style={{ color: '#334155' }}>Walk-in only — no appointment needed:</b> {walkInOnly.map((w) => w.name).join(', ')}. First come, first served — just come in.
-                    </div>
-                  )}
-                  {viewAsk.length > 0 && (
-                    <div style={{ marginTop: 22 }}>
-                      <SectionLabel accent={accent}>A quick question</SectionLabel>
-                      <div style={{ display: 'grid', gap: 10 }}>
-                        {viewAsk.map((a) => {
-                          const yes = viewAddonIds.includes(a.id);
-                          const no = !yes && askAnswers[askKey(activeGuest, a.id)] === 'no';
-                          const pick = (v: 'yes' | 'no') => {
-                            setAskAnswers((p) => ({ ...p, [askKey(activeGuest, a.id)]: v }));
-                            setViewAddonIds((p) => (v === 'yes' ? (p.includes(a.id) ? p : [...p, a.id]) : p.filter((x) => x !== a.id)));
-                            setSlot(null);
-                          };
-                          return (
-                            <div key={a.id} style={{ ...rowCard, display: 'block', borderColor: yes || no ? '#e6eaf2' : accent, background: '#fff' }}>
-                              <div style={rowTitle}>Would you like {a.name}?</div>
-                              <div style={rowMeta}>{a.durationMinutes > 0 && <>⏳ +{a.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span> </>}<b style={{ color: accent }}>+{fmt(a.priceCents)}</b>{a.durationMinutes > 0 ? ' · we block the extra time so you are never rushed' : ''}</div>
-                              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                                <button type="button" onClick={() => pick('yes')} style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: `2px solid ${yes ? accent : '#e6eaf2'}`, background: yes ? '#fffaf0' : '#fff', color: '#1e293b', fontWeight: 700, cursor: 'pointer' }}>Yes, please</button>
-                                <button type="button" onClick={() => pick('no')} style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: `2px solid ${no ? accent : '#e6eaf2'}`, background: no ? '#fffaf0' : '#fff', color: '#1e293b', fontWeight: 700, cursor: 'pointer' }}>No, thanks</button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {viewAddons.length > viewAsk.length && (
-                    <div style={{ marginTop: 22 }}>
-                      <SectionLabel accent={accent}>Add-ons for {viewFor}</SectionLabel>
-                      <div style={{ display: 'grid', gap: 10, alignContent: 'start', alignItems: 'start', gridAutoRows: 'min-content' }}>
-                        {viewAddons.filter((a) => !a.askAtBooking).map((a) => {
-                          const on = viewAddonIds.includes(a.id);
-                          return (
-                            <button key={a.id} type="button" className="lumio-row"
-                              onClick={() => { setViewAddonIds((p) => p.includes(a.id) ? p.filter((x) => x !== a.id) : [...p, a.id]); setSlot(null); }}
-                              style={{ ...rowCard, borderColor: on ? accent : '#e6eaf2', background: on ? '#fffaf0' : '#fff' }}>
-                              <span style={{ flex: 1, textAlign: 'left' }}>
-                                <span style={rowTitle}>{a.name}</span>
-                                <span style={rowMeta}>{a.durationMinutes > 0 && <>⏳ {a.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span> </>}<b style={{ color: accent }}>+{salon?.cardFee?.enabled && salon.cardFee.percent > 0 ? <>💵 </> : null}{fmt(a.priceCents)}</b>{salon?.cardFee?.enabled && salon.cardFee.percent > 0 && <span style={{ color: '#8fa0bb', fontWeight: 600 }}> · 💳 +{fmt(Math.round(a.priceCents * (1 + salon.cardFee.percent / 100)))}</span>}</span>
-                              </span>
-                              <PlusCheck on={on} accent={accent} />
-                            </button>
-                          );
-                        })}
-                      </div>
                     </div>
                   )}
                 </>
@@ -1827,8 +1842,10 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
 // Step 1 · Services: sticky category tabs + one section per category.
 // Scrolling moves the tabs (scroll-spy); tapping a tab scrolls to the section.
 // ---------------------------------------------------------------------------
-function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, cardFee, dealFor, subscribe, pinning, stickyTop }: {
+function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, cardFee, dealFor, subscribe, pinning, stickyTop, renderAfter }: {
   services: Service[]; categories: Category[]; selectedIds: string[];
+  /** What sits right under a picked service's card (its add-ons). */
+  renderAfter?: (s: Service) => React.ReactNode;
   /** The promotion this service gets (see menuDeal) — shown on the menu itself. */
   dealFor?: (s: Service) => MenuDeal;
   onToggle: (id: string) => void; fmt: (c: number) => string; accent: string;
@@ -1994,12 +2011,13 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
               const deal = dealFor ? dealFor(s) : null;
               const promo = deal?.pct ?? 0;
               const price = afterPct(svcNetCents(s), promo);
+              // A div rather than a button, because "Show more" lives inside it
+              // and HTML does not allow a button inside a button — Firefox
+              // drops the inner one's clicks outright. Role, tabIndex and the
+              // key handler keep it exactly as operable as the button it was.
               return (
-                // A div rather than a button, because "Show more" lives inside it
-                // and HTML does not allow a button inside a button — Firefox
-                // drops the inner one's clicks outright. Role, tabIndex and the
-                // key handler keep it exactly as operable as the button it was.
-                <div key={s.id} role="button" tabIndex={0} className="lumio-row"
+                <Fragment key={s.id}>
+                <div role="button" tabIndex={0} className="lumio-row"
                   onClick={() => onToggle(s.id)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(s.id); }
@@ -2036,12 +2054,21 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                   </span>
                   <PlusCheck on={on} accent={accent} />
                 </div>
+                {on && renderAfter ? renderAfter(s) : null}
+                </Fragment>
               );
             })}
             {g.items.length === 0 && <div style={{ color: 'var(--c94a3b8)', fontSize: 13.5, padding: '8px 2px' }}>{bt("Nothing found.")}</div>}
           </div>
         </div>
       ))}
+      {renderAfter && (() => {
+        const seen = new Set(shown.flatMap((g) => g.items.map((x) => x.id)));
+        return selectedIds.filter((id) => !seen.has(id)).map((id) => {
+          const sv = services.find((x) => x.id === id);
+          return sv ? <Fragment key={`after-${id}`}>{renderAfter(sv)}</Fragment> : null;
+        });
+      })()}
     </div>
   );
 }

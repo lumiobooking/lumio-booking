@@ -23,7 +23,7 @@ import { ServicePicker } from '../../../components/ServicePicker';
 import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
 import { VisitContactEditor, splitName } from '../../../components/VisitContactEditor';
 
-interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string }
+interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string; kind?: string }
 /** One part of a visit done by one technician (hands, feet, …) — see walkin-legs.ts in the API. */
 interface Leg {
   legId: string; zone: 'HAND' | 'FOOT' | 'OTHER'; status: 'WAITING' | 'SERVING' | 'DONE';
@@ -79,7 +79,9 @@ function cameInText(w: WalkIn): string {
   return at ? `${vi ? 'vào' : 'in'} ${at}` : '';
 }
 /** Someone who came in with the customer: a ticket of their own in the same party. */
-interface GuestDraft { name: string; serviceIds: string[]; staffChoice: string }
+interface GuestDraft { name: string; serviceIds: string[]; staffChoice: string; addonIds?: string[] }
+/** An add-on from /services/addons/all: its own service, a category's services, or every service. */
+interface DeskAddon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string | null; categoryId?: string | null; askAtBooking?: boolean }
 interface StaffTurn {
   id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean;
   /** Minutes left on what she is doing (rough). */
@@ -171,6 +173,9 @@ function Inner() {
   };
   // The people who came in with her — one ticket each, linked as one party.
   const [guests, setGuests] = useState<GuestDraft[]>([]);
+  // The salon's add-ons, and the ones picked for the customer at the desk.
+  const [deskAddons, setDeskAddons] = useState<DeskAddon[]>([]);
+  const [addonPick, setAddonPick] = useState<string[]>([]);
   // The form is a drawer, not a permanent header: reception looks at the board
   // all day and only needs the form when someone walks in.
   const [formOpen, setFormOpen] = useState(false);
@@ -216,13 +221,14 @@ function Inner() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [b, svc, settings] = await Promise.all([
+      const [b, svc, settings, adds] = await Promise.all([
         apiFetch<Board>('/walkins/board', { token }),
         apiFetch<Service[]>('/services', { token }).catch(() => []),
         apiFetch<{ booking?: { currency?: string }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; welcomeImageUrl?: string } }>('/settings', { token })
           .catch(() => ({} as { booking?: { currency?: string }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; welcomeImageUrl?: string } })),
+        apiFetch<DeskAddon[]>('/services/addons/all', { token }).catch(() => [] as DeskAddon[]),
       ]);
-      setBoard(b); setServices(svc);
+      setBoard(b); setServices(svc); setDeskAddons(Array.isArray(adds) ? adds : []);
       if (settings?.booking?.currency) setCurrency(settings.booking.currency);
       if (settings?.company?.name) setSalonName(settings.company.name);
       if (settings?.branding?.logoUrl) setSalonLogo(settings.branding.logoUrl);
@@ -476,9 +482,34 @@ function Inner() {
   }
   function startNew() {
     setQrOn(false);
-    setForm(BLANK_FORM); setPickedIds([]); setGuests([]); setFormOpen(true);
+    setForm(BLANK_FORM); setPickedIds([]); setGuests([]); setAddonPick([]); setFormOpen(true);
     // Push immediately: the customer should see the form the moment it opens.
     setTimeout(() => pushToScreen('form'), 0);
+  }
+
+  /** The add-ons offered on these services (own, category's, whole menu's), once each. */
+  function addonsFor(ids: string[]): DeskAddon[] {
+    const picked = ids.map((id) => services.find((x) => x.id === id)).filter((x): x is Service => !!x);
+    return deskAddons.filter((a) => (a.serviceId ? picked.some((x) => x.id === a.serviceId)
+      : a.categoryId ? picked.some((x) => x.category?.id === a.categoryId) : picked.length > 0));
+  }
+  /** One row of add-on chips, in the menu's own chip style. */
+  function addonChips(list: DeskAddon[], on: string[], toggle: (id: string) => void) {
+    if (!list.length) return null;
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, alignItems: 'center' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--c94a3b8)', textTransform: 'uppercase', marginRight: 2 }}>{vi ? 'Thêm' : 'Add-ons'}</span>
+        {list.map((a) => {
+          const sel = on.includes(a.id);
+          return (
+            <button key={a.id} type="button" onClick={() => toggle(a.id)} title={a.askAtBooking ? (vi ? 'Tiệm dặn: hỏi khách món này' : 'The salon asks: offer this to the customer') : undefined}
+              style={{ height: 30, padding: '0 12px', borderRadius: 999, border: `1px solid ${sel ? '#6366f1' : 'var(--c334155)'}`, background: sel ? '#6366f1' : 'transparent', color: sel ? '#fff' : 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+              {sel ? '✓ ' : '+ '}{a.askAtBooking ? `${a.name}?` : a.name} · {formatPrice(a.priceCents, currency)}{a.durationMinutes > 0 ? ` · ${a.durationMinutes}′` : ''}
+            </button>
+          );
+        })}
+      </div>
+    );
   }
 
   async function add(e?: FormEvent) {
@@ -495,6 +526,8 @@ function Inner() {
         // First pick leads (it decides which kind of chair to look for).
         serviceId: pickedIds[0] || undefined,
         serviceIds: pickedIds.length > 1 ? pickedIds.slice(1) : undefined,
+        // Only add-ons of services still picked: dropping a service drops its extras.
+        addonIds: (() => { const ok = addonsFor(pickedIds).map((a) => a.id); const ids = addonPick.filter((id) => ok.includes(id)); return ids.length ? ids : undefined; })(),
         extraMinutes: parseInt(form.extraMinutes, 10) || undefined,
         partySize: guests.length + 1,
         station: form.station.trim() || undefined,
@@ -502,6 +535,7 @@ function Inner() {
           ? guests.map((g) => ({
               firstName: g.name.trim() || undefined,
               serviceIds: g.serviceIds,
+              addonIds: (() => { const ok = addonsFor(g.serviceIds).map((a) => a.id); const ids = (g.addonIds ?? []).filter((id) => ok.includes(id)); return ids.length ? ids : undefined; })(),
               assignedStaffId: g.staffChoice !== 'auto' && g.staffChoice !== 'wait' ? g.staffChoice : undefined,
             }))
           : undefined,
@@ -513,7 +547,7 @@ function Inner() {
       await apiFetch('/walkins', { method: 'POST', token, body });
       pushToScreen('thanks');
       setQrOn(false);
-      setForm(BLANK_FORM); setPickedIds([]); setGuests([]); setCustomerId(null); setHist(null); setFormOpen(false);
+      setForm(BLANK_FORM); setPickedIds([]); setGuests([]); setAddonPick([]); setCustomerId(null); setHist(null); setFormOpen(false);
       // Leave the thank-you up for a moment, then reset the customer screen.
       setTimeout(() => pushToScreen('idle'), 6000);
       await load();
@@ -612,6 +646,7 @@ function Inner() {
               vi={vi}
               maxHeight={230}
             />
+            {addonChips(addonsFor(pickedIds), addonPick, (id) => setAddonPick((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id])))}
             <div style={{ ...wiGrid, marginTop: 10 }}>
               <label>
                 <WiLabel text={t('wi.extraTime')} opt={t('wi.optional')} hint={t('wi.extraTimeHint')} />
@@ -643,6 +678,7 @@ function Inner() {
                     })}
                   </div>
                 )}
+                {addonChips(addonsFor(g.serviceIds), g.addonIds ?? [], (id) => setGuests((v) => v.map((x, j) => (j === i ? { ...x, addonIds: (x.addonIds ?? []).includes(id) ? (x.addonIds ?? []).filter((y) => y !== id) : [...(x.addonIds ?? []), id] } : x))))}
                 <div style={wiGrid}>
                   <label style={{ gridColumn: 'span 2', minWidth: 0 }}>
                     <WiLabel text={t('wi.service')} opt={t('wi.optional')} />
@@ -1013,7 +1049,7 @@ function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, suggest
         {legs.length > 1 || legs.some((l) => l.pinned && l.staffId)
           ? <LegChips legs={legs} staff={staff} t={t} />
           : items.length
-            ? items.map((it) => <span key={it.lineId} style={svcPill}>{it.name}</span>)
+            ? items.map((it) => <span key={it.lineId} style={svcPill}>{it.kind === 'addon' ? `+ ${it.name}` : it.name}</span>)
             : w.service ? <span style={svcPill}>{w.service.name}</span> : <span style={missPill}>{t('wi.noService')}</span>}
         {items.length > 0 && <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{formatPrice(total, currency)}{mins > 0 ? ` · ~${mins}′` : ''}</span>}
       </div>
@@ -1071,7 +1107,7 @@ function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, suggest
           <div style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
             {items.map((it) => (
               <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid var(--line)' }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.kind === 'addon' ? `+ ${it.name}` : it.name}</span>
                 {it.durationMinutes ? <span style={{ fontSize: 11, color: 'var(--c64748b)', flexShrink: 0 }}>{it.durationMinutes}′</span> : null}
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ce2e8f0)', flexShrink: 0 }}>{formatPrice(it.priceCents || 0, currency)}</span>
               </div>
@@ -1163,7 +1199,7 @@ function ServingRow({ w, staff, currency, t, isMobile, onOpen, onPay }: {
           // Several parts: one chip per part, each with its technician.
           ? <LegChips legs={legs} staff={staff} t={t} />
           : items.length
-            ? items.map((it) => <span key={it.lineId} style={svcPill}>{it.name}</span>)
+            ? items.map((it) => <span key={it.lineId} style={svcPill}>{it.kind === 'addon' ? `+ ${it.name}` : it.name}</span>)
             : <span style={missPill}>⚠ {t('wi.noService')}</span>}
         <span style={{ flex: 1 }} />
         {items.length > 0 && <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink-good)', fontVariantNumeric: 'tabular-nums' }}>{formatPrice(subtotal, currency)}</span>}

@@ -484,6 +484,26 @@ function Register() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+  // A till stays open all day: an add-on the owner just saved on another
+  // screen reaches it the next time the till comes back to the front (tab
+  // switch, tablet woken), at most once a minute. Quiet — no loading screen,
+  // nothing on the ticket changes; only the menu tiles are refreshed.
+  const lastMenuAt = useRef(Date.now());
+  useEffect(() => {
+    const back = () => {
+      if (!token || document.visibilityState !== 'visible' || Date.now() - lastMenuAt.current < 60_000) return;
+      lastMenuAt.current = Date.now();
+      void Promise.all([
+        apiFetch<Service[]>('/services', { token }),
+        apiFetch<Addon[]>('/services/addons/all', { token }),
+      ]).then(([sv, ad]) => {
+        if (Array.isArray(sv)) setServices(sv.filter((x) => x.isActive));
+        if (Array.isArray(ad)) setAddons(ad);
+      }).catch(() => undefined);
+    };
+    document.addEventListener('visibilitychange', back);
+    return () => document.removeEventListener('visibilitychange', back);
+  }, [token]);
 
   // Upload any sales taken offline. Idempotent: re-sending an already-synced sale
   // is a no-op (the clientRef returns the existing order — never a duplicate).
@@ -539,13 +559,14 @@ function Register() {
     (async () => {
       if (walkInId) {
         try {
-          const w = await apiFetch<{ groupId?: string | null; items?: { serviceId: string; name: string; priceCents: number; staffId: string | null }[] }>(`/walkins/${walkInId}`, { token });
+          const w = await apiFetch<{ groupId?: string | null; items?: { serviceId: string; name: string; priceCents: number; staffId: string | null; kind?: string }[] }>(`/walkins/${walkInId}`, { token });
           // One of a party: show the whole party, not just this one ticket.
           if (alive && w.groupId && !partyGroupId) { setPartyGroupId(w.groupId); setPartyOpen(true); }
           const items = Array.isArray(w.items) ? w.items : [];
           if (alive && items.length > 0) {
             setCart((c) => (c.length > 0 ? c : items.map((it) => ({
               uid: `u${uidSeq++}`, kind: 'SERVICE' as const, refId: it.serviceId, name: it.name,
+              ...(it.kind === 'addon' ? { isAddon: true } : {}),
               origUnitPriceCents: it.priceCents, unitPriceCents: it.priceCents, discountPercent: 0,
               quantity: 1, tipCents: 0, staffMemberId: it.staffId ?? '',
             }))));
@@ -1549,6 +1570,7 @@ function Register() {
     setPartyGroupId(gid);
     setCart(c.lines.map((l) => ({
       uid: `u${uidSeq++}`, kind: 'SERVICE' as const, refId: l.refId, name: l.name,
+      ...(l.isAddon ? { isAddon: true } : {}),
       origUnitPriceCents: l.origUnitPriceCents, unitPriceCents: l.unitPriceCents, discountPercent: l.discountPercent,
       quantity: 1, tipCents: l.tipCents, staffMemberId: l.staffMemberId,
       walkInId: l.walkInId, walkInLineId: l.walkInLineId, guestName: l.guestName,

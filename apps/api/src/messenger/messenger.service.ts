@@ -495,6 +495,17 @@ export class MessengerService implements OnModuleInit {
    * that died on Monday is on the agency list Monday, not on the calendar as
    * a red post on Friday.
    */
+  /** One cheap Graph call with the Page's own token: null when it still speaks for the Page, else Meta's error. */
+  private async probePageToken(pageId: string, token: string): Promise<{ message?: string; code?: number; error_subcode?: number } | null> {
+    try {
+      const res = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}?fields=id&access_token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(10_000) });
+      const j = (await res.json().catch(() => ({}))) as { id?: string; error?: { message?: string; code?: number; error_subcode?: number } };
+      return j.error ?? (res.ok ? null : { message: `HTTP ${res.status}` });
+    } catch {
+      return null; // network trouble on our side says nothing about the token
+    }
+  }
+
   async checkAllPageHealth(): Promise<{ checked: number; lost: number }> {
     const pages = await this.prisma.messengerPage.findMany({
       where: { enabled: true }, select: { tenantId: true, pageId: true, pageName: true, pageToken: true }, take: 2000,
@@ -917,7 +928,7 @@ export class MessengerService implements OnModuleInit {
     // the salon found out from a customer.
     // Subscribe the Page to our app's webhook so messages start flowing — and
     // keep Meta's answer for the status page.
-    await this.subscribePageWebhook(page.id, page.access_token);
+    const subscribed = await this.subscribePageWebhook(page.id, page.access_token);
     await this.setupMessengerProfile(page.access_token, greeting);
     await this.audit(tenantId, 'messenger.connected');
     // The Page's existing conversations appear in the inbox right away — not
@@ -928,9 +939,15 @@ export class MessengerService implements OnModuleInit {
       void this.syncConversations(tenantId, { limit: 25, reply: false }).catch((e) => this.logger.warn(`sync after connect failed: ${String(e).slice(0, 160)}`));
     }, 8000);
     later.unref?.();
-    // A fresh Page token is, by definition, alive: clear a "lost" mark so the
-    // agency list and the salon's banner go quiet the minute they reconnect.
-    await this.settings.setMessengerHealth(tenantId, classifyPageError(null)).catch(() => undefined);
+    // A fresh Page token is USUALLY alive: clear a "lost" mark so the agency
+    // list and the salon's banner go quiet the minute they reconnect. But not
+    // blindly — a token minted by a checkpointed account (190/459) is dead on
+    // arrival, and an owner who reconnected five times saw "Connected" each
+    // time, then the red banner again three minutes after the next restart.
+    // When Meta refused the webhook, ask Graph about the token right now and
+    // record THAT, so the banner on the way back says what is actually wrong.
+    if (subscribed) await this.settings.setMessengerHealth(tenantId, classifyPageError(null)).catch(() => undefined);
+    else await this.recordPageHealth(tenantId, await this.probePageToken(page.id, page.access_token), page.name || null).catch(() => undefined);
     return 'ok';
   }
 

@@ -37,7 +37,7 @@ export class ServicesController {
   // All add-ons for the tenant (used by the POS catalog). Two-segment path so it
   // never collides with GET /services/:id.
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
-  @Caps('pos', 'services')
+  @Caps('pos', 'services', 'walkins')
   @Get('addons/all')
   listAllAddons(@CurrentUser() user: AuthenticatedUser) {
     return this.servicesService.listAllAddons(user);

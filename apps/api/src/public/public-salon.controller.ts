@@ -388,6 +388,7 @@ export class PublicSalonController {
         const gb = await this.bookings.createForTenant(tenantId, {
           serviceId: g.serviceIds[0],
           ...(g.serviceIds.length > 1 ? { serviceIds: g.serviceIds } : {}),
+          ...(g.addonIds?.length ? { addonIds: g.addonIds.slice(0, 20) } : {}),
           startTime: dto.startTime,
           customerFirstName: guestNames[i],
           partySize,

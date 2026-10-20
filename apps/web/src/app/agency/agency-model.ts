@@ -166,6 +166,7 @@ export interface ChannelCell { k: string; icon: string; label: string; v: string
 export const FB_LOST_LABEL: Record<string, string> = {
   role_lost: 'tài khoản kết nối mất vai trò trên Trang',
   two_factor: 'Business yêu cầu xác thực 2 lớp',
+  checkpoint: 'Facebook tạm chặn tài khoản đã kết nối — cần đăng nhập facebook.com',
   expired: 'kết nối hết hạn',
   revoked: 'Facebook thu hồi kết nối',
 };

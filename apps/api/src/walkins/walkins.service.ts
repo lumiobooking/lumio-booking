@@ -63,6 +63,8 @@ export interface AddWalkInDto {
   serviceId?: string;
   /** Additional services picked in the same go (the walk-in norm). */
   serviceIds?: string[];
+  /** Add-ons of the services picked ("Vẽ móng"): their own line, on the service's leg. */
+  addonIds?: string[];
   /** Minutes to allow on top of the services. */
   extraMinutes?: number;
   note?: string;
@@ -71,7 +73,7 @@ export interface AddWalkInDto {
   autoAssign?: boolean;
   station?: string;
   /** People who came in with the customer: a ticket each, one party. */
-  guests?: { firstName?: string; serviceIds?: string[]; assignedStaffId?: string }[];
+  guests?: { firstName?: string; serviceIds?: string[]; addonIds?: string[]; assignedStaffId?: string }[];
 }
 
 const INCLUDE = {
@@ -184,6 +186,44 @@ export class WalkinsService {
       zone: zoneOf(svc.name, svc.category?.name),
       turnValue: typeof svc.turnValue === 'number' ? svc.turnValue : 1,
     };
+  }
+
+  /**
+   * The add-on lines of a ticket (walkin-legs.ts `kind: 'addon'`). Each rides
+   * on the line of the service it is offered for — its own service, any
+   * service of its category, or any service at all — so the board reads
+   * "Take Off Only + Vẽ móng", the till bills $20 + $15 on two lines, and
+   * the dispatcher never hands "Vẽ móng" to a second technician. Only THIS
+   * salon's active add-ons count; an id from elsewhere, or one whose service
+   * is not on the ticket, is dropped. List price: add-ons carry no promotion.
+   */
+  async addonLines(tenantId: string, addonIds: string[] | undefined, parents: LegItem[]): Promise<(LegItem & { zone: Zone })[]> {
+    const ids = [...new Set((addonIds ?? []).filter((x) => typeof x === 'string' && x.length > 0))].slice(0, 20);
+    const svcLines = parents.filter((p) => p.kind !== 'addon');
+    if (!ids.length || !svcLines.length) return [];
+    type AddonRow = { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string | null; categoryId: string | null };
+    const rows = (await this.prisma.serviceAddon.findMany({
+      where: { id: { in: ids }, tenantId, isActive: true } as never,
+      select: { id: true, name: true, priceCents: true, durationMinutes: true, serviceId: true, categoryId: true } as never,
+    }).catch(() => [])) as unknown as AddonRow[];
+    if (!rows.length) return [];
+    const cats = await this.prisma.service.findMany({
+      where: { tenantId, id: { in: [...new Set(svcLines.map((p) => p.serviceId))] } }, select: { id: true, categoryId: true },
+    }).catch(() => [] as { id: string; categoryId: string | null }[]);
+    const catOf = new Map(cats.map((c) => [c.id, c.categoryId] as const));
+    const out: (LegItem & { zone: Zone })[] = [];
+    for (const id of ids) {
+      const a = rows.find((r) => r.id === id);
+      if (!a) continue;
+      const parent = svcLines.find((p) => (a.serviceId ? p.serviceId === a.serviceId : a.categoryId ? catOf.get(p.serviceId) === a.categoryId : true));
+      if (!parent) continue;
+      out.push({
+        lineId: randomUUID(), serviceId: a.id, kind: 'addon', forLineId: parent.lineId, name: a.name,
+        priceCents: Math.max(0, Math.round(a.priceCents || 0)), durationMinutes: Math.max(0, Math.round(a.durationMinutes || 0)),
+        staffId: parent.staffId ?? null, zone: (parent.zone ?? zoneOf(parent.name)) as Zone, turnValue: 0,
+      });
+    }
+    return out;
   }
 
   /**
@@ -517,7 +557,8 @@ export class WalkinsService {
     for (const sid of wanted) {
       try { lines.push(await this.buildItem(tenantId, sid, staffId, promo)); } catch { /* removed from the menu */ }
     }
-    const items = attachLines([], lines);
+    const base = attachLines([], lines);
+    const items = attachLines(base, await this.addonLines(tenantId, dto.addonIds, base));
     // A PARTY is one ticket per person, linked by a groupId: each guest has
     // their own services, their own technician and their own line at the
     // till, and the board shows them side by side as one group.
@@ -562,6 +603,8 @@ export class WalkinsService {
         // A guest has no record of her own: today's walk-in promotion only.
         try { gLines.push(await this.buildItem(tenantId, sid, gStaff, guestPromo ??= await this.ticketPromo(tenantId, 'walkin'))); } catch { /* removed from the menu */ }
       }
+      const gBase = attachLines([], gLines);
+      const gItems = attachLines(gBase, await this.addonLines(tenantId, g.addonIds, gBase));
       const row = await this.prisma.walkIn.create({
         data: {
           tenantId,
@@ -572,7 +615,7 @@ export class WalkinsService {
           note: leaderName ? `With ${leaderName}` : null,
           partySize,
           assignedStaffId: gStaff,
-          items: attachLines([], gLines) as unknown as Prisma.InputJsonValue,
+          items: gItems as unknown as Prisma.InputJsonValue,
           source: 'walkin',
           status: WalkInStatus.WAITING,
           ...({ groupId } as object),
@@ -1154,7 +1197,7 @@ export class WalkinsService {
       const legs = legsOf(t);
       const items = legItemsOf(t).map((it) => {
         const by = paidLine.get(`${w.id}:${it.lineId}`) ?? paidWhole.get(w.id) ?? null;
-        return { lineId: it.lineId, serviceId: it.serviceId, name: it.name, priceCents: it.priceCents, durationMinutes: it.durationMinutes ?? 0, staffId: it.staffId ?? null, paid: by !== null, orderNumber: by };
+        return { lineId: it.lineId, serviceId: it.serviceId, name: it.name, priceCents: it.priceCents, durationMinutes: it.durationMinutes ?? 0, staffId: it.staffId ?? null, paid: by !== null, orderNumber: by, ...(it.kind === 'addon' ? { kind: 'addon' } : {}) };
       });
       const running = legs.filter((l) => l.status === 'SERVING' && l.startedAt);
       const minutesLeft = running.length
@@ -1313,7 +1356,7 @@ export class WalkinsService {
     if (onFloor) return this.row(tenantId, onFloor.id);
     const custName = appt.customer ? `${appt.customer.firstName}${appt.customer.lastName ? ' ' + appt.customer.lastName : ''}`.trim() : null;
     // Every service of the booking, each with the technician it was booked with.
-    type BookedLine = { id?: string; kind?: string; name?: string; priceCents?: number; staffMemberId?: string | null };
+    type BookedLine = { id?: string; kind?: string; name?: string; priceCents?: number; durationMinutes?: number; staffMemberId?: string | null };
     const booked = Array.isArray(appt.addons) ? (appt.addons as unknown as BookedLine[]) : [];
     const extraLines = booked.filter((a) => a?.kind === 'service' && a?.id);
     // The price she was QUOTED is the price at the till — her booking's
@@ -1321,17 +1364,20 @@ export class WalkinsService {
     // included. Re-pricing from the menu here dropped every booking promotion
     // the moment the customer sat down.
     const cents = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : null);
-    const addOnNames = booked.filter((a) => a && a.kind !== 'service').map((a) => String(a.name ?? '').trim()).filter(Boolean);
+    // Booked add-ons keep their own line on the ticket (price as quoted), on
+    // the headline service's leg — not folded into its name and price, where
+    // the desk could not tell "Take Off Only $35" from a mis-priced service.
+    const addOnBooked = booked.filter((a) => a && a.kind !== 'service' && String(a.name ?? '').trim());
     const extrasCents = extraLines.reduce((sum, a) => sum + (cents(a.priceCents) ?? 0), 0);
+    const addOnCents = addOnBooked.reduce((sum, a) => sum + (cents(a.priceCents) ?? 0), 0);
     const totalCents = cents((appt as { priceCents?: unknown }).priceCents);
-    const primaryCents = totalCents != null && totalCents >= extrasCents ? totalCents - extrasCents : null;
+    const primaryCents = totalCents != null && totalCents >= extrasCents + addOnCents ? totalCents - extrasCents - addOnCents : null;
     const lines: (LegItem & { zone: Zone })[] = [];
     if (appt.service) {
       const it = await this.buildItem(tenantId, appt.service.id, appt.assignedStaffId ?? null);
       lines.push({
         ...it,
         ...(primaryCents != null ? { priceCents: primaryCents } : null),
-        ...(addOnNames.length ? { name: `${it.name} + ${addOnNames.join(' + ')}`.slice(0, 160) } : null),
       });
     }
     for (const line of extraLines) {
@@ -1345,6 +1391,15 @@ export class WalkinsService {
     }
     const now = new Date();
     let items = attachLines([], lines);
+    const headline = lines[0];
+    if (headline && addOnBooked.length) {
+      items = attachLines(items, addOnBooked.map((a) => ({
+        lineId: randomUUID(), serviceId: String(a.id ?? ''), kind: 'addon' as const, forLineId: headline.lineId,
+        name: String(a.name ?? '').trim().slice(0, 120), priceCents: cents(a.priceCents) ?? 0,
+        durationMinutes: typeof a.durationMinutes === 'number' ? Math.max(0, Math.round(a.durationMinutes)) : 0,
+        staffId: headline.staffId ?? null, zone: headline.zone, turnValue: 0,
+      })));
+    }
     // The booked technician is expecting this customer: her first leg starts now.
     const first = legsOf({ id: '', status: 'WAITING', assignedStaffId: null, createdAt: now, items }).find((l) => l.staffId);
     if (first) items = patchLeg(items, first.legId, { legStatus: 'SERVING', startedAt: now.toISOString() });
@@ -1532,9 +1587,11 @@ export class WalkinsService {
     staffId?: string,
     serviceIds?: string[],
     extraMinutes?: number,
+    addonIds?: string[],
   ) {
     const w = await this.mine(user, id);
     const ids = [...new Set([...(serviceId ? [serviceId] : []), ...(serviceIds ?? [])])].filter(Boolean);
+    const wantAddons = (addonIds ?? []).filter(Boolean);
     const tech = staffId ? await this.techOf(w.tenantId, staffId) : null;
     const lines: (LegItem & { zone: Zone })[] = [];
     const promo = await this.ticketPromoFor(w);
@@ -1545,7 +1602,7 @@ export class WalkinsService {
       const extra: Record<string, unknown> = {};
       // Sent explicitly (including 0) → replace the stored estimate.
       if (extraMinutes !== undefined) extra.extraMinutes = Math.max(0, Math.min(600, Math.round(extraMinutes)));
-      if (!lines.length) {
+      if (!lines.length && !wantAddons.length) {
         if (Object.keys(extra).length) await this.prisma.walkIn.updateMany({ where: { id: fresh.id, tenantId: fresh.tenantId }, data: extra });
         return;
       }
@@ -1563,6 +1620,8 @@ export class WalkinsService {
             legStatus: 'SERVING' as const, pinned: live.pinned, startedAt: live.startedAt, doneAt: null, staffId: tech,
           }))]
         : attachLines(base, lines.map((l) => ({ ...l, staffId: l.staffId ?? owner })));
+      // Add-ons ride on the service lines now on the ticket (new or already there).
+      if (wantAddons.length) items = attachLines(items, await this.addonLines(fresh.tenantId, wantAddons, items));
       if (owner) {
         for (const leg of legsOf({ ...t, items })) if (leg.staffId === owner && leg.status === 'WAITING') {
           items = patchLeg(items, leg.legId, { legStatus: 'SERVING', startedAt: (fresh.assignedAt ?? new Date()).toISOString() });

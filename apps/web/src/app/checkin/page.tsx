@@ -56,6 +56,8 @@ interface Menu {
   logoUrl: string | null;
   accentColor: string;
   services: Service[];
+  /** The salon's add-ons ("Nail art"): offered under the services they belong to. Absent on an older server. */
+  addons?: KAddon[];
   /** Today's best offer, for the band at the top. Null when none runs. */
   promo?: { percent: number; label: string | null; scope: 'all' | string } | null;
 }
@@ -73,6 +75,8 @@ const mins = (n: number) => (n > 0 ? `${n} min` : '');
 /** The most people the kiosk takes one by one; a bigger group goes to the desk. */
 const MAX_PARTY = 5;
 interface Guest { name: string; picked: string[] }
+/** An add-on: its own service, every service of a category, or every service (both empty). */
+interface KAddon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string | null; categoryId: string | null; askAtBooking?: boolean }
 
 /** The customer page's own daylight palette. */
 const C = {
@@ -138,9 +142,11 @@ export default function CheckInKiosk() {
 
   useEffect(() => { if (token) loadMenu(token); }, [token, loadMenu]);
 
+  // Add-ons picked, per person of the party (0 = the one checking in).
+  const [extras, setExtras] = useState<Record<number, string[]>>({});
   const reset = useCallback(() => {
     setForm({ firstName: '', lastName: '', phone: '', email: '', birthDate: '', partySize: 1, note: '' });
-    setPicked([]); setGuests([]); setWho(0); setCat(null); setErr(null); setStep(1); setEta(null);
+    setPicked([]); setGuests([]); setWho(0); setCat(null); setErr(null); setStep(1); setEta(null); setExtras({});
   }, []);
 
   // Someone walks away mid-form; the next customer should meet a clean screen.
@@ -198,8 +204,24 @@ export default function CheckInKiosk() {
   // What the party pays and what it would have paid: the difference is the
   // line that makes the offer real, and it is the number the tickets carry.
   const everyone = people.flatMap((p) => p.list);
-  const totalCents = everyone.reduce((sum, s) => sum + payCents(s), 0);
-  const fullCents = everyone.reduce((sum, s) => sum + s.priceCents, 0);
+  /** The add-ons offered on these services, once each. */
+  const addonsOf = (list: Service[]): KAddon[] => (menu?.addons ?? []).filter((a) =>
+    a.serviceId ? list.some((sv) => sv.id === a.serviceId) : a.categoryId ? list.some((sv) => sv.category?.id === a.categoryId) : list.length > 0);
+  /** What person i added — only add-ons of services they still have. */
+  const extrasOf = (i: number): KAddon[] => addonsOf(people[i]?.list ?? []).filter((a) => (extras[i] ?? []).includes(a.id));
+  const addonCentsOf = (i: number) => extrasOf(i).reduce((sum, a) => sum + a.priceCents, 0);
+  const allExtras = people.flatMap((_, i) => extrasOf(i));
+  const extrasCents = allExtras.reduce((sum, a) => sum + a.priceCents, 0);
+  const extrasMinutes = allExtras.reduce((sum, a) => sum + (a.durationMinutes || 0), 0);
+  const viewWho = Math.min(who, people.length - 1);
+  const viewAddons = addonsOf(pickedList);
+  const viewExtras = extras[viewWho] ?? [];
+  const toggleExtra = (id: string) => setExtras((m) => {
+    const cur = m[viewWho] ?? [];
+    return { ...m, [viewWho]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
+  });
+  const totalCents = everyone.reduce((sum, s) => sum + payCents(s), 0) + extrasCents;
+  const fullCents = everyone.reduce((sum, s) => sum + s.priceCents, 0) + extrasCents;
   const savedCents = Math.max(0, fullCents - totalCents);
   const pickedCount = everyone.length;
   const subtotal = (list: Service[]) => list.reduce((sum, s) => sum + payCents(s), 0);
@@ -233,8 +255,9 @@ export default function CheckInKiosk() {
           partySize: form.partySize,
           note: form.note.trim() || undefined,
           serviceIds: picked,
+          ...(extrasOf(0).length ? { addonIds: extrasOf(0).map((a) => a.id) } : {}),
           // Everyone else in the party: their own services, their own ticket.
-          ...(group ? { guests: guests.slice(0, party - 1).map((g, i) => ({ firstName: g.name.trim() || `Guest ${i + 2}`, serviceIds: g.picked })) } : {}),
+          ...(group ? { guests: guests.slice(0, party - 1).map((g, i) => ({ firstName: g.name.trim() || `Guest ${i + 2}`, serviceIds: g.picked, ...(extrasOf(i + 1).length ? { addonIds: extrasOf(i + 1).map((a) => a.id) } : {}) })) } : {}),
         },
       });
       setEta(res?.estimate ?? null);
@@ -458,7 +481,7 @@ export default function CheckInKiosk() {
                             }}>
                             <span style={{ fontSize: 14.5, fontWeight: 700, color: on ? accent : C.ink, whiteSpace: 'nowrap' }}>{i === 0 ? `${p.name} (you)` : p.name}</span>
                             <span style={{ fontSize: 12.5, color: C.muted, whiteSpace: 'nowrap' }}>
-                              {p.list.length ? `${p.list.length} · ${money(subtotal(p.list))}` : 'Nothing yet'}
+                              {p.list.length ? `${p.list.length} · ${money(subtotal(p.list) + addonCentsOf(i))}` : 'Nothing yet'}
                             </span>
                           </button>
                         );
@@ -566,6 +589,42 @@ export default function CheckInKiosk() {
                     );
                   })}
                 </div>
+                {viewAddons.length > 0 && (
+                  <div style={{ marginTop: 18 }}>
+                    <div style={{ ...eyebrow, marginBottom: 10 }}>Add-ons</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(46%, 230px), 1fr))', gap: 'clamp(10px, 2.5vw, 14px)' }}>
+                      {viewAddons.map((a) => {
+                        const on = viewExtras.includes(a.id);
+                        return (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => toggleExtra(a.id)}
+                            style={{
+                              position: 'relative', textAlign: 'left', borderRadius: 20,
+                              padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3.6vw, 20px)', cursor: 'pointer',
+                              background: on ? `${accent}0f` : C.card,
+                              border: `1.5px solid ${on ? accent : C.line}`,
+                              boxShadow: on ? `0 10px 24px ${accent}2e` : '0 1px 3px rgba(23,20,18,0.05)',
+                              color: C.ink, minHeight: 72, display: 'flex', flexDirection: 'column', gap: 4,
+                            }}
+                          >
+                            <span style={{
+                              position: 'absolute', top: 12, right: 12, width: 26, height: 26, borderRadius: '50%',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              background: on ? accent : 'transparent', color: '#fff', border: `1.5px solid ${on ? accent : C.line}`,
+                            }}>{on && <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>}</span>
+                            <span style={{ fontSize: 'clamp(15px, 3.8vw, 16.5px)', fontWeight: 600, lineHeight: 1.3, paddingRight: 28, color: C.ink }}>{a.askAtBooking ? `Would you like ${a.name}?` : a.name}</span>
+                            <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 'clamp(16px, 4vw, 17.5px)', fontWeight: 700, color: C.ink, fontVariantNumeric: 'tabular-nums' }}>+{money(a.priceCents)}</span>
+                              {mins(a.durationMinutes) && <span style={{ fontSize: 13, color: C.muted }}>· {mins(a.durationMinutes)}</span>}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
@@ -594,7 +653,7 @@ export default function CheckInKiosk() {
                             {group && (
                               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '12px 20px 4px' }}>
                                 <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: accent }}>{i === 0 ? `${p.name} (you)` : p.name}</span>
-                                <span style={{ fontSize: 14, fontWeight: 600, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{p.list.length ? money(subtotal(p.list)) : ''}</span>
+                                <span style={{ fontSize: 14, fontWeight: 600, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{p.list.length ? money(subtotal(p.list) + addonCentsOf(i)) : ''}</span>
                               </div>
                             )}
                             {group && p.list.length === 0 && (
@@ -612,12 +671,21 @@ export default function CheckInKiosk() {
                                 <span style={{ fontSize: 15.5, fontWeight: 700, color: C.ink, fontVariantNumeric: 'tabular-nums' }}>{money(payCents(s))}</span>
                               </div>
                             ))}
+                            {extrasOf(i).map((a) => (
+                              <div key={`x-${a.id}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: group ? '8px 20px 12px' : '14px 20px', borderBottom: `1px solid ${C.line}` }}>
+                                <span style={{ flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: 600, color: C.ink, lineHeight: 1.35 }}>
+                                  + {a.name}
+                                  {mins(a.durationMinutes) && <span style={{ display: 'block', fontSize: 13, fontWeight: 500, color: C.muted }}>{mins(a.durationMinutes)}</span>}
+                                </span>
+                                <span style={{ fontSize: 15.5, fontWeight: 700, color: C.ink, fontVariantNumeric: 'tabular-nums' }}>{money(a.priceCents)}</span>
+                              </div>
+                            ))}
                           </div>
                         ))}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', background: C.page }}>
                           <span style={{ flex: 1 }}>
                             <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: C.muted }}>
-                              {group ? `Estimate for ${party}` : 'Estimate'}{!group && mins(minutesOf(everyone)) ? ` · ${mins(minutesOf(everyone))}` : ''}
+                              {group ? `Estimate for ${party}` : 'Estimate'}{!group && mins(minutesOf(everyone) + extrasMinutes) ? ` · ${mins(minutesOf(everyone) + extrasMinutes)}` : ''}
                             </span>
                             {savedCents > 0 && <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.price }}>You save {money(savedCents)} today</span>}
                           </span>

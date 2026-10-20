@@ -88,6 +88,8 @@ describe('shared extras in the admin', () => {
     expect(all.find((a) => a.id === 'a-off')?.service?.name).toBe('Manicure');
     expect(all.find((a) => a.id === 'a-french')?.service?.name).toBe('All services');
     expect(all.some((a) => a.id === 'a-t2')).toBe(false);
+    // The desk matches a shared extra to the picked services by its category.
+    expect((all.find((a) => a.id === 'a-off') as { categoryId?: string | null } | undefined)?.categoryId).toBe('mani');
   });
 });
 

@@ -498,11 +498,14 @@ export class ServicesService {
         service: { select: { name: true } },
         categoryId: true,
         category: { select: { name: true } },
+        askAtBooking: true,
       } as never,
       orderBy: { createdAt: 'asc' },
-    })) as unknown as Array<{ id: string; name: string; priceCents: number; durationMinutes: number; currency: string; serviceId: string | null; service: { name: string } | null; categoryId: string | null; category: { name: string } | null }>;
-    return rows.map(({ category, categoryId, ...a }) => (
-      a.serviceId ? a : { ...a, service: { name: category?.name ?? 'All services' }, shared: categoryId ? 'category' : 'all' }
+    })) as unknown as Array<{ id: string; name: string; priceCents: number; durationMinutes: number; currency: string; serviceId: string | null; service: { name: string } | null; categoryId: string | null; category: { name: string } | null; askAtBooking?: boolean }>;
+    // categoryId stays on the row: the desk offers a shared extra under every
+    // picked service of that category (walk-ins page), the till groups by name.
+    return rows.map(({ category, ...a }) => (
+      a.serviceId ? a : { ...a, service: { name: category?.name ?? 'All services' }, shared: a.categoryId ? 'category' : 'all' }
     ));
   }
 

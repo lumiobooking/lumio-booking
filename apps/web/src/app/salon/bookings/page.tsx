@@ -702,8 +702,10 @@ function fmtWhen(iso: string, tz: string): string {
 
 /** Every service on the visit: the primary plus any extra service lines. */
 function serviceNames(b: Booking): string[] {
+  // Extra services, then add-ons ("Vẽ móng") — both are part of what she booked.
   const extra = (b.addons ?? []).filter((a) => a?.kind === 'service').map((a) => a?.name ?? '').filter(Boolean);
-  return [b.service?.name ?? '', ...extra].filter(Boolean);
+  const adds = (b.addons ?? []).filter((a) => a && a.kind !== 'service').map((a) => a?.name ?? '').filter(Boolean);
+  return [b.service?.name ?? '', ...extra, ...adds].filter(Boolean);
 }
 
 /**

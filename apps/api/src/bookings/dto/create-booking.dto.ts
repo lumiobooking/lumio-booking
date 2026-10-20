@@ -33,6 +33,13 @@ export class BookingGuestDto {
   @ArrayMaxSize(12)
   @IsString({ each: true })
   serviceIds!: string[];
+
+  /** Add-ons this guest picked for their services ("Nail art" on a pedicure). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  addonIds?: string[];
 }
 
 /**

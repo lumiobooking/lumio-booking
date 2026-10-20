@@ -664,6 +664,7 @@ function Inner() {
               {lang === 'vi' ? c.health.text
                 : c.health.state === 'two_factor' ? 'The Page\'s Business requires two-factor authentication and the Facebook account that connected it has none. Turn on 2FA for that account, then reconnect.'
                 : c.health.state === 'role_lost' ? 'The Facebook account that connected this Page no longer has a role (Admin/Editor/Moderator) on it. Ask the Page owner to add it back, then reconnect.'
+                : c.health.state === 'checkpoint' ? 'Facebook has put a check on the account that connected this Page. Reconnecting with that same account fails the same way: that person must open www.facebook.com in a desktop browser, log in and complete every step Facebook asks — then reconnect. Or reconnect with another Admin of the Page.'
                 : 'The connection has expired or was revoked by Facebook. Reconnect the Page.'}
             </div>
             {c.health.raw && <div style={{ marginTop: 4, fontSize: 11.5, opacity: 0.7 }}>Meta: {c.health.raw}</div>}

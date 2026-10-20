@@ -16,7 +16,7 @@
  * sentence to show. The network call lives in the service.
  */
 
-export type PageHealthState = 'ok' | 'role_lost' | 'two_factor' | 'expired' | 'revoked' | 'unknown';
+export type PageHealthState = 'ok' | 'role_lost' | 'two_factor' | 'checkpoint' | 'expired' | 'revoked' | 'unknown';
 
 export interface PageHealth {
   state: PageHealthState;
@@ -45,6 +45,15 @@ export function classifyPageError(err: GraphErrorLike | null | undefined, at = n
   if (m.includes('impersonate') || m.includes('administrator, editor, or moderator') || sub === 492) {
     return { state: 'role_lost', at, raw, lost: true };
   }
+  // "You cannot access the app till you log in to www.facebook.com and follow
+  // the instructions given." — 190 / 459: Facebook has put a checkpoint on the
+  // ACCOUNT that pressed Connect (identity check, policy notice, suspicious
+  // login). Every reconnect with that account mints a token that fails the
+  // same way; only clearing the checkpoint on facebook.com, or connecting
+  // with another admin, helps. Checked before the generic 190 branch.
+  if (sub === 459 || m.includes('log in to www.facebook.com') || m.includes('cannot access the app till')) {
+    return { state: 'checkpoint', at, raw, lost: true };
+  }
   if (m.includes('session has expired') || sub === 463 || sub === 467) return { state: 'expired', at, raw, lost: true };
   if (code === 190 || m.includes('#190') || m.includes('invalid oauth access token') || sub === 460 || sub === 458) {
     return { state: 'revoked', at, raw, lost: true };
@@ -64,6 +73,10 @@ export function pageHealthText(state: PageHealthState, vi = true): string {
       return vi
         ? 'Doanh nghiệp (Business) của Trang yêu cầu xác thực 2 lớp, nhưng tài khoản Facebook đã dùng để kết nối chưa bật. Bật xác thực 2 lớp cho tài khoản đó (Facebook → Cài đặt → Bảo mật), rồi vào Cài đặt → Messenger bấm Kết nối lại.'
         : 'The Page\'s Business requires two-factor authentication and the Facebook account that connected it has none. Turn on 2FA for that account (Facebook → Settings → Security), then reconnect at Settings → Messenger.';
+    case 'checkpoint':
+      return vi
+        ? 'Facebook đang tạm chặn tài khoản đã dùng để kết nối Trang (yêu cầu kiểm tra bảo mật / xác minh / chấp nhận điều khoản). Kết nối lại bằng chính tài khoản đó sẽ lỗi y hệt. Người đó cần mở www.facebook.com trên trình duyệt máy tính, đăng nhập và làm hết các bước Facebook yêu cầu cho đến khi vào được bình thường — rồi vào Cài đặt → Messenger bấm Kết nối lại. Hoặc kết nối lại bằng tài khoản Admin khác của Trang (ví dụ tài khoản của chủ tiệm).'
+        : 'Facebook has put a check on the account that connected this Page (security check, identity verification, or a notice to accept). Reconnecting with that same account fails the same way. That person must open www.facebook.com in a desktop browser, log in and complete every step Facebook asks until the account works normally — then reconnect at Settings → Messenger. Or reconnect with another Admin of the Page (the owner\'s account, say).';
     case 'expired':
       return vi ? 'Kết nối Facebook đã hết hạn. Vào Cài đặt → Messenger bấm Kết nối lại.' : 'The Facebook connection has expired. Reconnect at Settings → Messenger.';
     case 'revoked':

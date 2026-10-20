@@ -29,7 +29,7 @@ import { formatPrice } from '../../../lib/ui';
 import { useIsMobile } from '../../../lib/responsive';
 import { ind } from '../../../lib/ui-industry';
 
-export interface PartyItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes: number; staffId: string | null; paid: boolean; orderNumber: number | null }
+export interface PartyItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes: number; staffId: string | null; paid: boolean; orderNumber: number | null; kind?: string }
 export interface PartyMember {
   id: string; customerName: string | null; customerId: string | null; phone: string | null; status: string; awaitingPayment: boolean;
   phase: string; minutesLeft: number | null; overdueMinutes: number | null; source: string | null; appointmentId: string | null;
@@ -46,6 +46,8 @@ export interface PartyView {
 export interface ComposedLine {
   refId: string; name: string; unitPriceCents: number; staffMemberId: string; tipCents: number;
   walkInId: string; walkInLineId: string; guestName: string;
+  /** An add-on line of a ticket (walkin-legs `kind: 'addon'`): billed, never recorded as a service. */
+  isAddon?: boolean;
   /** List price and the party discount applied to it (0 = none) — the sale records what was given away. */
   origUnitPriceCents: number; discountPercent: number;
 }
@@ -151,7 +153,7 @@ export function PartyPanel({ groupId, token, currency, tipsOn, lang, staff, onCl
     });
   };
   const lineOf = (e: { owner: PartyMember; item: PartyItem }): Omit<ComposedLine, 'tipCents'> => ({
-    refId: e.item.serviceId, name: `${nameOf(e.owner, vi)} · ${e.item.name}`,
+    refId: e.item.serviceId, name: `${nameOf(e.owner, vi)} · ${e.item.name}`, ...(e.item.kind === 'addon' ? { isAddon: true } : {}),
     unitPriceCents: net(e.item.priceCents), origUnitPriceCents: e.item.priceCents, discountPercent: pct,
     staffMemberId: e.item.staffId ?? '', walkInId: e.owner.id, walkInLineId: e.item.lineId, guestName: nameOf(e.owner, vi),
   });

@@ -102,7 +102,7 @@ export function TechBoard({ board, vi, currency, isMobile, onAssign, onOpen, onC
     const isBetween = w.phase === 'BETWEEN';
     const waited = mins(isBetween ? (w.assignedAt ?? w.createdAt) : w.createdAt);
     const sel = pick[w.id] ?? nextUpStaffId ?? '';
-    const names = (w.items ?? []).map((i) => i.name).join(' · ') || w.service?.name || L('Chưa chọn dịch vụ', 'No service yet');
+    const names = (w.items ?? []).map((i) => (i.kind === 'addon' ? `+ ${i.name}` : i.name)).join(' · ') || w.service?.name || L('Chưa chọn dịch vụ', 'No service yet');
     const late = waited >= LONG_WAIT_MIN;
     return (
       <div key={w.id} draggable={!isMobile && !isBetween} onDragStart={(e) => { setDragId(w.id); e.dataTransfer.setData('text/plain', w.id); e.dataTransfer.effectAllowed = 'move'; }}
@@ -149,7 +149,7 @@ export function TechBoard({ board, vi, currency, isMobile, onAssign, onOpen, onC
     const mine = legs.find((l) => l.status === 'SERVING' && l.staffId === techId);
     const part = legs.length > 1 && mine ? (mine.zone === 'HAND' ? L('✋ Tay', '✋ Hands') : mine.zone === 'FOOT' ? L('🦶 Chân', '🦶 Feet') : mine.names[0]) : null;
     const total = (w.items ?? []).reduce((s, i) => s + (i.priceCents || 0), 0);
-    const names = (w.items ?? []).map((i) => i.name).join(' · ') || w.service?.name || '—';
+    const names = (w.items ?? []).map((i) => (i.kind === 'addon' ? `+ ${i.name}` : i.name)).join(' · ') || w.service?.name || '—';
     const href = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
     return (
       <div key={w.id + techId} style={{ ...card, boxShadow: `inset 3px 0 0 ${techColor(staff, techId)}` }}>

@@ -41,7 +41,7 @@ export function nextBookingByStaff(booked: { startTime: Date | string; staffId: 
 }
 
 interface DoneRow { assignedStaffId: string | null; items: unknown }
-interface LineLike { serviceId?: string | null; staffId?: string | null; priceCents?: number }
+interface LineLike { serviceId?: string | null; staffId?: string | null; priceCents?: number; kind?: string }
 const linesOf = (r: { items: unknown }): LineLike[] => (Array.isArray(r.items) ? (r.items as LineLike[]) : []);
 
 /**
@@ -55,7 +55,8 @@ export function frequentServices(rows: DoneRow[], top = 4): Record<string, strin
   rows.forEach((r, order) => {
     for (const l of linesOf(r)) {
       const staffId = l.staffId || r.assignedStaffId;
-      if (!staffId || !l.serviceId) continue;
+      // An add-on is not a service the tech "usually does": never a suggestion chip.
+      if (!staffId || !l.serviceId || l.kind === 'addon') continue;
       const m = counts.get(staffId) ?? new Map<string, { n: number; first: number }>();
       const c = m.get(l.serviceId) ?? { n: 0, first: order };
       c.n += 1;

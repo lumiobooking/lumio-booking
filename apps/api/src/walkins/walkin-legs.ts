@@ -47,6 +47,14 @@ export interface LegItem {
   turnValue?: number;
   /** Technicians who passed this leg on (bỏ qua): the dispatcher never hands it back to them. */
   skippedBy?: string[];
+  /**
+   * An ADD-ON ("Vẽ móng" on a Take Off): `serviceId` is the ServiceAddon id,
+   * `forLineId` the line of the service it belongs to. It rides on that line's
+   * leg — same technician, same status — adds its minutes and its price, and
+   * is worth no turn of its own. Never dispatched on its own, never a skill.
+   */
+  kind?: 'addon';
+  forLineId?: string;
 }
 
 export interface Leg {
@@ -150,7 +158,9 @@ export function legsOf(t: TicketLike): Leg[] {
       legs.push(leg);
     }
     leg.lineIds.push(it.lineId);
-    leg.serviceIds.push(it.serviceId);
+    // An add-on is not a skill a technician can lack: keep it out of the
+    // ids the dispatcher matches against staff skills (canDo/needFor).
+    if (it.kind !== 'addon') leg.serviceIds.push(it.serviceId);
     leg.names.push(it.name);
     leg.minutes += it.durationMinutes ?? 0;
     leg.turnValue = Math.max(leg.turnValue, typeof it.turnValue === 'number' ? it.turnValue : 1);
@@ -234,7 +244,20 @@ export function patchLeg(items: LegItem[], legId: string, patch: Partial<LegItem
  */
 export function attachLines(items: LegItem[], lines: (LegItem & { zone: Zone })[]): LegItem[] {
   const out = items.map((it) => ({ ...it }));
-  for (const line of lines) {
+  // Services first, so an add-on in the same batch finds the line it rides on.
+  const ordered = [...lines.filter((l) => l.kind !== 'addon'), ...lines.filter((l) => l.kind === 'addon')];
+  for (const line of ordered) {
+    if (line.kind === 'addon' && line.forLineId) {
+      const parent = out.find((it) => it.lineId === line.forLineId);
+      if (parent) {
+        out.push({
+          ...line,
+          legId: parent.legId, zone: parent.zone ?? line.zone, legStatus: parent.legStatus, pinned: parent.pinned,
+          startedAt: parent.startedAt ?? null, doneAt: null, staffId: parent.staffId ?? null, turnValue: 0,
+        });
+        continue;
+      }
+    }
     const open = line.zone === 'OTHER' ? undefined : out.find((it) =>
       it.legId && it.zone === line.zone && it.legStatus !== 'DONE'
       && (!line.staffId || !it.staffId || it.staffId === line.staffId));

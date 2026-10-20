@@ -15,6 +15,7 @@ import { WalkinsService } from './walkins.service';
 class CompanionDto {
   @IsOptional() @IsString() @MaxLength(80) firstName?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) serviceIds?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) addonIds?: string[];
   @IsOptional() @IsString() assignedStaffId?: string;
 }
 
@@ -35,6 +36,8 @@ class AddWalkInDto {
   @IsOptional() @IsString() serviceId?: string;
   // A walk-in usually asks for more than one thing at once.
   @IsOptional() @IsArray() @IsString({ each: true }) serviceIds?: string[];
+  // Add-ons of the services picked (their own line each, on the service's leg).
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) addonIds?: string[];
   @IsOptional() @IsInt() @Min(0) @Max(600) extraMinutes?: number;
   @IsOptional() @IsString() @MaxLength(300) note?: string;
   @IsOptional() @IsInt() @Min(1) @Max(20) partySize?: number;
@@ -89,6 +92,8 @@ class AddServiceDto {
   @IsOptional() @IsString() staffId?: string;
   // Minutes to tack on to the ticket's estimate (replaces the stored value).
   @IsOptional() @IsInt() @Min(0) @Max(600) extraMinutes?: number;
+  // Add-ons for services already on the ticket (or sent in this same call).
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) addonIds?: string[];
 }
 
 class UpdateLineDto {
@@ -317,7 +322,7 @@ export class WalkinsController {
 
   @Post(':id/services')
   addService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AddServiceDto) {
-    return this.nudge(user, id, this.walkins.addService(user, id, dto.serviceId, dto.staffId, dto.serviceIds, dto.extraMinutes));
+    return this.nudge(user, id, this.walkins.addService(user, id, dto.serviceId, dto.staffId, dto.serviceIds, dto.extraMinutes, dto.addonIds));
   }
 
   // Edit one line in place: service, price, minutes or tech.

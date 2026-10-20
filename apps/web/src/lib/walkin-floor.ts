@@ -4,7 +4,7 @@
  */
 
 export interface Leg { legId: string; status: 'WAITING' | 'SERVING' | 'DONE'; staffId: string | null; names: string[]; zone: 'HAND' | 'FOOT' | 'OTHER'; legacy?: boolean; lineIds: string[] }
-export interface Item { lineId: string; name: string; priceCents: number; durationMinutes?: number }
+export interface Item { lineId: string; name: string; priceCents: number; durationMinutes?: number; kind?: string }
 export interface BoardWalkIn {
   id: string; customerName: string | null; partySize: number; status: string; createdAt: string; assignedAt: string | null;
   station: string | null; customerId: string | null; items: Item[]; service: { id: string; name: string } | null;

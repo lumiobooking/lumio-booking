@@ -600,26 +600,37 @@ export class BookingsService {
         }))
       : [];
 
-    // Validate + load selected add-ons: this salon's, and offered on THIS
-    // service — its own, its category's shared ones, or the whole menu's.
+    // Validate + load selected add-ons: this salon's, and offered on a service
+    // of THIS booking — the headline one or any extra — its own, its
+    // category's shared ones, or the whole menu's. Each is stored with
+    // `kind: 'addon'` and the service it was taken for, so every screen after
+    // this (desk, till, calendar, receipt) tells an add-on from a service.
     const addonIds = [...new Set(dto.addonIds ?? [])];
-    const svcCategory = (service as { categoryId?: string | null }).categoryId ?? null;
-    const addons = addonIds.length
+    const pickedIds = [...new Set([service.id, ...(dto.serviceIds ?? [])])].filter(Boolean);
+    const pickedCats = addonIds.length
+      ? await this.prisma.service.findMany({ where: { tenantId, id: { in: pickedIds } }, select: { id: true, categoryId: true } })
+      : [];
+    const catIds = [...new Set(pickedCats.map((c) => c.categoryId).filter((c): c is string => !!c))];
+    const addonRows = addonIds.length
       ? await this.prisma.serviceAddon.findMany({
           where: {
             id: { in: addonIds }, tenantId, isActive: true,
             OR: [
-              { serviceId: service.id },
+              { serviceId: { in: pickedIds } },
               { serviceId: null, categoryId: null },
-              ...(svcCategory ? [{ serviceId: null, categoryId: svcCategory }] : []),
+              ...(catIds.length ? [{ serviceId: null, categoryId: { in: catIds } }] : []),
             ],
           } as never,
-          select: { id: true, name: true, priceCents: true, durationMinutes: true },
-        })
+          select: { id: true, name: true, priceCents: true, durationMinutes: true, serviceId: true, categoryId: true } as never,
+        }) as unknown as { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string | null; categoryId: string | null }[]
       : [];
-    if (addons.length !== addonIds.length) {
+    if (addonRows.length !== addonIds.length) {
       throw new BadRequestException('One or more add-ons are invalid for this service');
     }
+    const addons = addonRows.map((a) => ({
+      id: a.id, name: a.name, priceCents: a.priceCents, durationMinutes: a.durationMinutes, kind: 'addon' as const,
+      forServiceId: a.serviceId ?? (a.categoryId ? pickedCats.find((c) => c.categoryId === a.categoryId)?.id ?? service.id : service.id),
+    }));
 
     const start = parseStartTime(dto.startTime);
     // Staff at the desk may record a customer already in the chair (up to 12 h
@@ -1567,7 +1578,7 @@ export class BookingsService {
     }
     // Web push to the owner's phone (fire-and-forget; no-op unless VAPID is set).
     // Who, what, when and with whom — the owner can act on the lock screen.
-    this.push.sendToTenant(tenantId, { title: 'Booking mới 🗓️', body: `${d.customer} • ${d.service} • ${fmtD(start)} ${fmtT(start)} • 👤 ${d.technician}`, url: '/salon/activity' }).catch(() => undefined);
+    this.push.sendToTenant(tenantId, { title: 'Booking mới 🗓️', body: `${d.customer} • ${d.service}${d.addonsOnly ? ` + ${d.addonsOnly}` : ''} • ${fmtD(start)} ${fmtT(start)} • 👤 ${d.technician}`, url: '/salon/activity' }).catch(() => undefined);
     await Promise.allSettled(jobs);
   }
 

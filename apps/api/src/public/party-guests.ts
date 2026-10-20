@@ -12,7 +12,7 @@
  *
  * Pure (tested in party-guests.spec.ts).
  */
-export interface PartyGuest { firstName: string; serviceIds: string[] }
+export interface PartyGuest { firstName: string; serviceIds: string[]; addonIds?: string[] }
 
 export const MAX_GUESTS = 9;
 

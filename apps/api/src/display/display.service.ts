@@ -50,7 +50,7 @@ export class DisplayService {
    */
   async checkInMenu(token: string) {
     const tenantId = await this.tenantOfToken(token);
-    const [tenant, services, promos] = await Promise.all([
+    const [tenant, services, promos, addons] = await Promise.all([
       this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, branding: true, timezone: true } }),
       this.prisma.service.findMany({
         where: { tenantId, isActive: true },
@@ -58,6 +58,13 @@ export class DisplayService {
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       }),
       this.promosOf(tenantId),
+      // The salon's add-ons, offered under the service they belong to (its own,
+      // its category's, or every service). List price: no promotion on add-ons.
+      this.prisma.serviceAddon.findMany({
+        where: { tenantId, isActive: true } as never,
+        select: { id: true, name: true, priceCents: true, durationMinutes: true, serviceId: true, categoryId: true, askAtBooking: true } as never,
+        orderBy: { createdAt: 'asc' },
+      }).catch(() => []),
     ]);
     const b = (tenant?.branding ?? {}) as { logoUrl?: string; accentColor?: string };
     // Priced for TODAY in the salon's own timezone — the same rule as the
@@ -71,6 +78,7 @@ export class DisplayService {
       logoUrl: b.logoUrl ?? null,
       accentColor: b.accentColor ?? '#6366f1',
       services: priced,
+      addons,
       /** Today's promotion, for the band at the top. Null when none runs. */
       promo: promoBanner(promos, day, [...cats].map(([id, name]) => ({ id, name }))),
     };
@@ -127,8 +135,8 @@ export class DisplayService {
     token: string,
     dto: {
       firstName?: string; lastName?: string; phone?: string; email?: string; birthDate?: string;
-      serviceIds?: string[]; partySize?: number; note?: string;
-      guests?: { firstName?: string; serviceIds?: string[] }[];
+      serviceIds?: string[]; addonIds?: string[]; partySize?: number; note?: string;
+      guests?: { firstName?: string; serviceIds?: string[]; addonIds?: string[] }[];
     },
   ) {
     const tenantId = await this.tenantOfToken(token);
@@ -185,6 +193,14 @@ export class DisplayService {
       ? await this.walkins.walkInVisitTierPct(tenantId, linked.id).catch(() => 0)
       : 0;
     const mainItems = itemsFor(dto.serviceIds, visitPct);
+    // Add-ons ride on the service they belong to (walkins.service addonLines);
+    // without the walk-ins module they are simply not taken.
+    const withAddons = async (items: ReturnType<typeof itemsFor>, addonIds?: string[]) => {
+      if (!addonIds?.length || !this.walkins || typeof this.walkins.addonLines !== 'function') return items;
+      const extra = await this.walkins.addonLines(tenantId, addonIds, items as never).catch(() => []);
+      return [...items, ...(extra as unknown as typeof items)];
+    };
+    const mainWithAddons = await withAddons(mainItems, dto.addonIds);
     // One party, one groupId: the floor shows them together and the till can
     // bill them on one receipt or several.
     const groupId = guests.length ? `ci-${randomUUID()}` : null;
@@ -197,7 +213,7 @@ export class DisplayService {
         phone: dto.phone?.trim().slice(0, 40) || null,
         note: [dto.note?.trim(), guests.length ? partyNote : ''].filter(Boolean).join(' · ').slice(0, 300) || null,
         partySize: party,
-        items: mainItems as unknown as Prisma.InputJsonValue,
+        items: mainWithAddons as unknown as Prisma.InputJsonValue,
         source: 'walkin',
         status: WalkInStatus.WAITING,
         ...({ groupId } as object),
@@ -208,7 +224,7 @@ export class DisplayService {
     await linkWalkInToBooking(this.prisma as never, tenantId, walkIn.id, linked?.id ?? null).catch(() => null);
     const guestIds: string[] = [];
     for (let i = 0; i < guests.length; i++) {
-      const items = itemsFor(guests[i]?.serviceIds);
+      const items = await withAddons(itemsFor(guests[i]?.serviceIds), guests[i]?.addonIds);
       const g = await this.prisma.walkIn.create({
         data: {
           tenantId,

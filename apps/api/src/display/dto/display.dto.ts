@@ -22,6 +22,7 @@ export class DisplayTipDto {
 export class CheckInGuestDto {
   @IsOptional() @IsString() @MaxLength(80) firstName?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(12) @IsString({ each: true }) serviceIds?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) addonIds?: string[];
 }
 
 /**
@@ -35,6 +36,8 @@ export class SelfCheckInDto {
   @IsOptional() @IsString() @MaxLength(160) email?: string;
   @IsOptional() @IsString() @MaxLength(10) birthDate?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) serviceIds?: string[];
+  /** Add-ons of the services picked ("Nail art" on a pedicure): a line each, priced as shown. */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) addonIds?: string[];
   @IsOptional() @IsInt() @Min(1) @Max(20) partySize?: number;
   @IsOptional() @IsString() @MaxLength(300) note?: string;
   /** The others in the party, each with their own services → their own ticket. */

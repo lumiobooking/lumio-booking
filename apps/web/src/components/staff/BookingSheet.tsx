@@ -38,7 +38,7 @@ export function bookingName(b: StaffBooking): string {
 /** Every service of the booking, the main one first. */
 export function bookingServices(b: StaffBooking): string {
   const extra = (Array.isArray(b.addons) ? (b.addons as { name?: string; kind?: string }[]) : [])
-    .filter((a) => a && a.name && (a.kind === 'service' || !a.kind))
+    .filter((a) => a && a.name && (a.kind === 'service' || a.kind === 'addon' || !a.kind))
     .map((a) => a.name as string);
   return [b.service?.name, ...extra].filter(Boolean).join(' + ') || 'Service';
 }

@@ -380,7 +380,7 @@ export function explainMetaError(raw: string | null | undefined): string | null 
   // Authentication…" — the account that pressed Connect lost its Page role,
   // or the Page's Business now demands 2FA. Nothing about the post itself.
   const health = classifyPageError({ message: raw ?? '' });
-  if (health.state === 'role_lost' || health.state === 'two_factor') return pageHealthText(health.state);
+  if (health.state === 'role_lost' || health.state === 'two_factor' || health.state === 'checkpoint') return pageHealthText(health.state);
 
   if (e.includes('pages_manage_posts') || e.includes('publish_to_groups') || e.includes('#200')) {
     return 'Trang Facebook đang thiếu quyền đăng bài. Vào Cài đặt → Messenger, bấm KẾT NỐI LẠI Trang và tick tất cả các ô Facebook hỏi. Quyền mới chỉ có hiệu lực với kết nối mới — thêm quyền ở Meta không sửa được kết nối cũ.';

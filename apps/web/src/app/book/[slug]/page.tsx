@@ -416,7 +416,7 @@ export default function PublicBookingPage() {
   // Group booking: friends who come along. The booker keeps the existing
   // selection states; each extra guest carries only a name and their services.
   // Everyone shares ONE time slot — that is what "coming together" means.
-  interface ExtraGuest { name: string; serviceIds: string[] }
+  interface ExtraGuest { name: string; serviceIds: string[]; addonIds?: string[] }
   const [extraGuests, setExtraGuests] = useState<ExtraGuest[]>([]);
   const [activeGuest, setActiveGuest] = useState(0); // 0 = the booker
   const isGroup = extraGuests.length > 0;
@@ -440,11 +440,40 @@ export default function PublicBookingPage() {
     if (staff.length === 1) setStaffId((prev) => prev || staff[0].id);
     else if (staff.length === 0) setStaffId('');
   }, [staff]);
-  const serviceAddons = service?.addons ?? [];
+  // The add-ons offered on a set of services (each service's own, its
+  // category's and the whole menu's arrive merged per service from the API),
+  // once each. Used for the booker AND for every friend she brings.
+  const addonsFor = (ids: string[]): Addon[] => {
+    const seen = new Set<string>(); const out: Addon[] = [];
+    for (const id of ids) for (const a of services.find((sv) => sv.id === id)?.addons ?? []) if (!seen.has(a.id)) { seen.add(a.id); out.push(a); }
+    return out;
+  };
+  const serviceAddons = addonsFor(serviceId ? [serviceId, ...extraServiceIds.filter((x) => x !== serviceId)] : []);
+  // Only add-ons of services still in the cart count — dropping a service drops its extras.
   const selectedAddons = serviceAddons.filter((a) => addonIds.includes(a.id));
   // The extras the salon insists on asking about, and whether each has been answered.
   const askAddons = serviceAddons.filter((a) => a.askAtBooking);
-  const askPending = askAddons.filter((a) => !askAnswers[a.id] && !addonIds.includes(a.id));
+  // A friend's answers are kept apart from the booker's: "g<n>:<addonId>".
+  const askKey = (who: number, id: string) => (who === 0 ? id : `g${who}:${id}`);
+  const guestAddons = (g: ExtraGuest) => addonsFor(g.serviceIds);
+  const guestPicked = (g: ExtraGuest) => guestAddons(g).filter((a) => (g.addonIds ?? []).includes(a.id));
+  const askPending = [
+    ...askAddons.filter((a) => !askAnswers[a.id] && !addonIds.includes(a.id)),
+    ...extraGuests.flatMap((g, k) => guestAddons(g).filter((a) => a.askAtBooking && !askAnswers[askKey(k + 1, a.id)] && !(g.addonIds ?? []).includes(a.id))),
+  ];
+  // What the open tab shows: the booker's add-ons, or the friend's whose tab is open.
+  const viewGuest = activeGuest > 0 ? extraGuests[activeGuest - 1] ?? null : null;
+  const viewAddons = viewGuest ? guestAddons(viewGuest) : serviceAddons;
+  const viewAddonIds = viewGuest ? (viewGuest.addonIds ?? []) : addonIds;
+  const viewAsk = viewAddons.filter((a) => a.askAtBooking);
+  const viewFor = (viewGuest ? viewGuest.serviceIds : (serviceId ? [serviceId, ...extraServiceIds] : []))
+    .filter((id) => (services.find((sv) => sv.id === id)?.addons ?? []).length > 0)
+    .map((id) => services.find((sv) => sv.id === id)?.name ?? '').filter(Boolean).join(' & ');
+  const setViewAddonIds = (fn: (p: string[]) => string[]) => {
+    if (!viewGuest) { setAddonIds(fn); return; }
+    const k = activeGuest - 1;
+    setExtraGuests((gs) => gs.map((g, i) => (i === k ? { ...g, addonIds: fn(g.addonIds ?? []) } : g)));
+  };
   const fmt = useCallback((c: number) => fmtMoney(c, rules), [rules]);
 
   // ---- cart -----------------------------------------------------------------
@@ -455,7 +484,7 @@ export default function PublicBookingPage() {
     setStaffId(''); setSlot(null);
     if (id === serviceId) {
       const rest = extraServiceIds.filter((x) => x !== id);
-      setServiceId(rest[0] ?? ''); setExtraServiceIds(rest.slice(1)); setAddonIds([]);
+      setServiceId(rest[0] ?? ''); setExtraServiceIds(rest.slice(1));
       return;
     }
     if (extraServiceIds.includes(id)) { setExtraServiceIds((p) => p.filter((x) => x !== id)); return; }
@@ -718,7 +747,7 @@ export default function PublicBookingPage() {
         body: JSON.stringify({
           serviceId,
           serviceIds: [serviceId, ...extraServiceIds.filter((x) => x !== serviceId)],
-          addonIds, preferredStaffId: staffId || undefined,
+          addonIds: selectedAddons.map((a) => a.id), preferredStaffId: staffId || undefined,
           startTime: salon?.timezone ? wallTimeToISO(slot.start, salon.timezone) : slot.start.toISOString(),
           customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
           customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
@@ -729,7 +758,7 @@ export default function PublicBookingPage() {
           // The whole party in ONE request: the server books the guests on the
           // back of this validated booking (a guest has no phone of their own,
           // and a separate public booking without one is refused).
-          ...(isGroup ? { guests: extraGuests.map((g, gi) => ({ firstName: g.name.trim() || `Guest ${gi + 2}`, serviceIds: g.serviceIds })) } : {}),
+          ...(isGroup ? { guests: extraGuests.map((g, gi) => ({ firstName: g.name.trim() || `Guest ${gi + 2}`, serviceIds: g.serviceIds, ...(guestPicked(g).length ? { addonIds: guestPicked(g).map((a) => a.id) } : {}) })) } : {}),
           smsConsent,
           referralCode: (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ref') : null) || undefined,
           // Campaign attribution: capture UTM from THIS page's URL. For plugin
@@ -787,7 +816,7 @@ export default function PublicBookingPage() {
         const gName = g.name.trim() || `Guest ${gi + 2}`;
         const r = guestOut[gi];
         if (r?.ok) {
-          const names = g.serviceIds.map((sid) => services.find((sv) => sv.id === sid)?.name).filter(Boolean).join(', ');
+          const names = [...g.serviceIds.map((sid) => services.find((sv) => sv.id === sid)?.name), ...guestPicked(g).map((a) => a.name)].filter(Boolean).join(', ');
           booked.push(`${when} · ${names} — ${gName}`);
           if (r.id) fireConversion({ id: String(r.id), valueCents: typeof r.priceCents === 'number' ? r.priceCents : 0, currency: rules.currency, slug, items: [] });
         } else {
@@ -826,7 +855,7 @@ export default function PublicBookingPage() {
     const names = allLines.map((l) => l.name).join(', ');
     const when = `${slot.start.toLocaleDateString(bookLocale(), { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
     setVisitCart((c) => [...c, {
-      serviceId, extraServiceIds, addonIds, staffId, slot,
+      serviceId, extraServiceIds, addonIds: selectedAddons.map((a) => a.id), staffId, slot,
       totalCents, label: `${when} · ${names}`,
     }]);
     // Clear only the visit itself — the customer's details carry over.
@@ -926,7 +955,7 @@ export default function PublicBookingPage() {
     (s, g) => s + g.serviceIds.reduce((x, sid) => {
       const sv = services.find((v) => v.id === sid);
       return x + (sv ? lineAt(sv, 1).priceCents : 0);
-    }, 0),
+    }, 0) + guestPicked(g).reduce((x, a) => x + a.priceCents, 0),
     0,
   );
   const grand =
@@ -942,14 +971,15 @@ export default function PublicBookingPage() {
           const ls: Line[] = g.serviceIds
             .map((id) => services.find((sv) => sv.id === id))
             .filter((sv): sv is Service => !!sv)
-            .map((sv) => lineAt(sv, 1));
+            .map((sv): Line => lineAt(sv, 1))
+            .concat(guestPicked(g).map((a): Line => ({ id: a.id, name: a.name, durationMinutes: a.durationMinutes, fullCents: a.priceCents, priceCents: a.priceCents, addon: true })));
           return { name: g.name.trim() || btf('Guest {n}', { n: k + 2 }), lines: ls, cents: ls.reduce((x, l) => x + l.priceCents, 0), minutes: ls.reduce((x, l) => x + l.durationMinutes, 0) };
         }),
       ]
     : null;
   const removeFor = (who: number, id: string) => {
     if (who === 0) { removeLine(id); return; }
-    setExtraGuests((gs) => gs.map((g, k) => (k === who - 1 ? { ...g, serviceIds: g.serviceIds.filter((x) => x !== id) } : g)));
+    setExtraGuests((gs) => gs.map((g, k) => (k === who - 1 ? { ...g, serviceIds: g.serviceIds.filter((x) => x !== id), addonIds: (g.addonIds ?? []).filter((x) => x !== id) } : g)));
     setSlot(null);
   };
 
@@ -1212,16 +1242,16 @@ export default function PublicBookingPage() {
                       <b style={{ color: '#334155' }}>Walk-in only — no appointment needed:</b> {walkInOnly.map((w) => w.name).join(', ')}. First come, first served — just come in.
                     </div>
                   )}
-                  {activeGuest === 0 && askAddons.length > 0 && (
+                  {viewAsk.length > 0 && (
                     <div style={{ marginTop: 22 }}>
                       <SectionLabel accent={accent}>A quick question</SectionLabel>
                       <div style={{ display: 'grid', gap: 10 }}>
-                        {askAddons.map((a) => {
-                          const yes = addonIds.includes(a.id);
-                          const no = !yes && askAnswers[a.id] === 'no';
+                        {viewAsk.map((a) => {
+                          const yes = viewAddonIds.includes(a.id);
+                          const no = !yes && askAnswers[askKey(activeGuest, a.id)] === 'no';
                           const pick = (v: 'yes' | 'no') => {
-                            setAskAnswers((p) => ({ ...p, [a.id]: v }));
-                            setAddonIds((p) => (v === 'yes' ? (p.includes(a.id) ? p : [...p, a.id]) : p.filter((x) => x !== a.id)));
+                            setAskAnswers((p) => ({ ...p, [askKey(activeGuest, a.id)]: v }));
+                            setViewAddonIds((p) => (v === 'yes' ? (p.includes(a.id) ? p : [...p, a.id]) : p.filter((x) => x !== a.id)));
                             setSlot(null);
                           };
                           return (
@@ -1238,15 +1268,15 @@ export default function PublicBookingPage() {
                       </div>
                     </div>
                   )}
-                  {activeGuest === 0 && serviceAddons.length > askAddons.length && (
+                  {viewAddons.length > viewAsk.length && (
                     <div style={{ marginTop: 22 }}>
-                      <SectionLabel accent={accent}>Add-ons for {service?.name}</SectionLabel>
+                      <SectionLabel accent={accent}>Add-ons for {viewFor}</SectionLabel>
                       <div style={{ display: 'grid', gap: 10, alignContent: 'start', alignItems: 'start', gridAutoRows: 'min-content' }}>
-                        {serviceAddons.filter((a) => !a.askAtBooking).map((a) => {
-                          const on = addonIds.includes(a.id);
+                        {viewAddons.filter((a) => !a.askAtBooking).map((a) => {
+                          const on = viewAddonIds.includes(a.id);
                           return (
                             <button key={a.id} type="button" className="lumio-row"
-                              onClick={() => { setAddonIds((p) => p.includes(a.id) ? p.filter((x) => x !== a.id) : [...p, a.id]); setSlot(null); }}
+                              onClick={() => { setViewAddonIds((p) => p.includes(a.id) ? p.filter((x) => x !== a.id) : [...p, a.id]); setSlot(null); }}
                               style={{ ...rowCard, borderColor: on ? accent : '#e6eaf2', background: on ? '#fffaf0' : '#fff' }}>
                               <span style={{ flex: 1, textAlign: 'left' }}>
                                 <span style={rowTitle}>{a.name}</span>
@@ -1278,11 +1308,11 @@ export default function PublicBookingPage() {
                     .filter((v) => staffId && v.staffId === staffId)
                     .map((v) => ({ start: v.slot.start.toISOString(), end: v.slot.end.toISOString() }))}
                   groupNeeds={isGroup ? [
-                    { serviceIds: pickedServiceIds, extraMin: addonLines.reduce((sum, l) => sum + 0, 0) },
-                    ...extraGuests.map((g) => ({ serviceIds: g.serviceIds, extraMin: 0 })),
+                    { serviceIds: pickedServiceIds, extraMin: addonLines.reduce((sum, l) => sum + (l.durationMinutes || 0), 0) },
+                    ...extraGuests.map((g) => ({ serviceIds: g.serviceIds, extraMin: guestPicked(g).reduce((sum, a) => sum + (a.durationMinutes || 0), 0) })),
                   ].map((gg) => {
                     const svcOf = (sid: string) => services.find((sv) => sv.id === sid);
-                    const durationMin = gg.serviceIds.reduce((sum, sid) => sum + (svcOf(sid)?.durationMinutes ?? 0), 0) || 30;
+                    const durationMin = (gg.serviceIds.reduce((sum, sid) => sum + (svcOf(sid)?.durationMinutes ?? 0), 0) || 30) + gg.extraMin;
                     // Intersect the pools of every service this person picked;
                     // services nobody lists don't constrain (desk assigns them).
                     let elig: 'ANY' | string[] = 'ANY';

@@ -83,6 +83,8 @@ const P: Record<string, React.ReactNode> = {
   formSign: <><rect x="5" y="4.5" width="14" height="16.5" rx="2" /><path d="M9 4.5V3h6v1.5" /><path d="M8.5 10h7M8.5 13.2h4.5" /><path d="M8.3 17.8c1-1.4 1.9-1.4 2.4-.3.4.9 1.1.9 1.8-.1l.9-1" /></>,
   award: <><circle cx="12" cy="9" r="5.5" /><circle cx="12" cy="9" r="2.2" /><path d="m9 13.7-1.5 7.3 4.5-2.4 4.5 2.4-1.5-7.3" /></>,
   starChat: <><path d="M4 5h16v11.5h-9.5L6 20.5v-4H4V5Z" /><path d="m12 7.6 1.1 2.2 2.4.3-1.8 1.7.5 2.4-2.2-1.2-2.2 1.2.5-2.4-1.8-1.7 2.4-.3L12 7.6Z" /></>,
+  // The salon's one AI brain: two hemispheres with a spark.
+  brain: <><path d="M9.5 4.5a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2 3.2 3.2 0 0 0 1.8 5.6 3 3 0 0 0 5.7.2V6.3a2.6 2.6 0 0 0-2.5-1.8Z" /><path d="M14.5 4.5a3 3 0 0 1 3 3 3 3 0 0 1 2 5.2 3.2 3.2 0 0 1-1.8 5.6 3 3 0 0 1-5.7.2V6.3a2.6 2.6 0 0 1 2.5-1.8Z" /><path d="M12 6.3v12.2M7 12.5h5M12 10h5" /></>,
   headset: <><path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2" /><rect x="3.5" y="13" width="4" height="6" rx="1.5" /><rect x="16.5" y="13" width="4" height="6" rx="1.5" /><path d="M18.5 19c0 1.3-1.5 2-4 2H13" /></>,
   // Finance & account
   terminal: <><rect x="6" y="2.8" width="12" height="18.4" rx="2.2" /><rect x="8.5" y="5.5" width="7" height="4.3" rx=".8" /><path d="M9 13.3h.01M12 13.3h.01M15 13.3h.01M9 16.6h.01M12 16.6h.01M15 16.6h.01" /></>,

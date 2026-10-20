@@ -3,6 +3,8 @@ import { chosenIndustry, personaFor } from '../common/business-persona';
 import { VOICE_CATALOG, cleanVoiceSetting, parseVoices } from './voice-catalog';
 import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor, agentFallbackLines, transferLines } from './voice-lang';
 import { isTransientStatus } from '../messenger/agent-fallback';
+import { AiBrainService } from '../ai-brain/ai-brain.service';
+import { MAX_FILLER_HOPS, brainLangOfVoice, callbackLines, keepOpenLine, mayHangUp, nextPendingId, parsePendingId, type EndReason } from '../ai-brain/brain-rules';
 import { Prisma, NotificationChannel, NotificationStatus, AppointmentStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { wallTimeToUtc } from '../bookings/booking.util';
@@ -107,7 +109,8 @@ export interface TenantVoiceUsage extends VoiceUsage { tenantId: string; name: s
  */
 const MAX_TURNS = 40;
 const MAX_TOOL_LOOPS = 5;
-const MAX_SILENCE = 2; // reprompts before we politely hang up
+/** Reprompts before the caller is promised a call back (the brain's handoff.silenceRetries wins when set). */
+const MAX_SILENCE = 3;
 /**
  * THE PAUSE THAT SOUNDS LIKE A HANG-UP.
  *
@@ -130,7 +133,7 @@ const FAST_REPLY_MS = 1_200;
 /** How long /turn-result waits for the brain before asking the caller to repeat. */
 const RESULT_WAIT_MS = 12_000;
 /** The brain's own deadline per turn, filler included. Under Twilio's 15s. */
-const TURN_DEADLINE_MS = FAST_REPLY_MS + RESULT_WAIT_MS;
+const TURN_DEADLINE_MS = FAST_REPLY_MS + RESULT_WAIT_MS * MAX_FILLER_HOPS;
 /** A pending answer is forgotten after this — Twilio never came back for it. */
 const PENDING_TTL_MS = 60_000;
 
@@ -174,6 +177,8 @@ export class VoiceService implements OnModuleInit {
     // The shared "is there room for all of us" arithmetic (bookings module).
     // Optional so the older specs that build the service bare still run.
     @Optional() private readonly party?: PartyAvailabilityService,
+    // The salon's AI brain (ai-brain/): persona, facts, rules, memory, the log of why a call ended.
+    @Optional() private readonly brain?: AiBrainService,
   ) {}
 
   /** The party service, built on demand when Nest did not hand one in (specs). */
@@ -510,6 +515,10 @@ export class VoiceService implements OnModuleInit {
     const { dial } = await this.localeInfo(line.tenantId);
     const humans = this.humanNumbers(line, dial);
     const mode = String(line.mode || 'ai');
+    if (callSid && this.brain) {
+      const known = await this.brain.customerByPhone(line.tenantId, from).catch(() => null);
+      this.brain.startSession({ tenantId: line.tenantId, channel: 'voice', externalId: callSid, phone: from || null, customerId: known?.id ?? null }).catch(() => undefined);
+    }
 
     // "forward" = never let the AI speak: ring the humans, then voicemail/notice.
     if (mode === 'forward') {
@@ -525,7 +534,7 @@ export class VoiceService implements OnModuleInit {
 
     // "ai" (or ring_first with nobody to ring): the assistant answers now — if it
     // is allowed to at this moment.
-    return this.aiOrNoAnswer(line, salonName);
+    return this.aiOrNoAnswer(line, salonName, callSid || null);
   }
 
   /** Start the AI conversation when it's allowed to answer; otherwise fall back
@@ -537,12 +546,13 @@ export class VoiceService implements OnModuleInit {
       noAnswerAction: string; awayMessage: string | null;
     },
     salonName: string,
+    callSidOf: string | null = null,
   ): Promise<string> {
-    if (!line.enabled) return this.noAnswerTwiml(line, salonName);
+    if (!line.enabled) { await this.endReason(line.tenantId, callSidOf, 'off_hours'); return this.noAnswerTwiml(line, salonName); }
 
     // Outside the salon's chosen AI hours → the AI stays silent.
     const open = await this.aiWindowOpen(line, line.tenantId);
-    if (!open) return this.noAnswerTwiml(line, salonName);
+    if (!open) { await this.endReason(line.tenantId, callSidOf, 'off_hours'); return this.noAnswerTwiml(line, salonName); }
 
     // Hard cap: stop taking NEW AI calls once over the included minutes (a call
     // already in progress is never cut off). Overage is still recorded otherwise.
@@ -551,17 +561,43 @@ export class VoiceService implements OnModuleInit {
       if (u.aiMinutes >= line.includedMinutes) return this.noAnswerTwiml(line, salonName);
     }
 
-    // Bilingual line: ask the caller which language FIRST — recognition is
-    // locked per turn, so the choice must come before any real listening.
-    // (The menu itself already discloses the automated assistant.)
-    if (isBilingual(line.language)) return this.langMenuTwiml(salonName, 0);
+    // The brain decides how the call opens: a keypad menu, or straight in the
+    // salon's primary language with the other language caught on the first turn.
+    const brain = this.brain ? await this.brain.getBrain(line.tenantId).catch(() => null) : null;
+    const opening = brain?.languages.voiceOpening ?? (isBilingual(line.language) ? 'menu' : 'auto');
+    if (opening === 'menu' || (opening !== 'single' && isBilingual(line.language) && !brain)) return this.langMenuTwiml(salonName, 0);
 
     // ALWAYS disclose the automated assistant up front (CA/TX AI-disclosure laws).
-    const lang = line.language || 'en-US';
+    const lang = brain ? (brain.languages.primary === 'vi' ? 'vi-VN' : (line.language && !isBilingual(line.language) ? line.language : 'en-US')) : (line.language || 'en-US');
     const canned = cannedLines(lang);
     const disclosure = canned.disclosure(salonName);
-    const greeting = (line.greeting && line.greeting.trim()) || canned.defaultGreeting;
-    return this.sayGather(`${disclosure} ${greeting}`, 0, lang, line.voice || null);
+    const greeting = (brain?.channels.voice.greeting || brain?.persona.greeting || line.greeting || '').trim() || canned.defaultGreeting;
+    const lgFlag = isBilingual(line.language) || (brain && brain.languages.allowed.length > 1) ? lang : null;
+    if (lgFlag && callSidOf) await this.prisma.voiceCall.updateMany({ where: { callSid: callSidOf, tenantId: line.tenantId }, data: { language: lang } as never }).catch(() => undefined);
+    return this.sayGather(`${disclosure} ${greeting}`, 0, lang, line.voice || null, lgFlag);
+  }
+
+  /** Close this call's line in the session log (ai-brain) — best-effort, never in the caller's way. */
+  private async endReason(tenantId: string, callSid: string | null | undefined, reason: EndReason, outcome?: string): Promise<void> {
+    if (!this.brain || !callSid) return;
+    await this.brain.endSession(tenantId, callSid, reason, outcome).catch(() => undefined);
+  }
+
+  /** The caller could not be helped: a task for the desk, and the salon told now. */
+  private async leaveCallback(call: { tenantId: string; fromNumber: string | null; callSid?: string | null; transcript?: unknown }, reason: string, summary: string): Promise<void> {
+    if (!this.brain) return;
+    const known = await this.brain.customerByPhone(call.tenantId, call.fromNumber).catch(() => null);
+    const sess = call.callSid ? await (this.prisma as unknown as { aiSession?: { findFirst: (a: unknown) => Promise<{ id: string } | null> } }).aiSession?.findFirst({ where: { tenantId: call.tenantId, externalId: call.callSid }, select: { id: true } }).catch(() => null) : null;
+    await this.brain.createCallback({
+      tenantId: call.tenantId, channel: 'voice', reason, summary: summary.slice(0, 500),
+      phone: call.fromNumber || null, name: known ? [known.firstName, known.lastName].filter(Boolean).join(' ') : null, customerId: known?.id ?? null, sessionId: sess?.id ?? null,
+    }).catch(() => undefined);
+  }
+
+  /** What the caller was in the middle of, for a callback task: the last exchange in a line. */
+  private gist(history: Turn[], speech: string): string {
+    const lastAi = [...history].reverse().find((h) => h.role === 'assistant')?.content ?? '';
+    return [lastAi ? `AI: ${String(lastAi).slice(0, 160)}` : '', speech ? `Caller: ${speech.slice(0, 160)}` : ''].filter(Boolean).join(' · ') || 'Caller needs a call back';
   }
 
   /**
@@ -675,22 +711,36 @@ export class VoiceService implements OnModuleInit {
       return this.sayHangup('Sorry, something went wrong on our end. Please call again. Goodbye.', null);
     }
     const savedLang = (call as unknown as { language?: string | null }).language || lgParam || null;
-    const biline = isBilingual(line.language);
-    let lang = effectiveLang(line.language, savedLang);
+    const brainCfg = this.brain ? await this.brain.getBrain(call.tenantId).catch(() => null) : null;
+    const multi = !!brainCfg && brainCfg.languages.allowed.length > 1;
+    const biline = isBilingual(line.language) || multi;
+    let lang = multi ? (savedLang === 'vi-VN' || savedLang === 'en-US' ? savedLang : (brainCfg!.languages.primary === 'vi' ? 'vi-VN' : 'en-US')) : effectiveLang(line.language, savedLang);
     let lgFlag = biline ? lang : null;
     const voice = line.voice || null;
     let canned = cannedLines(lang);
+    const maxSilence = brainCfg?.handoff.silenceRetries ?? MAX_SILENCE;
+    const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
 
-    // No speech captured → reprompt a couple of times, then bow out gracefully.
+    // No speech captured → reprompt, then PROMISE A CALL BACK — never "I lost
+    // you, goodbye" to a customer who was just looking at her calendar.
     if (!speech) {
-      if (miss >= MAX_SILENCE) {
-        await this.finalize(call.id, 'no_action', null);
-        return this.sayHangup(canned.lostYou, voice, lang);
+      // First words of the call came back empty on a line that serves both
+      // languages: listen once in the other one before counting a silence.
+      const other = lang === 'vi-VN' ? 'en-US' : 'vi-VN';
+      const otherAllowed = multi && brainCfg!.languages.allowed.includes(other === 'vi-VN' ? 'vi' : 'en');
+      if (miss === 0 && history.length === 0 && otherAllowed && brainCfg!.languages.voiceOpening === 'auto') {
+        await this.prisma.voiceCall.update({ where: { id: call.id }, data: { language: other } as never }).catch(() => undefined);
+        return this.sayGather(cannedLines(other).didntCatch, 0, other, voice, `${other}`);
+      }
+      if (miss >= maxSilence) {
+        const cb = callbackLines(lang);
+        await this.leaveCallback({ tenantId: call.tenantId, fromNumber: call.fromNumber, callSid, transcript: call.transcript }, 'silence', this.gist(history, ''));
+        await this.finalize(call.id, 'no_action', null, 'silence');
+        return this.sayHangup(cb.silence, voice, lang);
       }
       return this.sayGather(canned.didntCatch, miss, lang, voice, lgFlag);
     }
 
-    const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
     const t0 = Date.now();
     // A real person to hand the caller to: the salon's own numbers, once per
     // call (a second "please hold" after nobody answered the first is worse
@@ -703,11 +753,11 @@ export class VoiceService implements OnModuleInit {
     // runs here, once, whether it finishes inside the fast window or is
     // collected later by /turn-result.
     const work = (async (): Promise<string> => {
-      let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean };
+      let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; stuck?: boolean; toolCalls?: number; failure?: string | null };
       let lang2 = lang; let lgFlag2 = lgFlag; let canned2 = canned;
       // What this call has already booked, so a repeated or late turn never books twice.
       const alreadyBooked = call.outcome === 'booked' && call.appointmentId ? String(call.appointmentId) : null;
-      const agentRun = this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang2, biline, canTransfer, alreadyBooked);
+      const agentRun = this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang2, biline, canTransfer, alreadyBooked, callSid);
       agentRun.catch(() => undefined);
       try {
         // Twilio abandons a webhook after ~15 seconds and HANGS UP — the caller
@@ -733,10 +783,13 @@ export class VoiceService implements OnModuleInit {
         const fails = (this.turnFails.get(callSid) || 0) + 1;
         if (this.turnFails.size > 500) this.turnFails.clear();
         this.turnFails.set(callSid, fails);
+        if (this.brain) this.brain.noteTurn(call.tenantId, callSid, { ms: Date.now() - t0, failure: msg.slice(0, 160) }).catch(() => undefined);
         if (fails < 3) return this.sayGather(canned2.slowRetry, 0, lang2, voice, lgFlag2);
         this.turnFails.delete(callSid);
-        await this.finalize(call.id, 'error', null);
-        return this.sayHangup(canned2.trouble, voice, lang2);
+        // Three strikes: the desk calls back — and is told so right now.
+        await this.leaveCallback({ tenantId: call.tenantId, fromNumber: call.fromNumber, callSid, transcript: call.transcript }, msg.includes('turn-deadline') ? 'deadline' : 'error', this.gist(history, speech));
+        await this.finalize(call.id, 'error', null, msg.includes('turn-deadline') ? 'deadline' : 'error');
+        return this.sayHangup(callbackLines(lang2).trouble, voice, lang2);
       }
       this.turnFails.delete(callSid);
       // The agent may have DETECTED the caller's language mid-conversation (the
@@ -750,6 +803,13 @@ export class VoiceService implements OnModuleInit {
         this.logger.log(`voice lang switched mid-call → ${lang2}`);
       }
       this.logger.log(`voice turn ${Date.now() - t0}ms lang=${lang2}`);
+      if (this.brain) this.brain.noteTurn(call.tenantId, callSid, { ms: Date.now() - t0, toolCalls: result.toolCalls ?? 0, failure: result.failure ?? null, bookedId: result.booked ? result.appointmentId : null, lang: brainLangOfVoice(lang2) }).catch(() => undefined);
+
+      // The assistant ran out of tool budget: the desk takes over — on a live
+      // line, not after a goodbye the caller never asked for.
+      if (result.stuck) {
+        await this.leaveCallback({ tenantId: call.tenantId, fromNumber: call.fromNumber, callSid, transcript: call.transcript }, 'tool_loop', this.gist(history, speech));
+      }
 
       const nextHistory = [...history, { role: 'user', content: speech }, { role: 'assistant', content: result.reply }].slice(-MAX_TURNS);
       await this.prisma.voiceCall.update({
@@ -773,11 +833,16 @@ export class VoiceService implements OnModuleInit {
         return this.transferTwiml(say, humans, line, lang2, voice, lgFlag2);
       }
 
-      if (result.done) {
-        if (!result.booked) await this.finalize(call.id, call.outcome === 'booked' ? 'booked' : 'info', null);
+      // THE ONLY WAY A CALL ENDS: the caller closed it (ai-brain/brain-rules).
+      // The model asking to end is not enough — it used to hang up on "ok".
+      const bookedNow = result.booked || call.outcome === 'booked';
+      if (result.done && mayHangUp({ wantEnd: true, booked: bookedNow, lastUser: speech, reply: result.reply })) {
+        if (!result.booked) await this.finalize(call.id, call.outcome === 'booked' ? 'booked' : 'info', null, bookedNow ? 'booked_done' : 'goodbye');
+        else await this.endReason(call.tenantId, callSid, 'booked_done', 'booked');
         return this.sayHangup(result.reply, voice, lang2);
       }
-      return this.sayGather(result.reply, 0, lang2, voice, lgFlag2);
+      const reply = result.done && !/[?？]\s*$/.test(result.reply) ? `${result.reply} ${keepOpenLine(lang2)}` : result.reply;
+      return this.sayGather(reply, 0, lang2, voice, lgFlag2);
     })();
     // Never let a rejection go unobserved: the result endpoint (or nobody)
     // reads it later, and the function above already answers every error.
@@ -801,6 +866,7 @@ export class VoiceService implements OnModuleInit {
   /** Twilio comes back here after the filler for the answer the brain owes. */
   async handleTurnResult(body: Record<string, string>, id: string, lgParam?: string): Promise<string> {
     const callSid = String(body.CallSid || '');
+    const parsed = parsePendingId(id);
     const pending = this.pendingTurns.get(id);
     this.pendingTurns.delete(id);
     this.sweepPending(false);
@@ -820,6 +886,16 @@ export class VoiceService implements OnModuleInit {
         new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('result-wait')), RESULT_WAIT_MS); (tm as { unref?: () => void }).unref?.(); }),
       ]);
     } catch {
+      // Still working (a group booking, a slow model): say so and come back
+      // once more, up to MAX_FILLER_HOPS — the turn's own deadline still
+      // ends it, so the caller is never left on an endless "one moment".
+      const hop = (parsed?.hop ?? 0) + 1;
+      if (parsed && hop < MAX_FILLER_HOPS) {
+        const nextId = nextPendingId(parsed.base, hop);
+        this.pendingTurns.set(nextId, { promise: pending.promise, at: pending.at });
+        const lines = callbackLines(lang).stillChecking;
+        return this.fillerRedirect(lines[(hop - 1) % lines.length], nextId, lang, voice, lgFlag);
+      }
       return this.sayGather(canned.slowRetry, 0, lang, voice, lgFlag);
     }
   }
@@ -865,10 +941,23 @@ export class VoiceService implements OnModuleInit {
     );
   }
 
-  private async finalize(callId: string, outcome: string, appointmentId: string | null): Promise<void> {
-    await this.prisma.voiceCall.update({
+  private async finalize(callId: string, outcome: string, appointmentId: string | null, reason?: EndReason): Promise<void> {
+    const row = await this.prisma.voiceCall.update({
       where: { id: callId },
       data: { ...(appointmentId ? { appointmentId } : {}), outcome },
+    }).catch(() => null);
+    if (reason && row) await this.endReason(row.tenantId, row.callSid, reason, outcome === 'booked' ? 'booked' : undefined);
+  }
+
+  /** Once the call is over: what was said joins the caller's standing memory (ai-brain), in the background. */
+  private rememberCall(call: { tenantId: string; fromNumber: string | null; transcript: unknown; language?: string | null }): void {
+    if (!this.brain) return;
+    const turns = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
+    if (!turns.length) return;
+    this.brain.customerByPhone(call.tenantId, call.fromNumber).then(async (known) => {
+      if (!known) return;
+      await this.brain!.touchMemory(call.tenantId, known.id, { channel: 'voice', lang: brainLangOfVoice(call.language), phone: known.phone ?? undefined });
+      await this.brain!.distillMemory(call.tenantId, known.id, turns.map((t) => ({ role: t.role, content: String(t.content ?? '') })), brainLangOfVoice(call.language));
     }).catch(() => undefined);
   }
 
@@ -880,6 +969,12 @@ export class VoiceService implements OnModuleInit {
     // A call handed to a person keeps the AI's share stamped at the hand-off;
     // the whole call's length would bill the salon's own staff time as AI.
     await this.prisma.voiceCall.updateMany({ where: { callSid, outcome: { notIn: ['transferred', 'transferring'] } }, data: { durationSec: dur } }).catch(() => undefined);
+    // The line is down: whatever the log does not know yet is "the caller hung up".
+    const call = await this.prisma.voiceCall.findUnique({ where: { callSid } }).catch(() => null);
+    if (call) {
+      await this.endReason(call.tenantId, callSid, 'caller_hangup', call.outcome === 'booked' ? 'booked' : undefined);
+      this.rememberCall(call as unknown as { tenantId: string; fromNumber: string | null; transcript: unknown; language?: string | null });
+    }
   }
 
   // ---- usage metering (AI minutes + SMS) -----------------------------------
@@ -938,9 +1033,10 @@ export class VoiceService implements OnModuleInit {
   private async runAgent(
     tenantId: string, callerPhone: string, aiInstruction: string, history: Turn[], userText: string, lang = 'en-US', bilingual = false, canTransfer = false,
     alreadyBooked: string | null = null,
-  ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean }> {
+    callSid: string | null = null,
+  ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; stuck?: boolean; toolCalls?: number; failure?: string | null }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
-    const acc = { wantEnd: false, booked: false, appointmentId: null as string | null, langSwitch: null as string | null, transfer: false };
+    const acc = { wantEnd: false, booked: false, appointmentId: null as string | null, langSwitch: null as string | null, transfer: false, toolCalls: 0, failure: null as string | null, callSid, callerPhone };
     if (!key) {
       this.logger.error('ANTHROPIC_API_KEY is not set on this service — the voice agent cannot think. Every call will fail until it is added.');
       throw new Error('no-anthropic-key');
@@ -971,7 +1067,6 @@ export class VoiceService implements OnModuleInit {
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';
     const infoBlock = await this.salonInfoBlock(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
-    const facts = await this.factsFor(tenantId);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     // The owner's own instructions used to be appended to the FAQ facts as
     // "notes" at the very end of the prompt, where the step-by-step booking
@@ -982,9 +1077,24 @@ export class VoiceService implements OnModuleInit {
     // a price or service the salon did not give.
     // The salon's shared rules (every AI door) come first, the hotline's own
     // extras after — both are the owner's words, both are followed.
+    // The salon's brain (ai-brain/): persona, facts, rules, booking policy —
+    // the same words Messenger reads. Without the module (older specs) the
+    // old per-line note still applies.
+    const brainOut = this.brain ? await this.brain.promptBlocks(tenantId, 'voice', brainLangOfVoice(lang)).catch(() => null) : null;
+    const blocks = brainOut?.blocks ?? null;
     let shared = '';
-    try { shared = (await this.settings.getAiNotes(tenantId))?.text ?? ''; } catch { shared = ''; }
-    const ownerNote = [shared, String(aiInstruction ?? '').trim()].filter(Boolean).join('\n').slice(0, 4000);
+    if (!blocks) { try { shared = (await this.settings.getAiNotes(tenantId))?.text ?? ''; } catch { shared = ''; } }
+    const facts = blocks ? blocks.facts : await this.factsFor(tenantId);
+    const ownerNote = (blocks ? blocks.rules : [shared, String(aiInstruction ?? '').trim()].filter(Boolean).join('\n')).slice(0, 4000);
+    // Who is calling: the salon's own record and what every assistant remembers about them.
+    let knownBlock = '';
+    if (this.brain && callerPhone) {
+      const known = await this.brain.customerByPhone(tenantId, callerPhone).catch(() => null);
+      if (known) {
+        const mem = await this.brain.getMemory(tenantId, known.id).catch(() => null);
+        knownBlock = `KNOWN CALLER: this number belongs to ${[known.firstName, known.lastName].filter(Boolean).join(' ')}, a customer on file — greet them by first name and never ask for their name or number again.\n${this.brain.memoryBlock(mem)}`.trim();
+      }
+    }
     const ownerRules = ownerNote
       ? `\nTHE ${persona.venueNoun.toUpperCase()} OWNER'S INSTRUCTIONS — follow these on every call. They are this ${persona.venueNoun}'s own rules: when one says to quote a price a certain way or to ask a question for a certain service, do exactly that at that point in the booking steps (one question per turn), in the caller's language:\n${ownerNote}\n`
       : '';
@@ -1077,8 +1187,8 @@ If the caller asks about a booking they already have ("when is my appointment", 
 Speak times naturally ("two thirty PM on Friday"). The ${persona.venueNoun}'s local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
 Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours.
 When the conversation is finished — they've booked and have nothing else, or their question is answered, or they say goodbye — call end_call. ${canTransfer ? 'If the caller asks for a real person — a staff member, the owner, a manager, "someone at the ' + persona.venueNoun + '" — or is upset and wants a human, do not argue or keep them: say ONE short sentence that you are connecting them now (no goodbye), and call transfer_to_human. If they ask something you cannot answer from what you were given here (never guess), say you are not sure and offer to connect them to the front desk; if they say yes, call transfer_to_human.' : 'If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. If they ask something you cannot answer from what you were given here, never guess: say a staff member will call them back with the answer.'} Never ask for payment or card details.
-${servicesBlock}
-${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: ' + facts + '\n' : ''}${ownerRules}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
+${blocks?.persona ? blocks.persona + '\n' : ''}${servicesBlock}
+${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\n' + facts + '\n' : ''}${ownerRules}${blocks?.booking ? blocks.booking + '\n' : ''}${knownBlock ? knownBlock + '\n' : ''}${blocks ? blocks.handoffNote + '\n' : ''}If you cannot help with something — a question not answered here, a request the ${persona.venueNoun} must handle — call request_callback with a one-line summary; a team member calls back. Never end the call on your own because you are stuck.${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
 
     const personItem = (withName: boolean) => ({
       type: 'object',
@@ -1196,8 +1306,13 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       },
       {
         name: 'end_call',
-        description: 'End the phone call after saying goodbye. Call this when the caller is done (booked and nothing else, question answered, or they said goodbye).',
+        description: 'End the phone call after saying goodbye. ONLY when the caller themself said goodbye, "that\'s all", or — after a booking — that they need nothing else. Never because a question was answered or they said "ok".',
         input_schema: { type: 'object', properties: { reason: { type: 'string' } }, required: [] },
+      },
+      {
+        name: 'request_callback',
+        description: 'Leave the front desk a task to call this customer back, when you cannot finish something yourself: a question you cannot answer from what you were given, a party too large, a change you are not allowed to make. Say in one sentence that a team member will call back shortly, and keep the call open for anything else.',
+        input_schema: { type: 'object', properties: { summary: { type: 'string', description: 'One line: what the caller wants, in their words.' }, reason: { type: 'string' } }, required: ['summary'] },
       },
       // Only on a line that has people to hand the caller to (and has not
       // already tried and failed on this call).
@@ -1249,33 +1364,41 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       }
       const data = (await res.json()) as { stop_reason?: string; content?: AnthropicBlock[]; model?: string; usage?: Record<string, number> };
       this.meter(tenantId, data, true);
-      const blocks = data.content || [];
+      const outBlocks = data.content || [];
       if (data.stop_reason === 'tool_use') {
-        messages.push({ role: 'assistant', content: blocks });
+        messages.push({ role: 'assistant', content: outBlocks });
         const results: unknown[] = [];
-        for (const blk of blocks) {
+        for (const blk of outBlocks) {
           if (blk.type !== 'tool_use') continue;
+          acc.toolCalls += 1;
           const out = await this.runTool(tenantId, tz, callerPhone, blk.name || '', blk.input || {}, acc, ctx);
+          if (/^(NOT BOOKED|ERROR|Could not complete)/.test(out)) acc.failure = `${blk.name}: ${out.slice(0, 140)}`;
           results.push({ type: 'tool_result', tool_use_id: blk.id, content: out });
         }
         messages.push({ role: 'user', content: results });
         continue;
       }
-      const text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      const text = outBlocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
       if (acc.transfer) {
-        return { reply: text || transferLines(acc.langSwitch || lang).connecting, done: true, transfer: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
+        return { reply: text || transferLines(acc.langSwitch || lang).connecting, done: true, transfer: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure };
       }
-      return { reply: text || agentFallbackLines(acc.langSwitch || lang).keepGoing, done: acc.booked ? false : acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
+      return { reply: text || agentFallbackLines(acc.langSwitch || lang).keepGoing, done: acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure };
     }
-    return { reply: agentFallbackLines(acc.langSwitch || lang).handOff, done: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
+    // Out of tool budget: NOT a goodbye. The desk is handed the thread and the line stays open.
+    return { reply: callbackLines(acc.langSwitch || lang).stuck, done: false, stuck: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure ?? 'tool loop exhausted' };
   }
 
   private async runTool(
     tenantId: string, tz: string, callerPhone: string, name: string, input: Record<string, unknown>,
-    acc: { wantEnd: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean },
+    acc: { wantEnd: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; callSid?: string | null; callerPhone?: string },
     ctx: ToolCtx = { menu: [], staff: [], groupMode: false },
   ): Promise<string> {
     try {
+      if (name === 'request_callback') {
+        const summary = String(input.summary ?? '').trim().slice(0, 500) || 'Caller needs a call back';
+        await this.leaveCallback({ tenantId, fromNumber: callerPhone || null, callSid: acc.callSid ?? null }, String(input.reason ?? 'callback').slice(0, 40) || 'callback', summary);
+        return 'NOTED for the front desk. Tell the caller in ONE sentence that a team member will call them back shortly at this number, then ask if there is anything else — do not end the call.';
+      }
       if (name === 'check_availability') return await this.toolCheckAvailability(tenantId, tz, input, ctx);
       if (name === 'create_booking' && ctx.groupMode) return await this.toolBookParty(tenantId, tz, callerPhone, input, acc, ctx);
       if (name === 'transfer_to_human') {
@@ -1519,6 +1642,10 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
     }
     acc.booked = true;
     acc.appointmentId = leadId;
+    if (this.brain && leadId) {
+      const known = await this.brain.customerByPhone(tenantId, phone).catch(() => null);
+      if (known) this.brain.touchMemory(tenantId, known.id, { channel: 'voice', openIntent: null, phone }).catch(() => undefined);
+    }
     const who = members.map((m) => `${m.firstName} (${m.items.map((x) => x.name).join(' + ')}${m.techName ? ` with ${m.techName}` : ''})`).join(', ');
     return `SUCCESS. Booked ${who} for ${this.parties.spoken(start, tz)}. Thank them and confirm in ONE short sentence, saying a text confirmation is on its way to this number. Then ask if there is anything else — do not end the call yet.`;
   }

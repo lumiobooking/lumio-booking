@@ -3783,3 +3783,74 @@ model ClientFormLink {
   @@index([tenantId, walkInId])
   @@map("client_form_links")
 }
+
+// The salon's AI brain (ai-brain/): what every assistant remembers about one
+// customer across phone calls and chats. One row per (salon, customer).
+model CustomerMemory {
+  id            String    @id @default(uuid())
+  tenantId      String
+  customerId    String
+  phone         String?
+  profile       String    @default("")
+  salonNote     String    @default("")
+  preferredLang String?
+  prefs         Json      @default("{}")
+  openIntent    Json?
+  lastChannel   String?
+  lastContactAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now())
+
+  @@unique([tenantId, customerId])
+  @@index([tenantId, phone])
+  @@index([tenantId, lastContactAt])
+  @@map("customer_memories")
+}
+
+// One AI conversation (a call, a chat thread's run) and why it ended.
+model AiSession {
+  id         String    @id @default(uuid())
+  tenantId   String
+  // voice | messenger | instagram | zalo | web
+  channel    String
+  externalId String
+  customerId String?
+  phone      String?
+  lang       String?
+  outcome    String    @default("in_progress")
+  endReason  String    @default("in_progress")
+  turns      Int       @default(0)
+  toolCalls  Int       @default(0)
+  slowTurns  Int       @default(0)
+  maxTurnMs  Int       @default(0)
+  failures   Json      @default("[]")
+  bookedIds  Json      @default("[]")
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+
+  @@index([tenantId, startedAt])
+  @@index([tenantId, externalId])
+  @@index([tenantId, customerId])
+  @@map("ai_sessions")
+}
+
+// "Call this customer back": what an assistant leaves the desk when it could not finish.
+model AiCallbackTask {
+  id         String    @id @default(uuid())
+  tenantId   String
+  channel    String
+  reason     String
+  summary    String    @default("")
+  phone      String?
+  name       String?
+  customerId String?
+  sessionId  String?
+  threadId   String?
+  dueAt      DateTime?
+  doneAt     DateTime?
+  doneBy     String?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId, doneAt, createdAt])
+  @@map("ai_callback_tasks")
+}

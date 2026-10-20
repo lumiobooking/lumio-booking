@@ -73,6 +73,7 @@ export const GROUPS: NavGroup[] = [
     { href: '/salon/inbox', label: 'Inbox', icon: 'inboxTray' },
     { href: '/salon/messenger', label: 'Messenger bot', icon: 'bot' },
     { href: '/salon/voice', label: 'AI Hotline', icon: 'headset' },
+    { href: '/salon/ai', label: 'AI brain', icon: 'brain' },
   ] },
   { id: 'finance', label: 'Finance', items: [
     { href: '/salon/payments', label: 'Payments', icon: 'dollar' },
@@ -135,7 +136,7 @@ export const SECTIONS: Section[] = [
   { id: 'catalog', vi: 'Dịch vụ & Thợ', en: 'Services & team', viDesc: 'Menu, sản phẩm, đội thợ', enDesc: 'Menu, products, team', icon: 'nailPolish',
     hrefs: ['/salon/services', '/salon/products', '/salon/inventory', '/salon/staff', '/salon/stations'] },
   { id: 'growth', vi: 'Marketing & AI', en: 'Marketing & AI', viDesc: 'Kéo khách mới, giữ khách cũ', enDesc: 'Win and keep clients', icon: 'megaphone',
-    hrefs: ['/salon/content', '/salon/approve-posts', '/salon/channels', '/salon/marketing', '/salon/marketing/monthly', '/salon/email', '/salon/reviews-replies', '/salon/messenger', '/salon/voice'] },
+    hrefs: ['/salon/content', '/salon/approve-posts', '/salon/channels', '/salon/marketing', '/salon/marketing/monthly', '/salon/email', '/salon/reviews-replies', '/salon/messenger', '/salon/voice', '/salon/ai'] },
   { id: 'finance', vi: 'Tài chính', en: 'Finance', viDesc: 'Doanh thu, thanh toán, lương', enDesc: 'Revenue, payments, pay', icon: 'wallet',
     hrefs: ['/salon/reports', '/salon/pos/report', '/salon/payments', '/salon/card-transactions', '/salon/pos/shifts', '/salon/payroll', '/salon/payment-terminals'] },
   { id: 'account', vi: 'Cài đặt', en: 'Settings', viDesc: 'Làm một lần, ít khi quay lại', enDesc: 'Set once, rarely revisited', icon: 'cog',

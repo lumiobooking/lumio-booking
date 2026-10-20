@@ -267,6 +267,7 @@ const PATH_CAPS: [string, Capability][] = [
   ['email-campaigns', 'marketing'],
   ['content', 'marketing'],
   ['messenger', 'marketing'],
+  ['ai-brain', 'marketing'],
   ['voice', 'marketing'],
   ['zalo', 'marketing'],
   ['tiktok', 'marketing'],

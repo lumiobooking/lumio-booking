@@ -37,6 +37,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { ClientFormsModule } from './client-forms/client-forms.module';
+import { AiBrainModule } from './ai-brain/ai-brain.module';
 import { WaitlistModule } from './waitlist/waitlist.module';
 import { WalkinsModule } from './walkins/walkins.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
@@ -111,6 +112,7 @@ import { AiUsageModule } from './common/ai-usage.module';
     ReviewsModule,
     FeedbackModule,
     ClientFormsModule,
+    AiBrainModule,
     // Waitlist: fill slots freed by cancellations.
     WaitlistModule,
     // Walk-in queue + fair turn rotation ("lượt").

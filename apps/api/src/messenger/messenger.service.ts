@@ -1,5 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { discountRules, promoKnowledge, type PromoInputs } from './promo-knowledge';
+import { AiBrainService } from '../ai-brain/ai-brain.service';
+import { conversationLanguage as brainConversationLanguage } from '../ai-brain/brain-rules';
+import type { Lang as BrainLang } from '../ai-brain/brain-settings';
 import { isPagePostChange, requestChannelSync } from '../marketing/sync-signals';
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
@@ -257,6 +260,8 @@ export class MessengerService implements OnModuleInit {
     // What the bot did not know, kept for the owner to answer once (./knowledge-gaps).
     // Optional so a storage problem can never stop the bot answering.
     @Optional() private readonly gaps?: KnowledgeGapsService,
+    // The salon's AI brain (ai-brain/): persona, facts, rules, cross-channel memory, callback tasks, the session log.
+    @Optional() private readonly brain?: AiBrainService,
   ) {}
 
   /**
@@ -3298,6 +3303,10 @@ export class MessengerService implements OnModuleInit {
     // the calendar for them. Read every turn; it is what stops the bot
     // asking a returning customer for a phone number it has on file.
     const known = await this.knownCustomerFor(conn.tenantId, fresh as unknown as { customerId?: string | null; senderName?: string | null }).catch(() => null);
+    const threadCustomerId = (fresh as unknown as { customerId?: string | null }).customerId ?? null;
+    const crossMemory = this.brain && threadCustomerId ? this.brain.memoryBlock(await this.brain.getMemory(conn.tenantId, threadCustomerId).catch(() => null)) : '';
+    if (this.brain) this.brain.startSession({ tenantId: conn.tenantId, channel: (() => { const ch = (fresh as unknown as { channel?: string }).channel; return ch === 'instagram' || ch === 'zalo' || ch === 'web' ? ch : 'messenger'; })(), externalId: threadId, customerId: threadCustomerId }).catch(() => undefined);
+    const turnT0 = Date.now();
     const prevTurn = prior[prior.length - 1];
     const prevAtMs = prevTurn?.at ? new Date(prevTurn.at).getTime() : 0;
     const gapDays = prevAtMs ? Math.floor((Date.now() - prevAtMs) / 86_400_000) : 0;
@@ -3327,6 +3336,8 @@ export class MessengerService implements OnModuleInit {
         gapDays,
         lead,
         known,
+        crossMemory,
+        customerId: threadCustomerId,
         images: inImages,
         media: attach.media ?? [],
         photoNote,
@@ -3435,6 +3446,30 @@ export class MessengerService implements OnModuleInit {
       ? [...photoTurns, outTurn]
       : [{ role: 'user', content: text, at: inAt, ...imgTurn }, ...photoTurns, outTurn];
     await this.appendTurns(threadId, history, memory, newTurns);
+
+    // The brain's bookkeeping (ai-brain): what this customer is in the middle
+    // of, which language they use, the session log — and, when the bot could
+    // not think, a task for the desk so the "a person will reply" line is true.
+    if (this.brain) {
+      const bookedId = agentCtx?.booked?.id ?? null;
+      const lang = agentCtx?.brainLang ?? null;
+      this.brain.noteTurn(conn.tenantId, threadId, { ms: Date.now() - turnT0, failure: agentFailed ? 'agent error' : null, bookedId, lang, customerId: threadCustomerId }).catch(() => undefined);
+      if (bookedId) this.brain.endSession(conn.tenantId, threadId, 'booked_done', 'booked').catch(() => undefined);
+      const custNow = threadCustomerId ?? ((await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { customerId: true } as never }).catch(() => null)) as { customerId?: string | null } | null)?.customerId ?? null;
+      if (custNow) {
+        const open = bookedId ? null : (/\?\s*$/.test(reply) ? `${text.slice(0, 120)} → ${reply.slice(0, 160)}` : null);
+        this.brain.touchMemory(conn.tenantId, custNow, { channel: freshCh === 'instagram' || freshCh === 'zalo' || freshCh === 'web' ? freshCh : 'messenger', lang, openIntent: open }).catch(() => undefined);
+        const all = [...history, ...newTurns].filter((t) => typeof t.content === 'string');
+        if (bookedId || all.length % 8 === 0) {
+          this.brain.distillMemory(conn.tenantId, custNow, all.slice(-16).map((t) => ({ role: t.role, content: String(t.content) })), lang ?? 'en').catch(() => undefined);
+        }
+      }
+      if (agentFailed) {
+        const who = (fresh as unknown as { senderName?: string | null }).senderName ?? null;
+        this.brain.createCallback({ tenantId: conn.tenantId, channel: freshCh === 'instagram' || freshCh === 'zalo' || freshCh === 'web' ? freshCh : 'messenger', reason: 'error', summary: `${who ?? 'Customer'}: ${text.slice(0, 200)}`, name: who, customerId: custNow, threadId, phone: known?.phone ?? null }).catch(() => undefined);
+        this.brain.endSession(conn.tenantId, threadId, 'error').catch(() => undefined);
+      }
+    }
 
     if (agentFailed) {
       // The holding line promised a person. Keep the promise: hand the thread
@@ -3555,6 +3590,12 @@ export class MessengerService implements OnModuleInit {
     ctx: { mode: 'booking' | 'sales'; quotePolicy?: 'sales' | 'facts'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string; lead?: LeadFacts | null;
       /** The salon's own customer record for this thread (booking mode). */
       known?: KnownCustomer | null;
+      /** What every assistant of the salon remembers about this customer (ai-brain), across phone and chat. */
+      crossMemory?: string | null;
+      /** The language the brain decided this reply is in (set inside runAgent, read by the caller). */
+      brainLang?: BrainLang | null;
+      /** The salon's own record id for this thread, for the callback tool. */
+      customerId?: string | null;
       /** Photos on THIS turn, fetched and shown to the model. */
       images?: string[];
       /** Anything else attached (sticker, voice, file) — shapes the stage direction. */
@@ -3619,10 +3660,29 @@ export class MessengerService implements OnModuleInit {
       userText,
     ]) ?? (ctx.mode === 'sales' ? null : defaultLangForMarket((tenant as { market?: string } | null)?.market));
     const infoBlock = await this.systemKnowledge(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
+    // The salon's brain (ai-brain/): the language this customer writes in
+    // among the ones the salon serves, and the persona, facts, rules and
+    // booking policy every assistant shares. Booking mode only; the sales
+    // page is Lumio's own and keeps its own prompt.
+    const brainOut = this.brain && ctx.mode === 'booking'
+      ? await (async () => {
+          const b = await this.brain!.getBrain(tenantId);
+          const l = brainConversationLanguage([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText], b.languages.allowed, b.languages.primary);
+          return this.brain!.promptBlocks(tenantId, 'chat', l).then((r) => ({ ...r, lang: l }));
+        })().catch(() => null)
+      : null;
+    if (brainOut) {
+      ctx.brainLang = brainOut.lang;
+      ctx.agentName = brainOut.brain.persona.agentName || ctx.agentName;
+      ctx.closing = brainOut.brain.persona.signoff || ctx.closing;
+      ctx.bizIntro = brainOut.brain.persona.intro || ctx.bizIntro;
+    }
     // The salon's shared rules for every assistant, ahead of this channel's own notes.
     let sharedNotes = '';
-    if (ctx.mode === 'booking') { try { sharedNotes = (await this.settings.getAiNotes(tenantId))?.text ?? ''; } catch { sharedNotes = ''; } }
-    const ownerNotes = [sharedNotes, String(aiInstruction ?? '').trim()].filter(Boolean).join('\n').slice(0, 4000);
+    if (ctx.mode === 'booking' && !brainOut) { try { sharedNotes = (await this.settings.getAiNotes(tenantId))?.text ?? ''; } catch { sharedNotes = ''; } }
+    const ownerNotes = (brainOut
+      ? [brainOut.blocks.facts ? `Salon notes:\n${brainOut.blocks.facts}` : '', brainOut.blocks.rules].filter(Boolean).join('\n')
+      : [sharedNotes, String(aiInstruction ?? '').trim()].filter(Boolean).join('\n')).slice(0, 4000);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
     // WHERE this chat is happening. It said "Facebook Messenger" to everyone,
@@ -3784,6 +3844,11 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
           },
           required: ['appointmentId', 'customerPhone'],
         },
+      },
+      {
+        name: 'request_callback',
+        description: 'Leave the salon a task to get back to this customer when you cannot finish something yourself: a question not answered by what you were given, a party larger than you may book, a change you are not allowed to make. Say in one line that the team will get back to them shortly.',
+        input_schema: { type: 'object', properties: { summary: { type: 'string', description: 'One line: what the customer wants, in their words.' }, reason: { type: 'string' } }, required: ['summary'] },
       },
       {
         name: 'save_birthday',
@@ -4063,7 +4128,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
      * changing minute and nothing else. Tools sit before the system prompt in
      * the API's prefix, so the one breakpoint below covers them as well.
      */
-    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + readingRule + voiceRule + formatRule + channelRule + closingRule;
+    const brainStatic = brainOut ? `\n${[brainOut.blocks.persona, brainOut.blocks.booking, brainOut.blocks.handoffNote].filter(Boolean).join('\n')}` : '';
+    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + brainStatic + personaRule + readingRule + voiceRule + formatRule + channelRule + closingRule;
     const clockLine = ctx.mode === 'sales'
       ? `\nThe current time is ${nowLocal} (timezone ${tz}).`
       : `\nThe salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.`;
@@ -4077,7 +4143,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       ? `\nWHAT THE CUSTOMER'S PHOTOS SHOWED (read by the system when they arrived — treat as information the customer GAVE you; never ask again for a name, address, phone or city that appears here; if you are not sure it is THEIR shop, ask one short yes/no question, and once they confirm, it is settled):\n${photoFacts.map((n) => `- ${n}`).join('\n')}`
         + (ctx.mode === 'sales' ? '\nWhen a photo shows their shop and they confirm (or simply carry on), call save_lead with salonName, city and phone taken from the photo — use their Facebook name as the name if they have not typed one.' : '')
       : '';
-    const dynamicSystem = clockLine + memoryBlock + gapNote + photoBlock + dossier + mediaRule + replyLangRule(customerLang);
+    const crossMemoryBlock = ctx.crossMemory ? `\n${ctx.crossMemory}` : '';
+    const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang));
     const system = [
       { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicSystem },
@@ -5000,6 +5067,15 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     },
   ): Promise<string> {
     try {
+      if (name === 'request_callback') {
+        if (!this.brain) return 'NOTED. Tell the customer the team will get back to them shortly.';
+        const summary = String(input.summary ?? '').trim().slice(0, 500) || 'Customer needs a reply';
+        const cx = ctx as (typeof ctx & { customerId?: string | null; known?: { phone?: string | null; firstName?: string | null; displayName?: string | null } | null }) | undefined;
+        const ch = cx?.channel === 'instagram' || cx?.channel === 'zalo' || cx?.channel === 'web' ? cx.channel : 'messenger';
+        await this.brain.createCallback({ tenantId, channel: ch, reason: String(input.reason ?? 'callback').slice(0, 40) || 'callback', summary, threadId: cx?.threadId ?? null, customerId: cx?.customerId ?? null, phone: cx?.known?.phone ?? null, name: cx?.known?.firstName ?? cx?.known?.displayName ?? null }).catch(() => undefined);
+        if (cx?.threadId) this.brain.endSession(tenantId, cx.threadId, 'callback').catch(() => undefined);
+        return 'NOTED for the salon. Tell the customer in ONE line that the team will get back to them shortly, then carry on with anything else they need.';
+      }
       if (name === 'save_lead') {
         return await this.saveLead(tenantId, input, ctx);
       }

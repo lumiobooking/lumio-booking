@@ -129,16 +129,20 @@ describe('a Vietnamese conversation turn', () => {
     await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'a' }, '0', 'vi-VN');
     await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'b' }, '0', 'vi-VN');
     const third = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'c' }, '0', 'vi-VN');
+    // The third strike is not a bare goodbye any more: the caller is promised a call back (ai-brain).
     expect(third).toContain('<Hangup/>');
-    expect(third).toContain('trục trặc');
+    expect(third).toContain('gọi lại');
     expect(third).not.toMatch(/Sorry/);
   });
 
-  it('silence twice ends the call politely in Vietnamese', async () => {
+  it('silence is reprompted three times, then the caller is promised a call back — in Vietnamese', async () => {
     const { svc } = makeSvc({ call: { language: 'vi-VN' } });
-    const xml = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: '' }, '2');
+    const again = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: '' }, '2');
+    expect(again).toContain('<Gather');
+    const xml = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: '' }, '3');
     expect(xml).toContain('<Hangup/>');
-    expect(xml).toContain('mất tín hiệu');
+    expect(xml).toContain('gọi lại');
+    expect(xml).not.toContain('mất tín hiệu');
   });
 
   it('the agent can switch the call to Vietnamese mid-conversation (menu failed → rescue)', async () => {

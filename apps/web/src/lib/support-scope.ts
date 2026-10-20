@@ -74,6 +74,7 @@ export const SUPPORT_HREF_CAP: Record<string, string> = {
   '/salon/inbox': 'marketing',
   '/salon/messenger': 'marketing',
   '/salon/voice': 'marketing',
+  '/salon/ai': 'marketing',
   '/staff/inbox': 'marketing',
   '/salon/reviews': 'reviews',
   '/salon/reviews-replies': 'reviews',

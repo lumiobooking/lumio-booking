@@ -603,6 +603,10 @@ function Inner() {
           </>
         )}
 
+        {/* Persona, facts, rules, booking policy and languages now live in the salon's one AI brain (/salon/ai); the notes below stay as this channel's extra. */}
+        <a href="/salon/ai" style={{ display: 'block', padding: '10px 12px', marginBottom: 12, borderRadius: 10, background: 'var(--wash-blue)', border: '1px solid var(--line)', textDecoration: 'none', color: 'inherit', fontSize: 13, lineHeight: 1.45 }}>
+          <b>{lang === 'vi' ? 'Bộ não AI' : 'AI brain'}</b> — {lang === 'vi' ? 'Tên, giọng, thông tin tiệm, quy tắc, chính sách booking và ngôn ngữ của cả tổng đài lẫn chat được chỉnh ở một nơi.' : 'Name, tone, salon facts, rules, booking policy and languages for both the hotline and chat are set in one place.'} <span style={{ color: 'var(--ink-link)' }}>{lang === 'vi' ? 'Mở →' : 'Open →'}</span>
+        </a>
         <AiNotesBox token={token} vi={lang === 'vi'} />
         <label style={ui.label}>{t('aiInstruction')}</label>
         <textarea value={c.aiInstruction} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} placeholder={t('aiInstructionPh')}

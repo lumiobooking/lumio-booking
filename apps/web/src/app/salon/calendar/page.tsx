@@ -18,6 +18,7 @@ import { wallToInstantISO, instantToWall } from '../../../lib/datetime';
 import { todayInZone } from '../../../lib/salon-clock';
 import { TableDayView } from './TableDayView';
 import { uiLocale } from '../../../lib/datetime';
+import { DateTimeField } from '../../../components/DateTimeField';
 import { ind } from '../../../lib/ui-industry';
 import { withHoursOverride } from '../../../lib/desk-hours';
 import { ListView, type ShiftStaffFull } from './ListView';
@@ -852,6 +853,10 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
   const active = canArrive || b.status === 'ARRIVED';
   const paidCents = (b.payments ?? []).filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
   const posUrl = `/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(fullName)}`;
+  // Everyone of this party still to be settled (cancelled / no-show / declined do not pay).
+  const groupLive = b.groupId
+    ? all.filter((x) => x.groupId === b.groupId && !['CANCELLED', 'NO_SHOW', 'REJECTED'].includes(String((x as { status?: string }).status ?? ''))).length
+    : 0;
 
   return (
     <>
@@ -960,7 +965,22 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
 
         {active && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
-            <a href={posUrl} style={{ ...ui.primaryBtn, background: '#6366f1', width: '100%', padding: 12, textAlign: 'center', textDecoration: 'none', display: 'block', boxSizing: 'border-box' }}>{t('cal.checkout')}</a>
+            {/* A party that booked together pays together: one bill for everyone
+                (the POS lays the people out one after another). Paying this one
+                person alone stays right under it. */}
+            {groupLive > 1 && b.groupId ? (
+              <>
+                <a href={`/salon/pos?appointmentId=${b.id}&groupId=${encodeURIComponent(b.groupId)}&customerId=${b.customer?.id ?? ''}`}
+                  style={{ ...ui.primaryBtn, background: '#6366f1', width: '100%', padding: 12, textAlign: 'center', textDecoration: 'none', display: 'block', boxSizing: 'border-box' }}>
+                  {t('bk.checkoutGroup').replace('{n}', String(groupLive))}
+                </a>
+                <a href={posUrl} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #6366f1', color: 'var(--ink-link)', width: '100%', padding: 10, textAlign: 'center', textDecoration: 'none', display: 'block', boxSizing: 'border-box' }}>
+                  {t('cal.checkoutOne').replace('{name}', b.customer?.firstName || fullName)}
+                </a>
+              </>
+            ) : (
+              <a href={posUrl} style={{ ...ui.primaryBtn, background: '#6366f1', width: '100%', padding: 12, textAlign: 'center', textDecoration: 'none', display: 'block', boxSizing: 'border-box' }}>{t('cal.checkout')}</a>
+            )}
             {canArrive && (
               <button onClick={() => onAction(b.id, 'arrive')} style={{ ...ui.primaryBtn, background: '#10b981', width: '100%', padding: '11px' }}>{t('cal.arrive')}</button>
             )}
@@ -1110,7 +1130,7 @@ function QuickEdit({ b, onAction }: { b: Booking; onAction: (id: string, path: s
   return (
     <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 10, padding: 10, margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ ...ui.input, padding: '6px 8px', flex: 1, minWidth: 0 }} />
+        <DateTimeField value={when} onChange={setWhen} style={{ padding: '6px 8px' }} />
         <button onClick={() => onAction(b.id, 'reschedule', { startTime: wallToInstantISO(when) })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.move', lang)}</button>
       </div>
     </div>

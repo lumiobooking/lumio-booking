@@ -105,6 +105,13 @@ export class PosController {
     return this.pos.report(user, from, to);
   }
 
+  /** Gross → discounts → refunds → net → tax → tips → total, by day, plus money taken by method. */
+  @Caps('reports')
+  @Get('sales-summary')
+  salesSummary(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.pos.salesSummary(user, from, to);
+  }
+
   // ---- Orders ----
   @Get('orders')
   listOrders(
@@ -119,6 +126,12 @@ export class PosController {
   @Get('orders/:id')
   getOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.pos.getOrder(user, id);
+  }
+
+  /** The bill's page: client, technicians, money in and back, booking, history. */
+  @Get('orders/:id/detail')
+  orderDetail(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.pos.orderDetail(user, id);
   }
 
   @Post('orders')
@@ -156,8 +169,16 @@ export class PosController {
   @Caps('pos.void')
   @Post('orders/:id/void')
   @HttpCode(200)
-  voidOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.pos.voidOrder(user, id);
+  voidOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body?: { reason?: string; note?: string }) {
+    return this.pos.voidOrder(user, id, { reason: body?.reason, note: body?.note });
+  }
+
+  /** Give money back on a paid bill — a reason is required. Same permission as a void. */
+  @Caps('pos.void')
+  @Post('orders/:id/refund')
+  @HttpCode(200)
+  refundOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: { amountCents?: number; method?: string; reason?: string; note?: string; itemIds?: string[] }) {
+    return this.pos.refundOrder(user, id, body ?? {});
   }
 
   @Caps('pos.void')

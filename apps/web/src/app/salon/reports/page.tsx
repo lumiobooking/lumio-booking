@@ -3,9 +3,11 @@
 import { minorUnitDigits } from '../../../lib/money';
 import { uiCurrency } from '../../../lib/ui-currency';
 
-import { useCallback, useEffect, useState, CSSProperties, ReactNode } from 'react';
-import { dayKeyInTz, presetRangeInTz } from '../../../lib/datetime';
-import { SalonShell } from '../../../components/SalonShell';
+import { Suspense, useCallback, useEffect, useState, CSSProperties, ReactNode } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { dayKeyInTz, presetRangeInTz, uiLocale } from '../../../lib/datetime';
+import { SalonShell, useNavAccess } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
@@ -39,6 +41,15 @@ interface Dash {
   topServices: Ranked[];
   markdowns?: Markdowns;
 }
+/** GET /pos/sales-summary — gross → discounts → refunds → net → tax → tips → total. */
+interface SumDay { day: string; bills: number; grossCents: number; discountCents: number; refundCents: number; netCents: number; taxCents: number; tipsCents: number; totalCents: number }
+interface Summary {
+  from: string; to: string; currency: string | null;
+  totals: Omit<SumDay, 'day'> & { refundedBills: number; serviceCents: number; productCents: number; collectedCents: number };
+  byMethod: { cash: number; card: number; transfer: number; online: number };
+  days: SumDay[];
+  previous: { from: string; to: string; netCents: number; bills: number };
+}
 interface MdRow { name: string; staffId?: string | null; lines: number; listCents: number; chargedCents: number; discountCents: number }
 interface Markdowns {
   totalDiscountCents: number; listValueCents: number; chargedCents: number;
@@ -63,14 +74,23 @@ const PAY_COLOR: Record<string, string> = { cash: '#22c55e', card: '#6366f1', tr
 const isoToday = () => dayKeyInTz(new Date()); // the SALON's today, not the browser's
 
 export default function ReportsPage() {
-  return <SalonShell><Inner /></SalonShell>;
+  // ?tab= picks the view (Reports › Revenue / Services / Clients & bookings).
+  return <SalonShell><Suspense fallback={null}><Inner /></Suspense></SalonShell>;
 }
+
+type View = 'revenue' | 'services' | 'clients';
 
 function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
   const T = (v: string, e: string) => ind(vi ? v : e);
+  const sp = useSearchParams();
+  const view: View = sp?.get('tab') === 'services' ? 'services' : sp?.get('tab') === 'clients' ? 'clients' : 'revenue';
+  // Sales by technician has its own tab when the till is on; otherwise it stays here.
+  const navOk = useNavAccess();
+  const techTab = navOk('/salon/pos/report');
+  const [sum, setSum] = useState<Summary | null>(null);
 
   // Default: this month.
   const [from, setFrom] = useState(() => presetRangeInTz('thisMonth').from);
@@ -86,12 +106,14 @@ function Inner() {
     setLoading(true);
     try {
       const q = `from=${from}&to=${to}`;
-      const [s, d, settings] = await Promise.all([
+      const [s, d, settings, ss] = await Promise.all([
         apiFetch<SrcReport>(`/stats/sources?bucket=day&${q}`, { token }),
         apiFetch<Dash>(`/overview/dashboard?${q}`, { token }),
         apiFetch<{ booking?: { currency?: string } }>('/settings', { token }).catch(() => ({} as { booking?: { currency?: string } })),
+        // The till's own summary; a salon without the till simply has none.
+        apiFetch<Summary>(`/pos/sales-summary?${q}`, { token }).catch(() => null),
       ]);
-      setSrc(s); setDash(d);
+      setSrc(s); setDash(d); setSum(ss);
       if (settings?.booking?.currency) setCurrency(settings.booking.currency);
       setError(null);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
@@ -130,6 +152,20 @@ function Inner() {
     const rows: string[][] = [];
     rows.push([T('Báo cáo', 'Report'), `${from} → ${to}`]);
     rows.push([]);
+    if (sum) {
+      rows.push([T('Tóm tắt bán hàng', 'Sales summary'), '']);
+      rows.push([T('Doanh thu gộp', 'Gross sales'), csvMoney(sum.totals.grossCents)]);
+      rows.push([T('Giảm giá', 'Discounts'), csvMoney(-sum.totals.discountCents)]);
+      rows.push([T('Hoàn tiền', 'Refunds'), csvMoney(-sum.totals.refundCents)]);
+      rows.push([T('Doanh thu thuần', 'Net sales'), csvMoney(sum.totals.netCents)]);
+      rows.push([T('Thuế', 'Tax'), csvMoney(sum.totals.taxCents)]);
+      rows.push(['Tip', csvMoney(sum.totals.tipsCents)]);
+      rows.push([T('Tổng', 'Total'), csvMoney(sum.totals.totalCents)]);
+      rows.push([]);
+      rows.push([T('Ngày', 'Day'), T('Bill', 'Bills'), T('Gộp', 'Gross'), T('Giảm', 'Discounts'), T('Hoàn', 'Refunds'), T('Thuần', 'Net'), 'Tip', T('Tổng', 'Total')]);
+      for (const d of sum.days) rows.push([d.day, String(d.bills), csvMoney(d.grossCents), csvMoney(-d.discountCents), csvMoney(-d.refundCents), csvMoney(d.netCents), csvMoney(d.tipsCents), csvMoney(d.totalCents)]);
+      rows.push([]);
+    }
     rows.push([T('Chỉ số', 'Metric'), T('Giá trị', 'Value')]);
     if (k) {
       rows.push([T('Tiền thu về (gồm thuế & tip)', 'Money collected (incl. tax & tips)'), csvMoney(k.revenueCents)]);
@@ -163,7 +199,7 @@ function Inner() {
     <section>
       {/* Header + range + actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-        <h2 style={{ fontSize: 18, margin: 0 }}>{T('Báo cáo vận hành', 'Business report')}</h2>
+        <h2 style={{ fontSize: 18, margin: 0 }}>{view === 'services' ? T('Dịch vụ', 'Services') : view === 'clients' ? T('Khách & lịch hẹn', 'Clients & bookings') : T('Doanh thu', 'Revenue')}</h2>
         <div className="rp-actions" style={{ display: 'flex', gap: 8 }}>
           <button onClick={exportCsv} style={btn}>{T('Xuất CSV', 'Export CSV')}</button>
           <button onClick={() => window.print()} style={btn}>{T('In', 'Print')}</button>
@@ -184,90 +220,102 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      {/* KPI strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 18 }}>
-        {/* Money that came in (cash, card, transfer, online deposits) — it includes
-            tax and the techs' tips, so it is named for what it is; sales per
-            tech, net of discounts and without tips, are in the Sales report. */}
-        <Kpi label={T('Tiền thu về', 'Money collected')} value={money(k?.revenueCents ?? 0)} hint={`${T('gồm thuế & tip', 'incl. tax & tips')} · ${T('TB/hoá đơn', 'Avg/ticket')} ${money(k?.avgBookingValueCents ?? 0)}`} />
-        <Kpi label={T('Lượt khách', 'Visits')} value={String(visitsTotal)} hint={`${T('đặt', 'booked')} ${booked} · ${T('vãng lai', 'walk-in')} ${walkin}`} />
-        <Kpi label={T('Tỷ lệ no-show', 'No-show rate')} value={`${Math.round((k?.noShowRate ?? 0) * 100)}%`} hint={`${k?.noShow ?? 0} ${T('vắng', 'no-shows')}`} accent="var(--ink-warn)" />
-        <Kpi label={T('Hoàn tất', 'Completion')} value={`${Math.round((k?.completionRate ?? 0) * 100)}%`} hint={`${k?.completed ?? 0} ${T('xong', 'done')}`} accent="var(--ink-good)" />
-        <Kpi label={T('Khách mới', 'New customers')} value={String(k?.newCustomers ?? 0)} hint={`${Math.min(100, pct(k?.newCustomers ?? 0, visitsTotal))}% ${T('lượt khách', 'of visits')}`} />
-      </div>
-
-      {/* Trend + Outcomes */}
-      <div className="rp-2col" style={grid2}>
-        <Card title={metric === 'revenue' ? T('Doanh thu theo ngày', 'Revenue by day') : T('Lượt đặt theo ngày', 'Bookings by day')}
-          right={(
-            <div style={{ display: 'inline-flex', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 2 }}>
-              <button onClick={() => setMetric('revenue')} style={miniSeg(metric === 'revenue')}>{T('Doanh thu', 'Revenue')}</button>
-              <button onClick={() => setMetric('bookings')} style={miniSeg(metric === 'bookings')}>{T('Lượt đặt', 'Bookings')}</button>
+      {view === 'revenue' && (
+        <>
+          {sum ? <SummaryBlock s={sum} money={money} T={T} vi={vi} /> : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 18 }}>
+              {/* Money that came in (cash, card, transfer, online deposits) — it includes tax and the techs' tips. */}
+              <Kpi label={T('Tiền thu về', 'Money collected')} value={money(k?.revenueCents ?? 0)} hint={`${T('gồm thuế & tip', 'incl. tax & tips')} · ${T('TB/hoá đơn', 'Avg/ticket')} ${money(k?.avgBookingValueCents ?? 0)}`} />
+              <Kpi label={T('Lượt khách', 'Visits')} value={String(visitsTotal)} hint={`${T('đặt', 'booked')} ${booked} · ${T('vãng lai', 'walk-in')} ${walkin}`} />
             </div>
-          )}>
-          <TrendChart series={dash?.series ?? []} money={money} metric={metric} vi={vi} />
-        </Card>
-        <Card title={T('Kết quả lịch hẹn', 'Booking outcomes')}>
-          <Outcomes k={k} vi={vi} />
-        </Card>
-      </div>
-
-      {/* Sources + Devices */}
-      <div className="rp-2col" style={grid2}>
-        <Card title={T('Nguồn khách', 'Customer source')}>
-          {visitsTotal === 0 ? <Empty vi={vi} /> : SRC_ORDER.filter((s) => (src?.totals.visits[s] ?? 0) > 0).map((s) => (
-            <Bar key={s} color={SRC_COLOR[s]} label={SRC_LABEL(s, vi)} n={src?.totals.visits[s] ?? 0} total={visitsTotal} />
-          ))}
-        </Card>
-        <Card title={T('Khách đặt bằng thiết bị gì', 'Bookings by device')}>
-          {devKnown === 0 ? (
-            <p style={hint}>{vi
-              ? 'Lịch cũ chưa ghi thiết bị. Lịch mới đặt qua website / link Lumio sẽ tự ghi Điện thoại / Máy tính.'
-              : 'Legacy bookings have no device. New website / Lumio-link bookings record Phone / Computer automatically.'}</p>
-          ) : DEV_ORDER.filter((d) => (dt ? dt[d] : 0) > 0).map((d) => (
-            <Bar key={d} color={DEV_COLOR[d]} label={DEV_LABEL(d, vi)} n={dt ? dt[d] : 0} total={devKnown + (dt?.unknown ?? 0)} />
-          ))}
-        </Card>
-      </div>
-
-      {/* Top services + Top staff */}
-      <div className="rp-2col" style={grid2}>
-        <Card title={T('Dịch vụ bán chạy', 'Top services')}>
-          <RankedList rows={dash?.topServices ?? []} money={money} vi={vi} />
-        </Card>
-        <Card title={T('Hiệu suất thợ', 'Staff performance')}>
-          <RankedList rows={dash?.topStaff ?? []} money={money} vi={vi} />
-        </Card>
-      </div>
-
-      {/* Counter markdowns — money given away by editing prices at the till */}
-      <MarkdownCard md={dash?.markdowns} money={money} T={T} vi={vi} />
-
-      {/* Peak hours + Weekday */}
-      <div className="rp-2col" style={grid2}>
-        <Card title={T('Giờ cao điểm', 'Peak hours')}>
-          <Hours byHour={dash?.byHour ?? []} vi={vi} />
-        </Card>
-        <Card title={T('Theo thứ trong tuần', 'By weekday')}>
-          <Weekdays byWeekday={dash?.byWeekday ?? []} vi={vi} />
-        </Card>
-      </div>
-
-      {/* Payment methods */}
-      <Card title={T('Phương thức thanh toán (POS)', 'Payment methods (POS)')}>
-        {(() => {
-          const pm = dash?.paymentMethods; const tot = pm ? pm.cash + pm.card + pm.transfer + pm.online + pm.onsite : 0;
-          return tot === 0 ? <Empty vi={vi} /> : (['cash', 'card', 'transfer', 'online', 'onsite'] as const).filter((key) => (pm?.[key] ?? 0) > 0).map((key) => (
-            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <div style={{ width: 130, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ccbd5e1)' }}>
-                <span style={{ width: 10, height: 10, borderRadius: 3, background: PAY_COLOR[key] }} />{PAY_LABEL(key, vi)}
+          )}
+          <Card title={metric === 'revenue' ? T('Doanh thu theo ngày', 'Revenue by day') : T('Lượt đặt theo ngày', 'Bookings by day')}
+            right={(
+              <div style={{ display: 'inline-flex', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 2 }}>
+                <button onClick={() => setMetric('revenue')} style={miniSeg(metric === 'revenue')}>{T('Doanh thu', 'Revenue')}</button>
+                <button onClick={() => setMetric('bookings')} style={miniSeg(metric === 'bookings')}>{T('Lượt đặt', 'Bookings')}</button>
               </div>
-              <div style={track}><div style={{ width: `${pct(pm?.[key] ?? 0, tot)}%`, height: '100%', background: PAY_COLOR[key], borderRadius: 6 }} /></div>
-              <div style={{ width: 100, textAlign: 'right', fontSize: 13, color: 'var(--ce2e8f0)', flexShrink: 0 }}>{money(pm?.[key] ?? 0)}</div>
-            </div>
-          ));
-        })()}
-      </Card>
+            )}>
+            <TrendChart series={dash?.series ?? []} money={money} metric={metric} vi={vi} />
+          </Card>
+          {!sum && (
+            <Card title={T('Phương thức thanh toán (POS)', 'Payment methods (POS)')}>
+              {(() => {
+                const pm = dash?.paymentMethods; const tot = pm ? pm.cash + pm.card + pm.transfer + pm.online + pm.onsite : 0;
+                return tot === 0 ? <Empty vi={vi} /> : (['cash', 'card', 'transfer', 'online', 'onsite'] as const).filter((key) => (pm?.[key] ?? 0) > 0).map((key) => (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <div style={{ width: 130, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ccbd5e1)' }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 3, background: PAY_COLOR[key] }} />{PAY_LABEL(key, vi)}
+                    </div>
+                    <div style={track}><div style={{ width: `${pct(pm?.[key] ?? 0, tot)}%`, height: '100%', background: PAY_COLOR[key], borderRadius: 6 }} /></div>
+                    <div style={{ width: 100, textAlign: 'right', fontSize: 13, color: 'var(--ce2e8f0)', flexShrink: 0 }}>{money(pm?.[key] ?? 0)}</div>
+                  </div>
+                ));
+              })()}
+            </Card>
+          )}
+        </>
+      )}
+
+      {view === 'services' && (
+        <>
+          <div className="rp-2col" style={grid2}>
+            <Card title={T('Dịch vụ bán chạy', 'Top services')}>
+              <RankedList rows={dash?.topServices ?? []} money={money} vi={vi} />
+            </Card>
+            {techTab ? (
+              <Card title={T('Theo thợ', 'By technician')}>
+                <p style={hint}>{T('Doanh số, tip, hoa hồng, đánh giá của từng thợ nằm ở tab ', 'Each technician’s sales, tips, commission and reviews are in the tab ')}
+                  <Link href="/salon/pos/report" style={{ color: 'var(--ink-link)', fontWeight: 700 }}>{T('Theo thợ →', 'By technician →')}</Link></p>
+              </Card>
+            ) : (
+              <Card title={T('Hiệu suất thợ', 'Staff performance')}>
+                <RankedList rows={dash?.topStaff ?? []} money={money} vi={vi} />
+              </Card>
+            )}
+          </div>
+          {/* Counter markdowns — money given away by editing prices at the till */}
+          <MarkdownCard md={dash?.markdowns} money={money} T={T} vi={vi} />
+        </>
+      )}
+
+      {view === 'clients' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 18 }}>
+            <Kpi label={T('Lượt khách', 'Visits')} value={String(visitsTotal)} hint={`${T('đặt', 'booked')} ${booked} · ${T('vãng lai', 'walk-in')} ${walkin}`} />
+            <Kpi label={T('Tỷ lệ no-show', 'No-show rate')} value={`${Math.round((k?.noShowRate ?? 0) * 100)}%`} hint={`${k?.noShow ?? 0} ${T('vắng', 'no-shows')}`} accent="var(--ink-warn)" />
+            <Kpi label={T('Hoàn tất', 'Completion')} value={`${Math.round((k?.completionRate ?? 0) * 100)}%`} hint={`${k?.completed ?? 0} ${T('xong', 'done')}`} accent="var(--ink-good)" />
+            <Kpi label={T('Khách mới', 'New customers')} value={String(k?.newCustomers ?? 0)} hint={`${Math.min(100, pct(k?.newCustomers ?? 0, visitsTotal))}% ${T('lượt khách', 'of visits')}`} />
+          </div>
+          <div className="rp-2col" style={grid2}>
+            <Card title={T('Kết quả lịch hẹn', 'Booking outcomes')}>
+              <Outcomes k={k} vi={vi} />
+            </Card>
+            <Card title={T('Nguồn khách', 'Customer source')}>
+              {visitsTotal === 0 ? <Empty vi={vi} /> : SRC_ORDER.filter((s) => (src?.totals.visits[s] ?? 0) > 0).map((s) => (
+                <Bar key={s} color={SRC_COLOR[s]} label={SRC_LABEL(s, vi)} n={src?.totals.visits[s] ?? 0} total={visitsTotal} />
+              ))}
+            </Card>
+          </div>
+          <div className="rp-2col" style={grid2}>
+            <Card title={T('Khách đặt bằng thiết bị gì', 'Bookings by device')}>
+              {devKnown === 0 ? (
+                <p style={hint}>{vi
+                  ? 'Lịch cũ chưa ghi thiết bị. Lịch mới đặt qua website / link Lumio sẽ tự ghi Điện thoại / Máy tính.'
+                  : 'Legacy bookings have no device. New website / Lumio-link bookings record Phone / Computer automatically.'}</p>
+              ) : DEV_ORDER.filter((d) => (dt ? dt[d] : 0) > 0).map((d) => (
+                <Bar key={d} color={DEV_COLOR[d]} label={DEV_LABEL(d, vi)} n={dt ? dt[d] : 0} total={devKnown + (dt?.unknown ?? 0)} />
+              ))}
+            </Card>
+            <Card title={T('Giờ cao điểm', 'Peak hours')}>
+              <Hours byHour={dash?.byHour ?? []} vi={vi} />
+            </Card>
+          </div>
+          <Card title={T('Theo thứ trong tuần', 'By weekday')}>
+            <Weekdays byWeekday={dash?.byWeekday ?? []} vi={vi} />
+          </Card>
+        </>
+      )}
 
       <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 14 }}>
         {T('Doanh thu không tính lịch đã huỷ; tiền cọc của lịch no-show vẫn được tính. Khách vãng lai chỉ có doanh thu khi tính tiền qua máy POS. Chọn khoảng ngày ở trên để đo bất kỳ kỳ nào.',
@@ -507,4 +555,92 @@ const dateInput: CSSProperties = { background: 'var(--c0f172a)', border: '1px so
 function csvMoney(minor: number): string {
   const d = minorUnitDigits(uiCurrency());
   return ((minor ?? 0) / 10 ** d).toFixed(d);
+}
+
+/* ------------------------------------------------------ sales summary --- */
+/**
+ * The till's Z-report for the period: gross → discounts → refunds → NET →
+ * tax → tips → TOTAL, compared with the period just before, the money taken
+ * by payment method, and the same lines day by day.
+ */
+function SummaryBlock({ s, money, T, vi }: { s: Summary; money: (c: number) => string; T: (v: string, e: string) => string; vi: boolean }) {
+  const t = s.totals;
+  const prev = s.previous;
+  const delta = prev.netCents > 0 ? Math.round(((t.netCents - prev.netCents) / prev.netCents) * 100) : null;
+  const methods = ([
+    ['cash', T('Tiền mặt', 'Cash'), '#22c55e'], ['card', T('Thẻ', 'Card'), '#6366f1'],
+    ['transfer', T('Chuyển khoản / ví', 'Transfer / wallet'), '#0ea5e9'], ['online', T('Online (cọc, trả trước)', 'Online (deposits, prepaid)'), '#a78bfa'],
+  ] as const).filter(([k]) => s.byMethod[k] !== 0);
+  const maxM = Math.max(1, ...methods.map(([k]) => Math.abs(s.byMethod[k])));
+  const line = (l: string, v: string, o: { strong?: boolean; tone?: string; indent?: boolean } = {}) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '6px 0', paddingLeft: o.indent ? 14 : 0, borderTop: o.strong ? '1px solid var(--c334155)' : 'none', fontSize: 13.5, fontWeight: o.strong ? 800 : 500, color: o.tone ?? (o.strong ? 'var(--cf1f5f9)' : 'var(--ccbd5e1)') }}>
+      <span>{l}</span><span style={{ whiteSpace: 'nowrap' }}>{v}</span>
+    </div>
+  );
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
+        <Kpi label={T('Doanh thu thuần', 'Net sales')} value={money(t.netCents)} accent="var(--ink-good)"
+          hint={delta === null ? T('chưa có kỳ trước để so', 'no earlier period to compare') : `${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% ${T('so với', 'vs')} ${prev.from.slice(5)} → ${prev.to.slice(5)}`} />
+        <Kpi label={T('Tổng (có thuế & tip)', 'Total (tax & tips)')} value={money(t.totalCents)} hint={`${T('dịch vụ', 'services')} ${money(t.serviceCents)} · ${T('sản phẩm', 'products')} ${money(t.productCents)}`} />
+        <Kpi label={T('Bill', 'Bills')} value={String(t.bills)} hint={`${T('TB', 'avg')} ${money(t.bills ? Math.round(t.netCents / t.bills) : 0)} · ${T('kỳ trước', 'before')} ${prev.bills}`} />
+        <Kpi label="Tip" value={money(t.tipsCents)} hint={t.netCents > 0 ? `${Math.round((t.tipsCents / t.netCents) * 100)}% ${T('doanh thu thuần', 'of net sales')}` : undefined} />
+        <Kpi label={T('Hoàn tiền', 'Refunds')} value={t.refundCents ? `−${money(t.refundCents)}` : money(0)} accent={t.refundCents ? 'var(--ink-warn)' : undefined} hint={t.refundedBills ? `${t.refundedBills} ${T('bill hoàn toàn bộ', 'refunded in full')}` : undefined} />
+      </div>
+      <div className="rp-2col" style={grid2}>
+        <Card title={T('Tóm tắt bán hàng', 'Sales summary')}>
+          {line(T('Doanh thu gộp (giá niêm yết × số lượng)', 'Gross sales (list price × qty)'), money(t.grossCents))}
+          {line(T('Giảm giá & khuyến mãi', 'Discounts & promotions'), `−${money(t.discountCents)}`, { indent: true })}
+          {line(T('Hoàn tiền', 'Refunds'), `−${money(t.refundCents)}`, { indent: true, tone: t.refundCents ? 'var(--ink-warn)' : undefined })}
+          {line(T('Doanh thu thuần', 'Net sales'), money(t.netCents), { strong: true, tone: 'var(--ink-good)' })}
+          {line(T('Thuế', 'Tax'), money(t.taxCents), { indent: true })}
+          {line('Tip', money(t.tipsCents), { indent: true })}
+          {line(T('Tổng', 'Total'), money(t.totalCents), { strong: true })}
+          <p style={{ ...hint, fontSize: 12, marginTop: 8 }}>{T('Tính từ bill thu ngân theo ngày thu tiền (giờ của tiệm). Bill huỷ không nằm ở dòng nào; hoàn một phần ghi vào ngày hoàn.', 'From the till’s bills by the day they were paid (salon time). Voided bills are in no line; part refunds count on the day the money went back.')}</p>
+        </Card>
+        <Card title={T('Tiền thu về theo cách trả', 'Money taken, by payment method')}>
+          {methods.length === 0 ? <Empty vi={vi} /> : methods.map(([k, label, color]) => (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ width: 150, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ccbd5e1)' }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label}
+              </div>
+              <div style={track}><div style={{ width: `${Math.round((Math.abs(s.byMethod[k]) / maxM) * 100)}%`, height: '100%', background: color, borderRadius: 6 }} /></div>
+              <div style={{ width: 100, textAlign: 'right', fontSize: 13, color: 'var(--ce2e8f0)', flexShrink: 0 }}>{money(s.byMethod[k])}</div>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, fontWeight: 800, color: 'var(--cf1f5f9)', borderTop: '1px solid var(--c334155)', paddingTop: 8 }}>
+            <span>{T('Tổng tiền vào', 'Total taken')}</span><span>{money(t.collectedCents)}</span>
+          </div>
+          <p style={{ ...hint, fontSize: 12, marginTop: 8 }}>{T('Tiền thật vào tiệm, đã trừ tiền hoàn. Khác "Tổng" ở trên khi có tiền cọc online, bán gift card hoặc trả bằng gift card.', 'Real money in, after refunds. Differs from the Total above when there are online deposits, gift-card sales or gift-card payments.')}</p>
+        </Card>
+      </div>
+      {s.days.length > 0 && (
+        <Card title={T('Từng ngày', 'Day by day')} right={<Link href="/salon/orders" style={{ fontSize: 12.5, color: 'var(--ink-link)' }}>{T('Xem từng bill →', 'See the bills →')}</Link>}>
+          <div style={{ overflowX: 'auto', maxHeight: 380, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr>
+                {[T('Ngày', 'Day'), T('Bill', 'Bills'), T('Gộp', 'Gross'), T('Giảm', 'Discounts'), T('Hoàn', 'Refunds'), T('Thuần', 'Net'), 'Tip', T('Tổng', 'Total')].map((h, i) => (
+                  <th key={h} style={{ ...ui.th, textAlign: i ? 'right' : 'left', position: 'sticky', top: 0, background: 'var(--c111827)' }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {[...s.days].reverse().map((d) => (
+                  <tr key={d.day} style={{ borderTop: '1px solid var(--c334155)' }}>
+                    <td style={ui.td}>{new Date(`${d.day}T12:00:00`).toLocaleDateString(uiLocale(), { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                    <td style={{ ...ui.td, textAlign: 'right' }}>{d.bills}</td>
+                    <td style={{ ...ui.td, textAlign: 'right' }}>{money(d.grossCents)}</td>
+                    <td style={{ ...ui.td, textAlign: 'right', color: 'var(--c94a3b8)' }}>{d.discountCents ? `−${money(d.discountCents)}` : '—'}</td>
+                    <td style={{ ...ui.td, textAlign: 'right', color: d.refundCents ? 'var(--ink-warn)' : 'var(--c94a3b8)' }}>{d.refundCents ? `−${money(d.refundCents)}` : '—'}</td>
+                    <td style={{ ...ui.td, textAlign: 'right', fontWeight: 700, color: 'var(--ink-good)' }}>{money(d.netCents)}</td>
+                    <td style={{ ...ui.td, textAlign: 'right' }}>{money(d.tipsCents)}</td>
+                    <td style={{ ...ui.td, textAlign: 'right', fontWeight: 700 }}>{money(d.totalCents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </>
+  );
 }

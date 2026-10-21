@@ -66,12 +66,12 @@ describe('a voided or deleted sale reopens its bookings', () => {
     expect(appts[0].completedAt).toBeNull();
     for (const w of apptWheres) expect(w.tenantId).toBe('t1');
   });
-  it('delete: the same', async () => {
+  it('delete: a paid sale is never deleted (void it instead), its booking untouched', async () => {
     const orders = [{ id: 'o1', tenantId: 't1', status: 'PAID', appointmentId: 'a1', appointmentIds: ['a1'], orderNumber: 1, totalCents: 4500, currency: 'USD' }];
     const appts = [{ id: 'a1', tenantId: 't1', status: 'COMPLETED', completedAt: new Date() }];
     const { svc } = make(orders, appts);
-    await svc.removeOrder(admin, 'o1');
-    expect(appts[0].status).toBe('ARRIVED');
+    await expect(svc.removeOrder(admin, 'o1')).rejects.toThrow(/không xoá được/);
+    expect(appts[0].status).toBe('COMPLETED');
   });
   it('a booking another paid ticket still covers stays COMPLETED', async () => {
     const orders = [
@@ -90,7 +90,8 @@ describe('a sale inside a closed payroll is frozen', () => {
     const order = () => [{ id: 'o1', tenantId: 't1', status: 'PAID', appointmentId: null, appointmentIds: [], orderNumber: 1, totalCents: 4500, currency: 'USD', paidAt: new Date('2026-10-05T18:00:00Z') }];
     const closed = [{ tenantId: 't1', periodFrom: '2026-10-01', periodTo: '2026-10-07' }];
     await expect(make(order(), [], closed).svc.voidOrder(admin, 'o1')).rejects.toThrow(/kỳ lương đã chốt/);
-    await expect(make(order(), [], closed).svc.removeOrder(admin, 'o1')).rejects.toThrow(/kỳ lương đã chốt/);
+    // A paid sale is not deleted at all now — refused before the payroll is even looked at.
+    await expect(make(order(), [], closed).svc.removeOrder(admin, 'o1')).rejects.toThrow(/không xoá được/);
     const other = make(order(), [], [{ tenantId: 't2', periodFrom: '2026-10-01', periodTo: '2026-10-07' }]);
     await other.svc.voidOrder(admin, 'o1');
   });

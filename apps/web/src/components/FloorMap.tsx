@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { clockIn } from '../lib/desk-time';
 import { instantToWall, salonTz, wallToInstantISO } from '../lib/datetime';
+import { DateTimeField } from './DateTimeField';
 
 type Shape = 'round' | 'square' | 'long';
 interface Spot { x: number; y: number; shape: Shape }
@@ -129,10 +130,10 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
         {[60, 120, 180].map((m) => (
           <button key={m} type="button" style={btn()} onClick={() => setAt(new Date(Date.now() + m * 60_000).toISOString())}>+{m / 60}h</button>
         ))}
-        <input type="datetime-local" aria-label={vi ? 'Xem sơ đồ lúc' : 'Show the floor at'}
+        <DateTimeField ariaLabel={vi ? 'Xem sơ đồ lúc' : 'Show the floor at'}
           value={floor ? instantToWall(floor.at, tz) : ''}
-          onChange={(e) => e.target.value && setAt(wallToInstantISO(e.target.value, tz))}
-          style={{ padding: '5px 8px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13 }} />
+          onChange={(v) => { if (v) setAt(wallToInstantISO(v, tz)); }}
+          style={{ padding: '5px 8px', fontSize: 13 }} wrapStyle={{ flex: '0 1 300px' }} />
         <span style={{ flex: 1 }} />
         {canArrange && !arrange && <button type="button" style={btn()} onClick={() => { setArrange(true); setPicked(null); setSeat(null); }}>{vi ? 'Sắp xếp bàn' : 'Arrange tables'}</button>}
         {arrange && <>

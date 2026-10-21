@@ -24,7 +24,8 @@ import { ShareBookingLink } from './ShareBookingLink';
 import { MobileTabBar } from './MobileTabBar';
 import { NotificationBell } from './NotificationBell';
 import { LumioLogo } from './LumioLogo';
-import { DASHBOARD, GROUPS, ITEM_BY_HREF, type NavItem } from './shell/nav-map';
+import { DASHBOARD, GROUPS, ITEM_BY_HREF, SCREEN_BY_HREF, basePath, menuOwner, type NavItem } from './shell/nav-map';
+import { HubTabs } from './shell/HubTabs';
 import { ShellV2 } from './shell/ShellV2';
 import { hiddenHrefsFor, setUiIndustry, setUiIndustryNames, uiIndustry, type IndustryKey } from '../lib/ui-industry';
 import { ind } from '../lib/ui-industry';
@@ -40,7 +41,7 @@ function readUi2(): boolean {
 }
 
 /** Routes a paying salon's own accounts never open, whatever their capabilities. */
-const TEAM_ONLY = new Set(GROUPS.flatMap((g) => g.items.filter((i) => i.team).map((i) => i.href)));
+const TEAM_ONLY = new Set(Object.values(SCREEN_BY_HREF).filter((i) => i.team).map((i) => i.href));
 
 const GROUP_KEY: Record<string, string> = {
   ops: 'navg.ops', clients: 'navg.clients', growth: 'navg.growth', finance: 'navg.finance', account: 'navg.account',
@@ -253,21 +254,31 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // `can` already consults hiddenHrefs, so the per-tenant switch is applied
   // once, in one place, for the menu and the page guard alike.
   const isTeam = isSupport || user?.role === 'SUPER_ADMIN';
-  const itemVisible = (item: NavItem) => (item.feature !== 'pos' || posOk)
+  // One screen (a tab's `?tab=` view is gated as the page it opens).
+  const screenVisible = (item: NavItem) => (item.feature !== 'pos' || posOk)
     && (!item.team || isTeam)
     && (item.biz !== 'restaurant' || isRestaurant)
-    && !hiddenHrefsFor(industry).includes(item.href)
+    && !hiddenHrefsFor(industry).includes(basePath(item.href))
     // Intake / consent / SOAP paperwork is a massage and spa thing; a nail salon never sees it.
     && (item.href !== '/salon/forms' || industry === 'MASSAGE' || industry === 'SPA')
     // An unknown market counts as North America: every salon here before
     // Vietnam is in it, and a request still in flight must never blank out a
     // screen someone uses every day.
     && (item.market !== 'na' || isNorthAmerica(market))
-    && can(item.href);
-  const hrefVisible = (href: string) => { const it = ITEM_BY_HREF[href]; return it ? itemVisible(it) : can(href); };
+    && can(basePath(item.href));
+  // A menu entry gathering several screens shows while any of them may be opened…
+  const itemVisible = (item: NavItem) => (item.tabs ? item.tabs.some(screenVisible) : screenVisible(item));
+  // …and opens the first of them this person may see.
+  const go = (item: NavItem) => (item.tabs ? (item.tabs.find(screenVisible)?.href ?? item.href) : item.href);
+  const menuLabel = (item: NavItem) => (item.hubKey ? tr(item.hubKey, lang) : NAV_KEY[item.href] ? tr(NAV_KEY[item.href], lang) : item.label);
+  const tabLabel = (t: NavItem) => (t.tabKey ? tr(t.tabKey, lang) : NAV_KEY[t.href] ? tr(NAV_KEY[t.href], lang) : t.label);
+  const hrefVisible = (href: string) => { const it = SCREEN_BY_HREF[href]; return it ? screenVisible(it) : can(href); };
+  // The menu entry this page lives under (a tab answers with its entry).
+  const owner = menuOwner(pathname);
   const badgeOf = (href: string) => href === '/salon/content' ? postAlerts
     : href === '/salon/feedback' ? fbOpen
       : href === '/salon/inbox' ? inboxUnread : 0;
+  const itemBadge = (item: NavItem) => (item.tabs ? item.tabs.reduce((n, t) => n + badgeOf(t.href), 0) : badgeOf(item.href));
   // Everyone who may open the inbox gets its alerts — owner, front desk,
   // Lumio support — not only a support session as before.
   const inboxOk = hrefVisible('/salon/inbox');
@@ -277,7 +288,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   const visibleGroups = GROUPS
     .map((g) => ({ ...g, items: g.items.filter(itemVisible) }))
     .filter((g) => g.items.length > 0);
-  const firstAllowedHref = (can(DASHBOARD.href) && DASHBOARD.href) || visibleGroups[0]?.items[0]?.href || '/salon';
+  const firstAllowedHref = (can(DASHBOARD.href) && DASHBOARD.href) || (visibleGroups[0]?.items[0] && go(visibleGroups[0].items[0])) || '/salon';
 
   useEffect(() => {
     if (!ready) return;
@@ -365,7 +376,8 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
 
   // Auto-expand the group that contains the current route.
   useEffect(() => {
-    const g = GROUPS.find((grp) => grp.items.some((it) => pathname === it.href || pathname.startsWith(it.href + '/')));
+    const here = menuOwner(pathname);
+    const g = GROUPS.find((grp) => grp.items.some((it) => it.href === here));
     if (g) setOpenGroups((prev) => (prev[g.id] ? prev : { ...prev, [g.id]: true }));
   }, [pathname]);
 
@@ -439,7 +451,18 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       <h2 style={{ margin: '0 0 10px', fontSize: 19, color: 'var(--cf8fafc)' }}>{gateText(lang === 'vi').title}</h2>
       <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: 'var(--c94a3b8)' }}>{gateText(lang === 'vi').body}</p>
     </div>
-  ) : <NavAccessContext.Provider value={hrefVisible}><PushBanner />{children}</NavAccessContext.Provider>;
+  ) : (
+    <NavAccessContext.Provider value={hrefVisible}>
+      <PushBanner />
+      {/* Screens gathered under one menu entry share a tab strip on top. */}
+      {(() => {
+        const entry = owner ? ITEM_BY_HREF[owner] : undefined;
+        const tabs = entry?.tabs?.filter(screenVisible) ?? [];
+        return entry && tabs.length > 1 ? <HubTabs tabs={tabs} label={tabLabel} ariaLabel={menuLabel(entry)} /> : null;
+      })()}
+      {children}
+    </NavAccessContext.Provider>
+  );
 
   const supportBanner = user?.supportSession ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c312e81)', border: '1px solid #6366f1', color: 'var(--ce0e7ff)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>
@@ -476,15 +499,15 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   ) : null;
 
   const renderLink = (item: NavItem, indent: boolean) => {
-    const active = pathname === item.href;
+    const active = owner === item.href;
     // Only one nav item carries a count today, and it carries it for a reason:
     // a scheduled post that failed to publish is otherwise silent, and the
     // salon goes on believing its Facebook Page is being looked after.
-    const badge = badgeOf(item.href);
+    const badge = itemBadge(item);
     return (
       <Link
         key={item.href}
-        href={item.href}
+        href={go(item)}
         onClick={() => setDrawerOpen(false)}
         className="sn-item"
         // The mockup's grammar: the current page is a SOFT indigo pill (tinted
@@ -502,7 +525,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         }}
       >
         <span style={{ color: active ? 'var(--ca5b4fc)' : 'var(--c94a3b8)', display: 'grid', placeItems: 'center', width: 20 }}><NavIcon name={item.icon} /></span>
-        <span style={{ minWidth: 0 }}>{NAV_KEY[item.href] ? tr(NAV_KEY[item.href], lang) : item.label}</span>
+        <span style={{ minWidth: 0 }}>{menuLabel(item)}</span>
         {badge > 0 && (
           <span style={{
             marginLeft: 'auto', minWidth: 19, height: 19, padding: '0 5px', borderRadius: 20,
@@ -519,7 +542,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       {can(DASHBOARD.href) && renderLink(DASHBOARD, false)}
       {visibleGroups.map((grp) => {
         const open = !!openGroups[grp.id];
-        const hasActive = grp.items.some((it) => pathname === it.href || pathname.startsWith(it.href + '/'));
+        const hasActive = grp.items.some((it) => it.href === owner);
         return (
           <div key={grp.id} style={{ marginTop: 6 }}>
             <button
@@ -537,7 +560,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
                 {/* A badge inside a folded group would be invisible — and the
                     Inbox lives inside one. The folded header carries the sum. */}
                 {!open && (() => {
-                  const n = grp.items.reduce((sum, it) => sum + badgeOf(it.href), 0);
+                  const n = grp.items.reduce((sum, it) => sum + itemBadge(it), 0);
                   return n > 0 ? (
                     <span style={{ minWidth: 17, height: 17, padding: '0 5px', borderRadius: 20, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: 0, display: 'grid', placeItems: 'center' }}>{n > 9 ? '9+' : n}</span>
                   ) : null;
@@ -605,6 +628,10 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       <ShellV2
         banner={supportBanner}
         visible={itemVisible}
+        screenVisible={screenVisible}
+        go={go}
+        menuLabel={menuLabel}
+        tabLabel={tabLabel}
         badges={{ '/salon/content': postAlerts, '/salon/feedback': fbOpen, '/salon/inbox': inboxUnread }}
         inboxAlerts={inboxAlerts(false)}
         token={token}

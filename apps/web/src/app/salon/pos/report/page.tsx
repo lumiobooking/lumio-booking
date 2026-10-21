@@ -9,7 +9,7 @@ import { DateRangeBar, useDateRange } from '../../../../components/ListFilter';
 import { useLang, tr } from '../../../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../../components/MobileCard';
-import { SalesImport } from '../../../../components/SalesImport';
+import { StaffPerformance } from '../../../../components/staff/StaffPerformance';
 
 interface StaffRow {
   staffId: string; name: string;
@@ -29,9 +29,8 @@ export default function PosReportPage() {
 }
 
 function Inner() {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const { lang } = useLang();
-  const [importOpen, setImportOpen] = useState(false);
   const t = (k: string) => tr(k, lang);
   // Cards up to tablet width — an iPad gets every field, not a squeezed table.
   const cardList = useIsMobile(CARD_LIST_MAX);
@@ -63,15 +62,9 @@ function Inner() {
           <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>{t('sr.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          {user?.role === 'SALON_ADMIN' && (
-            <button type="button" onClick={() => setImportOpen(true)} style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-              ⇪ {lang === 'vi' ? 'Nhập doanh thu cũ' : 'Import past sales'}
-            </button>
-          )}
           <DateRangeBar range={range} />
         </div>
       </div>
-      {importOpen && <SalesImport vi={lang === 'vi'} onClose={() => setImportOpen(false)} onDone={load} />}
 
       {error && <div style={ui.banner}>{error}</div>}
 
@@ -127,6 +120,9 @@ function Inner() {
           </p>
         </>
       )}
+      {/* The same technicians, the same dates: their visits, reviews, points and latest clients. */}
+      <h2 style={{ fontSize: 17, margin: '26px 0 12px' }}>{lang === 'vi' ? 'Xếp hạng, đánh giá & khách gần đây' : 'Ranking, reviews & recent clients'}</h2>
+      <StaffPerformance range={range} />
     </section>
   );
 }

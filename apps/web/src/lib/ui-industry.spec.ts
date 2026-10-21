@@ -75,7 +75,7 @@ describe('the list matches the server and is wired in', () => {
   it('tr(), the shell menu, the icons and the pages’ own L()/T() all go through it', () => {
     const read = (...p: string[]) => readFileSync(join(__dirname, '..', ...p), 'utf8');
     expect(read('lib', 'i18n.tsx')).toMatch(/return ind\(applyCurrency\(/);
-    expect(read('components', 'SalonShell.tsx')).toMatch(/!hiddenHrefsFor\(industry\)\.includes\(item\.href\)/);
+    expect(read('components', 'SalonShell.tsx')).toMatch(/!hiddenHrefsFor\(industry\)\.includes\((basePath\()?item\.href\)?\)/);
     expect(read('components', 'NavIcon.tsx')).toMatch(/iconFor\(name, uiIndustry\(\)\)/);
     expect(read('app', 'salon', 'front-desk', 'page.tsx')).toMatch(/=> ind\(vi \? v : e\)/);
     expect(read('app', 'super-admin', 'tenants', 'page.tsx')).toMatch(/body: \{ industry \}/);

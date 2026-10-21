@@ -14,7 +14,7 @@ import { AuditService } from '../audit/audit.service';
 import { CashShiftsService } from './cash-shifts.service';
 import { FeedbackService } from '../feedback/feedback.service';
 import { SettingsService } from '../settings/settings.service';
-import { ledgerProviderFor, bucketFor, methodsForSalon } from './payment-methods';
+import { ledgerProviderFor, bucketFor, methodsForSalon, isPaymentMethod } from './payment-methods';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { TrashService } from '../maintenance/trash.service';
 import { WalkinsService } from '../walkins/walkins.service';
@@ -149,20 +149,113 @@ export class PosService {
 
   // ===================== Orders (tickets) =====================
 
-  listOrders(user: AuthenticatedUser, fromStr?: string, toStr?: string, status?: string) {
+  async listOrders(user: AuthenticatedUser, fromStr?: string, toStr?: string, status?: string) {
     const tenantId = this.tenantId(user);
     const where: Prisma.OrderWhereInput = { tenantId };
     if (status) where.status = status as OrderStatus;
     if (fromStr || toStr) {
       where.createdAt = {};
-      const tzP = this.tzOf(tenantId);
-      return tzP.then((tz) => {
-        if (fromStr) (where.createdAt as { gte?: Date }).gte = this.edgeOf(fromStr, tz, 'start');
-        if (toStr) (where.createdAt as { lte?: Date }).lte = this.edgeOf(toStr, tz, 'end');
-        return this.prisma.order.findMany({ where, include: ORDER_INCLUDE, orderBy: { createdAt: 'desc' } });
-      });
+      const tz = await this.tzOf(tenantId);
+      if (fromStr) (where.createdAt as { gte?: Date }).gte = this.edgeOf(fromStr, tz, 'start');
+      if (toStr) (where.createdAt as { lte?: Date }).lte = this.edgeOf(toStr, tz, 'end');
     }
-    return this.prisma.order.findMany({ where, include: ORDER_INCLUDE, orderBy: { createdAt: 'desc' } });
+    const orders = await this.prisma.order.findMany({ where, include: ORDER_INCLUDE, orderBy: { createdAt: 'desc' } });
+    // Who each bill was for, and what has already gone back — the two things
+    // the list was missing. Both read this salon's rows only.
+    const custIds = [...new Set(orders.map((o) => o.customerId).filter((x): x is string => !!x))] as string[];
+    const [customers, refunded] = await Promise.all([
+      custIds.length
+        ? this.prisma.customer.findMany({ where: { tenantId, id: { in: custIds } }, select: { id: true, firstName: true, lastName: true, phone: true } })
+        : Promise.resolve([] as { id: string; firstName: string; lastName: string | null; phone: string | null }[]),
+      this.refundedByOrder(tenantId, orders.map((o) => o.id)),
+    ]);
+    const byId = new Map(customers.map((c) => [c.id, c]));
+    return orders.map((o) => ({
+      ...o,
+      customer: o.customerId ? byId.get(o.customerId) ?? null : null,
+      refundedCents: refunded.get(o.id) ?? 0,
+    }));
+  }
+
+  /** Money handed back per bill: its negative ledger rows (till refunds and card-terminal refunds alike). */
+  private async refundedByOrder(tenantId: string, ids: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (!ids.length) return out;
+    const rows = await this.prisma.payment.findMany({
+      where: { tenantId, status: PaymentStatus.PAID, amountCents: { lt: 0 }, providerReference: { in: ids.map((id) => `order:${id}`) } },
+      select: { providerReference: true, amountCents: true },
+    }).catch(() => [] as { providerReference: string | null; amountCents: number }[]);
+    for (const r of rows) {
+      const id = String(r.providerReference ?? '').slice('order:'.length);
+      out.set(id, (out.get(id) ?? 0) - r.amountCents);
+    }
+    return out;
+  }
+
+  /**
+   * One bill, everything about it: the client, the technicians by name, the
+   * money in and back, the booking it settled, and its history (who rang it
+   * up, who voided or refunded it and why). Read-only; tenant-scoped.
+   */
+  async orderDetail(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const order = await this.getOrder(user, id);
+    const ref = `order:${id}`;
+    const apptIds = [...new Set([order.appointmentId, ...(order.appointmentIds ?? [])].filter((x): x is string => !!x))];
+    const staffIds = [...new Set(order.items.map((l) => l.staffMemberId).filter((x): x is string => !!x))] as string[];
+    const [customer, stats, ledger, logs, appts, staff] = await Promise.all([
+      order.customerId
+        ? this.prisma.customer.findFirst({ where: { id: order.customerId, tenantId }, select: { id: true, firstName: true, lastName: true, phone: true, email: true } })
+        : Promise.resolve(null),
+      order.customerId
+        ? this.prisma.order.aggregate({ where: { tenantId, customerId: order.customerId, status: OrderStatus.PAID }, _count: { _all: true }, _sum: { totalCents: true } }).catch(() => null)
+        : Promise.resolve(null),
+      this.prisma.payment.findMany({ where: { tenantId, providerReference: ref }, select: { amountCents: true, status: true, provider: true, paidAt: true, createdAt: true } }),
+      this.prisma.auditLog.findMany({ where: { tenantId, resourceType: 'order', resourceId: id }, orderBy: { createdAt: 'asc' }, select: { action: true, metadata: true, createdAt: true, userId: true }, take: 50 }).catch(() => [] as { action: string; metadata: unknown; createdAt: Date; userId: string | null }[]),
+      apptIds.length
+        ? this.prisma.appointment.findMany({ where: { tenantId, id: { in: apptIds } }, select: { id: true, startTime: true } })
+        : Promise.resolve([] as { id: string; startTime: Date }[]),
+      staffIds.length
+        ? this.prisma.staffMember.findMany({ where: { tenantId, id: { in: staffIds } }, select: { id: true, firstName: true, lastName: true } })
+        : Promise.resolve([] as { id: string; firstName: string; lastName: string | null }[]),
+    ]);
+    const userIds = [...new Set([order.createdByUserId, ...logs.map((l) => l.userId)].filter((x): x is string => !!x))];
+    const people = userIds.length ? await this.namesOfUsers(tenantId, userIds) : new Map<string, string>();
+    const paidRows = ledger.filter((r) => r.status === PaymentStatus.PAID);
+    const refunds = paidRows.filter((r) => r.amountCents < 0)
+      .map((r) => ({ amountCents: -r.amountCents, provider: r.provider, at: (r.paidAt ?? r.createdAt).toISOString() }));
+    const refundedCents = refunds.reduce((n, r) => n + r.amountCents, 0);
+    const collectedCents = paidRows.reduce((n, r) => n + r.amountCents, 0);
+    return {
+      ...order,
+      customer: customer ? { ...customer, visits: stats?._count?._all ?? 0, spentCents: stats?._sum?.totalCents ?? 0 } : null,
+      staffNames: Object.fromEntries(staff.map((s) => [s.id, `${s.firstName} ${s.lastName ?? ''}`.trim()])),
+      appointments: appts.map((a) => ({ id: a.id, startTime: a.startTime.toISOString() })),
+      cashierName: order.createdByUserId ? people.get(order.createdByUserId) ?? null : null,
+      refunds, refundedCents, collectedCents,
+      history: logs.map((l) => ({ action: l.action, at: l.createdAt.toISOString(), by: l.userId ? people.get(l.userId) ?? null : null, meta: l.metadata ?? {} })),
+      // What may be done next (the server checks again on every action).
+      canRefund: order.status === OrderStatus.PAID && collectedCents > 0,
+      canVoid: order.status === OrderStatus.PAID && refundedCents === 0,
+      canDelete: this.isDraft(order),
+    };
+  }
+
+  /** People named the way the salon knows them: their staff card, else their own name, else the e-mail's first half. */
+  private async namesOfUsers(tenantId: string, ids: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const [cards, users] = await Promise.all([
+      this.prisma.staffMember.findMany({ where: { tenantId, userId: { in: ids } }, select: { userId: true, firstName: true, lastName: true } }).catch(() => [] as { userId: string | null; firstName: string; lastName: string | null }[]),
+      this.prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, firstName: true, lastName: true, email: true } }).catch(() => [] as { id: string; firstName: string | null; lastName: string | null; email: string }[]),
+    ]);
+    for (const u of users) out.set(u.id, `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email.split('@')[0]);
+    for (const c of cards) if (c.userId) out.set(c.userId, `${c.firstName} ${c.lastName ?? ''}`.trim());
+    return out;
+  }
+
+  /** A bill nobody has paid a cent on yet — the only kind that may be deleted. */
+  private isDraft(order: { status: string; paidCents?: number | null; tenders?: { amountCents: number }[] }) {
+    return order.status === OrderStatus.OPEN && !(order.paidCents ?? 0) && !(order.tenders ?? []).some((t) => t.amountCents > 0);
   }
 
   async getOrder(user: AuthenticatedUser, id: string) {
@@ -702,12 +795,20 @@ export class PosService {
     };
   }
 
-  async voidOrder(user: AuthenticatedUser, id: string) {
+  async voidOrder(user: AuthenticatedUser, id: string, opts: { reason?: string; note?: string } = {}) {
     const tenantId = this.tenantId(user);
     const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
     if (!order) throw new NotFoundException('Order not found');
     if (order.status === OrderStatus.VOID) return order;
+    if (order.status === OrderStatus.REFUNDED) throw new BadRequestException('Bill này đã hoàn tiền toàn bộ.');
     await this.assertOpenPayroll(tenantId, order);
+    // Part of it already went back: voiding now would say the sale never
+    // happened while the drawer is short the refund. Refund the rest instead.
+    if (((await this.refundedByOrder(tenantId, [id])).get(id) ?? 0) > 0) {
+      throw new BadRequestException('Bill đã có hoàn tiền — hoàn tiếp phần còn lại thay vì huỷ.');
+    }
+    const reason = String(opts.reason ?? '').trim().slice(0, 120) || null;
+    const note = String(opts.note ?? '').trim().slice(0, 300) || null;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.order.updateMany({ where: { id, tenantId }, data: { status: OrderStatus.VOID } });
@@ -732,8 +833,91 @@ export class PosService {
       }
     });
 
-    await this.audit.log({ tenantId, userId: user.userId, action: 'order.voided', resourceType: 'order', resourceId: id });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'order.voided', resourceType: 'order', resourceId: id, metadata: { reason, note, totalCents: order.totalCents } });
     return this.getOrder(user, id);
+  }
+
+  /**
+   * Give money back on a paid bill.
+   *
+   * The sale is not rewritten. Big tills (Square, Toast, Clover) record a
+   * refund as its own movement of money tied to the sale, on the day it went
+   * back — this follows them and the card-terminal refund already here:
+   *  - PART of it: one negative ledger row on today's date. Revenue and the
+   *    money collected drop today; the bill, its technicians' sales and the
+   *    closed days stay as they were.
+   *  - ALL of it, in one go: the sale is taken off the books like a void
+   *    (revenue, commission and tips, stock, gift card, points reverse) but
+   *    the visit still happened, so its booking is NOT reopened. The bill
+   *    shows "Refunded" instead of "Voided".
+   * Cash handed back from the drawer is written into the open cashier shift
+   * as cash out, so the count at closing still matches.
+   * A charge taken on Lumio's own card terminal goes back through the
+   * terminal (Orders › Card terminal), which records itself — refused here so
+   * it can never be counted twice.
+   */
+  async refundOrder(user: AuthenticatedUser, id: string, dto: { amountCents?: number; method?: string; reason?: string; note?: string; itemIds?: string[] }) {
+    const tenantId = this.tenantId(user);
+    const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== OrderStatus.PAID) throw new BadRequestException('Chỉ hoàn được bill đã thu tiền.');
+    const reason = String(dto.reason ?? '').trim().slice(0, 120);
+    if (!reason) throw new BadRequestException('Chọn lý do hoàn tiền.');
+    const note = String(dto.note ?? '').trim().slice(0, 300) || null;
+    const method = String(dto.method ?? '').trim().toUpperCase();
+    if (!isPaymentMethod(method)) throw new BadRequestException('Chọn cách hoàn tiền.');
+    const amount = Math.round(Number(dto.amountCents));
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('Số tiền hoàn phải lớn hơn 0.');
+
+    const ref = `order:${id}`;
+    const rows = await this.prisma.payment.findMany({ where: { tenantId, providerReference: ref, status: PaymentStatus.PAID }, select: { amountCents: true } });
+    const collected = rows.reduce((n, r) => n + r.amountCents, 0);
+    const alreadyBack = -rows.filter((r) => r.amountCents < 0).reduce((n, r) => n + r.amountCents, 0);
+    if (collected <= 0) throw new BadRequestException('Bill này không còn tiền để hoàn.');
+    if (amount > collected) throw new BadRequestException(`Tối đa hoàn được ${(collected / 100).toFixed(2)} ${order.currency}.`);
+    if (method === 'CARD') {
+      const viaTerminal = await this.prisma.paymentIntent.findFirst({ where: { tenantId, orderId: id, status: 'SUCCEEDED' }, select: { id: true } }).catch(() => null);
+      if (viaTerminal) throw new BadRequestException('Bill này quẹt qua máy thẻ nối với Lumio — hoàn ở Đơn hàng › Máy quẹt thẻ để tiền về đúng thẻ của khách.');
+    }
+    const itemIds = (Array.isArray(dto.itemIds) ? dto.itemIds : []).map(String).filter((x) => order.items.some((l) => l.id === x)).slice(0, 50);
+    const full = amount === collected && alreadyBack === 0;
+    if (full) await this.assertOpenPayroll(tenantId, order);
+    const openShift = await this.shifts.openShiftId(tenantId).catch(() => null);
+
+    await this.prisma.$transaction(async (tx) => {
+      if (full) {
+        await tx.order.updateMany({ where: { id, tenantId }, data: { status: OrderStatus.REFUNDED } });
+        await tx.payment.updateMany({ where: { tenantId, providerReference: ref, status: PaymentStatus.PAID }, data: { status: PaymentStatus.REFUNDED } });
+        for (const l of order.items) {
+          if (l.kind === OrderItemKind.PRODUCT && l.productId) {
+            await tx.product.updateMany({ where: { id: l.productId, tenantId, trackStock: true }, data: { stockQty: { increment: l.quantity } } });
+          }
+        }
+        await this.recreditGiftCards(tx, tenantId, id, user.userId);
+        await this.loyalty.reverseForRef(tx, tenantId, 'order', id, 'Order refunded');
+      } else {
+        await tx.payment.create({
+          data: {
+            tenantId, appointmentId: null, amountCents: -amount, currency: order.currency || 'USD',
+            type: PaymentType.PAY_LATER, status: PaymentStatus.PAID, provider: ledgerProviderFor(method),
+            providerReference: ref, paidAt: new Date(),
+          },
+        });
+      }
+      // Cash out of the drawer. A full refund of a sale rung up in THIS shift
+      // already leaves the shift's totals (the sale is off the books), so only
+      // the other cases need the movement.
+      if (method === 'CASH' && openShift && !(full && order.shiftId === openShift)) {
+        const db = tx as unknown as { cashMovement: { create: (a: unknown) => Promise<unknown> } };
+        await db.cashMovement.create({ data: { tenantId, shiftId: openShift, kind: 'OUT', amountCents: amount, reason: `Hoàn tiền bill #${order.orderNumber}`.slice(0, 200), byUserId: user.userId, byName: null } });
+      }
+    });
+
+    await this.audit.log({
+      tenantId, userId: user.userId, action: 'order.refunded', resourceType: 'order', resourceId: id,
+      metadata: { amountCents: amount, method, reason, note, itemIds, full },
+    });
+    return this.orderDetail(user, id);
   }
 
   /** Permanently delete an order (admin cleanup): reverses revenue, restocks if it
@@ -742,6 +926,12 @@ export class PosService {
     const tenantId = this.tenantId(user);
     const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
     if (!order) throw new NotFoundException('Order not found');
+    // Money is never deleted. A bill that took payment keeps its number in
+    // the list — voided or refunded, with the reason — so the books never
+    // have a hole in them. Only a draft nobody paid on can go.
+    if (!this.isDraft(order)) {
+      throw new BadRequestException('Bill đã thu tiền không xoá được — dùng Huỷ bill hoặc Hoàn tiền. Bill vẫn ở lại danh sách để sổ sách không mất số.');
+    }
 
     await this.assertOpenPayroll(tenantId, order);
     // Snapshot the whole receipt (header + lines) before anything is undone, so
@@ -895,6 +1085,89 @@ export class PosService {
       metadata: { staffMemberId: dto.staffMemberId, amountCents, method: tip.method },
     });
     return tip;
+  }
+
+  /**
+   * The sales summary of a period, the way big tills print it:
+   *
+   *   Gross sales (list price × qty) − discounts − refunds = NET SALES
+   *   + tax + tips = TOTAL, and the money actually taken by payment method.
+   *
+   * From the bills (PAID, and REFUNDED ones whose sale went back in full) by
+   * the day they were paid in the salon's own timezone; part refunds on the
+   * day the money went back. A voided bill never happened and is in no line.
+   * Every query names the caller's salon.
+   */
+  async salesSummary(user: AuthenticatedUser, fromStr?: string, toStr?: string) {
+    const tenantId = this.tenantId(user);
+    const tz = await this.tzOf(tenantId);
+    const to = toStr ? this.edgeOf(toStr, tz, 'end') : new Date();
+    const from = fromStr ? this.edgeOf(fromStr, tz, 'start') : new Date(to.getTime() - 29 * 86400000);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) throw new BadRequestException('Khoảng ngày không hợp lệ.');
+    const span = to.getTime() - from.getTime() + 1;
+    const [cur, prev] = await Promise.all([
+      this.summaryOf(tenantId, tz, from, to),
+      this.summaryOf(tenantId, tz, new Date(from.getTime() - span), new Date(from.getTime() - 1)),
+    ]);
+    return {
+      from: dayKeyTz(from, tz), to: dayKeyTz(to, tz),
+      ...cur,
+      previous: { from: dayKeyTz(new Date(from.getTime() - span), tz), to: dayKeyTz(new Date(from.getTime() - 1), tz), netCents: prev.totals.netCents, bills: prev.totals.bills },
+    };
+  }
+
+  private async summaryOf(tenantId: string, tz: string, from: Date, to: Date) {
+    const [orders, money] = await Promise.all([
+      this.prisma.order.findMany({
+        where: { tenantId, status: { in: [OrderStatus.PAID, OrderStatus.REFUNDED] }, paidAt: { gte: from, lte: to } },
+        select: { status: true, paidAt: true, discountCents: true, taxCents: true, tipCents: true, currency: true, items: { select: { kind: true, unitPriceCents: true, quantity: true, discountCents: true, lineTotalCents: true } } },
+      }),
+      this.prisma.payment.findMany({
+        where: { tenantId, status: PaymentStatus.PAID, paidAt: { gte: from, lte: to } },
+        select: { amountCents: true, provider: true, paidAt: true },
+      }),
+    ]);
+    type Day = { day: string; bills: number; grossCents: number; discountCents: number; refundCents: number; netCents: number; taxCents: number; tipsCents: number; totalCents: number };
+    const days = new Map<string, Day>();
+    const dayOf = (d: Date | null) => {
+      const k = dayKeyTz(d ?? from, tz);
+      if (!days.has(k)) days.set(k, { day: k, bills: 0, grossCents: 0, discountCents: 0, refundCents: 0, netCents: 0, taxCents: 0, tipsCents: 0, totalCents: 0 });
+      return days.get(k)!;
+    };
+    let serviceCents = 0, productCents = 0, refundedBills = 0;
+    let currency: string | null = null;
+    for (const o of orders) {
+      currency = currency ?? o.currency;
+      const gross = o.items.reduce((n, l) => n + l.unitPriceCents * (l.quantity || 1), 0);
+      const disc = o.items.reduce((n, l) => n + (l.discountCents ?? 0), 0) + (o.discountCents ?? 0);
+      const d = dayOf(o.paidAt);
+      d.grossCents += gross; d.discountCents += disc;
+      if (o.status === OrderStatus.REFUNDED) { d.refundCents += Math.max(0, gross - disc); refundedBills += 1; continue; }
+      d.bills += 1; d.taxCents += o.taxCents ?? 0; d.tipsCents += o.tipCents ?? 0;
+      for (const l of o.items) { if (String(l.kind) === 'PRODUCT') productCents += l.lineTotalCents; else serviceCents += l.lineTotalCents; }
+    }
+    const byMethod = { cash: 0, card: 0, transfer: 0, online: 0 };
+    for (const p of money) {
+      // Money that went back (a part refund) leaves the day it went back.
+      if (p.amountCents < 0) dayOf(p.paidAt).refundCents += -p.amountCents;
+      const k = p.provider === 'pos-cash' ? 'cash' : p.provider === 'pos-card' ? 'card' : (p.provider === 'pos-transfer' || p.provider === 'pos-wallet') ? 'transfer' : 'online';
+      byMethod[k] += p.amountCents;
+    }
+    const list = [...days.values()].sort((a, b) => a.day.localeCompare(b.day));
+    for (const d of list) { d.netCents = d.grossCents - d.discountCents - d.refundCents; d.totalCents = d.netCents + d.taxCents + d.tipsCents; }
+    const sum = (k: keyof Omit<Day, 'day'>) => list.reduce((n, d) => n + d[k], 0);
+    return {
+      currency,
+      totals: {
+        bills: sum('bills'), refundedBills,
+        grossCents: sum('grossCents'), discountCents: sum('discountCents'), refundCents: sum('refundCents'), netCents: sum('netCents'),
+        taxCents: sum('taxCents'), tipsCents: sum('tipsCents'), totalCents: sum('totalCents'),
+        serviceCents, productCents,
+        collectedCents: byMethod.cash + byMethod.card + byMethod.transfer + byMethod.online,
+      },
+      byMethod,
+      days: list,
+    };
   }
 
   async report(user: AuthenticatedUser, fromStr?: string, toStr?: string) {

@@ -16,7 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import { useEffect, useMemo, useState } from 'react';
-import { ui } from '../lib/ui';
+import { DateTimeField } from './DateTimeField';
 import { instantToWall, wallToInstantISO } from '../lib/datetime';
 import { clockText, wallParts, type HoursRules } from '../lib/desk-hours';
 import { dayIsOpen, firstOpenDay, hasHours, monthCells, periodOf, slotsForDay, wallOf, type Period } from '../lib/slot-picker';
@@ -120,7 +120,7 @@ export function SlotPicker({ value, onChange, rules, salonTz, vi, isOwner, minut
   if (!hasHours(rules) || custom) {
     return (
       <div>
-        <input style={ui.input} type="datetime-local" value={value} onChange={(e) => onChange(e.target.value)} required />
+        <DateTimeField value={value} onChange={onChange} required />
         {custom && <button type="button" onClick={() => setCustom(false)} style={linkBtn}>{vi ? '← Chọn trong giờ mở cửa' : '← Pick within opening hours'}</button>}
       </div>
     );

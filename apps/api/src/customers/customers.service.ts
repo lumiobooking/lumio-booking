@@ -654,8 +654,14 @@ export class CustomersService {
       data.industryFields = cleanIndustryFields(await this.industryOf(tenantId), dto.industryFields, existing.industryFields);
     }
     // Scope the write by tenantId too (a forged id can't touch another tenant).
-    await this.prisma.customer.updateMany({ where: { id, tenantId }, data: data as never });
-    await this.audit.log({ tenantId, userId: user.userId, action: 'customer.updated', resourceType: 'customer', resourceId: id });
+    try {
+      await this.prisma.customer.updateMany({ where: { id, tenantId }, data: data as never });
+    } catch (e) {
+      // E-mail is unique per salon: say so instead of a 500.
+      if ((e as { code?: string })?.code === 'P2002') throw new BadRequestException('Email này đã thuộc một khách khác của tiệm.');
+      throw e;
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'customer.updated', resourceType: 'customer', resourceId: id, metadata: { fields: Object.keys(data) } });
     return this.getById(user, id);
   }
 

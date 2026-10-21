@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { DateTimeField } from '../../../components/DateTimeField';
 import { ind } from '../../../lib/ui-industry';
 import { instantToWall } from '../../../lib/datetime';
 
@@ -152,10 +153,10 @@ export function TimeClockTab({ vi }: { vi: boolean }) {
               </label>
             )}
             <label><span style={ui.label}>{L('Vào ca', 'Clock in')}</span>
-              <input type="datetime-local" lang="en-US" value={edit.clockIn} onChange={(e) => setEdit({ ...edit, clockIn: e.target.value })} style={ui.input} />
+              <DateTimeField value={edit.clockIn} onChange={(v) => setEdit({ ...edit, clockIn: v })} step={5} />
             </label>
             <label><span style={ui.label}>{L('Ra ca (để trống nếu vẫn đang làm)', 'Clock out (empty if still on the clock)')}</span>
-              <input type="datetime-local" lang="en-US" value={edit.clockOut} onChange={(e) => setEdit({ ...edit, clockOut: e.target.value })} style={ui.input} />
+              <DateTimeField value={edit.clockOut} onChange={(v) => setEdit({ ...edit, clockOut: v })} step={5} />
             </label>
             <label><span style={ui.label}>{L('Ghi chú', 'Note')}</span>
               <input value={edit.note} maxLength={200} onChange={(e) => setEdit({ ...edit, note: e.target.value })} style={ui.input} placeholder={L('VD: quên bấm ra ca', 'e.g. forgot to clock out')} />

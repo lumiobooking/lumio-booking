@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
+import { useCan } from '../lib/auth';
+import { CustomerEditForm } from './CustomerEditForm';
 
 /**
  * ONE BOX INSTEAD OF FIVE: who is this booking for?
@@ -65,6 +67,9 @@ export function CustomerPicker({ token, vi, value, onChange, allowAnonymous = fa
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);
   const [hi, setHi] = useState(0);
+  // Fix her phone or birthday right here, without leaving the form.
+  const [editing, setEditing] = useState(false);
+  const canEdit = useCan()('customers');
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   // Type-ahead, 250 ms after the last key; two characters or a phone fragment.
@@ -115,6 +120,19 @@ export function CustomerPicker({ token, vi, value, onChange, allowAnonymous = fa
     } else if (e.key === 'Escape') setOpen(false);
   };
 
+  if (mode === 'picked' && row && editing) {
+    return (
+      <CustomerEditForm token={token} vi={vi}
+        customer={{ id: row.id, firstName: row.firstName, lastName: row.lastName, phone: row.phone, email: row.email, notes: row.notes, birthDate: row.birthDate }}
+        onCancel={() => setEditing(false)}
+        onSaved={(c) => {
+          const next: CustomerLookupRow = { ...row, firstName: c.firstName, lastName: c.lastName ?? null, phone: c.phone ?? null, email: c.email ?? null, notes: c.notes ?? null, birthDate: c.birthDate ?? null };
+          setRow(next); setEditing(false);
+          onChange({ id: next.id, firstName: next.firstName, lastName: next.lastName ?? '', phone: next.phone ?? '', email: next.email ?? '', birthDate: next.birthDate ? String(next.birthDate).slice(0, 10) : '' }, next);
+        }} />
+    );
+  }
+
   if (mode === 'picked' && row) {
     const h = row.history;
     const lastAt = h.last ? relDay(h.last.at, vi) : null;
@@ -142,7 +160,10 @@ export function CustomerPicker({ token, vi, value, onChange, allowAnonymous = fa
             </div>
           ) : null}
         </div>
-        <button type="button" onClick={reset} style={ghost}>{L('Đổi', 'Change')}</button>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          {canEdit && <button type="button" onClick={() => setEditing(true)} style={ghost}>✎ {L('Sửa', 'Edit')}</button>}
+          <button type="button" onClick={reset} style={ghost}>{L('Đổi', 'Change')}</button>
+        </div>
       </div>
     );
   }

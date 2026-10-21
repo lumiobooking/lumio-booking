@@ -28,6 +28,7 @@ import { useAuth } from '../lib/auth';
 import { apiFetch, apiStream, apiImage, apiImageCached } from '../lib/api';
 import { wallToInstantISO, instantToWall, dayKeyInTz } from '../lib/datetime';
 import { ui } from '../lib/ui';
+import { DateTimeField } from './DateTimeField';
 import { Linkified } from './Linkified';
 import { PushSetup } from './PushSetup';
 import type { TurnsView } from './ChatTurnsPanel';
@@ -1664,7 +1665,7 @@ export function InboxView() {
               ))}
               {detail.followUpAt && <button onClick={() => void setFollowUp('')} disabled={busy} title={vi ? 'Xoá hẹn' : 'Clear'} style={{ ...softBtn, width: narrow ? 40 : 32, padding: 0, color: 'var(--ink-bad)' }}>✕</button>}
             </div>
-            <input type="datetime-local" value={toLocalInput(detail.followUpAt)} onChange={(e) => void setFollowUp(e.target.value)} disabled={busy} aria-label={vi ? 'Ngày giờ theo dõi' : 'Follow-up date and time'} style={{ ...ui.input, fontSize: 12.5, padding: '6px 10px' }} />
+            <DateTimeField value={toLocalInput(detail.followUpAt)} onChange={(v) => void setFollowUp(v)} disabled={busy} ariaLabel={vi ? 'Ngày giờ theo dõi' : 'Follow-up date and time'} style={{ fontSize: 12.5, padding: '6px 10px' }} />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

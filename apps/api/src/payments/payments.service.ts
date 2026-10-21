@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PartyDeposit, partyDepositCents } from './party-deposit';
 import { PaymentStatus, PaymentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -260,8 +260,14 @@ export class PaymentsService {
   /** Permanently delete a payment record (admin cleanup of stray/orphaned rows). */
   async remove(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
-    const existing = await this.prisma.payment.findFirst({ where: { id, tenantId }, select: { id: true } });
+    const existing = await this.prisma.payment.findFirst({ where: { id, tenantId }, select: { id: true, status: true } });
     if (!existing) throw new NotFoundException('Payment not found');
+    // Money that was taken (or given back) stays in the books: deleting it
+    // made revenue disappear with no trace. Only an attempt that never took
+    // money (pending, failed) may be cleared away.
+    if (existing.status === PaymentStatus.PAID || existing.status === PaymentStatus.REFUNDED) {
+      throw new BadRequestException('Khoản đã thu không xoá được — huỷ hoặc hoàn tiền ở Đơn hàng để sổ sách không mất số.');
+    }
     await this.prisma.payment.deleteMany({ where: { id, tenantId } });
     await this.audit.log({ tenantId, userId: user.userId, action: 'payment.deleted', resourceType: 'payment', resourceId: id });
     return { id, deleted: true };

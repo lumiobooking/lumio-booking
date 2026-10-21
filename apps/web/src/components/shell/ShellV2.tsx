@@ -14,7 +14,7 @@ import { LumioLogo } from '../LumioLogo';
 import { useIsMobile } from '../../lib/responsive';
 import { tr, NAV_KEY } from '../../lib/i18n';
 import { CommandPalette, type PaletteItem } from './CommandPalette';
-import { activeHref, ITEM_BY_HREF, SECTIONS, sectionFor, type NavItem, type Section, type SectionId } from './nav-map';
+import { ITEM_BY_HREF, SECTIONS, menuOwner, sectionFor, type NavItem, type Section, type SectionId } from './nav-map';
 import { ind } from '../../lib/ui-industry';
 
 /**
@@ -35,6 +35,12 @@ export interface ShellV2Props {
   children: ReactNode;
   banner: ReactNode;
   visible: (item: NavItem) => boolean;
+  /** One screen (a tab) may be opened. */
+  screenVisible: (item: NavItem) => boolean;
+  /** Where a menu entry leads: a gathering entry opens its first tab this person may see. */
+  go: (item: NavItem) => string;
+  menuLabel: (item: NavItem) => string;
+  tabLabel: (item: NavItem) => string;
   badges: Record<string, number>;
   token: string | null;
   email: string;
@@ -51,7 +57,7 @@ export interface ShellV2Props {
 
 const SUB_KEY = 'lumio_nav2_sub';
 
-export function ShellV2({ children, banner, visible, badges, token, email, salonName, isSupport, lang, setLang, logout, onClassic, branchSwitcher, inboxAlerts }: ShellV2Props) {
+export function ShellV2({ children, banner, visible, screenVisible, go, menuLabel, tabLabel, badges, token, email, salonName, isSupport, lang, setLang, logout, onClassic, branchSwitcher, inboxAlerts }: ShellV2Props) {
   const pathname = usePathname();
   const phone = useIsMobile();
   const narrow = useIsMobile(1180);
@@ -61,8 +67,8 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
 
   const label = useCallback((href: string) => {
     const it = ITEM_BY_HREF[href];
-    return NAV_KEY[href] ? tr(NAV_KEY[href], lang) : it?.label ?? href;
-  }, [lang]);
+    return it ? menuLabel(it) : NAV_KEY[href] ? tr(NAV_KEY[href], lang) : href;
+  }, [lang, menuLabel]);
 
   // Areas with at least one screen this person may open.
   const sections = useMemo(() => SECTIONS
@@ -70,7 +76,8 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
     .filter((s) => s.items.length > 0), [visible]);
   const here = sectionFor(pathname);
   const allVisible = useMemo(() => sections.flatMap((s) => s.items.map((i) => i.href)), [sections]);
-  const current = activeHref(pathname, allVisible);
+  const owner = menuOwner(pathname);
+  const current = owner && allVisible.includes(owner) ? owner : null;
 
   // Which area's menu is showing. Follows the page; a click on the rail can
   // look at another area without leaving the page.
@@ -110,9 +117,10 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const pages: PaletteItem[] = useMemo(() => sections.flatMap((s) => s.items.map((i) => ({
-    href: i.href, label: label(i.href), icon: i.icon, section: ind(vi ? s.vi : s.en),
-  }))), [sections, label, vi]);
+  // Search finds every screen, the tabs of a gathering entry included.
+  const pages: PaletteItem[] = useMemo(() => sections.flatMap((s) => s.items.flatMap((i) => (i.tabs
+    ? i.tabs.filter(screenVisible).map((t) => ({ href: t.href, label: `${label(i.href)} · ${tabLabel(t)}`, icon: t.icon, section: ind(vi ? s.vi : s.en) }))
+    : [{ href: i.href, label: label(i.href), icon: i.icon, section: ind(vi ? s.vi : s.en) }]))), [sections, label, vi, screenVisible, tabLabel]);
 
   const can = (href: string) => allVisible.includes(href);
   const createItems = [
@@ -169,7 +177,7 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
     const on = current === item.href;
     const b = badges[item.href] ?? 0;
     return (
-      <Link key={item.href} href={item.href} className="sn-item" aria-current={on ? 'page' : undefined}
+      <Link key={item.href} href={go(item)} className="sn-item" aria-current={on ? 'page' : undefined}
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: big ? '12px 12px' : '9px 11px', minHeight: big ? 46 : undefined, borderRadius: 10, textDecoration: 'none', fontSize: big ? 15 : 13.5, lineHeight: 1.2,
           background: on ? '#4f46e5' : 'transparent', color: on ? '#ffffff' : 'var(--ccbd5e1)', fontWeight: on ? 700 : 500 }}>
         <span style={{ color: on ? '#ffffff' : 'var(--c94a3b8)', display: 'grid', placeItems: 'center', width: 20 }}><NavIcon name={item.icon} /></span>

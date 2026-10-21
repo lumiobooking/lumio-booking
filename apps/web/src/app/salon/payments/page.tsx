@@ -11,7 +11,6 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
-import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Payment {
@@ -25,6 +24,8 @@ interface Payment {
   createdAt: string;
 }
 
+/** Rows that are money (taken, or given back): never deleted. */
+const KEPT = new Set(['PAID', 'REFUNDED']);
 const COLORS: Record<string, string> = { PAID: '#22c55e', PENDING: '#eab308', FAILED: '#ef4444', REFUNDED: 'var(--c94a3b8)' };
 
 export default function PaymentsPage() {
@@ -75,7 +76,6 @@ function Inner() {
   );
   const totalPaid = visible.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
   const pg = usePaged(visible, 20);
-  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
   return (
     <section>
@@ -86,8 +86,8 @@ function Inner() {
       {/* This page is HISTORY only — connecting card readers lives elsewhere and
           salon owners kept looking for it here, so point the way explicitly. */}
       <p style={{ color: 'var(--c64748b)', fontSize: 12.5, marginTop: 4 }}>
-        {lang === 'vi' ? 'Trang này chỉ là lịch sử thanh toán. Kết nối máy cà thẻ (Square, Dejavoo…) ở mục ' : 'This page is payment history only. Connect card readers (Square, Dejavoo…) under '}
-        <Link href="/salon/payment-terminals" style={{ color: 'var(--ca5b4fc)' }}>Card terminals →</Link>
+        {lang === 'vi' ? 'Trang này chỉ là lịch sử thanh toán. Kết nối máy cà thẻ (Square, Dejavoo…) ở ' : 'This page is payment history only. Connect card readers (Square, Dejavoo…) under '}
+        <Link href="/salon/payment-terminals" style={{ color: 'var(--ca5b4fc)' }}>{lang === 'vi' ? 'Cài đặt › Máy quẹt thẻ →' : 'Settings › Card terminals →'}</Link>
       </p>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
@@ -111,9 +111,12 @@ function Inner() {
                 <MRow label={t('pm.colDate')}>{fmtInTz(p.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</MRow>
                 <MRow label={t('pm.colType')}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</MRow>
                 <MRow label={t('pm.colProvider')}>{p.provider || '—'}</MRow>
-                <MActions>
-                  <button onClick={() => removePayment(p)} style={ui.dangerBtn}>{t('pm.delete')}</button>
-                </MActions>
+                {/* Money taken stays in the books — only an attempt that never took money may be cleared. */}
+                {!KEPT.has(p.status) && (
+                  <MActions>
+                    <button onClick={() => removePayment(p)} style={ui.dangerBtn}>{t('pm.delete')}</button>
+                  </MActions>
+                )}
               </MCard>
             ))}
           </MList>
@@ -121,12 +124,10 @@ function Inner() {
         </>
       ) : (
         <div style={{ marginTop: 12 }}>
-          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/payments/${id}`, { method: 'DELETE', token }), load)} />
           <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: 'var(--c1e293b)' }}>
-                <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <th style={ui.th}>{t('pm.colDate')}</th>
                 <th style={ui.th}>{t('pm.colAmount')}</th>
                 <th style={ui.th}>{t('pm.colType')}</th>
@@ -137,11 +138,10 @@ function Inner() {
             </thead>
             <tbody>
               {visible.length === 0 && (
-                <tr><td style={ui.td} colSpan={7}>{t('pm.empty')}</td></tr>
+                <tr><td style={ui.td} colSpan={6}>{t('pm.empty')}</td></tr>
               )}
               {pg.paged.map((p) => (
-                <tr key={p.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(p.id) ? 'var(--c1e1b4b)' : undefined }}>
-                  <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(p.id)} onChange={() => bulk.toggle(p.id)} /></td>
+                <tr key={p.id} style={{ borderTop: '1px solid var(--c334155)' }}>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{fmtInTz(p.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</td>
                   <td style={ui.td}>{formatPrice(p.amountCents, p.currency)}</td>
                   <td style={ui.td}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</td>
@@ -149,7 +149,9 @@ function Inner() {
                     <span style={{ color: COLORS[p.status] ?? 'var(--c94a3b8)', fontWeight: 600 }}>{p.status}</span>
                   </td>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{p.provider}</td>
-                  <td style={ui.td}><button onClick={() => removePayment(p)} style={ui.dangerBtn}>{t('pm.delete')}</button></td>
+                  <td style={ui.td}>{KEPT.has(p.status)
+                    ? <Link href="/salon/orders" style={{ color: 'var(--ink-link)', fontSize: 12.5 }}>{lang === 'vi' ? 'Huỷ / hoàn ở Bill →' : 'Void / refund in Sales →'}</Link>
+                    : <button onClick={() => removePayment(p)} style={ui.dangerBtn}>{t('pm.delete')}</button>}</td>
                 </tr>
               ))}
             </tbody>

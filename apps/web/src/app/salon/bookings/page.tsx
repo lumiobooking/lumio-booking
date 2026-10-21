@@ -15,6 +15,7 @@ import { CreateBookingForm } from '../../../components/CreateBookingForm';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { uiLocale } from '../../../lib/datetime';
+import { DateTimeField } from '../../../components/DateTimeField';
 import { withHoursOverride, type HoursRules } from '../../../lib/desk-hours';
 
 
@@ -667,7 +668,7 @@ function InlineMove({ current, t, onMove, onClose }: { current: string; t: (k: s
   const [val, setVal] = useState(() => instantToWall(current));
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-      <input type="datetime-local" value={val} onChange={(e) => setVal(e.target.value)} style={{ ...ui.input, padding: '5px 8px', fontSize: 13 }} />
+      <DateTimeField value={val} onChange={setVal} style={{ padding: '5px 8px', fontSize: 13 }} wrapStyle={{ flex: '1 1 260px' }} />
       <button disabled={!val} onClick={() => val && onMove(wallToInstantISO(val))} style={smallOk}>{t('bk.move')}</button>
       <button onClick={onClose} style={actBtnOutline('var(--c94a3b8)')}>✕</button>
     </div>

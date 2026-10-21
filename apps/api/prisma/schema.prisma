@@ -2309,6 +2309,10 @@ model CashMovement {
   kind        String    // IN | OUT
   amountCents Int
   reason      String?
+  /// Thu & Chi: what the money was for (a cash_categories id), when someone said.
+  categoryId  String?
+  /// 'refund' when the refund screen wrote it — the refund is already in the books.
+  source      String?
   byUserId    String?
   byName      String?
   createdAt   DateTime  @default(now())
@@ -3883,4 +3887,119 @@ model OrderRefund {
   @@index([tenantId, createdAt])
   @@index([tenantId, orderId])
   @@map("order_refunds")
+}
+
+// ---- Thu & Chi (finance) ----------------------------------------------------
+// The salon's own books: where its money is kept, every voucher that moved it,
+// and the costs that come round every month. Sales, refunds, drawer movements
+// and shift differences are NOT copied here — the ledger reads them from where
+// they live (orders, payments, cash shifts), so the two can never disagree.
+// See src/finance/finance-calc.ts.
+
+/// A place money is kept: the drawer / safe (CASH, exactly one per salon), a
+/// bank account (BANK) or anything else tracked (OTHER, e.g. an e-wallet).
+model CashFund {
+  id           String    @id @default(uuid())
+  tenantId     String
+  kind         String // CASH | BANK | OTHER
+  name         String
+  last4        String?
+  openingCents Int       @default(0)
+  /// YYYY-MM-DD salon day the books start for this fund; nothing earlier counts.
+  openingDate  String
+  /// The bank fund card, transfer and online sales land in.
+  isDefault    Boolean   @default(false)
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@map("cash_funds")
+}
+
+/// A kind of income or expense ("Thuê mặt bằng", "Chủ góp vốn"…). `group` places
+/// it on the profit & loss; `countsInPl` false keeps it in the cash book only.
+model CashCategory {
+  id          String   @id @default(uuid())
+  tenantId    String
+  direction   String // IN | OUT
+  group       String // INCOME | COGS | STAFF | OPS | MARKETING | OTHER | NON_PL
+  name        String
+  countsInPl  Boolean  @default(true)
+  /// Set on the categories the system writes to (sales, payroll…): locked name.
+  systemKey   String?
+  budgetCents Int?
+  hidden      Boolean  @default(false)
+  sort        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, systemKey])
+  @@index([tenantId])
+  @@map("cash_categories")
+}
+
+/// One voucher: a receipt (IN) or a payment (OUT) of real money into or out of
+/// one fund. Never deleted — voided with a reason.
+model CashEntry {
+  id               String    @id @default(uuid())
+  tenantId         String
+  /// PT-000001 (receipt) · PC-000001 (payment) · CQ-000001 (transfer), per salon.
+  code             String
+  direction        String // IN | OUT
+  fundId           String
+  categoryId       String?
+  amountCents      Int
+  countsInPl       Boolean   @default(true)
+  occurredAt       DateTime
+  /// The salon day of occurredAt (YYYY-MM-DD), stored so day sums need no tz maths.
+  day              String
+  payee            String?
+  note             String?
+  receiptUrl       String?
+  /// MANUAL | TRANSFER | PAYROLL | STOCK | RECURRING
+  source           String    @default("MANUAL")
+  /// What it pays for: a payroll run, a stock movement, a recurring cost + due day.
+  sourceRef        String?
+  /// Both halves of a transfer between funds share this id.
+  transferId       String?
+  createdByUserId  String?
+  createdByName    String?
+  approvedByUserId String?
+  voidedAt         DateTime?
+  voidedByUserId   String?
+  voidedByName     String?
+  voidReason       String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, day])
+  @@index([tenantId, fundId])
+  @@index([tenantId, source, sourceRef])
+  @@map("cash_entries")
+}
+
+/// A cost that comes round (rent, power, software): reminds the owner, or
+/// writes its own voucher on the due day (AUTO).
+model RecurringExpense {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  categoryId  String
+  fundId      String
+  /// Null = the amount changes each time (the owner types it when paying).
+  amountCents Int?
+  cadence     String // WEEKLY | MONTHLY | YEARLY
+  /// The first due day; later ones keep its weekday / day of month / date.
+  anchorDay   String
+  nextDue     String
+  mode        String   @default("REMIND") // REMIND | AUTO
+  payee       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("recurring_expenses")
 }

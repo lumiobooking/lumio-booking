@@ -4,6 +4,9 @@ import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { bucketFor } from './payment-methods';
+import { DEFAULT_CATEGORIES } from '../finance/finance-calc';
+import { ensureFinanceSetup, type SetupDb } from '../finance/finance-setup';
+import { dayKeyTz } from '../common/salon-time';
 
 /**
  * Cashier shifts — "ca thu ngân".
@@ -34,7 +37,7 @@ export interface ShiftSummary {
   cashInCents: number;
   cashOutCents: number;
   expectedCashCents: number;
-  movements: { id: string; kind: MovementKind; amountCents: number; reason: string | null; byName: string | null; at: string }[];
+  movements: { id: string; kind: MovementKind; amountCents: number; reason: string | null; byName: string | null; at: string; categoryId?: string | null }[];
 }
 
 type ShiftRow = {
@@ -87,7 +90,7 @@ export class CashShiftsService {
   /** Live totals for a shift — sales tagged with it (paid only) plus its cash movements. */
   async summarize(tenantId: string, shift: { id: string; openingCents: number }): Promise<ShiftSummary> {
     type OrderLite = { totalCents: number; tipCents: number; changeCents: number | null; giftCardAppliedCents: number | null; tenders: { method: string; amountCents: number }[] };
-    type MoveRow = { id: string; kind: MovementKind; amountCents: number; reason: string | null; byName: string | null; createdAt: Date };
+    type MoveRow = { id: string; kind: MovementKind; amountCents: number; reason: string | null; byName: string | null; createdAt: Date; categoryId?: string | null };
     const [orders, moves] = await Promise.all([
       this.db.order.findMany({
         // 'PAID' only: a voided or refunded sale put no money in the drawer.
@@ -127,7 +130,7 @@ export class CashShiftsService {
       cashInCents: cashIn,
       cashOutCents: cashOut,
       expectedCashCents: expected,
-      movements: moves.map((m: MoveRow) => ({ id: m.id, kind: m.kind, amountCents: m.amountCents, reason: m.reason, byName: m.byName, at: m.createdAt.toISOString() })),
+      movements: moves.map((m: MoveRow) => ({ id: m.id, kind: m.kind, amountCents: m.amountCents, reason: m.reason, byName: m.byName, at: m.createdAt.toISOString(), categoryId: m.categoryId ?? null })),
     };
   }
 
@@ -163,18 +166,40 @@ export class CashShiftsService {
     return { shift: this.view(s), summary: await this.summarize(tenantId, s) };
   }
 
-  async addMovement(user: AuthenticatedUser, dto: { kind?: string; amountCents?: number; reason?: string }) {
+  /**
+   * What drawer money can be for (Thu & Chi categories), for the till's
+   * picker. The cashier needs no access to the books to say "laundry".
+   */
+  async drawerCategories(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true, market: true } as never }).catch(() => null) as { timezone?: string; market?: string } | null;
+    await ensureFinanceSetup(this.db as unknown as SetupDb, tenantId, String(t?.market ?? '').toUpperCase() === 'VN', dayKeyTz(new Date(), t?.timezone || 'UTC'));
+    const rows = await this.db.cashCategory.findMany({ where: { tenantId, hidden: false }, orderBy: [{ sort: 'asc' }, { name: 'asc' }] }) as { id: string; direction: string; group: string; name: string; systemKey: string | null }[];
+    const system = new Set(DEFAULT_CATEGORIES.filter((c) => c.system).map((c) => c.key));
+    return rows.filter((c) => !c.systemKey || !system.has(c.systemKey)).map((c) => ({ id: c.id, direction: c.direction, group: c.group, name: c.name, systemKey: c.systemKey }));
+  }
+
+  async addMovement(user: AuthenticatedUser, dto: { kind?: string; amountCents?: number; reason?: string; categoryId?: string }) {
     const tenantId = this.tenantId(user);
     const s = await this.db.cashShift.findFirst({ where: { tenantId, status: 'OPEN' } }) as ShiftRow | null;
     if (!s) throw new BadRequestException('Chưa vào ca — vào ca trước khi ghi thu/chi.');
     const kind: MovementKind = dto.kind === 'OUT' ? 'OUT' : dto.kind === 'IN' ? 'IN' : (() => { throw new BadRequestException('Loại phải là IN hoặc OUT.'); })();
     const amount = this.cents(dto.amountCents, 'Số tiền');
     if (amount === 0) throw new BadRequestException('Số tiền phải lớn hơn 0.');
-    const reason = (dto.reason ?? '').toString().trim().slice(0, 200);
+    // What it was for: a category of THIS salon, the right way round.
+    let categoryId: string | null = null;
+    let catName = '';
+    if (dto.categoryId) {
+      const c = await this.db.cashCategory.findFirst({ where: { id: String(dto.categoryId), tenantId } }) as { id: string; direction: string; name: string; systemKey: string | null } | null;
+      const system = new Set(DEFAULT_CATEGORIES.filter((d) => d.system).map((d) => d.key));
+      if (!c || c.direction !== kind || (c.systemKey && system.has(c.systemKey))) throw new BadRequestException('Loại thu/chi không hợp lệ.');
+      categoryId = c.id; catName = c.name;
+    }
+    const reason = ((dto.reason ?? '').toString().trim() || catName).slice(0, 200);
     if (!reason) throw new BadRequestException('Ghi lý do thu/chi.');
     const name = await this.nameOf(user);
-    const m = await this.db.cashMovement.create({ data: { tenantId, shiftId: s.id, kind, amountCents: amount, reason, byUserId: user.userId, byName: name } });
-    await this.audit.log({ tenantId, userId: user.userId, action: kind === 'IN' ? 'pos.cash_in' : 'pos.cash_out', resourceType: 'cash_shift', resourceId: s.id, metadata: { amountCents: amount, reason, movementId: m.id } });
+    const m = await this.db.cashMovement.create({ data: { tenantId, shiftId: s.id, kind, amountCents: amount, reason, categoryId, byUserId: user.userId, byName: name } });
+    await this.audit.log({ tenantId, userId: user.userId, action: kind === 'IN' ? 'pos.cash_in' : 'pos.cash_out', resourceType: 'cash_shift', resourceId: s.id, metadata: { amountCents: amount, reason, categoryId, movementId: m.id } });
     return { shift: this.view(s), summary: await this.summarize(tenantId, s) };
   }
 

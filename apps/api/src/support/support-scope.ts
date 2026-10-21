@@ -232,6 +232,7 @@ const PATH_CAPS: [string, Capability][] = [
   ['payments', 'payments'],
   ['billing', 'billing'],
   ['stats', 'reports'],
+  ['finance', 'reports'],
   ['branches', 'reports'],
   ['overview', 'dashboard'],
   ['supplies', 'inventory'],

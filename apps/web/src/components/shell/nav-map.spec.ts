@@ -86,7 +86,8 @@ describe('gathered entries', () => {
 
   it('the menu is shorter', () => {
     const entries = [DASHBOARD, ...GROUPS.flatMap((g) => g.items)].filter((i) => !i.biz);
-    expect(entries.length).toBeLessThanOrEqual(26);
+    // 26 after the 2026-10-21 review, + Thu & Chi (a new job, not a duplicate).
+    expect(entries.length).toBeLessThanOrEqual(27);
   });
 
   it('a gathering entry opens its first tab, which is the entry itself', () => {

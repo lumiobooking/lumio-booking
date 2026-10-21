@@ -92,6 +92,10 @@ const S = {
   clientReport: { href: '/salon/reports?tab=clients', label: 'Clients & bookings', icon: 'users', tabKey: 'navt.clientsBookings' },
   chain: { href: '/salon/chain', label: 'Multi-location', icon: 'store', tabKey: 'navt.locations' },
   payroll: { href: '/salon/payroll', label: 'Staff & pay', icon: 'banknote', feature: 'pos' },
+  // Thu & Chi: the cash book, the P&L and the costs that come round.
+  finance: { href: '/salon/finance', label: 'Income & expenses', icon: 'wallet', tabKey: 'navt.finOverview' },
+  financeLedger: { href: '/salon/finance?tab=ledger', label: 'Cash book', icon: 'wallet', tabKey: 'navt.finLedger' },
+  financeRecurring: { href: '/salon/finance?tab=recurring', label: 'Recurring costs', icon: 'wallet', tabKey: 'navt.finRecurring' },
   settings: { href: '/salon/settings', label: 'Settings', icon: 'cog', tabKey: 'navt.salonSettings' },
   notifications: { href: '/salon/notifications', label: 'Notifications', icon: 'bell', tabKey: 'navt.templates' },
   terminals: { href: '/salon/payment-terminals', label: 'Card terminals', icon: 'terminal', feature: 'pos' },
@@ -145,6 +149,8 @@ export const GROUPS: NavGroup[] = [
     // One report, one number per question: sales by technician lived on three
     // screens (business report, sales report, payroll's performance tab).
     hub('navh.reports', 'Reports', [S.reports, S.techReport, S.serviceReport, S.clientReport, S.chain]),
+    // Where the money went: the profit & loss, the cash book, recurring costs.
+    hub('navh.finance', 'Income & expenses', [S.finance, S.financeLedger, S.financeRecurring]),
     S.payroll,
   ] },
   { id: 'account', label: 'Account', items: [
@@ -187,8 +193,8 @@ export const SECTIONS: Section[] = [
     hrefs: ['/salon/services', '/salon/products', '/salon/staff'] },
   { id: 'growth', vi: 'Marketing & AI', en: 'Marketing & AI', viDesc: 'Kéo khách mới, giữ khách cũ', enDesc: 'Win and keep clients', icon: 'megaphone',
     hrefs: ['/salon/content', '/salon/channels', '/salon/marketing', '/salon/marketing/monthly', '/salon/ai'] },
-  { id: 'finance', vi: 'Tài chính', en: 'Finance', viDesc: 'Báo cáo, lương', enDesc: 'Reports, pay', icon: 'wallet',
-    hrefs: ['/salon/reports', '/salon/payroll'] },
+  { id: 'finance', vi: 'Tài chính', en: 'Finance', viDesc: 'Báo cáo, thu chi, lương', enDesc: 'Reports, money in & out, pay', icon: 'wallet',
+    hrefs: ['/salon/reports', '/salon/finance', '/salon/payroll'] },
   { id: 'account', vi: 'Cài đặt', en: 'Settings', viDesc: 'Làm một lần, ít khi quay lại', enDesc: 'Set once, rarely revisited', icon: 'cog',
     hrefs: ['/salon/settings', '/salon/billing', '/salon/integrations', '/salon/connections', '/salon/trash'] },
 ];

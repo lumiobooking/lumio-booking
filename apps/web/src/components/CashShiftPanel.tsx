@@ -54,6 +54,10 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
   const [mvKind, setMvKind] = useState<'IN' | 'OUT'>('OUT');
   const [mvAmount, setMvAmount] = useState('');
   const [mvReason, setMvReason] = useState('');
+  // Thu & Chi: what drawer money is for, so the books file it right.
+  const [mvCat, setMvCat] = useState('');
+  const [cats, setCats] = useState<{ id: string; direction: 'IN' | 'OUT'; name: string }[]>([]);
+  useEffect(() => { if (token) apiFetch<{ id: string; direction: 'IN' | 'OUT'; name: string }[]>('/pos/shifts/categories', { token }).then(setCats).catch(() => setCats([])); }, [token]);
   const [counted, setCounted] = useState('');
   const [closeNote, setCloseNote] = useState('');
   const [confirmClose, setConfirmClose] = useState(false);
@@ -84,8 +88,8 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
     if (!token) return;
     setBusy(true); setErr(null);
     try {
-      const r = await apiFetch<{ shift: ShiftView; summary: ShiftSummary }>('/pos/shifts/current/movements', { method: 'POST', token, body: { kind: mvKind, amountCents: toMinorUnits(mvAmount || '0', currency), reason: mvReason } });
-      setSt((s) => ({ requireShift: s?.requireShift ?? false, ...r })); setMvAmount(''); setMvReason('');
+      const r = await apiFetch<{ shift: ShiftView; summary: ShiftSummary }>('/pos/shifts/current/movements', { method: 'POST', token, body: { kind: mvKind, amountCents: toMinorUnits(mvAmount || '0', currency), reason: mvReason.trim() || undefined, categoryId: mvCat || undefined } });
+      setSt((s) => ({ requireShift: s?.requireShift ?? false, ...r })); setMvAmount(''); setMvReason(''); setMvCat('');
     } catch (e) { say(e); } finally { setBusy(false); }
   }
 
@@ -187,12 +191,18 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', borderRadius: 9, border: '1px solid var(--c334155)', overflow: 'hidden' }}>
               {(['OUT', 'IN'] as const).map((k) => (
-                <button key={k} type="button" onClick={() => setMvKind(k)} style={{ height: 40, padding: '0 12px', border: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: mvKind === k ? '#4f46e5' : 'transparent', color: mvKind === k ? '#fff' : 'var(--c94a3b8)' }}>{k === 'OUT' ? L('− Chi', '− Out') : L('+ Thu', '+ In')}</button>
+                <button key={k} type="button" onClick={() => { setMvKind(k); setMvCat(''); }} style={{ height: 40, padding: '0 12px', border: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: mvKind === k ? '#4f46e5' : 'transparent', color: mvKind === k ? '#fff' : 'var(--c94a3b8)' }}>{k === 'OUT' ? L('− Chi', '− Out') : L('+ Thu', '+ In')}</button>
               ))}
             </div>
             <input inputMode="decimal" value={mvAmount} onChange={(e) => setMvAmount(e.target.value)} placeholder={L('Số tiền', 'Amount')} style={{ ...inp, flex: '0 0 110px', height: 40 }} />
+            {cats.some((c) => c.direction === mvKind) && (
+              <select value={mvCat} onChange={(e) => setMvCat(e.target.value)} aria-label={L('Loại thu/chi', 'What it was for')} style={{ ...inp, flex: '1 1 150px', height: 40 }}>
+                <option value="">{mvKind === 'OUT' ? L('Chi cho việc gì?', 'What for?') : L('Thu từ đâu?', 'From where?')}</option>
+                {cats.filter((c) => c.direction === mvKind).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
             <input value={mvReason} onChange={(e) => setMvReason(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void addMove(); }} placeholder={mvKind === 'OUT' ? L('Lý do: mua đồ, trả thợ, nộp ngân hàng…', 'Reason: supplies, pay a tech, bank drop…') : L('Lý do: đổi tiền lẻ, chủ đưa thêm…', 'Reason: change float, owner top-up…')} style={{ ...inp, flex: '1 1 160px', height: 40 }} />
-            <button type="button" disabled={busy || !mvAmount || !mvReason.trim()} onClick={() => void addMove()} style={{ ...ui.primaryBtn, height: 40, opacity: !mvAmount || !mvReason.trim() ? 0.5 : 1 }}>{L('Ghi', 'Log')}</button>
+            <button type="button" disabled={busy || !mvAmount || (!mvReason.trim() && !mvCat)} onClick={() => void addMove()} style={{ ...ui.primaryBtn, height: 40, opacity: !mvAmount || (!mvReason.trim() && !mvCat) ? 0.5 : 1 }}>{L('Ghi', 'Log')}</button>
           </div>
         </div>
 

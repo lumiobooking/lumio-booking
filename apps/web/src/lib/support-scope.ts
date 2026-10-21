@@ -50,6 +50,7 @@ export const SUPPORT_HREF_CAP: Record<string, string> = {
   '/salon/payment-terminals': 'payments',
   '/salon/card-transactions': 'payments',
   '/salon/reports': 'reports',
+  '/salon/finance': 'reports',
   '/salon/chain': 'reports',
   '/salon/payroll': 'payroll',
   '/salon/inventory': 'inventory',

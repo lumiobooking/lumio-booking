@@ -25,6 +25,12 @@ export class CashShiftsController {
     return this.shifts.current(user);
   }
 
+  /** Thu & Chi categories for the drawer picker — whoever runs the till. */
+  @Get('categories')
+  categories(@CurrentUser() user: AuthenticatedUser) {
+    return this.shifts.drawerCategories(user);
+  }
+
   @Post('open')
   open(@CurrentUser() user: AuthenticatedUser, @Body() dto: OpenShiftDto) {
     return this.shifts.open(user, dto);

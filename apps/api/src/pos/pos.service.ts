@@ -295,7 +295,7 @@ export class PosService {
    * manager OF THIS SALON whose PIN it is. Five wrong PINs lock the salon's
    * PIN entry for ten minutes.
    */
-  private async approverFor(user: AuthenticatedUser, tenantId: string, pin?: string): Promise<string> {
+  async approverFor(user: AuthenticatedUser, tenantId: string, pin?: string): Promise<string> {
     if (hasCapability(user.role, user.staffRole, 'pos.void', user.staffCaps)) return user.userId;
     const clean = String(pin ?? '').trim();
     if (!clean) throw new ForbiddenException('APPROVAL_PIN_REQUIRED: cần PIN của chủ tiệm hoặc quản lý.');
@@ -1043,7 +1043,7 @@ export class PosService {
       // the other cases need the movement.
       if (method === 'CASH' && openShift && !(full && order.shiftId === openShift)) {
         const db = tx as unknown as { cashMovement: { create: (a: unknown) => Promise<unknown> } };
-        await db.cashMovement.create({ data: { tenantId, shiftId: openShift, kind: 'OUT', amountCents: amount, reason: `Hoàn tiền bill #${order.orderNumber}`.slice(0, 200), byUserId: user.userId, byName: null } });
+        await db.cashMovement.create({ data: { tenantId, shiftId: openShift, kind: 'OUT', amountCents: amount, reason: `Hoàn tiền bill #${order.orderNumber}`.slice(0, 200), source: 'refund', byUserId: user.userId, byName: null } });
       }
     });
 

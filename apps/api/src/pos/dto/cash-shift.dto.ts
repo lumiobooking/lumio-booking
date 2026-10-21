@@ -8,7 +8,9 @@ export class OpenShiftDto {
 export class ShiftMovementDto {
   @IsIn(['IN', 'OUT']) kind!: 'IN' | 'OUT';
   @IsInt() @Min(1) amountCents!: number;
-  @IsString() @MaxLength(200) reason!: string;
+  @IsOptional() @IsString() @MaxLength(200) reason?: string;
+  /** Thu & Chi: what the money was for. A reason or a category is required. */
+  @IsOptional() @IsString() @MaxLength(64) categoryId?: string;
 }
 
 export class CloseShiftDto {

@@ -31,6 +31,7 @@ import { CustomersModule } from './customers/customers.module';
 import { OverviewModule } from './overview/overview.module';
 import { SettingsModule } from './settings/settings.module';
 import { PosModule } from './pos/pos.module';
+import { FinanceModule } from './finance/finance.module';
 import { BillingModule } from './billing/billing.module';
 import { PaymentsHubModule } from './payments-hub/payments-hub.module';
 import { UploadsModule } from './uploads/uploads.module';
@@ -103,6 +104,7 @@ import { AiUsageModule } from './common/ai-usage.module';
     SettingsModule,
     // Point of sale: counter checkout (tickets, products, tips, receipts).
     PosModule,
+    FinanceModule,
     GiftCardsModule,
     // Self-serve SaaS billing: public signup, Stripe/PayPal checkout + webhooks.
     BillingModule,

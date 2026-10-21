@@ -705,6 +705,23 @@ export class SocialPublishService {
     // second query over every conversation the salon ever had.
     const holds = await this.holdsFor(tenantId, (rows ?? []).filter((r) => r.heldAt).map((r) => r.id));
     const now = new Date();
+    // A post that failed because Facebook blocked / dropped the account that
+    // connected the Page: say WHOSE account, or the fix line names nobody.
+    // Looked up only when such a row is on screen (stored after the first ask).
+    const deadPage = (e: string | null | undefined) => Boolean(e) && classifyPageError({ message: e ?? '' }).lost;
+    // ...but once the Page has been reconnected (or the daily check / a later
+    // post proved the token alive) AFTER this row's failed try, that error is
+    // history. Showing "Facebook is blocking the account" on a salon that has
+    // just reconnected twice is how the fix line stops being believed.
+    const health = this.messenger ? await this.messenger.healthFor(tenantId).catch(() => null) : null;
+    const pageOkSince = health && !health.lost && health.state === 'ok' && health.at ? new Date(health.at) : null;
+    const pageFixed = (r: PostRow) => {
+      const touched = (r as { updatedAt?: Date | string | null }).updatedAt;
+      return Boolean(pageOkSince && touched && deadPage(r.lastError) && pageOkSince.getTime() > new Date(touched).getTime());
+    };
+    const holder = this.messenger && (rows ?? []).some((r) => r.status !== 'posted' && deadPage(r.lastError) && !pageFixed(r))
+      ? (await this.messenger.connectedBy(tenantId, true).catch(() => null))?.name ?? null
+      : null;
 
     const posts = (rows ?? []).map((r) => {
       const media = this.mediaOf(r);
@@ -724,13 +741,13 @@ export class SocialPublishService {
         // Meta's own words are kept; this is the sentence that says what to DO.
         // Replacing the raw text would remove the only precise string anybody
         // can search for when this reaches support.
-        fix: permissionFixed && /pages_manage_posts|instagram_content_publish|#200/i.test(r.lastError ?? '')
+        fix: (permissionFixed && /pages_manage_posts|instagram_content_publish|#200/i.test(r.lastError ?? '')) || pageFixed(r)
           ? null
           // Meta first, then Google: one row can only have failed on one of them,
           // and each explainer already refuses errors that are not its own.
-          : (explainMetaError(r.lastError) ?? explainGbpError(r.lastError)),
+          : ((f) => (f && holder && deadPage(r.lastError) ? `${f} — Tài khoản Facebook đã kết nối Trang: ${holder}.` : f))(explainMetaError(r.lastError) ?? explainGbpError(r.lastError)),
         /** True when the saved error is about a permission the token now has. */
-        errorIsStale: permissionFixed && /pages_manage_posts|instagram_content_publish|#200/i.test(r.lastError ?? ''),
+        errorIsStale: (permissionFixed && /pages_manage_posts|instagram_content_publish|#200/i.test(r.lastError ?? '')) || pageFixed(r),
         results: Array.isArray(r.results) ? r.results : [],
         postedAt: r.postedAt,
         createdByName: r.createdByName,

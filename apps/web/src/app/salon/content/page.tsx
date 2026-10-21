@@ -5106,8 +5106,8 @@ function Inner() {
                                 believed. */}
                             {live.errorIsStale && (
                               <div style={{ fontSize: 13, color: 'var(--ink-good)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
-                                ✓ {T('Quyền đã được cấp rồi — lỗi bên dưới là của lần thử trước. Bấm "Đăng ngay" để thử lại.',
-                                     'The permission is granted now — the error below is from the earlier attempt. Press “Post now” to try again.')}
+                                ✓ {T('Đã xử lý rồi (kết nối / quyền Facebook đang hoạt động) — lỗi bên dưới là của lần thử trước. Bấm "Đăng ngay" để đăng lại.',
+                                     'Fixed since (the Facebook connection / permission works now) — the error below is from the earlier attempt. Press “Post now” to post it.')}
                               </div>
                             )}
                             {live.fix && (
@@ -5686,7 +5686,7 @@ function Inner() {
                     {p.lastError && !p.blockers.length && (
                       <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.55 }}>
                         {p.errorIsStale
-                          ? <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>✓ {T('Quyền đã có — bấm "Đăng ngay" để thử lại', 'Permission granted — press “Post now” to retry')}</span>
+                          ? <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>✓ {T('Lỗi cũ, đã xử lý — bấm "Đăng ngay" để đăng lại', 'Old error, fixed since — press “Post now” to post it')}</span>
                           : p.fix
                             ? <span style={{ color: 'var(--cfecaca)', fontWeight: 600 }}>→ {p.fix}</span>
                             : <span style={{ color: 'var(--cfca5a5)' }}>{T('Lỗi', 'Error')}: {p.lastError}</span>}

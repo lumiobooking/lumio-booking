@@ -1089,6 +1089,31 @@ export default function PublicBookingPage() {
     daysOff: rules.daysOff,
   };
 
+  // "Who's coming?" — the one place a solo booking becomes a group. It sits right
+  // above the booking button (the cart on a computer, the action bar on a phone),
+  // because that is where the customer is already deciding. A visit cart and a
+  // group are exclusive (one books several times, the other shares ONE time), so
+  // the choice disappears once the cart holds a visit.
+  const groupDeal = (() => {
+    const gr = salon?.groupDiscount;
+    if (!gr?.enabled || !gr.tiers?.length || windowEnded(gr, dayKey(salonToday))) return null;
+    const t = gr.tiers.filter((x) => x.percent > 0).sort((a, b) => a.minSize - b.minSize)[0];
+    return t ? btf('Save {p}% · {n}+', { p: t.percent, n: t.minSize }) : null;
+  })();
+  const who: WhoProps | null = step === 1 && visitCart.length === 0 ? {
+    group: isGroup, deal: groupDeal,
+    onJustMe: () => {
+      if (!isGroup) return;
+      if (extraGuests.some((g) => g.serviceIds.length > 0) && !window.confirm(bt('Remove your friends and their services?'))) return;
+      setExtraGuests([]); setActiveGuest(0); setSlot(null);
+    },
+    onFriends: () => {
+      if (!isGroup) { setExtraGuests([{ name: '', serviceIds: [] }]); setActiveGuest(1); setStaffId(''); setSlot(null); }
+      // Bring the guest tabs into view — on a phone they are usually above the fold.
+      window.setTimeout(() => document.getElementById('lumio-party')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    },
+  } : null;
+
   const summary = (
     <CartPanel
       today={cardToday}
@@ -1097,6 +1122,7 @@ export default function PublicBookingPage() {
       anyDiscount={anyDiscount} totalDuration={totalDuration} employee={employee} slot={slot} selectedDate={selectedDate}
       onRemove={removeLine} canContinue={canContinue} ctaLabel={ctaLabel} onContinue={goNext} step={step} accent={accent} grand={grand}
       party={party} activeGuest={activeGuest} onPickGuest={(i) => { setActiveGuest(i); if (step !== 1) setStep(1); }} onRemoveFor={removeFor}
+      who={who}
     />
   );
 
@@ -1210,18 +1236,10 @@ export default function PublicBookingPage() {
                   rating={salon.rating} accent={accent} timezone={salon.timezone} today={cardToday} />
               )}
               <Progress step={step} accent={accent} allowStaff={chooseStaff} />
-              {/* The solo flow's way into a group booking sits beside the step title as
-                  a small pill — it used to take a full row of its own above the menu. */}
+              {/* The way into a group booking is the "Who's coming?" choice right above
+                  the booking button (WhoPicker) — not a pill beside this title. */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', margin: '10px 0 4px' }}>
                 <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 700, color: INK, margin: 0 }}>{stepTitle}</h1>
-                {step === 1 && !isGroup && visitCart.length === 0 && (
-                  <button type="button"
-                    onClick={() => { setExtraGuests((gs) => [...gs, { name: '', serviceIds: [] }]); setActiveGuest(extraGuests.length + 1); setStaffId(''); setSlot(null); }}
-                    style={{ borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap',
-                      border: `1.4px dashed ${tint(accent, 0.6)}`, background: tint(accent, 0.04), color: accent }}>
-                    ＋ {bt("Bringing friends?")}
-                  </button>
-                )}
               </div>
               {stepHint && <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#8fa0bb', lineHeight: 1.5 }}>{stepHint}</p>}
 
@@ -1247,7 +1265,7 @@ export default function PublicBookingPage() {
                   {/* Group tabs. They only exist once the booker adds a friend —
                       the solo flow never shows them. Every guest picks their own
                       services; the whole party shares one time slot. */}
-                  {isGroup && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '2px 0 12px' }}>
+                  {isGroup && <div id="lumio-party" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '2px 0 12px', scrollMarginTop: 90 }}>
                     {[{ name: 'You', serviceIds: pickedServiceIds }, ...extraGuests].map((g, i) => {
                       const on = activeGuest === i;
                       return (
@@ -1394,6 +1412,7 @@ export default function PublicBookingPage() {
             grandLabel={grand ? (grand.kind === 'visits' ? btf('{n} visits', { n: grand.count }) : btf('group of {n}', { n: grand.count })) : undefined}
             durationMinutes={totalDuration} canContinue={canContinue} label={ctaLabel} onContinue={goNext} accent={accent}
             art={cartArtOf(salon)}
+            who={isMobile ? who : null}
           />
         )}
 
@@ -1445,7 +1464,46 @@ function AnimatedMoney({ cents, fmt, style }: { cents: number; fmt: (c: number) 
   return <span style={style}>{fmt(disp)}</span>;
 }
 
-function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill, grand, party, activeGuest, onPickGuest, onRemoveFor }: {
+type WhoProps = { group: boolean; deal: string | null; onJustMe: () => void; onFriends: () => void };
+
+/**
+ * "Who's coming?" — Just me / Me + friends. Two equal choices instead of an
+ * extra button: the customer answers a question they already have in mind, and
+ * the group deal (when the salon runs one) rides on the friends option. compact =
+ * the phone action bar, where it sits as the first row of the bar.
+ */
+function WhoPicker({ who, accent, compact }: { who: WhoProps; accent: string; compact?: boolean }) {
+  const opt = (on: boolean): React.CSSProperties => ({
+    flex: 1, minWidth: 0, minHeight: compact ? 44 : 48, borderRadius: 12, cursor: 'pointer',
+    border: `1.6px solid ${on ? accent : '#e1e5ef'}`, background: on ? tint(accent, 0.07) : '#ffffff',
+    color: INK, fontFamily: 'inherit', fontSize: compact ? 13 : 13.5, fontWeight: 700, padding: '5px 8px',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, lineHeight: 1.2, textAlign: 'left',
+    transition: 'border-color .15s ease, background .15s ease',
+  });
+  const dot = (on: boolean) => (
+    <span aria-hidden style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, boxSizing: 'border-box', background: '#ffffff',
+      border: on ? `5px solid ${accent}` : '1.6px solid #c4cbda', transition: 'border .15s ease' }} />
+  );
+  return (
+    <div role="radiogroup" aria-label={bt("Who's coming?")} style={compact ? { flexBasis: '100%' } : { marginTop: 14 }}>
+      {!compact && <div style={{ fontSize: 12.5, fontWeight: 800, color: '#5d6b85', marginBottom: 8 }}>{bt("Who's coming?")}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" role="radio" aria-checked={!who.group} onClick={who.onJustMe} style={opt(!who.group)}>
+          {dot(!who.group)}<span>{bt('Just me')}</span>
+        </button>
+        <button type="button" role="radio" aria-checked={who.group} onClick={who.onFriends} style={opt(who.group)}>
+          {dot(who.group)}
+          <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <span>{bt('Me + friends')}</span>
+            {who.deal && <span style={{ fontSize: 11, fontWeight: 800, color: '#12693a', whiteSpace: 'nowrap' }}>{who.deal}</span>}
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill, grand, party, activeGuest, onPickGuest, onRemoveFor, who }: {
   salon: Salon | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; fullCents: number; anyDiscount: boolean;
   /** Today's hours for the salon card's open/closed line. */
   today?: { day: DayHours | undefined; isDayOff: boolean; mode?: unknown; week?: DayHours[]; daysOff?: string[] };
@@ -1455,6 +1513,8 @@ function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscoun
   grand?: { count: number; cents: number; kind: 'visits' | 'guests' } | null;
   /** Group booking: every person with their own lines; the open tab is highlighted. */
   party?: Party | null; activeGuest?: number; onPickGuest?: (i: number) => void; onRemoveFor?: (who: number, id: string) => void;
+  /** Step 1: "Who's coming?" — Just me / Me + friends, right above the button. */
+  who?: WhoProps | null;
 }) {
   const partyEmpty = !!party && party.every((g) => g.lines.length === 0);
   const partyMinutes = party ? Math.max(0, ...party.map((g) => g.minutes)) : 0;
@@ -1568,6 +1628,7 @@ function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscoun
             <div style={{ fontSize: 11.5, color: '#8a97b4', lineHeight: 1.4 }}>{bt('Scan to keep booking')}<br />{bt('on your phone')}</div>
           </div>
         )}
+        {who && <WhoPicker who={who} accent={accent} />}
         <button onClick={onContinue} disabled={!canContinue} className="lumio-cta"
           style={{ ...ctaBtn, marginTop: 14, opacity: canContinue ? 1 : 0.45, cursor: canContinue ? 'pointer' : 'not-allowed' }}>
           {step === 1 && canContinue ? '👤 ' : ''}{ctaLabel}
@@ -1686,7 +1747,7 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
 }
 
 /** Mobile: floating action bar. Always on screen, never behind the content. */
-function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef, grandLabel, art }: {
+function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef, grandLabel, art, who }: {
   embedded: boolean; count: number; totalCents: number; fmt: (c: number) => string; durationMinutes: number;
   canContinue: boolean; label: string; onContinue: () => void; accent: string;
   /** When set, totalCents is the ALL-visits/group figure and this names it ("3 visits"). */
@@ -1695,6 +1756,8 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
   art?: ArtKind;
   /** Embed only: keeps the bar floating above the fold while the form is on screen. */
   pinRef?: React.MutableRefObject<HTMLDivElement | null>;
+  /** Step 1 on a phone: the "Who's coming?" row, attached to the top of the bar. */
+  who?: WhoProps | null;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -1712,7 +1775,7 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
 
   const bar = (
     <div ref={(node) => { ref.current = node; if (pinRef) pinRef.current = node; }} className="lumio-bar" style={{
-      padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 12,
+      padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
       ...(embedded
         ? {
             // No `position: fixed` here — inside an iframe that would pin the bar to the
@@ -1737,6 +1800,7 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
             ['--accent-glow' as string]: tint(accent, 0.55),
           }),
     } as React.CSSProperties}>
+      {who && <WhoPicker who={who} accent={accent} compact />}
       {/* Same drawn picture as the cart on a computer — not a stock emoji bag. */}
       <span style={{ position: 'relative', width: 44, height: 44, flexShrink: 0 }}>
         <CartArt kind={art ?? 'bag'} color={accent} size={44} tile />
@@ -1746,7 +1810,7 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
             boxShadow: `0 0 0 2px #ffffff, 0 4px 10px -4px ${tint(accent, 0.95)}` }}>{count}</span>
         )}
       </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: '1 1 0', minWidth: 0 }}>
         <div style={{ fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>
           {count === 0 ? bt('No service yet') : btf(count === 1 ? '{n} service' : '{n} services', { n: count })}{durationMinutes > 0 && <> · {fmtDur(durationMinutes)}</>}{grandLabel && <> · <b style={{ color: INK }}>{btf('total for {label}', { label: grandLabel })}</b></>}
         </div>

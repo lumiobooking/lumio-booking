@@ -580,7 +580,21 @@ export class SettingsService {
   /** Last Facebook-connect attempt, step by step — shown to Support in the UI
    *  so a failed OAuth can be diagnosed from a screenshot, no log digging. */
   async setMessengerConnectTrace(tenantId: string, steps: string[]): Promise<void> {
-    await this.writeKey(tenantId, 'messenger_connect_trace', { at: new Date().toISOString(), steps: steps.slice(0, 40) });
+    // Keep the head of the story AND its last line ("done in …"): a grant with
+    // many Pages used to push the timing off the end.
+    const kept = steps.length > 60 ? [...steps.slice(0, 59), steps[steps.length - 1]] : steps;
+    await this.writeKey(tenantId, 'messenger_connect_trace', { at: new Date().toISOString(), steps: kept });
+  }
+
+  /** The Facebook account whose grant the Page token came from (name for screens). */
+  async setMessengerConnectedBy(tenantId: string, by: { name: string | null; fbUserId: string | null; at: string }): Promise<void> {
+    await this.writeKey(tenantId, 'messenger_connected_by', by);
+  }
+
+  async getMessengerConnectedBy(tenantId: string): Promise<{ name: string | null; fbUserId: string | null; at: string } | null> {
+    const raw = await this.readKey<{ name?: string | null; fbUserId?: string | null; at?: string }>(tenantId, 'messenger_connected_by', {});
+    if (!raw?.at || (!raw.name && !raw.fbUserId)) return null;
+    return { name: raw.name ?? null, fbUserId: raw.fbUserId ?? null, at: raw.at };
   }
 
   /** What the last connect did with the publishing scopes. See messenger/publish-grant. */

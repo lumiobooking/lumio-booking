@@ -33,6 +33,7 @@ import {
 import { chat as llmChat, openAiEnabled, type ChatMessage, type ToolDef, type TextBlock } from '../common/llm';
 import { withBookingLink } from './booking-link';
 import { FbPageRow, FbPagesBody, walkFbPages } from './fb-pages';
+import { runLimited } from './run-limited';
 import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
 import { PartyAvailabilityService } from '../bookings/party-availability.service';
 import { aiBookingNote, noteLangForMarket, type AiChannel } from '../bookings/ai-booking-note';
@@ -201,6 +202,8 @@ export class MessengerService implements OnModuleInit {
 
   /** The last reason Meta refused to subscribe a Page to our webhook, per Page (in memory). */
   private readonly subscribeErrors = new Map<string, string>();
+  /** One "pull the Page's conversations" per tenant after a connect, not one per Page. */
+  private readonly syncAfterConnect = new Map<string, ReturnType<typeof setTimeout>>();
   /**
    * Subscribe one Page to our app's webhook, and KEEP the answer: a refusal
    * used to vanish into `.catch(() => undefined)` while the status page said
@@ -465,7 +468,39 @@ export class MessengerService implements OnModuleInit {
     const h = await this.settings.getMessengerHealth(tenantId).catch(() => null);
     if (!h) return null;
     const state = h.state as PageHealth['state'];
-    return { state, at: h.at, raw: h.raw, lost: h.lost, text: pageHealthText(state) };
+    const by = h.lost ? await this.settings.getMessengerConnectedBy(tenantId).catch(() => null) : null;
+    return { state, at: h.at, raw: h.raw, lost: h.lost, text: pageHealthText(state), connectedBy: by?.name ?? null };
+  }
+
+  /**
+   * The Facebook account whose grant this salon's Page token came from. Saved
+   * at every successful connect; for a connection made before that was saved,
+   * asked of Meta once (debug_token → the granting user → name) and kept.
+   * Only a name for a screen — "Facebook blocked the account that connected
+   * the Page" is not something a salon can act on until it knows WHOSE.
+   */
+  async connectedBy(tenantId: string, lookup = false): Promise<{ name: string | null; fbUserId: string | null } | null> {
+    const saved = await this.settings.getMessengerConnectedBy(tenantId).catch(() => null);
+    if (saved || !lookup || !this.appId() || !this.appSecret()) return saved;
+    const pg = await this.prisma.messengerPage.findFirst({ where: { tenantId }, orderBy: { createdAt: 'asc' }, select: { pageToken: true } }).catch(() => null);
+    const token = pg?.pageToken || (await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageToken: true } }).catch(() => null))?.pageToken;
+    if (!token) return null;
+    const app = encodeURIComponent(`${this.appId()}|${this.appSecret()}`);
+    try {
+      const d = (await (await fetch(`${GRAPH}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${app}`, { signal: AbortSignal.timeout(8000) })).json().catch(() => ({}))) as { data?: { user_id?: string } };
+      const uid = d.data?.user_id ? String(d.data.user_id) : null;
+      if (!uid) return null;
+      let name: string | null = null;
+      try {
+        const u = (await (await fetch(`${GRAPH}/${encodeURIComponent(uid)}?fields=name&access_token=${app}`, { signal: AbortSignal.timeout(8000) })).json().catch(() => ({}))) as { name?: string };
+        name = u.name || null;
+      } catch { /* id only */ }
+      const by = { name, fbUserId: uid, at: new Date().toISOString() };
+      await this.settings.setMessengerConnectedBy(tenantId, by).catch(() => undefined);
+      return by;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -481,7 +516,8 @@ export class MessengerService implements OnModuleInit {
     await this.settings.setMessengerHealth(tenantId, next).catch(() => undefined);
     if (shouldAlertPage(prev ? { ...prev, state: prev.state as PageHealth['state'] } : null, next)) {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }).catch(() => null);
-      const who = `${tenant?.name ?? tenantId}${pageName ? ` · ${pageName}` : ''}`;
+      const holder = (await this.connectedBy(tenantId, true).catch(() => null))?.name;
+      const who = `${tenant?.name ?? tenantId}${pageName ? ` · ${pageName}` : ''}${holder ? ` · TK FB: ${holder}` : ''}`;
       this.logger.warn(`Facebook connection lost for ${who}: ${next.state} — ${next.raw ?? ''}`);
       this.push.sendToTeam({ title: 'Mất kết nối Facebook ⚠', body: `${who} — ${pageHealthText(next.state)}`, url: `/agency?open=${encodeURIComponent(tenantId)}&to=${encodeURIComponent('/salon/messenger')}`, tag: `fb-lost-${tenantId}` }).catch(() => undefined);
       this.push.sendToTenant(tenantId, { title: 'Mất kết nối Facebook ⚠', body: pageHealthText(next.state), url: '/salon/messenger' }).catch(() => undefined);
@@ -628,7 +664,28 @@ export class MessengerService implements OnModuleInit {
     // Every step lands in this trace; it is saved on EVERY exit and shown to
     // the Support session in the UI — a failed connect diagnoses itself.
     const trace: string[] = [`start ${new Date().toISOString()}`];
-    const finish = async (q: string) => { await this.settings.setMessengerConnectTrace(tenantId, trace).catch(() => undefined); return back(q); };
+    // Seconds since start, on the lines that matter — "the connect is slow"
+    // becomes a screenshot that says WHICH step was slow.
+    const t0 = Date.now();
+    const at = () => `[${((Date.now() - t0) / 1000).toFixed(1)}s]`;
+    // Work that does not have to happen before the salon sees its screen
+    // again (other salons' webhooks, Instagram handles) — started at finish.
+    let laterWork: { pageId: string; run: () => Promise<void> }[] = [];
+    const doneNow = new Set<string>();
+    let fbUser: { id: string; name: string | null } | null = null;
+    const finish = async (q: string) => {
+      trace.push(`done ${at()}`);
+      await this.settings.setMessengerConnectTrace(tenantId, trace).catch(() => undefined);
+      // Remember WHOSE Facebook account this grant is. When Meta later blocks
+      // that account, the screen can name the person who has to fix it.
+      if (fbUser && /^fb=(connected|pick)/.test(q)) {
+        await this.settings.setMessengerConnectedBy(tenantId, { name: fbUser.name, fbUserId: fbUser.id, at: new Date().toISOString() }).catch(() => undefined);
+      }
+      const rest = laterWork.filter((w) => !doneNow.has(w.pageId));
+      laterWork = [];
+      if (rest.length) void runLimited(rest, 4, (w) => w.run()).catch(() => undefined);
+      return back(q);
+    };
     try {
       const tokRes = await fetch(
         `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${this.appId()}&client_secret=${this.appSecret()}&redirect_uri=${encodeURIComponent(this.oauthRedirect())}&code=${encodeURIComponent(code)}`,
@@ -636,7 +693,7 @@ export class MessengerService implements OnModuleInit {
       );
       const tok = (await tokRes.json()) as { access_token?: string; error?: { message?: string } };
       if (!tok.access_token) { trace.push(`token: FAILED — ${tok.error?.message || 'no_token'}`); return finish(`fb=error&msg=${encodeURIComponent(tok.error?.message || 'no_token')}`); }
-      trace.push('token: ok');
+      trace.push(`token: ok ${at()}`);
       // A Page token minted from a SHORT-lived user token is short-lived too;
       // one minted from a long-lived user token does not expire. Swap first,
       // so the Page keeps posting after the person who connected it logs out.
@@ -664,6 +721,15 @@ export class MessengerService implements OnModuleInit {
       const userToken = tok.access_token;
       const [walked] = await Promise.all([
         this.fetchAllFbPages(userToken, trace),
+        // Who is this? Only the name, for "the account that connected the
+        // Page is blocked by Facebook: <name>" — nobody can act on "that account".
+        (async () => {
+          try {
+            const r = await fetch(`${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(userToken)}`, { signal: AbortSignal.timeout(8000) });
+            const j = (await r.json().catch(() => ({}))) as { id?: string; name?: string };
+            if (j.id) { fbUser = { id: String(j.id), name: j.name || null }; trace.push(`fb account: ${j.name || j.id}`); }
+          } catch { /* the name is a nicety */ }
+        })(),
         (async () => {
           try {
             const permRes = await fetch(
@@ -687,7 +753,7 @@ export class MessengerService implements OnModuleInit {
       }
       let pages: FbPageRow[] = walked.pages;
       this.logger.log(`fb oauth ${tenantId}: /me/accounts returned ${pages.length} page(s) across the cursor`);
-      trace.push(`accounts: ${pages.length} page(s)`);
+      trace.push(`accounts: ${pages.length} page(s) ${at()}`);
       if (!pages.length) {
         // Known Meta quirk: /me/accounts often OMITS pages the user manages
         // through a Business Portfolio (exactly how an agency holds client
@@ -712,16 +778,19 @@ export class MessengerService implements OnModuleInit {
           // client's Page from an agency managing dozens of them.
           const FALLBACK_MAX = 200;
           if (ids.length > FALLBACK_MAX) trace.push(`granular: ${ids.length} ids, fetching the first ${FALLBACK_MAX}`);
-          for (const id of ids.slice(0, FALLBACK_MAX)) {
+          // Eight at a time: one after another was a minute of waiting for
+          // an agency grant of sixty Pages.
+          await runLimited(ids.slice(0, FALLBACK_MAX), 8, async (id) => {
             const pr = await fetch(
-              `https://graph.facebook.com/v21.0/${id}?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(tok.access_token)}`,
+              `https://graph.facebook.com/v21.0/${id}?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(userToken)}`,
               { signal: AbortSignal.timeout(15000) },
             );
             const pd = (await pr.json()) as { id?: string; name?: string; access_token?: string; instagram_business_account?: { id?: string }; error?: { message?: string } };
-            if (pd.error) { this.logger.warn(`fb oauth fallback page ${id}: ${pd.error.message || 'error'}`); trace.push(`page ${id}: ERROR — ${pd.error.message || 'error'}`); continue; }
+            if (pd.error) { this.logger.warn(`fb oauth fallback page ${id}: ${pd.error.message || 'error'}`); trace.push(`page ${id}: ERROR — ${pd.error.message || 'error'}`); return; }
             if (pd.id && pd.access_token) { trace.push(`page ${id} (${pd.name || '?'}): token ok`); fetched.push({ id: pd.id, name: pd.name, access_token: pd.access_token, instagram_business_account: pd.instagram_business_account }); }
             else trace.push(`page ${id}: no access_token in response`);
-          }
+          });
+          trace.push(`granular: ${fetched.length} page(s) read ${at()}`);
           pages = fetched;
         } catch (e) {
           this.logger.warn(`fb oauth granular fallback failed: ${String(e).slice(0, 120)}`);
@@ -746,7 +815,8 @@ export class MessengerService implements OnModuleInit {
       // its stored token and re-subscribe the webhook. Without this, connecting
       // shop B silently broke shop A.
       const healed = await this.healKnownPages(pages);
-      if (healed) trace.push(`heal: refreshed ${healed} known page(s) from this grant`);
+      laterWork = healed.later;
+      if (healed.count) trace.push(`heal: refreshed ${healed.count} known page(s) from this grant ${at()} (webhooks re-subscribed in the background)`);
       const withIg = pages.filter((p) => p.instagram_business_account?.id).length;
       trace.push(`instagram: ${withIg} of ${pages.length} page(s) have a linked IG account`);
       // What in the grant is NEW to this tenant? A page we already hold must
@@ -762,12 +832,14 @@ export class MessengerService implements OnModuleInit {
       trace.push(`held: ${held.size} · new in grant: ${freshOnes.length}`);
       let chosen = pages.length === 1 ? pages[0] : freshOnes.length === 1 ? freshOnes[0] : null;
       if (!chosen && freshOnes.length === 0) {
-        for (const p of pages) {
-          if (held.has(p.id) && p.access_token) {
-            await this.completeConnect(tenantId, { id: p.id, name: p.name || '', access_token: p.access_token, igId: p.instagram_business_account?.id || null }, cur?.greeting ?? null);
-          }
-        }
-        trace.push('reconnect: tokens refreshed on held pages');
+        // Side by side, four at a time — a salon with several Pages used to
+        // wait for each one's Graph round trips in turn.
+        const mine = pages.filter((p) => held.has(p.id) && p.access_token);
+        await runLimited(mine, 4, async (p) => {
+          await this.completeConnect(tenantId, { id: p.id, name: p.name || '', access_token: p.access_token!, igId: p.instagram_business_account?.id || null }, cur?.greeting ?? null);
+          doneNow.add(p.id);
+        });
+        trace.push(`reconnect: tokens refreshed on ${mine.length} held page(s) ${at()}`);
         return finish(`fb=connected&page=${encodeURIComponent(pages.map((p) => p.name || p.id).join(', '))}`);
       }
       trace.push(chosen ? `chosen: ${chosen.id} (${chosen.name || '?'})` : `multi-page: ${freshOnes.length} new candidates → staff picks`);
@@ -779,7 +851,8 @@ export class MessengerService implements OnModuleInit {
         return finish('fb=pick');
       }
       const res = await this.completeConnect(tenantId, { id: chosen.id, name: chosen.name || '', access_token: chosen.access_token || '', igId: chosen.instagram_business_account?.id || null }, cur?.greeting ?? null);
-      trace.push(`connect: ${res}`);
+      doneNow.add(chosen.id);
+      trace.push(`connect: ${res} ${at()}`);
       if (res !== 'ok') return finish(`fb=error&msg=${res}`);
       return finish(`fb=connected&page=${encodeURIComponent(chosen.name || '')}`);
     } catch (e) {
@@ -840,16 +913,25 @@ export class MessengerService implements OnModuleInit {
 
   private async healKnownPages(
     pages: { id: string; name?: string; access_token?: string; instagram_business_account?: { id?: string } }[],
-  ): Promise<number> {
-    let healed = 0;
-    for (const p of pages) {
-      if (!p.id || !p.access_token) continue;
+  ): Promise<{ count: number; later: { pageId: string; run: () => Promise<void> }[] }> {
+    // The database half (new token, linked Instagram) is done NOW, several
+    // Pages at a time — it is what keeps other salons' links alive. The Graph
+    // half (webhook + Instagram subscribe, the @handle) goes to `later`: it is
+    // one to three Meta round trips per Page, and an agency grant holds dozens
+    // of Pages that belong to OTHER salons. Doing them in line, one by one,
+    // was the minutes-long "Đang hoàn tất kết nối…" screen.
+    const later: { pageId: string; run: () => Promise<void> }[] = [];
+    let count = 0;
+    await runLimited(pages, 6, async (p) => {
+      if (!p.id || !p.access_token) return;
+      const token = p.access_token;
       const known = await this.prisma.messengerPage.findUnique({ where: { pageId: p.id } }).catch(() => null);
+      let igId: string | null = known?.igId ?? null;
+      let needHandle = false;
       if (known) {
         // Capture the linked Instagram account the FIRST time Meta reveals it
         // (it only appears once instagram_basic is granted). Guard: an IG
         // account already bound to a different tenant is never stolen.
-        let igId: string | null = known.igId ?? null;
         const fresh = p.instagram_business_account?.id || null;
         if (fresh && fresh !== igId) {
           const clash = await this.prisma.messengerPage.findFirst({ where: { igId: fresh, NOT: { pageId: p.id } }, select: { tenantId: true } }).catch(() => null);
@@ -857,11 +939,11 @@ export class MessengerService implements OnModuleInit {
           if (!clash && !clashLegacy) igId = fresh;
         }
         const knownUser = (known as unknown as { igUsername?: string | null }).igUsername ?? null;
-        const igUsername = igId ? (knownUser || await this.fetchIgUsername(igId, p.access_token)) : null;
-        if (igId) await this.subscribeIgAccount(igId, p.access_token);
+        const sameIg = igId === (known.igId ?? null);
+        needHandle = Boolean(igId) && !(sameIg && knownUser);
         await this.prisma.messengerPage.update({
           where: { pageId: p.id },
-          data: { pageToken: p.access_token, pageName: p.name || known.pageName, igId, igUsername } as never,
+          data: { pageToken: token, pageName: p.name || known.pageName, igId, igUsername: sameIg ? knownUser : null } as never,
         }).catch(() => undefined);
         if (igId && igId !== (known.igId ?? null)) {
           await this.prisma.messengerConnection.updateMany({ where: { tenantId: known.tenantId, pageId: p.id }, data: { igId } }).catch(() => undefined);
@@ -871,15 +953,27 @@ export class MessengerService implements OnModuleInit {
       if (legacy) {
         await this.prisma.messengerConnection.update({
           where: { tenantId: legacy.tenantId },
-          data: { pageToken: p.access_token },
+          data: { pageToken: token },
         }).catch(() => undefined);
       }
-      if (known || legacy) {
-        await fetch(`${GRAPH}/${p.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers,feed&access_token=${encodeURIComponent(p.access_token)}`, { method: 'POST' }).catch(() => undefined);
-        healed += 1;
-      }
-    }
-    return healed;
+      if (!known && !legacy) return;
+      count += 1;
+      const ig = known ? igId : null;
+      later.push({
+        pageId: p.id,
+        run: async () => {
+          if (ig) {
+            await this.subscribeIgAccount(ig, token);
+            if (needHandle) {
+              const handle = await this.fetchIgUsername(ig, token);
+              if (handle) await this.prisma.messengerPage.updateMany({ where: { pageId: p.id, igId: ig }, data: { igUsername: handle } as never }).catch(() => undefined);
+            }
+          }
+          await fetch(`${GRAPH}/${p.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers,feed&access_token=${encodeURIComponent(token)}`, { method: 'POST', signal: AbortSignal.timeout(10_000) }).catch(() => undefined);
+        },
+      });
+    });
+    return { count, later };
   }
 
   /** Bind ONE page to the tenant: clash checks, token save, webhook subscribe,
@@ -892,7 +986,7 @@ export class MessengerService implements OnModuleInit {
     if (!page.access_token) return 'no_page_token';
     // One page belongs to ONE tenant — checked against BOTH the new page table
     // and the legacy columns, named instead of exploding as a unique-key error.
-    const clashPg = await this.prisma.messengerPage.findUnique({ where: { pageId: page.id }, select: { tenantId: true } });
+    const clashPg = await this.prisma.messengerPage.findUnique({ where: { pageId: page.id }, select: { tenantId: true, igId: true, igUsername: true } as never }) as unknown as { tenantId: string; igId: string | null; igUsername?: string | null } | null;
     const clashLegacy = await this.prisma.messengerConnection.findUnique({ where: { pageId: page.id }, select: { tenantId: true } });
     if ((clashPg && clashPg.tenantId !== tenantId) || (clashLegacy && clashLegacy.tenantId !== tenantId)) {
       this.logger.warn(`fb oauth: page ${page.id} already bound to another tenant (wanted ${tenantId})`);
@@ -905,8 +999,9 @@ export class MessengerService implements OnModuleInit {
       if ((igPg && igPg.tenantId !== tenantId) || (igLegacy && igLegacy.tenantId !== tenantId)) igId = null; // keep FB, skip the shared IG
     }
     // The page joins the tenant's page list (one brain, many mouths)…
-    const igUsername = igId ? await this.fetchIgUsername(igId, page.access_token) : null;
-    if (igId) await this.subscribeIgAccount(igId, page.access_token);
+    // The @handle we already hold for this same Instagram account is kept;
+    // a new one is read after the connect has answered (see below).
+    const igUsername = igId && clashPg?.igId === igId ? (clashPg.igUsername ?? null) : null;
     await this.prisma.messengerPage.upsert({
       where: { pageId: page.id },
       update: { tenantId, igId, igUsername, pageToken: page.access_token, pageName: page.name || null, enabled: true } as never,
@@ -929,16 +1024,32 @@ export class MessengerService implements OnModuleInit {
     // Subscribe the Page to our app's webhook so messages start flowing — and
     // keep Meta's answer for the status page.
     const subscribed = await this.subscribePageWebhook(page.id, page.access_token);
-    await this.setupMessengerProfile(page.access_token, greeting);
+    // Instagram subscribe, its @handle and the Messenger intro text are Meta
+    // round trips the person on the connect screen does not need to wait for.
+    void (async () => {
+      if (igId) {
+        await this.subscribeIgAccount(igId, page.access_token);
+        if (!igUsername) {
+          const handle = await this.fetchIgUsername(igId, page.access_token);
+          if (handle) await this.prisma.messengerPage.updateMany({ where: { pageId: page.id, igId }, data: { igUsername: handle } as never }).catch(() => undefined);
+        }
+      }
+      await this.setupMessengerProfile(page.access_token, greeting);
+    })().catch(() => undefined);
     await this.audit(tenantId, 'messenger.connected');
     // The Page's existing conversations appear in the inbox right away — not
     // on the next customer message, and not after a button press. Started a
     // few seconds AFTER the connect answers: fifty threads of history on a
     // small host made the connect screen, and everything else, crawl.
+    // One pull per salon: a reconnect touching five Pages used to queue five.
+    const pending = this.syncAfterConnect.get(tenantId);
+    if (pending) clearTimeout(pending);
     const later = setTimeout(() => {
+      this.syncAfterConnect.delete(tenantId);
       void this.syncConversations(tenantId, { limit: 25, reply: false }).catch((e) => this.logger.warn(`sync after connect failed: ${String(e).slice(0, 160)}`));
     }, 8000);
     later.unref?.();
+    this.syncAfterConnect.set(tenantId, later);
     // A fresh Page token is USUALLY alive: clear a "lost" mark so the agency
     // list and the salon's banner go quiet the minute they reconnect. But not
     // blindly — a token minted by a checkpointed account (190/459) is dead on
@@ -5919,6 +6030,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ greeting: [{ locale: 'default', text: intro }] }),
+      signal: AbortSignal.timeout(10_000),
     }).then(async (r) => {
       if (!r.ok) this.logger.warn(`messenger_profile ${r.status}: ${(await r.text().catch(() => '')).slice(0, 120)}`);
     }).catch(() => undefined);
@@ -5931,6 +6043,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       method: 'DELETE',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ fields: ['get_started'] }),
+      signal: AbortSignal.timeout(10_000),
     }).catch(() => undefined);
   }
 

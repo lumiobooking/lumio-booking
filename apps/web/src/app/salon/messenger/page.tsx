@@ -32,7 +32,7 @@ interface MConf {
   /** What the last connect did with the publishing scopes. */
   publishGrant?: { at: string; scopes: Record<string, string> } | null;
   /** Is the Page token still alive — and if not, why (api: messenger/page-health.ts). */
-  health?: { state: string; at: string; raw: string | null; lost: boolean; text: string } | null;
+  health?: { state: string; at: string; raw: string | null; lost: boolean; text: string; connectedBy?: string | null } | null;
 }
 interface SalesLead {
   id: string; threadId: string | null; name: string; phone: string; salonName: string | null; city: string | null;
@@ -667,6 +667,11 @@ function Inner() {
                 : c.health.state === 'checkpoint' ? 'Facebook has put a check on the account that connected this Page. Reconnecting with that same account fails the same way: that person must open www.facebook.com in a desktop browser, log in and complete every step Facebook asks — then reconnect. Or reconnect with another Admin of the Page.'
                 : 'The connection has expired or was revoked by Facebook. Reconnect the Page.'}
             </div>
+            {c.health.connectedBy && (
+              <div style={{ marginTop: 4 }}>
+                {lang === 'vi' ? 'Tài khoản Facebook đã kết nối Trang: ' : 'Facebook account that connected the Page: '}<b>{c.health.connectedBy}</b>
+              </div>
+            )}
             {c.health.raw && <div style={{ marginTop: 4, fontSize: 11.5, opacity: 0.7 }}>Meta: {c.health.raw}</div>}
           </span>
           <button onClick={connectFacebook} style={{ background: '#fff', border: 'none', color: 'var(--c7f1d1d)', borderRadius: 8, padding: '5px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>

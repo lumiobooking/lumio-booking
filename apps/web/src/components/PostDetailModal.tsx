@@ -28,6 +28,8 @@ export interface DetailPost {
   stage?: string | null;
   lastError?: string | null;
   fix?: string | null;
+  /** The saved error is about something that has been fixed since (Page reconnected, permission granted). */
+  errorIsStale?: boolean;
   /** Due, not sent, no error: why. */
   waiting?: { vi: string; en: string } | null;
   results?: {
@@ -254,7 +256,15 @@ export function PostDetailModal({
                 </span>
               } />
             )}
-            {post.status === 'failed' && (post.fix || post.lastError) && (
+            {post.status === 'failed' && post.errorIsStale && (
+              <Row k={T('Lỗi cũ', 'Old error')} v={
+                <span>
+                  <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>✓ {T('Đã xử lý rồi — kết nối Facebook đang hoạt động. Bấm "Post now" để đăng lại.', 'Fixed since — the Facebook connection works now. Press “Post now” to post it.')}</span>
+                  {post.lastError && <span style={{ display: 'block', marginTop: 4, fontSize: 11.5, opacity: 0.6 }}>{T('Lần thử trước', 'Earlier try')}: {post.lastError}</span>}
+                </span>
+              } />
+            )}
+            {post.status === 'failed' && !post.errorIsStale && (post.fix || post.lastError) && (
               <Row k={T('Lỗi', 'Error')} v={<span style={{ color: 'var(--ink-bad)' }}>{post.fix ?? post.lastError}</span>} />
             )}
             {post.status === 'scheduled' && post.waiting && (

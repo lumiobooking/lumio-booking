@@ -876,7 +876,10 @@ export class PosService {
     if (collected <= 0) throw new BadRequestException('Bill này không còn tiền để hoàn.');
     if (amount > collected) throw new BadRequestException(`Tối đa hoàn được ${(collected / 100).toFixed(2)} ${order.currency}.`);
     if (method === 'CARD') {
-      const viaTerminal = await this.prisma.paymentIntent.findFirst({ where: { tenantId, orderId: id, status: 'SUCCEEDED' }, select: { id: true } }).catch(() => null);
+      const viaTerminal = await this.prisma.paymentIntentRecord.findFirst({
+        where: { tenantId, status: 'SUCCEEDED', OR: [{ orderId: id }, ...(order.clientRef ? [{ clientRef: `${order.clientRef}-card` }] : [])] },
+        select: { id: true },
+      }).catch(() => null);
       if (viaTerminal) throw new BadRequestException('Bill này quẹt qua máy thẻ nối với Lumio — hoàn ở Đơn hàng › Máy quẹt thẻ để tiền về đúng thẻ của khách.');
     }
     const itemIds = (Array.isArray(dto.itemIds) ? dto.itemIds : []).map(String).filter((x) => order.items.some((l) => l.id === x)).slice(0, 50);

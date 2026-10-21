@@ -56,7 +56,7 @@ function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift
       aggregate: async () => ({ _count: { _all: 0 }, _sum: { totalCents: 0 } }),
     },
     payment: paymentApi,
-    paymentIntent: { findFirst: async ({ where }: Row) => (opts.intents ?? []).find((i) => i.tenantId === where.tenantId && i.orderId === where.orderId && i.status === where.status) ?? null },
+    paymentIntentRecord: { findFirst: async ({ where }: Row) => (opts.intents ?? []).find((i) => i.tenantId === where.tenantId && i.status === where.status && (where.OR as Row[]).some((c) => (c.orderId && c.orderId === i.orderId) || (c.clientRef && c.clientRef === i.clientRef))) ?? null },
     payrollRun: { findMany: async () => [] },
     tenant: { findUnique: async () => ({ timezone: 'America/Chicago' }) },
     auditLog: { findMany: async ({ where }: Row) => { wheres.push(where); return []; } },

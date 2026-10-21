@@ -2,7 +2,7 @@ import { AppointmentStatus, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { bucketFor } from '../pos/payment-methods';
 import { dayKeyTz } from '../common/salon-time';
-import { buildLedger, StaffLedger } from './sales-ledger';
+import { buildLedger, LedgerRefund, StaffLedger } from './sales-ledger';
 
 /**
  * Reads one salon's paid tickets and till-less completed bookings for
@@ -47,7 +47,19 @@ export async function loadLedger(prisma: PrismaService, tenantId: string, tz: st
     }
   }
 
+  // Part refunds given back in the range (what came off which line).
+  type RefundRow = { createdAt: Date; method: string; lines: unknown };
+  const refundRows: RefundRow[] = await ((prisma as unknown as { orderRefund?: { findMany: (a: unknown) => Promise<RefundRow[]> } }).orderRefund
+    ?.findMany({ where: { tenantId, full: false, createdAt: { gte: from, lte: to } }, select: { createdAt: true, method: true, lines: true } })
+    .catch(() => [] as RefundRow[]) ?? Promise.resolve([] as RefundRow[]));
+  const refunds: LedgerRefund[] = refundRows.map((r) => ({
+    at: r.createdAt,
+    card: bucketFor(r.method) === 'card',
+    lines: (Array.isArray(r.lines) ? r.lines : []) as LedgerRefund['lines'],
+  }));
+
   const ledger = buildLedger({
+    refunds,
     orders: orders.map((o) => ({ ...o, items: o.items.map((l) => ({ ...l, kind: String(l.kind) })) })),
     appointments: appts,
     paidByTicket,

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import {
   AppointmentStatus,
   OrderItemKind,
@@ -20,6 +20,7 @@ import { TrashService } from '../maintenance/trash.service';
 import { WalkinsService } from '../walkins/walkins.service';
 import { GiftCardsService } from '../gift-cards/gift-cards.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { cleanStaffCaps, hasCapability } from '../auth/capabilities';
 import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { CreateOrderDto, CreateProductDto, RecordTipDto, UpdateProductDto } from './dto/pos.dto';
 
@@ -29,10 +30,13 @@ const ORDER_INCLUDE = {
 };
 
 import { loadLedger } from '../payroll/ledger-loader';
-import { UNASSIGNED } from '../payroll/sales-ledger';
+import { UNASSIGNED, allocate } from '../payroll/sales-ledger';
 import { settledWalkIns } from '../walkins/unpaid-sweep';
 import { commissionOnly, sanitizeSettings } from '../payroll/pay-calc';
 import { PAYROLL_SETTINGS_KEY } from '../payroll/payroll.service';
+
+/** Wrong approval PINs per salon (this API process): 5 in 10 minutes locks PIN entry. */
+const PIN_FAILS = new Map<string, { n: number; until: number }>();
 
 @Injectable()
 export class PosService {
@@ -222,11 +226,12 @@ export class PosService {
         ? this.prisma.staffMember.findMany({ where: { tenantId, id: { in: staffIds } }, select: { id: true, firstName: true, lastName: true } })
         : Promise.resolve([] as { id: string; firstName: string; lastName: string | null }[]),
     ]);
+    const voidLock = order.status === OrderStatus.PAID ? await this.voidWindow(user, tenantId, order) : null;
     const userIds = [...new Set([order.createdByUserId, ...logs.map((l) => l.userId)].filter((x): x is string => !!x))];
     const people = userIds.length ? await this.namesOfUsers(tenantId, userIds) : new Map<string, string>();
     const paidRows = ledger.filter((r) => r.status === PaymentStatus.PAID);
     const refunds = paidRows.filter((r) => r.amountCents < 0)
-      .map((r) => ({ amountCents: -r.amountCents, provider: r.provider, at: (r.paidAt ?? r.createdAt).toISOString() }));
+      .map((r) => ({ amountCents: -r.amountCents, provider: r.provider, at: new Date(r.paidAt ?? r.createdAt ?? Date.now()).toISOString() }));
     const refundedCents = refunds.reduce((n, r) => n + r.amountCents, 0);
     const collectedCents = paidRows.reduce((n, r) => n + r.amountCents, 0);
     return {
@@ -239,7 +244,8 @@ export class PosService {
       history: logs.map((l) => ({ action: l.action, at: l.createdAt.toISOString(), by: l.userId ? people.get(l.userId) ?? null : null, meta: l.metadata ?? {} })),
       // What may be done next (the server checks again on every action).
       canRefund: order.status === OrderStatus.PAID && collectedCents > 0,
-      canVoid: order.status === OrderStatus.PAID && refundedCents === 0,
+      canVoid: order.status === OrderStatus.PAID && refundedCents === 0 && !voidLock,
+      voidLock,
       canDelete: this.isDraft(order),
     };
   }
@@ -254,6 +260,66 @@ export class PosService {
     for (const u of users) out.set(u.id, `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email.split('@')[0]);
     for (const c of cards) if (c.userId) out.set(c.userId, `${c.firstName} ${c.lastName ?? ''}`.trim());
     return out;
+  }
+
+  /**
+   * Split a part refund over the bill's lines: first the chosen lines' sales
+   * (each line net of its share of the bill discount, less what earlier
+   * refunds already took off it), then their tips. No lines chosen = every
+   * line. Anything beyond (tax) belongs to no technician.
+   */
+  private async refundSplit(tenantId: string, order: { id: string; discountCents: number; items: { id: string; kind: string; lineTotalCents: number; tipCents: number; staffMemberId: string | null }[] }, amount: number, itemIds: string[]) {
+    type Line = { itemId: string; staffMemberId: string | null; kind: string; netCents: number; tipCents: number };
+    const earlier = await ((this.prisma as unknown as { orderRefund?: { findMany: (a: unknown) => Promise<{ lines: unknown }[]> } }).orderRefund
+      ?.findMany({ where: { tenantId, orderId: order.id }, select: { lines: true } }).catch(() => []) ?? Promise.resolve([] as { lines: unknown }[]));
+    const taken = new Map<string, { net: number; tip: number }>();
+    for (const r of earlier) for (const l of (Array.isArray(r.lines) ? r.lines : []) as Line[]) {
+      const t = taken.get(l.itemId) ?? { net: 0, tip: 0 };
+      t.net += Number(l.netCents) || 0; t.tip += Number(l.tipCents) || 0; taken.set(l.itemId, t);
+    }
+    const disc = allocate(order.discountCents ?? 0, order.items.map((l) => l.lineTotalCents));
+    const chosen = order.items.map((l, i) => ({ l, i })).filter(({ l }) => !itemIds.length || itemIds.includes(l.id));
+    const netLeft = chosen.map(({ l, i }) => Math.max(0, l.lineTotalCents - disc[i] - (taken.get(l.id)?.net ?? 0)));
+    const tipLeft = chosen.map(({ l }) => Math.max(0, (l.tipCents ?? 0) - (taken.get(l.id)?.tip ?? 0)));
+    const netPart = allocate(Math.min(amount, netLeft.reduce((a, b) => a + b, 0)), netLeft);
+    const rest = amount - netPart.reduce((a, b) => a + b, 0);
+    const tipPart = allocate(Math.min(rest, tipLeft.reduce((a, b) => a + b, 0)), tipLeft);
+    return chosen.map(({ l }, k) => ({ itemId: l.id, staffMemberId: l.staffMemberId, kind: String(l.kind), netCents: netPart[k], tipCents: tipPart[k] }))
+      .filter((x) => x.netCents || x.tipCents);
+  }
+
+  /**
+   * Who allows this refund / void. Someone who may do it alone (the owner, a
+   * manager, anyone the owner gave "refund & void") is their own approval.
+   * Anyone else at the till needs an approver's PIN — an active owner or
+   * manager OF THIS SALON whose PIN it is. Five wrong PINs lock the salon's
+   * PIN entry for ten minutes.
+   */
+  private async approverFor(user: AuthenticatedUser, tenantId: string, pin?: string): Promise<string> {
+    if (hasCapability(user.role, user.staffRole, 'pos.void', user.staffCaps)) return user.userId;
+    const clean = String(pin ?? '').trim();
+    if (!clean) throw new ForbiddenException('APPROVAL_PIN_REQUIRED: cần PIN của chủ tiệm hoặc quản lý.');
+    const now = Date.now();
+    const lock = PIN_FAILS.get(tenantId);
+    if (lock && lock.until > now && lock.n >= 5) throw new ForbiddenException('Sai PIN quá nhiều lần — thử lại sau 10 phút.');
+    const people = await this.prisma.user.findMany({
+      where: { tenantId, isActive: true, approvalPinHash: { not: null } } as never,
+      select: { id: true, role: true, approvalPinHash: true } as never,
+    }) as unknown as { id: string; role: string; approvalPinHash: string }[];
+    const cards = people.length
+      ? await this.prisma.staffMember.findMany({ where: { tenantId, userId: { in: people.map((p) => p.id) } }, select: { userId: true, staffRole: true, permissions: true } as never }) as unknown as { userId: string; staffRole: string | null; permissions: unknown }[]
+      : [];
+    // Loaded here, not at the top: bcrypt is a native module, and the till's
+    // other paths (and their tests) should not need it.
+    const { verifySecret } = await import('../auth/password.util');
+    for (const p of people) {
+      const sm = cards.find((c) => c.userId === p.id);
+      const may = p.role === 'SALON_ADMIN' || (p.role === 'STAFF' && hasCapability('STAFF' as never, (sm?.staffRole ?? null) as never, 'pos.void', cleanStaffCaps(sm?.permissions) ?? undefined));
+      if (may && await verifySecret(clean, p.approvalPinHash)) { PIN_FAILS.delete(tenantId); return p.id; }
+    }
+    const prev = lock && lock.until > now ? lock : { n: 0, until: now + 10 * 60_000 };
+    PIN_FAILS.set(tenantId, { n: prev.n + 1, until: prev.until });
+    throw new ForbiddenException('PIN không đúng.');
   }
 
   /** A bill nobody has paid a cent on yet — the only kind that may be deleted. */
@@ -687,6 +753,57 @@ export class PosService {
   }
 
   /**
+   * Re-split the tip of a paid bill between its lines (the client said "the
+   * tip is for both of them", the cashier put it all on one). The tip the
+   * client paid does not change — the new split must add up to it — only who
+   * gets it. Owner only (controller); refused inside a closed payroll.
+   */
+  async setLineTips(user: AuthenticatedUser, id: string, items: { itemId: string; tipCents: number }[]) {
+    const tenantId = this.tenantId(user);
+    const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== OrderStatus.PAID) throw new BadRequestException('Chỉ chia lại tip trên bill đã thu.');
+    await this.assertOpenPayroll(tenantId, order);
+    const next = new Map(order.items.map((l) => [l.id, l.tipCents ?? 0]));
+    for (const w of (items ?? []).slice(0, 50)) {
+      if (!next.has(String(w?.itemId))) throw new NotFoundException('Dòng không thuộc bill này.');
+      const v = Math.round(Number(w.tipCents));
+      if (!Number.isFinite(v) || v < 0) throw new BadRequestException('Tip không hợp lệ.');
+      next.set(String(w.itemId), v);
+    }
+    const before = order.items.reduce((n, l) => n + (l.tipCents ?? 0), 0);
+    const after = [...next.values()].reduce((n, v) => n + v, 0);
+    if (after !== before) throw new BadRequestException(`Tổng tip phải giữ nguyên ${(before / 100).toFixed(2)} — chỉ chia lại giữa các thợ.`);
+    const changes = order.items.filter((l) => (l.tipCents ?? 0) !== next.get(l.id)).map((l) => ({ itemId: l.id, staffMemberId: l.staffMemberId, from: l.tipCents ?? 0, to: next.get(l.id) ?? 0 }));
+    if (changes.length) {
+      await this.prisma.$transaction(changes.map((c) =>
+        this.prisma.orderItem.updateMany({ where: { id: c.itemId, orderId: order.id }, data: { tipCents: c.to } }),
+      ));
+      await this.audit.log({ tenantId, userId: user.userId, action: 'pos.order_tips_changed', resourceType: 'order', resourceId: order.id, metadata: { orderNumber: order.orderNumber, changes } });
+    }
+    return this.getOrder(user, id);
+  }
+
+  /**
+   * May this bill still be voided by this person? A void says the sale never
+   * happened, so it belongs to the shift it was rung up in: once that shift
+   * is closed (or, for a salon without shifts, once its day is over) only the
+   * owner may void it — anyone else refunds instead, which leaves the closed
+   * count alone.
+   */
+  private async voidWindow(user: AuthenticatedUser, tenantId: string, order: { shiftId?: string | null; paidAt?: Date | null; createdAt?: Date | null }): Promise<string | null> {
+    if (user.role === 'SALON_ADMIN' || user.role === 'SUPER_ADMIN') return null;
+    if (order.shiftId) {
+      const db = this.prisma as unknown as { cashShift: { findFirst: (a: unknown) => Promise<{ status: string } | null> } };
+      const s = await db.cashShift.findFirst({ where: { id: order.shiftId, tenantId }, select: { status: true } }).catch(() => null);
+      return s && s.status !== 'OPEN' ? 'Ca của bill này đã chốt — dùng Hoàn tiền (chỉ chủ tiệm huỷ được bill của ca đã chốt).' : null;
+    }
+    const tz = await this.tzOf(tenantId);
+    const at = order.paidAt ?? order.createdAt;
+    return at && dayKeyTz(new Date(at), tz) !== dayKeyTz(new Date(), tz) ? 'Bill của ngày đã qua — dùng Hoàn tiền (chỉ chủ tiệm huỷ được).' : null;
+  }
+
+  /**
    * Paid service lines with no technician, newest first — the payroll screen's
    * fix-it list. Limited to a window so the query stays small; the ledger's
    * "unassigned" total is the number that says whether to look.
@@ -798,13 +915,16 @@ export class PosService {
     };
   }
 
-  async voidOrder(user: AuthenticatedUser, id: string, opts: { reason?: string; note?: string } = {}) {
+  async voidOrder(user: AuthenticatedUser, id: string, opts: { reason?: string; note?: string; approvalPin?: string } = {}) {
     const tenantId = this.tenantId(user);
+    const approvedBy = await this.approverFor(user, tenantId, opts.approvalPin);
     const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
     if (!order) throw new NotFoundException('Order not found');
     if (order.status === OrderStatus.VOID) return order;
     if (order.status === OrderStatus.REFUNDED) throw new BadRequestException('Bill này đã hoàn tiền toàn bộ.');
     await this.assertOpenPayroll(tenantId, order);
+    const closed = await this.voidWindow(user, tenantId, order);
+    if (closed) throw new BadRequestException(closed);
     // Part of it already went back: voiding now would say the sale never
     // happened while the drawer is short the refund. Refund the rest instead.
     if (((await this.refundedByOrder(tenantId, [id])).get(id) ?? 0) > 0) {
@@ -836,7 +956,7 @@ export class PosService {
       }
     });
 
-    await this.audit.log({ tenantId, userId: user.userId, action: 'order.voided', resourceType: 'order', resourceId: id, metadata: { reason, note, totalCents: order.totalCents } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'order.voided', resourceType: 'order', resourceId: id, metadata: { reason, note, totalCents: order.totalCents, approvedByUserId: approvedBy } });
     return this.getOrder(user, id);
   }
 
@@ -859,8 +979,9 @@ export class PosService {
    * terminal (Orders › Card terminal), which records itself — refused here so
    * it can never be counted twice.
    */
-  async refundOrder(user: AuthenticatedUser, id: string, dto: { amountCents?: number; method?: string; reason?: string; note?: string; itemIds?: string[] }) {
+  async refundOrder(user: AuthenticatedUser, id: string, dto: { amountCents?: number; method?: string; reason?: string; note?: string; itemIds?: string[]; approvalPin?: string }) {
     const tenantId = this.tenantId(user);
+    const approvedBy = await this.approverFor(user, tenantId, dto.approvalPin);
     const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
     if (!order) throw new NotFoundException('Order not found');
     if (order.status !== OrderStatus.PAID) throw new BadRequestException('Chỉ hoàn được bill đã thu tiền.');
@@ -888,6 +1009,9 @@ export class PosService {
     const itemIds = (Array.isArray(dto.itemIds) ? dto.itemIds : []).map(String).filter((x) => order.items.some((l) => l.id === x)).slice(0, 50);
     const full = amount === collected && alreadyBack === 0;
     if (full) await this.assertOpenPayroll(tenantId, order);
+    // Which technician's lines the money came off (part refunds only — a full
+    // refund takes the whole bill off the books).
+    const lines = full ? [] : await this.refundSplit(tenantId, order, amount, itemIds);
     const openShift = await this.shifts.openShiftId(tenantId).catch(() => null);
 
     await this.prisma.$transaction(async (tx) => {
@@ -910,6 +1034,10 @@ export class PosService {
           },
         });
       }
+      const rdb = tx as unknown as { orderRefund: { create: (a: unknown) => Promise<unknown> } };
+      await rdb.orderRefund.create({
+        data: { tenantId, orderId: id, amountCents: amount, method, reason, note, lines: lines as never, full, createdByUserId: user.userId },
+      });
       // Cash out of the drawer. A full refund of a sale rung up in THIS shift
       // already leaves the shift's totals (the sale is off the books), so only
       // the other cases need the movement.
@@ -921,7 +1049,7 @@ export class PosService {
 
     await this.audit.log({
       tenantId, userId: user.userId, action: 'order.refunded', resourceType: 'order', resourceId: id,
-      metadata: { amountCents: amount, method, reason, note, itemIds, full },
+      metadata: { amountCents: amount, method, reason, note, itemIds, full, approvedByUserId: approvedBy },
     });
     return this.orderDetail(user, id);
   }

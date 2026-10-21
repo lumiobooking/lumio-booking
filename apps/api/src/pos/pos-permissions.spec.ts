@@ -42,7 +42,9 @@ describe('counter permissions', () => {
 
   it('voiding or deleting a ticket needs its own permission, which a receptionist does not start with', () => {
     const r = new Reflector();
-    expect(r.get(CAPS_KEY, PosController.prototype.voidOrder)).toEqual(['pos.void']);
+    // A void / refund reaches the service (the cashier may bring a manager's PIN); deleting does not.
+    expect(r.get(CAPS_KEY, PosController.prototype.voidOrder)).toBeUndefined();
+    expect(r.get(CAPS_KEY, PosController.prototype.refundOrder)).toBeUndefined();
     expect(r.get(CAPS_KEY, PosController.prototype.removeOrder)).toEqual(['pos.void']);
     expect(hasCapability('STAFF' as never, 'RECEPTIONIST' as never, 'pos.void')).toBe(false);
     expect(hasCapability('STAFF' as never, 'MANAGER' as never, 'pos.void')).toBe(true);

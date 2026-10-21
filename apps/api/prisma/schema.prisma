@@ -446,6 +446,10 @@ model User {
   @@index([tenantId])
   @@index([role])
   @@index([accountGroupId])
+  /// A 4–6 digit PIN (hashed) this owner / manager types at a cashier's till to
+  /// approve a refund or a void the cashier may not do alone.
+  approvalPinHash String?
+
   @@map("users")
 }
 
@@ -3853,4 +3857,30 @@ model AiCallbackTask {
 
   @@index([tenantId, doneAt, createdAt])
   @@map("ai_callback_tasks")
+}
+
+// Money given back on a paid bill (POS › Orders › Refund). The negative row in
+// `payments` moves revenue; this row says what came off WHICH line — so the
+// technician's sales, tips and commission drop by the refunded part on the
+// day it went back (payroll/sales-ledger). A full refund takes the whole bill
+// off the books instead (order status REFUNDED) and is kept here for the
+// record with full = true. Tenant-scoped like every till table.
+model OrderRefund {
+  id              String   @id @default(uuid())
+  tenantId        String
+  orderId         String
+  amountCents     Int
+  // CASH | CARD | TRANSFER | …
+  method          String
+  reason          String
+  note            String?
+  // [{ itemId, staffMemberId, kind, netCents, tipCents }]
+  lines           Json     @default("[]")
+  full            Boolean  @default(false)
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, orderId])
+  @@map("order_refunds")
 }

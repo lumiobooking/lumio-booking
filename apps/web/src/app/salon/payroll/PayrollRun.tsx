@@ -110,6 +110,21 @@ export function PayrollRun({ vi }: { vi: boolean }) {
 
   const slips = data?.slips ?? [];
   const tot = data?.totals ?? {};
+  // What the earnings are made of. "$215 on $0.00 service sales" read like a
+  // bug when the $215 was hourly pay or a day guarantee in a week with no
+  // sales yet — say which part is which.
+  const earnParts = slips.reduce((a, s) => ({
+    comm: a.comm + (s.serviceCommissionCents ?? 0) + (s.productCommissionCents ?? 0),
+    hourly: a.hourly + (s.hourlyPayCents ?? 0),
+    guarantee: a.guarantee + (s.guaranteeTopUpCents ?? 0),
+    salary: a.salary + (s.salaryForPeriodCents ?? 0),
+  }), { comm: 0, hourly: 0, guarantee: 0, salary: 0 });
+  const earnSub = [
+    earnParts.comm ? `${L('hoa hồng', 'commission')} ${money(earnParts.comm)}` : '',
+    earnParts.hourly ? `${L('lương giờ', 'hourly')} ${money(earnParts.hourly)}` : '',
+    earnParts.guarantee ? `${L('bù bảo đảm ngày', 'day guarantee')} ${money(earnParts.guarantee)}` : '',
+    earnParts.salary ? `${L('lương cứng', 'salary')} ${money(earnParts.salary)}` : '',
+  ].filter(Boolean).join(' · ') + `${earnParts.comm || earnParts.hourly || earnParts.guarantee || earnParts.salary ? ' · ' : ''}${L('doanh thu DV', 'service sales')} ${money(tot.serviceCents)}`;
 
   function exportCsv() {
     if (!data) return;
@@ -219,7 +234,7 @@ export function PayrollRun({ vi }: { vi: boolean }) {
       {/* Totals */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
         <Tile label={L('Tổng thực nhận', 'Total net pay')} value={money(tot.netPayCents)} accent="#16a34a" strong span={isMobile} />
-        <Tile label={L('Lương & hoa hồng', 'Earnings')} value={money(tot.earningsCents)} accent="#6366f1" sub={L(`trên ${money(tot.serviceCents)} doanh thu DV`, `on ${money(tot.serviceCents)} service sales`)} />
+        <Tile label={L('Lương & hoa hồng', 'Earnings')} value={money(tot.earningsCents)} accent="#6366f1" sub={earnSub} />
         <Tile label={L('Tip trả thợ', 'Tips paid out')} value={money(tot.tipsNetCents)} accent="#a855f7" sub={tot.cardTipFeeCents ? L(`đã trừ ${money(tot.cardTipFeeCents)} phí thẻ`, `${money(tot.cardTipFeeCents)} card fee taken`) : undefined} />
         <Tile label={L('Check / Tiền mặt', 'Check / Cash')} value={`${money(tot.checkCents)}`} accent="#0ea5e9" sub={`${L('Tiền mặt', 'Cash')} ${money(tot.cashCents)}`} />
       </div>

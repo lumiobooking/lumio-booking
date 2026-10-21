@@ -76,8 +76,8 @@ export class PaymentsHubController {
 
   @Caps('pos')
   @Get('intents')
-  listIntents(@CurrentUser() user: AuthenticatedUser, @Query('limit') limit?: string, @Query('status') status?: string) {
-    return this.hub.listIntents(user, { limit: limit ? parseInt(limit, 10) : undefined, status });
+  listIntents(@CurrentUser() user: AuthenticatedUser, @Query('limit') limit?: string, @Query('status') status?: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.hub.listIntents(user, { limit: limit ? parseInt(limit, 10) : undefined, status, from, to });
   }
 
   @Caps('pos')

@@ -129,6 +129,13 @@ export class CustomersController {
     return this.customers.update(user, id, dto);
   }
 
+  // Two profiles of one client become one (the other is removed): same permission as deleting.
+  @Caps('customers.delete')
+  @Post(':id/merge')
+  merge(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: { fromId?: string }) {
+    return this.customers.merge(user, id, String(body?.fromId ?? ''));
+  }
+
   // Deleting a client erases their history; the owner decides who may.
   @Caps('customers.delete')
   @Delete(':id')

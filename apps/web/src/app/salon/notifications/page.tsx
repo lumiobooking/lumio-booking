@@ -18,6 +18,7 @@ import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { uiLocale } from '../../../lib/datetime';
+import { SettingsScreen } from '../../../components/settings/SettingsScreen';
 
 interface Tpl {
   enabled: boolean; email: boolean; sms: boolean;
@@ -75,7 +76,14 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [tab, setTab] = useState<'templates' | 'history'>('templates');
+  type NTab = 'templates' | 'channels' | 'reminders' | 'history';
+  const [tab, setTab] = useState<NTab>('templates');
+  // Deep links: ?tab=channels (how messages go out), ?tab=reminders.
+  useEffect(() => {
+    const want = new URLSearchParams(window.location.search).get('tab');
+    if (want === 'channels' || want === 'reminders' || want === 'history' || want === 'templates') setTab(want);
+  }, []);
+  const vi = lang === 'vi';
   return (
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('nt.title')}</h1>
@@ -83,12 +91,17 @@ function Inner() {
         {t('nt.subtitle')}
       </p>
 
-      <div style={{ display: 'flex', gap: 4, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 4, width: 'fit-content', margin: '16px 0 18px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 4, width: 'fit-content', maxWidth: '100%', margin: '16px 0 18px' }}>
         <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')}>{t('nt.tabTemplates')}</TabBtn>
+        <TabBtn active={tab === 'channels'} onClick={() => setTab('channels')}>{vi ? 'Gửi bằng gì (Email / SMS)' : 'Sending (email / SMS)'}</TabBtn>
+        <TabBtn active={tab === 'reminders'} onClick={() => setTab('reminders')}>{vi ? 'Nhắc lịch tự động' : 'Automatic reminders'}</TabBtn>
         <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>{t('nt.tabHistory')}</TabBtn>
       </div>
 
-      {tab === 'templates' ? <TemplatesView token={token} /> : <HistoryView token={token} />}
+      {tab === 'templates' && <TemplatesView token={token} />}
+      {tab === 'channels' && <SettingsScreen only={['notifications']} bare />}
+      {tab === 'reminders' && <SettingsScreen only={['reminders']} bare />}
+      {tab === 'history' && <HistoryView token={token} />}
     </section>
   );
 }

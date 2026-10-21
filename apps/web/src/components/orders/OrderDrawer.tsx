@@ -40,6 +40,8 @@ export interface OrderDetail {
   refundedCents: number; collectedCents: number;
   history: { action: string; at: string; by: string | null; meta: Record<string, unknown> }[];
   canRefund: boolean; canVoid: boolean; canDelete: boolean;
+  /** Why this person may not void it (shift closed / day over) — refund instead. */
+  voidLock?: string | null;
 }
 export interface StaffLite { id: string; firstName: string; lastName: string | null; isActive?: boolean }
 
@@ -96,6 +98,8 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
   const [dialog, setDialog] = useState<'refund' | 'void' | null>(null);
   const [editClient, setEditClient] = useState(false);
   const [techEdit, setTechEdit] = useState<Record<string, string> | null>(null);
+  // The tip of each line while re-splitting (typed in the salon's money).
+  const [tipEdit, setTipEdit] = useState<Record<string, string>>({});
   const receiptRef = useRef<ReceiptProfile | null>(null);
 
   const load = useCallback(async () => {
@@ -144,12 +148,27 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
     }, shop, withDefaults(p?.design), (c: number) => formatPrice(c, d.currency)));
   }
 
+  const tipTotal = d ? d.items.reduce((n, l) => n + (l.tipCents ?? 0), 0) : 0;
+  const newTip = (l: OrderLine) => (tipEdit[l.id] === undefined ? l.tipCents ?? 0 : (tipEdit[l.id].trim() ? toMinorUnits(tipEdit[l.id], d?.currency) : 0));
+  const tipNow = d ? d.items.reduce((n, l) => n + newTip(l), 0) : 0;
+  const startEdit = () => {
+    if (!d) return;
+    setTechEdit(Object.fromEntries(d.items.map((l) => [l.id, l.staffMemberId ?? ''])));
+    setTipEdit(Object.fromEntries(d.items.map((l) => [l.id, fromMinorUnits(l.tipCents ?? 0, d.currency)])));
+  };
+
   async function saveTechs() {
     if (!d || !techEdit) return;
     const items = d.items.filter((l) => (techEdit[l.id] ?? '') !== (l.staffMemberId ?? '')).map((l) => ({ itemId: l.id, staffMemberId: techEdit[l.id] || null }));
-    if (!items.length) { setTechEdit(null); return; }
+    const tips = d.items.filter((l) => newTip(l) !== (l.tipCents ?? 0)).map((l) => ({ itemId: l.id, tipCents: newTip(l) }));
+    if (tips.length && tipNow !== tipTotal) { setErr(L(`Tổng tip phải giữ nguyên ${money(tipTotal)}.`, `The tips must still add up to ${money(tipTotal)}.`)); return; }
+    if (!items.length && !tips.length) { setTechEdit(null); return; }
     setBusy(true); setErr(null);
-    try { await apiFetch(`/pos/orders/${d.id}/staff`, { method: 'PATCH', token, body: { items } }); setTechEdit(null); await load(); onChanged(); }
+    try {
+      if (items.length) await apiFetch(`/pos/orders/${d.id}/staff`, { method: 'PATCH', token, body: { items } });
+      if (tips.length) await apiFetch(`/pos/orders/${d.id}/tips`, { method: 'PATCH', token, body: { items: tips } });
+      setTechEdit(null); await load(); onChanged();
+    }
     catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -231,7 +250,7 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
               <div style={{ ...sec, display: 'flex', alignItems: 'center' }}>
                 <span style={{ flex: 1 }}>{L('DỊCH VỤ & SẢN PHẨM', 'SERVICES & PRODUCTS')}</span>
                 {isOwner && d.status === 'PAID' && !techEdit && d.items.some((l) => l.kind === 'SERVICE') && (
-                  <button type="button" onClick={() => setTechEdit(Object.fromEntries(d.items.map((l) => [l.id, l.staffMemberId ?? ''])))} style={{ ...ghost, height: 26, fontSize: 12 }}>👤 {L('Đổi thợ', 'Change tech')}</button>
+                  <button type="button" onClick={startEdit} style={{ ...ghost, height: 26, fontSize: 12 }}>👤 {L('Đổi thợ · chia tip', 'Change tech · split tip')}</button>
                 )}
               </div>
               <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflow: 'hidden' }}>
@@ -247,13 +266,22 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
                         {staff.filter((s) => s.isActive !== false || s.id === l.staffMemberId).map((s) => <option key={s.id} value={s.id}>{`${s.firstName} ${s.lastName ?? ''}`.trim()}</option>)}
                       </select>
                     ) : <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>👤 {techName(l.staffMemberId)}</span>)}
+                    {techEdit && (
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--c94a3b8)' }}>tip
+                        <input type="number" inputMode="decimal" min={0} step={priceInputStep(d.currency)} value={tipEdit[l.id] ?? ''} onChange={(e) => setTipEdit({ ...tipEdit, [l.id]: e.target.value })}
+                          style={{ ...ui.input, width: 78, padding: '5px 8px', fontSize: 12.5, marginBottom: 0 }} />
+                      </label>
+                    )}
                     <b style={{ minWidth: 76, textAlign: 'right', color: 'var(--ce2e8f0)', textDecoration: d.status === 'VOID' ? 'line-through' : 'none' }}>{money(l.lineTotalCents)}</b>
                   </div>
                 ))}
               </div>
               {techEdit && (
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-                  <span style={{ flex: 1, fontSize: 12, color: 'var(--c94a3b8)' }}>{L('Tiền khách trả không đổi — chỉ đổi người được tính doanh số & tip.', 'The money does not change — only who is credited with the sale and tip.')}</span>
+                  <span style={{ flex: 1, fontSize: 12, color: tipNow !== tipTotal ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>
+                    {L('Tiền khách trả không đổi — chỉ đổi người được tính doanh số & tip.', 'The money does not change — only who is credited with the sale and tip.')}
+                    {' '}{L('Tổng tip', 'Tips')}: {money(tipNow)} / {money(tipTotal)}
+                  </span>
                   <button type="button" onClick={() => setTechEdit(null)} style={ghost}>{L('Thôi', 'Cancel')}</button>
                   <button type="button" disabled={busy} onClick={() => void saveTechs()} style={{ ...ui.primaryBtn, padding: '6px 14px' }}>{L('Lưu', 'Save')}</button>
                 </div>
@@ -311,16 +339,17 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, borderTop: '1px solid var(--c1f2937)', paddingTop: 14 }}>
               <button type="button" onClick={() => void reprint()} style={ghost}>🖨 {L('In lại', 'Reprint')}</button>
               <span style={{ flex: 1 }} />
-              {canMoveMoney && d.canRefund && <button type="button" onClick={() => setDialog('refund')} style={{ ...ghost, borderColor: '#f97316', color: 'var(--ink-warn)' }}>↩ {L('Hoàn tiền', 'Refund')}</button>}
-              {canMoveMoney && d.status === 'PAID' && <button type="button" disabled={!d.canVoid} title={d.canVoid ? undefined : L('Bill đã có hoàn tiền — hoàn tiếp phần còn lại.', 'Part of it was refunded — refund the rest instead.')} onClick={() => setDialog('void')} style={{ ...ghost, borderColor: '#ef4444', color: 'var(--ink-bad)', opacity: d.canVoid ? 1 : 0.45 }}>{L('Huỷ bill', 'Void')}</button>}
+              {d.canRefund && <button type="button" onClick={() => setDialog('refund')} style={{ ...ghost, borderColor: '#f97316', color: 'var(--ink-warn)' }}>↩ {L('Hoàn tiền', 'Refund')}</button>}
+              {d.status === 'PAID' && <button type="button" disabled={!d.canVoid} title={d.canVoid ? undefined : d.voidLock || L('Bill đã có hoàn tiền — hoàn tiếp phần còn lại.', 'Part of it was refunded — refund the rest instead.')} onClick={() => setDialog('void')} style={{ ...ghost, borderColor: '#ef4444', color: 'var(--ink-bad)', opacity: d.canVoid ? 1 : 0.45 }}>{L('Huỷ bill', 'Void')}</button>}
               {canMoveMoney && d.canDelete && <button type="button" disabled={busy} onClick={() => void removeDraft()} style={{ ...ghost, borderColor: '#ef4444', color: 'var(--ink-bad)' }}>{L('Xoá bill nháp', 'Delete draft')}</button>}
             </div>
-            {!canMoveMoney && d.status === 'PAID' && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: -6 }}>{L('Hoàn tiền / huỷ bill cần quyền của chủ tiệm hoặc quản lý.', 'Refunds and voids need the owner’s or a manager’s permission.')}</div>}
+            {d.status === 'PAID' && d.voidLock && d.refundedCents === 0 && <div style={{ fontSize: 12, color: 'var(--ink-warn)', marginTop: -6 }}>{d.voidLock}</div>}
+            {!canMoveMoney && d.status === 'PAID' && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: -6 }}>{L('Hoàn tiền / huỷ bill: cần chủ tiệm hoặc quản lý nhập PIN của họ.', 'Refunds and voids: the owner or a manager types their PIN.')}</div>}
           </div>
         )}
       </aside>
-      {d && dialog === 'refund' && <RefundDialog d={d} token={token} vi={vi} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void load(); onChanged(); }} />}
-      {d && dialog === 'void' && <VoidDialog d={d} token={token} vi={vi} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void load(); onChanged(); }} />}
+      {d && dialog === 'refund' && <RefundDialog d={d} token={token} vi={vi} needPin={!canMoveMoney} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void load(); onChanged(); }} />}
+      {d && dialog === 'void' && <VoidDialog d={d} token={token} vi={vi} needPin={!canMoveMoney} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void load(); onChanged(); }} />}
     </>
   );
 }
@@ -358,7 +387,18 @@ function Choice({ on, onClick, children }: { on: boolean; onClick: () => void; c
   );
 }
 
-function RefundDialog({ d, token, vi, onClose, onDone }: { d: OrderDetail; token: string | null; vi: boolean; onClose: () => void; onDone: () => void }) {
+/** The approver's PIN, when the person at the till may not refund / void alone. */
+function PinField({ value, onChange, vi }: { value: string; onChange: (v: string) => void; vi: boolean }) {
+  return (
+    <label style={{ display: 'block', padding: '10px 12px', borderRadius: 10, background: 'var(--wash-amber)' }}>
+      <span style={{ ...ui.label, color: 'var(--ink-warn)', fontWeight: 700 }}>🔒 {vi ? 'PIN của chủ tiệm / quản lý' : 'Owner / manager PIN'}</span>
+      <input type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={value} onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
+        placeholder="••••" style={{ ...ui.input, letterSpacing: 6, fontSize: 18, marginBottom: 0 }} />
+    </label>
+  );
+}
+
+function RefundDialog({ d, token, vi, needPin, onClose, onDone }: { d: OrderDetail; token: string | null; vi: boolean; needPin: boolean; onClose: () => void; onDone: () => void }) {
   const L = (v: string, e: string) => (vi ? v : e);
   const cur = d.currency;
   const [lines, setLines] = useState<string[]>([]);
@@ -368,6 +408,7 @@ function RefundDialog({ d, token, vi, onClose, onDone }: { d: OrderDetail; token
   const [method, setMethod] = useState(d.tenders[0]?.method ?? 'CASH');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
+  const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const max = d.collectedCents;
@@ -381,13 +422,13 @@ function RefundDialog({ d, token, vi, onClose, onDone }: { d: OrderDetail; token
 
   const cents = amount.trim() ? toMinorUnits(amount, cur) : 0;
   const full = cents === max && d.refundedCents === 0;
-  const ok = cents > 0 && cents <= max && !!reason;
+  const ok = cents > 0 && cents <= max && !!reason && (!needPin || pin.length >= 4);
 
   async function submit() {
     if (!ok) return;
     setBusy(true); setErr(null);
     try {
-      await apiFetch(`/pos/orders/${d.id}/refund`, { method: 'POST', token, body: { amountCents: cents, method, reason: REFUND_REASONS.find((r) => r.k === reason)?.vi ?? reason, note, itemIds: lines } });
+      await apiFetch(`/pos/orders/${d.id}/refund`, { method: 'POST', token, body: { amountCents: cents, method, reason: REFUND_REASONS.find((r) => r.k === reason)?.vi ?? reason, note, itemIds: lines, ...(needPin ? { approvalPin: pin } : {}) } });
       onDone();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setBusy(false); }
   }
@@ -426,6 +467,10 @@ function RefundDialog({ d, token, vi, onClose, onDone }: { d: OrderDetail; token
       </div>
       <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder={L('Ghi chú (vd: phần vẽ bị lem)', 'Note (e.g. the art smudged)')} style={ui.input} />
       {full && <div style={{ fontSize: 12.5, padding: '8px 10px', borderRadius: 10, background: 'var(--wash-amber)', color: 'var(--ink-warn)' }}>{L('Hoàn toàn bộ: bill chuyển sang "Đã hoàn tiền", doanh số & tip của thợ trên bill này không còn tính.', 'Full refund: the bill becomes "Refunded" and its technicians’ sales and tips stop counting.')}</div>}
+      {!full && cents > 0 && <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{lines.length
+        ? L('Doanh số & tip của thợ trên các dòng đã chọn bị trừ theo số tiền hoàn, vào ngày hoàn.', 'The technicians on the chosen lines lose the refunded sale and tip, on the day of the refund.')
+        : L('Không chọn dòng: số tiền hoàn được chia theo tỉ lệ các dòng, trừ vào doanh số thợ ngày hoàn.', 'No line chosen: the refund is split over the lines and comes off the technicians’ sales on the day of the refund.')}</div>}
+      {needPin && <PinField value={pin} onChange={setPin} vi={vi} />}
       {method === 'CASH' && <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L('Tiền mặt lấy từ két được ghi vào ca thu ngân đang mở (chi ra).', 'Cash from the drawer is written into the open cashier shift as cash out.')}</div>}
       {err && <div style={ui.banner}>{err}</div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
@@ -438,17 +483,18 @@ function RefundDialog({ d, token, vi, onClose, onDone }: { d: OrderDetail; token
   );
 }
 
-function VoidDialog({ d, token, vi, onClose, onDone }: { d: OrderDetail; token: string | null; vi: boolean; onClose: () => void; onDone: () => void }) {
+function VoidDialog({ d, token, vi, needPin, onClose, onDone }: { d: OrderDetail; token: string | null; vi: boolean; needPin: boolean; onClose: () => void; onDone: () => void }) {
   const L = (v: string, e: string) => (vi ? v : e);
+  const [pin, setPin] = useState('');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   async function submit() {
-    if (!reason) return;
+    if (!reason || (needPin && pin.length < 4)) return;
     setBusy(true); setErr(null);
     try {
-      await apiFetch(`/pos/orders/${d.id}/void`, { method: 'POST', token, body: { reason: VOID_REASONS.find((r) => r.k === reason)?.vi ?? reason, note } });
+      await apiFetch(`/pos/orders/${d.id}/void`, { method: 'POST', token, body: { reason: VOID_REASONS.find((r) => r.k === reason)?.vi ?? reason, note, ...(needPin ? { approvalPin: pin } : {}) } });
       onDone();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setBusy(false); }
   }
@@ -461,13 +507,14 @@ function VoidDialog({ d, token, vi, onClose, onDone }: { d: OrderDetail; token: 
       <div style={sec}>{L('LÝ DO (BẮT BUỘC)', 'REASON (REQUIRED)')}</div>
       {VOID_REASONS.map((r) => <Choice key={r.k} on={reason === r.k} onClick={() => setReason(r.k)}>{vi ? r.vi : r.en}</Choice>)}
       <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder={L('Ghi chú', 'Note')} style={ui.input} />
+      {needPin && <PinField value={pin} onChange={setPin} vi={vi} />}
       <div style={{ fontSize: 12.5, padding: '8px 10px', borderRadius: 10, background: 'var(--wash-red)', color: 'var(--ink-bad)' }}>
         {L('Bill không bị xoá: vẫn ở danh sách với nhãn "Đã huỷ", không tính doanh thu, tip, hoa hồng. Lịch hẹn gốc mở lại để thu lại đúng.', 'The bill is not deleted: it stays in the list as "Voided" and stops counting for revenue, tips and commission. Its booking reopens so it can be charged correctly.')}
       </div>
       {err && <div style={ui.banner}>{err}</div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button type="button" onClick={onClose} style={ghost}>{L('Thôi', 'Cancel')}</button>
-        <button type="button" disabled={!reason || busy} onClick={() => void submit()} style={{ ...ui.dangerBtn, opacity: reason ? 1 : 0.5 }}>{busy ? '…' : L('Huỷ bill', 'Void bill')}</button>
+        <button type="button" disabled={!reason || busy || (needPin && pin.length < 4)} onClick={() => void submit()} style={{ ...ui.dangerBtn, opacity: reason && (!needPin || pin.length >= 4) ? 1 : 0.5 }}>{busy ? '…' : L('Huỷ bill', 'Void bill')}</button>
       </div>
     </Modal>
   );

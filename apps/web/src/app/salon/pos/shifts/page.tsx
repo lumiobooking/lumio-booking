@@ -6,7 +6,7 @@ import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
 import { fmtInTz } from '../../../../lib/datetime';
-import { DateRangeBar, useDateRange } from '../../../../components/ListFilter';
+import { PeriodFilter, usePeriod } from '../../../../components/PeriodFilter';
 import { useLang } from '../../../../lib/i18n';
 import { useIsMobile } from '../../../../lib/responsive';
 import { ShiftSheet, printSheet, type ShiftSummary, type ShiftView } from '../../../../components/CashShiftPanel';
@@ -33,7 +33,7 @@ function Inner() {
   const vi = lang === 'vi';
   const L = (v: string, e: string) => ind(vi ? v : e);
   const isMobile = useIsMobile();
-  const range = useDateRange('30d');
+  const range = usePeriod('shifts', 'thisWeek');
   const [rows, setRows] = useState<ShiftRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<{ shift: ShiftView; summary: ShiftSummary } | null>(null);
@@ -75,7 +75,7 @@ function Inner() {
           <h1 style={{ fontSize: 22, margin: 0 }}>{L('Ca thu ngân', 'Cashier shifts')}</h1>
           <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>{L('Ai mở ca, ai chốt, két phải có bao nhiêu và đếm được bao nhiêu.', 'Who opened, who closed, what the drawer should have held and what was counted.')}</p>
         </div>
-        <DateRangeBar range={range} />
+        <PeriodFilter state={range} vi={vi} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}

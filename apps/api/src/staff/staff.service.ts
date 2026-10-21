@@ -271,7 +271,7 @@ export class StaffService {
       if (!dto.loginEmail || !dto.loginPassword) {
         throw new BadRequestException('Provide both a login email and password, or leave both blank.');
       }
-      loginEmail = dto.loginEmail.toLowerCase();
+      loginEmail = dto.loginEmail.trim().toLowerCase();
       const existing = await this.prisma.user.findUnique({ where: { email: loginEmail } });
       if (existing) {
         throw new ConflictException('A user with this login email already exists');
@@ -467,7 +467,7 @@ export class StaffService {
       throw new ConflictException('This staff member already has a login');
     }
 
-    const email = dto.email.toLowerCase();
+    const email = dto.email.trim().toLowerCase();
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
       throw new ConflictException('A user with this email already exists');

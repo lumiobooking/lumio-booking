@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
-import { useAuth } from '../../../lib/auth';
+import { useAuth, useCan } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
@@ -88,6 +88,7 @@ function Inner() {
         <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, marginTop: 16 }}>{busy ? t('ac.saving') : t('ac.save')}</button>
       </form>
 
+      <ApprovalPin />
       <DeleteAccount />
     </section>
   );
@@ -155,6 +156,69 @@ function DeleteAccount() {
           </div>
         </form>
       )}
+    </div>
+  );
+}
+
+/**
+ * The owner's / a manager's approval PIN: typed at a cashier's till to allow a
+ * refund or a void the cashier may not do alone. Only shown to people who
+ * may refund and void; the current password proves it is them.
+ */
+function ApprovalPin() {
+  const { token, user } = useAuth();
+  const can = useCan();
+  const { lang } = useLang();
+  const vi = lang === 'vi';
+  const L = (v: string, e: string) => ind(vi ? v : e);
+  const [isSet, setIsSet] = useState<boolean | null>(null);
+  const [pin, setPin] = useState('');
+  const [again, setAgain] = useState('');
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const allowed = can('pos.void') && !user?.supportSession;
+  useEffect(() => {
+    if (!token || !allowed) return;
+    apiFetch<{ set: boolean }>('/auth/approval-pin', { token }).then((r) => setIsSet(!!r?.set)).catch(() => setIsSet(null));
+  }, [token, allowed]);
+  if (!allowed) return null;
+
+  async function save(clear: boolean) {
+    setErr(null); setMsg(null);
+    if (!clear && (!/^\d{4,6}$/.test(pin) || pin !== again)) { setErr(L('PIN gồm 4–6 số và phải nhập giống nhau 2 lần.', 'The PIN is 4–6 digits, typed the same twice.')); return; }
+    setBusy(true);
+    try {
+      const r = await apiFetch<{ set: boolean }>('/auth/approval-pin', { method: 'POST', token, body: { currentPassword: pw, pin: clear ? '' : pin } });
+      setIsSet(!!r?.set); setPin(''); setAgain(''); setPw('');
+      setMsg(clear ? L('Đã xoá PIN.', 'PIN removed.') : L('Đã lưu PIN.', 'PIN saved.'));
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ ...ui.card, marginTop: 16 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>🔒 {L('PIN duyệt hoàn tiền / huỷ bill', 'Approval PIN for refunds and voids')}</div>
+      <p style={{ fontSize: 13, color: 'var(--c94a3b8)', margin: '4px 0 12px' }}>
+        {L('Thu ngân không có quyền hoàn/huỷ sẽ cần bạn nhập PIN này ngay trên máy của họ. Mỗi lần duyệt được ghi lại với tên bạn.',
+          'A cashier who may not refund or void asks you to type this PIN on their screen. Every approval is recorded with your name.')}
+        {' '}{isSet === true ? <b style={{ color: 'var(--ink-good)' }}>{L('Đã đặt PIN.', 'PIN is set.')}</b> : isSet === false ? <b style={{ color: 'var(--ink-warn)' }}>{L('Chưa đặt PIN.', 'No PIN yet.')}</b> : null}
+      </p>
+      {err && <div style={ui.banner}>{err}</div>}
+      {msg && <div style={{ fontSize: 13, color: 'var(--ink-good)', marginBottom: 10 }}>{msg}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+        <label><span style={ui.label}>{L('PIN mới (4–6 số)', 'New PIN (4–6 digits)')}</span>
+          <input style={ui.input} type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} /></label>
+        <label><span style={ui.label}>{L('Nhập lại PIN', 'PIN again')}</span>
+          <input style={ui.input} type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={again} onChange={(e) => setAgain(e.target.value.replace(/\D/g, ''))} /></label>
+      </div>
+      <label style={{ display: 'block', marginTop: 12 }}><span style={ui.label}>{L('Mật khẩu hiện tại', 'Current password')}</span>
+        <input style={ui.input} type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} /></label>
+      <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+        <button type="button" disabled={busy || !pw} onClick={() => void save(false)} style={ui.primaryBtn}>{busy ? '…' : L('Lưu PIN', 'Save PIN')}</button>
+        {isSet && <button type="button" disabled={busy || !pw} onClick={() => void save(true)} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer' }}>{L('Xoá PIN', 'Remove PIN')}</button>}
+      </div>
     </div>
   );
 }

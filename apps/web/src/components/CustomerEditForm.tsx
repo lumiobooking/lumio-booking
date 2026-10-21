@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
+import { useCan } from '../lib/auth';
 
 /**
  * Fix a client's details where they are being used — the booking form, the
@@ -36,6 +37,22 @@ export function CustomerEditForm({ token, vi, customer, onSaved, onCancel }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [twin, setTwin] = useState<{ id: string; name: string } | null>(null);
+  const [merged, setMerged] = useState<string | null>(null);
+  // Merging removes a profile: the same permission as deleting a client.
+  const canMerge = useCan()('customers.delete');
+
+  /** The twin's history (bookings, bills, points…) moves here and the twin is removed. */
+  async function mergeTwin() {
+    if (!twin || !token) return;
+    if (!confirm(L(`Gộp hồ sơ "${twin.name}" vào hồ sơ này? Lịch hẹn, bill, điểm thưởng của hồ sơ kia chuyển sang đây và hồ sơ kia bị xoá.`,
+      `Merge "${twin.name}" into this profile? Its bookings, bills and points move here and that profile is removed.`))) return;
+    setBusy(true); setErr(null);
+    try {
+      await apiFetch(`/customers/${customer.id}/merge`, { method: 'POST', token, body: { fromId: twin.id } });
+      setMerged(twin.name); setTwin(null);
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
 
   // The picker's row carries no birthday or note: read the record once.
   useEffect(() => {
@@ -102,8 +119,10 @@ export function CustomerEditForm({ token, vi, customer, onSaved, onCancel }: {
       {twin && (
         <div style={{ fontSize: 12.5, padding: '8px 10px', borderRadius: 10, background: 'var(--wash-amber)', color: 'var(--ink-warn)' }}>
           ⚠ {L('Số này đang thuộc hồ sơ', 'This number already belongs to')} <b>{twin.name}</b>. <Link href={`/salon/customers/${twin.id}`} style={{ color: 'var(--ink-link)', fontWeight: 700 }}>{L('Mở hồ sơ đó', 'Open that profile')} ↗</Link>
+          {canMerge && <>{' · '}<button type="button" disabled={busy} onClick={() => void mergeTwin()} style={{ border: 'none', background: 'transparent', padding: 0, color: 'var(--ink-link)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}>{L('Gộp vào hồ sơ này', 'Merge into this one')}</button></>}
         </div>
       )}
+      {merged && <div style={{ fontSize: 12.5, color: 'var(--ink-good)' }}>✓ {L(`Đã gộp "${merged}" vào hồ sơ này.`, `"${merged}" merged into this profile.`)}</div>}
       {err && <div style={ui.banner}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button type="button" onClick={onCancel} style={{ height: 34, padding: '0 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{L('Thôi', 'Cancel')}</button>

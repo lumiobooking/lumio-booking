@@ -11,6 +11,7 @@ import {
 import { ModuleRef } from '@nestjs/core';
 import { PaymentStatus, PaymentType, UserRole } from '@prisma/client';
 import { ledgerProviderFor } from '../pos/payment-methods';
+import { addDaysToKey, startOfDayTz } from '../common/salon-time';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, assertTenantAccess } from '../common/tenant/tenant-context';
 import { ProviderRegistry } from './provider-registry.service';
@@ -356,12 +357,23 @@ export class PaymentOrchestrator {
    * against the provider on the way out, so the list a salon admin looks at is
    * never stale about whether a customer was actually charged.
    */
-  async listIntents(user: AuthenticatedUser, opts: { limit?: number; status?: string } = {}) {
+  async listIntents(user: AuthenticatedUser, opts: { limit?: number; status?: string; from?: string; to?: string } = {}) {
     this.ensureEnabled();
     const tenantId = this.tid(user);
-    const take = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    const ranged = (opts.from && day.test(opts.from)) || (opts.to && day.test(opts.to));
+    // A period (the money screens' filter) may hold more than the latest 50.
+    const take = Math.min(Math.max(opts.limit ?? (ranged ? 500 : 50), 1), ranged ? 1000 : 200);
     const where: any = { tenantId };
     if (opts.status) where.status = opts.status;
+    if (ranged) {
+      // The salon's days, not the server's.
+      const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+      const tz = t?.timezone || 'America/New_York';
+      where.createdAt = {};
+      if (opts.from && day.test(opts.from)) where.createdAt.gte = startOfDayTz(opts.from, tz);
+      if (opts.to && day.test(opts.to)) where.createdAt.lt = startOfDayTz(addDaysToKey(opts.to, 1), tz);
+    }
 
     let rows = await this.prisma.paymentIntentRecord.findMany({
       where, orderBy: { createdAt: 'desc' }, take,

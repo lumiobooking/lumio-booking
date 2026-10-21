@@ -20,6 +20,9 @@
  *  - A visit is a ticket (or a booking), not a line: a gel manicure plus a
  *    nail-art add-on on one ticket is one visit for that tech.
  *  - Each sale is filed on the SALON's calendar day it was paid / completed.
+ *  - Money given back on part of a bill comes off the technician whose line
+ *    it was — sales and tips — on the day it went back (visits stand: the
+ *    visit happened). A bill refunded in full is simply no longer PAID.
  */
 
 export type LineKind = 'SERVICE' | 'PRODUCT';
@@ -32,6 +35,14 @@ export interface LedgerOrder {
   giftCardAppliedCents: number;
   items: { kind: LineKind | string; quantity: number; lineTotalCents: number; tipCents: number; staffMemberId: string | null }[];
   tenders: { method: string; amountCents: number }[];
+}
+
+/** What a part refund took off each line (pos refundOrder → order_refunds.lines). */
+export interface LedgerRefund {
+  at: Date;
+  /** The money went back to a card: its tip share was card money. */
+  card: boolean;
+  lines: { staffMemberId: string | null; kind: LineKind | string; netCents: number; tipCents: number }[];
 }
 
 export interface LedgerAppointment {
@@ -83,6 +94,8 @@ export function buildLedger(input: {
   dayOf: (at: Date) => string;
   /** Which drawer a tender method belongs to (pos/payment-methods bucketFor). */
   bucket: (method: string) => 'cash' | 'card' | 'other' | string;
+  /** Part refunds in the range, filed on the day the money went back. */
+  refunds?: LedgerRefund[];
 }): Map<string, StaffLedger> {
   const rows = new Map<string, StaffLedger>();
   const row = (id: string | null) => {
@@ -134,6 +147,22 @@ export function buildLedger(input: {
         add(r, day, { visits: 1 });
       }
     });
+  }
+
+  for (const rf of input.refunds ?? []) {
+    const day = input.dayOf(rf.at);
+    for (const l of rf.lines ?? []) {
+      const net = Math.max(0, Math.round(Number(l.netCents) || 0));
+      const tip = Math.max(0, Math.round(Number(l.tipCents) || 0));
+      if (!net && !tip) continue;
+      const isService = String(l.kind).toUpperCase() === 'SERVICE';
+      add(row(l.staffMemberId), day, {
+        serviceCents: isService ? -net : 0,
+        productCents: isService ? 0 : -net,
+        tipsCents: -tip,
+        cardTipsCents: rf.card ? -tip : 0,
+      });
+    }
   }
 
   for (const a of input.appointments) {

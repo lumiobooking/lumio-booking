@@ -79,7 +79,7 @@ describe('the list matches the server and is wired in', () => {
     expect(read('components', 'NavIcon.tsx')).toMatch(/iconFor\(name, uiIndustry\(\)\)/);
     expect(read('app', 'salon', 'front-desk', 'page.tsx')).toMatch(/=> ind\(vi \? v : e\)/);
     expect(read('app', 'super-admin', 'tenants', 'page.tsx')).toMatch(/body: \{ industry \}/);
-    expect(read('app', 'salon', 'settings', 'page.tsx')).toMatch(/<IndustryPicker \/>/);
+    expect(read('components', 'settings', 'SettingsScreen.tsx')).toMatch(/<IndustryPicker \/>/);
     // The customer page too: bt() speaks the salon's trade.
     expect(read('lib', 'i18n-book.ts')).toMatch(/industryText\(out, currentIndustry, currentNames\)/);
     expect(read('app', 'book', '[slug]', 'page.tsx')).toMatch(/setBookIndustry\(salon\?\.industry, salon\?\.name\)/);

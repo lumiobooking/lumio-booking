@@ -165,19 +165,26 @@ export class PosController {
     return this.pos.setLineStaff(user, id, Array.isArray(body?.items) ? body.items : []);
   }
 
-  // Voiding or deleting a paid ticket moves money backwards: the owner decides who may.
-  @Caps('pos.void')
-  @Post('orders/:id/void')
-  @HttpCode(200)
-  voidOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body?: { reason?: string; note?: string }) {
-    return this.pos.voidOrder(user, id, { reason: body?.reason, note: body?.note });
+  /** Re-split a paid bill's tip between its lines; the total stays. Owner only. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Patch('orders/:id/tips')
+  setLineTips(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: { items?: { itemId: string; tipCents: number }[] }) {
+    return this.pos.setLineTips(user, id, Array.isArray(body?.items) ? body.items : []);
   }
 
-  /** Give money back on a paid bill — a reason is required. Same permission as a void. */
-  @Caps('pos.void')
+  // Voiding or refunding moves money backwards: someone with "refund & void"
+  // does it alone; anyone else at the till needs an owner's / manager's PIN
+  // (checked in the service — the cashier must be able to reach it).
+  @Post('orders/:id/void')
+  @HttpCode(200)
+  voidOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body?: { reason?: string; note?: string; approvalPin?: string }) {
+    return this.pos.voidOrder(user, id, { reason: body?.reason, note: body?.note, approvalPin: body?.approvalPin });
+  }
+
+  /** Give money back on a paid bill — a reason is required. Same rule as a void. */
   @Post('orders/:id/refund')
   @HttpCode(200)
-  refundOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: { amountCents?: number; method?: string; reason?: string; note?: string; itemIds?: string[] }) {
+  refundOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: { amountCents?: number; method?: string; reason?: string; note?: string; itemIds?: string[]; approvalPin?: string }) {
     return this.pos.refundOrder(user, id, body ?? {});
   }
 

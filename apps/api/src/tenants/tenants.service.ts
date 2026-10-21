@@ -185,7 +185,7 @@ export class TenantsService {
    */
   async create(dto: CreateTenantDto, actor: AuthenticatedUser) {
     const existingUser = await this.prisma.user.findUnique({
-      where: { email: dto.adminEmail.toLowerCase() },
+      where: { email: dto.adminEmail.trim().toLowerCase() },
     });
     if (existingUser) {
       throw new ConflictException('A user with this email already exists');
@@ -223,7 +223,7 @@ export class TenantsService {
           slug,
           market: preset.market,
           timezone: dto.timezone ?? preset.tenant.timezone,
-          contactEmail: dto.contactEmail ?? dto.adminEmail.toLowerCase(),
+          contactEmail: dto.contactEmail ?? dto.adminEmail.trim().toLowerCase(),
           planId: dto.planId ?? null,
           subscriptions: dto.planId
             ? { create: { planId: dto.planId, status: 'TRIALING' } }
@@ -236,7 +236,7 @@ export class TenantsService {
         data: {
           tenantId: created.id,
           role: UserRole.SALON_ADMIN,
-          email: dto.adminEmail.toLowerCase(),
+          email: dto.adminEmail.trim().toLowerCase(),
           passwordHash,
           firstName: dto.adminFirstName ?? null,
           lastName: dto.adminLastName ?? null,
@@ -265,7 +265,7 @@ export class TenantsService {
       action: 'tenant.created',
       resourceType: 'tenant',
       resourceId: tenant.id,
-      metadata: { name: tenant.name, slug: tenant.slug, market: preset.market, adminEmail: dto.adminEmail.toLowerCase() },
+      metadata: { name: tenant.name, slug: tenant.slug, market: preset.market, adminEmail: dto.adminEmail.trim().toLowerCase() },
     });
 
     return tenant;

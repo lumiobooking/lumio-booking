@@ -7,7 +7,13 @@ import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { capabilitiesFor } from './capabilities';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+
+class ApprovalPinDto {
+  @IsString() @MaxLength(200) currentPassword!: string;
+  // 4–6 digits; empty clears it.
+  @IsOptional() @IsString() @MaxLength(6) pin?: string;
+}
 
 class ChangePasswordDto {
   @IsString() @MaxLength(200) currentPassword!: string;
@@ -48,6 +54,19 @@ export class AuthController {
   @HttpCode(200)
   changePassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangePasswordDto) {
     return this.authService.changeOwnPassword(user, dto.currentPassword, dto.newPassword);
+  }
+
+  // The approval PIN a manager types at the till (refunds / voids).
+  @Get('approval-pin')
+  approvalPin(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.approvalPinStatus(user);
+  }
+
+  @RateLimit(10, 60_000)
+  @Post('approval-pin')
+  @HttpCode(200)
+  setApprovalPin(@CurrentUser() user: AuthenticatedUser, @Body() dto: ApprovalPinDto) {
+    return this.authService.setApprovalPin(user, dto.currentPassword, dto.pin ?? '');
   }
 
   // GET /api/auth/me -> requires a valid token; echoes the current principal.

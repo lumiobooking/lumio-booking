@@ -665,6 +665,70 @@ export class CustomersService {
     return this.getById(user, id);
   }
 
+  /**
+   * Two profiles of one client (the desk made a new one instead of finding
+   * hers) become one: everything that points at `fromId` — bookings, walk-ins,
+   * bills, held bills, points, feedback, forms, chats, AI memory — moves to
+   * `intoId`; the kept profile fills its blanks from the other, adds up the
+   * points and imported history, and the other profile is removed. Both must
+   * be this salon's; every write names the salon.
+   */
+  async merge(user: AuthenticatedUser, intoId: string, fromId: string) {
+    const tenantId = this.tenantId(user);
+    if (!fromId || fromId === intoId) throw new BadRequestException('Chọn hai hồ sơ khác nhau.');
+    type C = { id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null; notes: string | null; birthDate: Date | null; loyaltyPoints: number; importedSpentCents: number; importedVisits: number; lastVisitAt: Date | null; referredById: string | null; smsConsent: boolean; smsConsentAt: Date | null };
+    const sel = { id: true, firstName: true, lastName: true, email: true, phone: true, notes: true, birthDate: true, loyaltyPoints: true, importedSpentCents: true, importedVisits: true, lastVisitAt: true, referredById: true, smsConsent: true, smsConsentAt: true } as never;
+    const [into, from] = await Promise.all([
+      this.prisma.customer.findFirst({ where: { id: intoId, tenantId }, select: sel }) as unknown as Promise<C | null>,
+      this.prisma.customer.findFirst({ where: { id: fromId, tenantId }, select: sel }) as unknown as Promise<C | null>,
+    ]);
+    if (!into || !from) throw new NotFoundException('Customer not found');
+
+    // Tables that point at a client, moved with one updateMany each.
+    const MOVE = ['appointment', 'walkIn', 'order', 'heldBill', 'feedback', 'feedbackRequest', 'feedbackCase', 'clientFormEntry', 'clientFormLink', 'messengerThread', 'loyaltyTransaction', 'aiSession', 'aiCallbackTask'];
+    const moved: Record<string, number> = {};
+    await this.prisma.$transaction(async (tx) => {
+      const db = tx as unknown as Record<string, { updateMany?: (a: unknown) => Promise<{ count: number }>; findFirst?: (a: unknown) => Promise<unknown>; deleteMany?: (a: unknown) => Promise<unknown> } | undefined>;
+      for (const m of MOVE) {
+        const r = await db[m]?.updateMany?.({ where: { tenantId, customerId: fromId }, data: { customerId: intoId } });
+        if (r?.count) moved[m] = r.count;
+      }
+      // Whom she referred now count for the kept profile.
+      await tx.customer.updateMany({ where: { tenantId, referredById: fromId }, data: { referredById: intoId } as never });
+      // One AI memory per client: keep the kept profile's if it has one.
+      const mem = db.customerMemory;
+      if (mem?.findFirst && mem.updateMany && mem.deleteMany) {
+        const has = await mem.findFirst({ where: { tenantId, customerId: intoId } });
+        if (has) await mem.deleteMany({ where: { tenantId, customerId: fromId } });
+        else await mem.updateMany({ where: { tenantId, customerId: fromId }, data: { customerId: intoId } });
+      }
+      await tx.customer.deleteMany({ where: { id: fromId, tenantId } });
+      const notes = [into.notes, from.notes].filter((x) => x && x.trim()).join('\n');
+      await tx.customer.updateMany({
+        where: { id: intoId, tenantId },
+        data: {
+          lastName: into.lastName || from.lastName,
+          email: into.email || from.email,
+          phone: into.phone || from.phone,
+          notes: notes || null,
+          birthDate: into.birthDate ?? from.birthDate,
+          loyaltyPoints: (into.loyaltyPoints ?? 0) + (from.loyaltyPoints ?? 0),
+          importedSpentCents: (into.importedSpentCents ?? 0) + (from.importedSpentCents ?? 0),
+          importedVisits: (into.importedVisits ?? 0) + (from.importedVisits ?? 0),
+          lastVisitAt: [into.lastVisitAt, from.lastVisitAt].filter(Boolean).sort((a, b) => +b! - +a!)[0] ?? null,
+          referredById: into.referredById ?? (from.referredById !== intoId ? from.referredById : null),
+          smsConsent: into.smsConsent || from.smsConsent,
+          smsConsentAt: into.smsConsentAt ?? from.smsConsentAt,
+        } as never,
+      });
+    });
+    await this.audit.log({
+      tenantId, userId: user.userId, action: 'customer.merged', resourceType: 'customer', resourceId: intoId,
+      metadata: { from: { id: from.id, name: `${from.firstName} ${from.lastName ?? ''}`.trim(), phone: from.phone, email: from.email }, moved },
+    });
+    return this.getById(user, intoId);
+  }
+
   /** Delete a customer (and, by cascade, their appointments). Admin only. */
   async remove(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);

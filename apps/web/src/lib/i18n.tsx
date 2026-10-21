@@ -232,7 +232,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'navt.clientsBookings': { en: 'Clients & bookings', vi: 'Khách & lịch hẹn' },
   'navt.locations': { en: 'Locations', vi: 'Chi nhánh' },
   'navt.salonSettings': { en: 'Salon settings', vi: 'Cài đặt tiệm' },
-  'navt.templates': { en: 'Message templates', vi: 'Mẫu thông báo' },
+  'navt.templates': { en: 'Notifications', vi: 'Thông báo' },
   'nav.billing': { en: 'Billing & plan', vi: 'Gói & thanh toán' },
   'nav.usageCosts': { en: 'Usage & costs', vi: 'Chi phí sử dụng' },
   'nav.settings': { en: 'Settings', vi: 'Cài đặt' },

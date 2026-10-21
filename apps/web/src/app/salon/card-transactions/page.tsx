@@ -8,6 +8,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
+import { PeriodFilter, usePeriod } from '../../../components/PeriodFilter';
 
 /**
  * Card-terminal transactions: what the terminal actually did, and the two
@@ -78,13 +79,15 @@ function Inner() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // Same period control as the other money screens.
+  const range = usePeriod('cardTx', 'thisWeek');
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError(null);
-    try { setRows(await apiFetch<Txn[]>('/payments-hub/intents?limit=100', { token })); }
+    try { setRows(await apiFetch<Txn[]>(`/payments-hub/intents?from=${range.from}&to=${range.to}`, { token })); }
     catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
-  }, [token]);
+  }, [token, range.from, range.to]);
   useEffect(() => { load(); }, [load]);
 
   async function recheck(t: Txn) {
@@ -183,6 +186,7 @@ function Inner() {
         </div>
         <button onClick={load} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' }}>{L.refresh}</button>
       </div>
+      <div style={{ marginBottom: 14 }}><PeriodFilter state={range} vi={vi} /></div>
 
       {error && <div style={ui.banner}>{error}</div>}
       {msg && <div style={{ ...ui.banner, background: 'var(--c064e3b)', borderColor: '#059669', color: 'var(--cd1fae5)' }}>{msg}</div>}

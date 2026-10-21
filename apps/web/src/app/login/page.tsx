@@ -77,6 +77,10 @@ export default function LoginPage() {
         <label style={labelStyle}>Email</label>
         <input
           type="email"
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
@@ -86,6 +90,7 @@ export default function LoginPage() {
         <label style={labelStyle}>Password</label>
         <input
           type="password"
+          autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required

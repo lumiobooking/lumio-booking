@@ -16,6 +16,8 @@ jest.mock('@prisma/client', () => {
   };
 });
 jest.mock('../uploads/uploads.service', () => ({ UploadsService: class {} }));
+// bcrypt's native binary is per-OS; the rule under test is the service's.
+jest.mock('../auth/password.util', () => ({ hashSecret: async (p: string) => `h:${p}`, verifySecret: async (p: string, h: string) => h === `h:${p}` }));
 jest.mock('../feedback/feedback.service', () => ({ FeedbackService: class {} }));
 import { PosService } from './pos.service';
 
@@ -23,10 +25,11 @@ type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-exp
 const admin = { userId: 'u1', tenantId: 't1', role: 'SALON_ADMIN' } as never;
 const other = { userId: 'u9', tenantId: 't2', role: 'SALON_ADMIN' } as never;
 
-function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift?: string | null; appts?: Row[] }) {
+function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift?: string | null; appts?: Row[]; refunds?: Row[]; users?: Row[]; cards?: Row[]; shifts?: Row[] }) {
   const { orders, payments } = opts;
   const audits: Row[] = [];
   const moves: Row[] = [];
+  const refundRows: Row[] = [...(opts.refunds ?? [])];
   const wheres: Row[] = [];
   const appts = opts.appts ?? [];
   const match = (p: Row, w: Row) => p.tenantId === w.tenantId
@@ -49,6 +52,7 @@ function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift
     product: { updateMany: async () => ({ count: 0 }) },
     appointment: { updateMany: async ({ where, data }: Row) => { appts.filter((a) => a.tenantId === where.tenantId).forEach((a) => Object.assign(a, data)); return { count: 0 }; } },
     cashMovement: { create: async ({ data }: Row) => { moves.push(data); return data; } },
+    orderRefund: { create: async ({ data }: Row) => { refundRows.push(data); return data; } },
   };
   const prisma: Row = {
     order: {
@@ -62,9 +66,12 @@ function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift
     auditLog: { findMany: async ({ where }: Row) => { wheres.push(where); return []; } },
     customer: { findFirst: async () => null, findMany: async () => [] },
     appointment: { findMany: async () => [] },
-    staffMember: { findMany: async () => [] },
-    user: { findMany: async () => [] },
-    $transaction: async (fn: (t: Row) => Promise<unknown>) => fn(tx),
+    staffMember: { findMany: async ({ where }: Row) => (opts.cards ?? []).filter((c) => c.tenantId === where.tenantId) },
+    user: { findMany: async ({ where }: Row) => (opts.users ?? []).filter((u) => (!where?.tenantId || u.tenantId === where.tenantId) && (where?.isActive === undefined || u.isActive === where.isActive) && (!where?.approvalPinHash || !!u.approvalPinHash)) },
+    orderRefund: { findMany: async ({ where }: Row) => refundRows.filter((r) => r.tenantId === where.tenantId && r.orderId === where.orderId) },
+    cashShift: { findFirst: async ({ where }: Row) => (opts.shifts ?? []).find((x) => x.id === where.id && x.tenantId === where.tenantId) ?? null },
+    orderItem: { updateMany: async ({ where, data }: Row) => { for (const o of orders) for (const l of (o.items ?? [])) if (l.id === where.id && o.id === where.orderId) Object.assign(l, data); return { count: 1 }; } },
+    $transaction: async (fn: unknown) => (Array.isArray(fn) ? Promise.all(fn) : (fn as (t: Row) => Promise<unknown>)(tx)),
   };
   const svc = new PosService(
     prisma as never, { log: async (a: Row) => { audits.push(a); } } as never,
@@ -72,7 +79,7 @@ function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift
     { reverseForRef: async () => undefined } as never, {} as never, { capture: async () => undefined } as never,
   );
   (svc as unknown as Row).recreditGiftCards = async () => undefined;
-  return { svc, audits, moves, wheres, payments, orders, appts };
+  return { svc, audits, moves, wheres, payments, orders, appts, refundRows };
 }
 
 const paidBill = (over: Row = {}) => ({ id: 'o1', tenantId: 't1', status: 'PAID', orderNumber: 41, totalCents: 6900, paidCents: 6900, currency: 'USD', shiftId: 's-old', appointmentId: 'a1', appointmentIds: ['a1'], items: [{ id: 'l1', kind: 'SERVICE', quantity: 1 }, { id: 'l2', kind: 'SERVICE', quantity: 1 }], tenders: [{ method: 'CARD', amountCents: 6900 }], ...over });
@@ -132,6 +139,108 @@ describe('refunding a paid bill', () => {
     expect(payments).toHaveLength(1);
     expect(orders[0].status).toBe('PAID');
     for (const w of wheres) expect(w.tenantId).toBe('t2');
+  });
+});
+
+describe('a part refund comes off the technician whose line it was', () => {
+  const bill = () => paidBill({ discountCents: 1000, items: [
+    { id: 'l1', kind: 'SERVICE', quantity: 1, lineTotalCents: 4500, tipCents: 600, staffMemberId: 'kim' },
+    { id: 'l2', kind: 'SERVICE', quantity: 1, lineTotalCents: 1500, tipCents: 300, staffMemberId: 'hoa' },
+  ] });
+  it('the chosen line: its sale net of its discount share first, then its tip', async () => {
+    const { svc, refundRows } = make({ orders: [bill()], payments: [mirror({ amountCents: 5900 })] });
+    // l2's share of the $10 discount is $2.50 → $12.50 of sale, then $3 of tip.
+    await svc.refundOrder(admin, 'o1', { amountCents: 1550, method: 'CASH', reason: 'x', itemIds: ['l2'] });
+    expect(refundRows).toHaveLength(1);
+    expect(refundRows[0]).toMatchObject({ tenantId: 't1', orderId: 'o1', full: false, amountCents: 1550 });
+    expect(refundRows[0].lines).toEqual([{ itemId: 'l2', staffMemberId: 'hoa', kind: 'SERVICE', netCents: 1250, tipCents: 300 }]);
+  });
+  it('a second refund only takes what is left on the line', async () => {
+    const earlier = { tenantId: 't1', orderId: 'o1', lines: [{ itemId: 'l2', staffMemberId: 'hoa', kind: 'SERVICE', netCents: 1250, tipCents: 0 }] };
+    const { svc, refundRows } = make({ orders: [bill()], payments: [mirror({ amountCents: 5900 }), mirror({ amountCents: -1250 })], refunds: [earlier] });
+    await svc.refundOrder(admin, 'o1', { amountCents: 500, method: 'CASH', reason: 'x', itemIds: ['l2'] });
+    expect(refundRows[1].lines).toEqual([{ itemId: 'l2', staffMemberId: 'hoa', kind: 'SERVICE', netCents: 0, tipCents: 300 }]);
+  });
+  it('a full refund keeps the record but splits nothing (the whole bill leaves the books)', async () => {
+    const { svc, refundRows } = make({ orders: [bill()], payments: [mirror({ amountCents: 5900 })] });
+    await svc.refundOrder(admin, 'o1', { amountCents: 5900, method: 'CASH', reason: 'x' });
+    expect(refundRows[0]).toMatchObject({ full: true, lines: [] });
+  });
+});
+
+describe("a cashier needs a manager's PIN", () => {
+  const cashier = { userId: 'c1', tenantId: 't1', role: 'STAFF', staffRole: 'RECEPTIONIST' } as never;
+  const users = [
+    { id: 'm1', tenantId: 't1', role: 'STAFF', isActive: true, approvalPinHash: 'h:4321' },
+    { id: 'o1', tenantId: 't1', role: 'SALON_ADMIN', isActive: true, approvalPinHash: 'h:1111' },
+    { id: 'x1', tenantId: 't2', role: 'SALON_ADMIN', isActive: true, approvalPinHash: 'h:9999' },
+    { id: 'r1', tenantId: 't1', role: 'STAFF', isActive: true, approvalPinHash: 'h:5555' },
+  ];
+  const cards = [
+    { tenantId: 't1', userId: 'm1', staffRole: 'MANAGER', permissions: null },
+    { tenantId: 't1', userId: 'r1', staffRole: 'RECEPTIONIST', permissions: null },
+  ];
+  it('without one: refused, nothing moves', async () => {
+    const { svc, payments } = make({ orders: [paidBill()], payments: [mirror()], users, cards });
+    await expect(svc.refundOrder(cashier, 'o1', { amountCents: 500, method: 'CASH', reason: 'x' })).rejects.toThrow(/APPROVAL_PIN_REQUIRED/);
+    expect(payments).toHaveLength(1);
+  });
+  it("with a manager's or the owner's PIN: done, and the approver is on the record", async () => {
+    const { svc, audits } = make({ orders: [paidBill()], payments: [mirror()], users, cards });
+    await svc.refundOrder(cashier, 'o1', { amountCents: 500, method: 'CASH', reason: 'x', approvalPin: '4321' });
+    expect(audits.find((a) => a.action === 'order.refunded')!.metadata).toMatchObject({ approvedByUserId: 'm1' });
+  });
+  it("a receptionist's PIN, another salon's owner PIN, or a wrong PIN do not approve", async () => {
+    for (const pin of ['5555', '9999', '0000']) {
+      const { svc } = make({ orders: [paidBill()], payments: [mirror()], users, cards });
+      await expect(svc.refundOrder({ ...(cashier as object), tenantId: 't1', userId: `c-${pin}` } as never, 'o1', { amountCents: 500, method: 'CASH', reason: 'x', approvalPin: pin })).rejects.toThrow(/PIN/);
+    }
+  });
+  it('the owner / a manager needs no PIN', async () => {
+    const { svc } = make({ orders: [paidBill()], payments: [mirror()], users, cards });
+    await expect(svc.refundOrder({ userId: 'm1', tenantId: 't1', role: 'STAFF', staffRole: 'MANAGER' } as never, 'o1', { amountCents: 500, method: 'CASH', reason: 'x' })).resolves.toBeTruthy();
+  });
+});
+
+describe('re-splitting a tip', () => {
+  const bill = () => paidBill({ items: [
+    { id: 'l1', kind: 'SERVICE', quantity: 1, lineTotalCents: 4500, tipCents: 900, staffMemberId: 'kim' },
+    { id: 'l2', kind: 'SERVICE', quantity: 1, lineTotalCents: 1500, tipCents: 0, staffMemberId: 'hoa' },
+  ] });
+  it('moves the tip between lines, the total stays, and it is on the record', async () => {
+    const { svc, orders, audits } = make({ orders: [bill()], payments: [mirror()] });
+    (svc as unknown as Row).getOrder = async () => ({});
+    await svc.setLineTips(admin, 'o1', [{ itemId: 'l1', tipCents: 500 }, { itemId: 'l2', tipCents: 400 }]);
+    expect(orders[0].items.map((l: Row) => l.tipCents)).toEqual([500, 400]);
+    expect(audits.find((a) => a.action === 'pos.order_tips_changed')).toMatchObject({ tenantId: 't1', resourceId: 'o1' });
+  });
+  it('refuses a split that changes the total, or a line of another bill / salon', async () => {
+    const { svc, orders } = make({ orders: [bill()], payments: [mirror()] });
+    await expect(svc.setLineTips(admin, 'o1', [{ itemId: 'l2', tipCents: 400 }])).rejects.toThrow(/giữ nguyên/);
+    await expect(svc.setLineTips(admin, 'o1', [{ itemId: 'zz', tipCents: 0 }])).rejects.toThrow(/không thuộc/);
+    await expect(svc.setLineTips(other, 'o1', [{ itemId: 'l1', tipCents: 900 }])).rejects.toThrow(/not found/i);
+    expect(orders[0].items.map((l: Row) => l.tipCents)).toEqual([900, 0]);
+  });
+});
+
+describe('a void belongs to its shift', () => {
+  const manager = { userId: 'm1', tenantId: 't1', role: 'STAFF', staffRole: 'MANAGER' } as never;
+  it('a manager voids while the shift is open, not once it is closed — the owner still can', async () => {
+    const open = make({ orders: [paidBill({ shiftId: 's1' })], payments: [mirror()], shifts: [{ id: 's1', tenantId: 't1', status: 'OPEN' }] });
+    (open.svc as unknown as Row).getOrder = async () => ({});
+    await open.svc.voidOrder(manager, 'o1', { reason: 'Trùng bill' });
+    expect(open.orders[0].status).toBe('VOID');
+
+    const closed = make({ orders: [paidBill({ shiftId: 's1' })], payments: [mirror()], shifts: [{ id: 's1', tenantId: 't1', status: 'CLOSED' }] });
+    await expect(closed.svc.voidOrder(manager, 'o1', { reason: 'Trùng bill' })).rejects.toThrow(/đã chốt/);
+    expect(closed.orders[0].status).toBe('PAID');
+    (closed.svc as unknown as Row).getOrder = async () => ({});
+    await closed.svc.voidOrder(admin, 'o1', { reason: 'Trùng bill' });
+    expect(closed.orders[0].status).toBe('VOID');
+  });
+  it('without shifts: only the same salon day', async () => {
+    const old = make({ orders: [paidBill({ shiftId: null, paidAt: new Date('2026-01-02T15:00:00Z') })], payments: [mirror()] });
+    await expect(old.svc.voidOrder(manager, 'o1', { reason: 'x' })).rejects.toThrow(/ngày đã qua/);
   });
 });
 

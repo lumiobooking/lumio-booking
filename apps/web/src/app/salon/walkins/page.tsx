@@ -258,7 +258,7 @@ function Inner() {
 
   // Keep the newest form state in a ref so the channel handler (registered once)
   // always reads current values instead of the ones captured at mount.
-  const liveRef = useRef({ form, pickedIds, formOpen, qrOn: false });
+  const liveRef = useRef({ form, pickedIds, formOpen, qrOn: false, addonPick: [] as string[] });
 
   const addRef = useRef<() => void>(() => undefined);
   const checkinUrlRef = useRef('');
@@ -336,6 +336,9 @@ function Inner() {
           qrTitle: mode === 'qr' ? qrTextRef.current.title : undefined,
           qrHint: mode === 'qr' ? qrTextRef.current.hint : undefined,
           services: services.map((x) => ({ id: x.id, name: x.name, priceCents: x.priceCents ?? 0, durationMinutes: x.durationMinutes ?? 0, category: x.category ?? null })),
+          // The add-ons of what she picked, and the ones already ticked (her screen shows them under her picks).
+          addons: addonsFor(p).map((a) => ({ id: a.id, name: a.name, priceCents: a.priceCents, durationMinutes: a.durationMinutes, askAtBooking: !!a.askAtBooking })),
+          addonPicked: liveRef.current.addonPick ?? [],
           form: {
             firstName: mode === 'thanks' && thanksNameRef.current ? thanksNameRef.current : f.customerName,
             lastName: f.lastName, phone: f.phone,
@@ -345,7 +348,7 @@ function Inner() {
         },
       },
     });
-  }, [salonName, salonLogo, services, post]);
+  }, [salonName, salonLogo, services, deskAddons, post]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
@@ -386,6 +389,10 @@ function Inner() {
         const id = String(msg.payload ?? '');
         setPickedIds((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]));
       }
+      if (msg?.type === 'toggleAddon') {
+        const id = String(msg.payload ?? '');
+        setAddonPick((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]));
+      }
       // The customer pressed "I'm done" — the desk owns the token, so the desk saves.
       if (msg?.type === 'submit') void addRef.current();
     };
@@ -394,7 +401,7 @@ function Inner() {
   }, [pushToScreen]);
 
   // Mirror every desk keystroke onto the customer screen while the form is open.
-  useEffect(() => { liveRef.current = { form, pickedIds, formOpen, qrOn }; }, [form, pickedIds, formOpen, qrOn]);
+  useEffect(() => { liveRef.current = { form, pickedIds, formOpen, qrOn, addonPick }; }, [form, pickedIds, formOpen, qrOn, addonPick]);
   useEffect(() => { thanksNameRef.current = thanksName; }, [thanksName]);
   // "+ Tạo mới → Khách vãng lai" from the header (?new=1) opens the intake form at once.
   useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') startNew(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -410,7 +417,7 @@ function Inner() {
     else if (qrOn) { ownsScreenRef.current = true; pushToScreen('qr'); }
     else if (formOpen) { ownsScreenRef.current = true; pushToScreen('form'); }
     else if (ownsScreenRef.current) { ownsScreenRef.current = false; pushToScreen('idle'); }
-  }, [form, pickedIds, formOpen, qrOn, thanksName, pushToScreen]);
+  }, [form, pickedIds, addonPick, formOpen, qrOn, thanksName, pushToScreen]);
 
   // While the QR is up, watch the queue: the phone posts straight to the API, so
   // the arrival of a new waiting ticket IS the signal that the customer is done.

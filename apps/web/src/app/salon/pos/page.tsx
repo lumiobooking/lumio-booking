@@ -26,7 +26,7 @@ import { ind } from '../../../lib/ui-industry';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null; imageUrl?: string | null }
-interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
+interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string | null; categoryId?: string | null; askAtBooking?: boolean; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean; tipQrUrl?: string | null; tipHandle?: string | null }
 interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; email?: string | null; loyaltyPoints?: number }
 interface CatalogCache {
@@ -699,8 +699,23 @@ function Register() {
     const d = s.discountPercent ?? 0;
     setCart((c) => [...c, { uid: `u${uidSeq++}`, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: net(s.priceCents, d), discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: '' }]);
   }
-  function addAddon(a: Addon) {
-    setCart((c) => [...c, { uid: `u${uidSeq++}`, kind: 'SERVICE', refId: a.id, isAddon: true, name: a.name, origUnitPriceCents: a.priceCents, unitPriceCents: a.priceCents, discountPercent: 0, quantity: 1, tipCents: 0, staffMemberId: '' }]);
+  /** An add-on line. Picked under a service on the bill, it sits right after
+   *  that service and goes to the same technician (her tip and commission). */
+  function addAddon(a: Addon, staffMemberId = '', afterUid?: string) {
+    setCart((c) => {
+      const line: Line = { uid: `u${uidSeq++}`, kind: 'SERVICE', refId: a.id, isAddon: true, name: a.name, origUnitPriceCents: a.priceCents, unitPriceCents: a.priceCents, discountPercent: 0, quantity: 1, tipCents: 0, staffMemberId };
+      const at = afterUid ? c.findIndex((x) => x.uid === afterUid) : -1;
+      if (at < 0) return [...c, line];
+      let end = at + 1;
+      while (end < c.length && c[end].isAddon) end++;
+      return [...c.slice(0, end), line, ...c.slice(end)];
+    });
+  }
+  /** The add-ons offered on this service (its own, its category's, the whole menu's) that are not on the bill yet. */
+  function addonsFor(serviceId: string): Addon[] {
+    const sv = services.find((x) => x.id === serviceId);
+    const have = new Set(cart.filter((x) => x.isAddon).map((x) => x.refId));
+    return addons.filter((a) => !have.has(a.id) && (a.serviceId ? a.serviceId === serviceId : a.categoryId ? sv?.category?.id === a.categoryId : true));
   }
   function addProduct(p: Product) {
     const d = p.discountPercent ?? 0;
@@ -1993,6 +2008,21 @@ function Register() {
                 {!dense && (() => { const sv = services.find((x) => x.id === l.refId); return sv && sv.durationMinutes > 0 ? <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{sv.durationMinutes} {L('phút', 'min')}</span> : null; })()}
               </div>
             )}
+            {l.kind === 'SERVICE' && !l.isAddon && (() => {
+              const sug = addonsFor(l.refId);
+              if (!sug.length) return null;
+              return (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c94a3b8)' }}>{L('Thêm:', 'Add-on:')}</span>
+                  {sug.slice(0, 6).map((a) => (
+                    <button key={a.id} type="button" onClick={() => addAddon(a, l.staffMemberId, l.uid)}
+                      style={{ height: 30, padding: '0 11px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                      + {a.askAtBooking ? `${a.name}?` : a.name} · {fmt(a.priceCents)}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
             <button type="button" onClick={() => setEditUid(open ? null : l.uid)} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'right' }}>

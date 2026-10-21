@@ -21,8 +21,11 @@ type Line = { name: string; qty: number; lineCents: number; staff?: string };
 // monitor into a form instead of opening a second window.
 type CheckInService = { id: string; name: string; priceCents: number; durationMinutes: number; category?: { id: string; name: string } | null };
 type CheckInForm = { firstName: string; lastName: string; phone: string; email: string; birthDate: string; partySize: number };
+type CheckInAddon = { id: string; name: string; priceCents: number; durationMinutes: number; askAtBooking?: boolean };
 type CheckIn = {
   services: CheckInService[]; form: CheckInForm; picked: string[]; done?: boolean;
+  /** The add-ons of the services picked, and the ones ticked (the desk owns both). */
+  addons?: CheckInAddon[]; addonPicked?: string[];
   /** When set, the screen shows a big QR instead of the form: the customer
    *  fills it in on their own phone. */
   qr?: string;
@@ -681,6 +684,14 @@ function CheckInScreen({ st, salonName, logo, send }: {
   const [local, setLocal] = useState<string[]>(st.picked);
   useEffect(() => { setLocal(st.picked); }, [st.picked]);
   const isOn = (id: string) => local.includes(id);
+  const [localAdd, setLocalAdd] = useState<string[]>(st.addonPicked ?? []);
+  useEffect(() => { setLocalAdd(st.addonPicked ?? []); }, [st.addonPicked]);
+  const tapAddon = (id: string) => {
+    setLocalAdd((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]));
+    send('toggleAddon', id);
+  };
+  const offered = st.addons ?? [];
+  const pickedAdds = offered.filter((a) => localAdd.includes(a.id));
   const tap = (id: string) => {
     setLocal((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]));
     send('toggleService', id);
@@ -690,8 +701,8 @@ function CheckInScreen({ st, salonName, logo, send }: {
   for (const sv of st.services) if (sv.category && !seen.has(sv.category.id)) { seen.add(sv.category.id); cats.push(sv.category); }
   const shown = st.services.filter((sv) => !cat || sv.category?.id === cat);
   const picked = local.map((id) => st.services.find((x) => x.id === id)).filter(Boolean) as CheckInService[];
-  const total = picked.reduce((sum, x) => sum + x.priceCents, 0);
-  const mins = picked.reduce((sum, x) => sum + x.durationMinutes, 0);
+  const total = picked.reduce((sum, x) => sum + x.priceCents, 0) + pickedAdds.reduce((sum, a) => sum + a.priceCents, 0);
+  const mins = picked.reduce((sum, x) => sum + x.durationMinutes, 0) + pickedAdds.reduce((sum, a) => sum + (a.durationMinutes || 0), 0);
   const f = st.form;
 
   // "Scan and use your own phone" — the same check-in, on the customer's device.
@@ -803,6 +814,22 @@ function CheckInScreen({ st, salonName, logo, send }: {
             ))}
           </div>
         )}
+        {picked.length > 0 && offered.length > 0 && (
+          <div style={{ border: '2px dashed var(--cc7d2fe)', background: '#fff', borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
+            <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--c0f172a)', marginBottom: 10 }}>Add to your visit?</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
+              {offered.map((a) => {
+                const on = localAdd.includes(a.id);
+                return (
+                  <button key={a.id} onClick={() => tapAddon(a.id)} style={{ ...chip(on), display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    {on ? '✓' : '+'} {a.askAtBooking ? `Would you like ${a.name}?` : a.name}
+                    <span style={{ fontWeight: 700, color: on ? '#fff' : '#16a34a' }}>+{money(a.priceCents, 'USD')}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {cats.length > 0 && (
           <div className="lumio-xscroll" style={{ display: 'flex', gap: 9, overflowX: 'auto', paddingBottom: 10 }}>
             <button onClick={() => setCat(null)} style={chip(cat === null)}>All</button>
@@ -848,7 +875,7 @@ function CheckInScreen({ st, salonName, logo, send }: {
       }}>
         <span style={{ fontSize: 16.5, color: 'var(--c475569)' }}>
           {picked.length > 0
-            ? <><strong style={{ color: '#4f46e5' }}>{picked.length} service{picked.length > 1 ? 's' : ''}</strong> · <strong style={{ color: '#16a34a' }}>{money(total, 'USD')}</strong> · about {mins} min</>
+            ? <><strong style={{ color: '#4f46e5' }}>{picked.length} service{picked.length > 1 ? 's' : ''}{pickedAdds.length ? ` + ${pickedAdds.length} add-on${pickedAdds.length > 1 ? 's' : ''}` : ''}</strong> · <strong style={{ color: '#16a34a' }}>{money(total, 'USD')}</strong> · about {mins} min</>
             : 'Pick anything you like — or tell us at the chair'}
         </span>
         <span style={{ flex: 1 }} />

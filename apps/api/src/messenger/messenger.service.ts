@@ -464,7 +464,7 @@ export class MessengerService implements OnModuleInit {
   }
 
   /** The stored health plus its sentence, for screens. */
-  async healthFor(tenantId: string): Promise<(PageHealth & { text: string }) | null> {
+  async healthFor(tenantId: string): Promise<(PageHealth & { text: string; connectedBy?: string | null }) | null> {
     const h = await this.settings.getMessengerHealth(tenantId).catch(() => null);
     if (!h) return null;
     const state = h.state as PageHealth['state'];

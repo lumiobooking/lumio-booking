@@ -20,16 +20,16 @@ import { cashFundOf, defaultBankOf, ensureFinanceSetup, type CategoryDb, type Fu
  * the caller's salon — and guards the writes.
  */
 
-interface EntryDb extends EntryRow { tenantId: string; sourceRef: string | null; createdAt: Date; createdByUserId: string | null; approvedByUserId: string | null }
-interface RecurringDb { id: string; tenantId: string; name: string; categoryId: string; fundId: string; amountCents: number | null; cadence: Cadence; anchorDay: string; nextDue: string; mode: 'REMIND' | 'AUTO'; payee: string | null; active: boolean; createdAt: Date }
-interface Delegate<T> {
+export interface EntryDb extends EntryRow { tenantId: string; sourceRef: string | null; createdAt: Date; createdByUserId: string | null; approvedByUserId: string | null }
+export interface RecurringDb { id: string; tenantId: string; name: string; categoryId: string; fundId: string; amountCents: number | null; cadence: Cadence; anchorDay: string; nextDue: string; mode: 'REMIND' | 'AUTO'; payee: string | null; active: boolean; createdAt: Date }
+export interface Delegate<T> {
   findMany(args: unknown): Promise<T[]>;
   findFirst(args: unknown): Promise<T | null>;
   create(args: unknown): Promise<T>;
   update(args: unknown): Promise<T>;
   updateMany(args: unknown): Promise<{ count: number }>;
 }
-interface FinDb {
+export interface FinDb {
   cashFund: Delegate<FundDb>;
   cashCategory: Delegate<CategoryDb>;
   cashEntry: Delegate<EntryDb>;

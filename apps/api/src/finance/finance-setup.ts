@@ -13,14 +13,14 @@ import { DEFAULT_CATEGORIES, type CatGroup, type Direction, type FundKind } from
 export interface FundDb { id: string; tenantId: string; kind: FundKind; name: string; last4: string | null; openingCents: number; openingDate: string; isDefault: boolean; archivedAt: Date | null; createdAt: Date }
 export interface CategoryDb { id: string; tenantId: string; direction: Direction; group: CatGroup; name: string; countsInPl: boolean; systemKey: string | null; budgetCents: number | null; hidden: boolean; sort: number }
 
-interface Delegate<T> {
+export interface SetupDelegate<T> {
   findMany(args: unknown): Promise<T[]>;
   create(args: unknown): Promise<T>;
   update(args: unknown): Promise<T>;
 }
 export interface SetupDb {
-  cashFund: Delegate<FundDb>;
-  cashCategory: Delegate<CategoryDb>;
+  cashFund: SetupDelegate<FundDb>;
+  cashCategory: SetupDelegate<CategoryDb>;
 }
 
 const done = new Set<string>();

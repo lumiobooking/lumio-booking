@@ -467,7 +467,7 @@ export class PosService {
                 name: l.name,
                 priceCents: l.lineTotalCents,
                 durationMinutes: l.serviceId ? (mins.get(l.serviceId) ?? 0) : 0,
-                kind: 'service' as const,
+                kind: (l.serviceId ? 'service' : 'addon') as 'service' | 'addon',
                 staffMemberId: l.staffMemberId,
               }));
               const totalMinutes = svcLines.reduce(

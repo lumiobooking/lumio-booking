@@ -1787,6 +1787,119 @@ export class WalkinsService {
   }
 
   /** The staff member row for the signed-in user (null for a salon admin without one). */
+  /**
+   * THE TECHNICIAN'S OWN VISITS THAT ARE NOT BOOKINGS.
+   *
+   * Her app listed only appointments assigned to her and the client in her
+   * chair right now. A walk-in she served, or a sale the till credited to her,
+   * vanished from her phone the moment it ended — "khách walk-in / tính tiền ở
+   * POS thì bên thợ không hiện dịch vụ". This lists, for a day range:
+   *   · walk-in tickets she worked a part of (only HER lines and her money);
+   *   · paid sales with a line credited to her that belong to no ticket of hers
+   *     and no booking of hers (those already show as bookings).
+   * Never another technician's lines, never the salon's totals, never another
+   * salon's rows (every query is scoped by the signed-in tenant).
+   */
+  async myVisits(user: AuthenticatedUser, q: { from?: string; to?: string } = {}) {
+    const tenantId = this.tenantId(user);
+    const me = await this.staffOf(user);
+    if (!me) return [];
+    const start = q.from && !Number.isNaN(Date.parse(q.from)) ? new Date(q.from) : await this.startOfToday(tenantId);
+    let end = q.to && !Number.isNaN(Date.parse(q.to)) ? new Date(q.to) : new Date(start.getTime() + 86400000);
+    if (end.getTime() - start.getTime() > 42 * 86400000) end = new Date(start.getTime() + 42 * 86400000);
+    if (end <= start) return [];
+
+    type Line = { lineId?: string; serviceId?: string; name?: string; priceCents?: number; staffId?: string | null; legId?: string; kind?: string };
+    type Ticket = { id: string; customerName: string | null; status: string; createdAt: Date; assignedAt: Date | null; doneAt: Date | null; awaitingPayment?: boolean; assignedStaffId: string | null; appointmentId?: string | null; items: unknown };
+    type OItem = { kind: string; name: string; lineTotalCents: number; tipCents: number; quantity: number; staffMemberId: string | null; serviceId: string | null; walkInId: string | null; guestName: string | null };
+    type ORow = { id: string; paidAt: Date | null; customerId: string | null; walkInId: string | null; walkInIds?: string[]; appointmentId: string | null; appointmentIds?: string[]; items: OItem[] };
+
+    const tickets = (await this.prisma.walkIn.findMany({
+      where: { tenantId, status: { not: WalkInStatus.CANCELLED }, createdAt: { gte: start, lt: end } },
+      select: { id: true, customerName: true, status: true, createdAt: true, assignedAt: true, doneAt: true, awaitingPayment: true, assignedStaffId: true, appointmentId: true, items: true } as never,
+      orderBy: { createdAt: 'asc' },
+    }).catch(() => [])) as unknown as Ticket[];
+    const linesOf = (t: Ticket): Line[] => (Array.isArray(t.items) ? (t.items as Line[]) : []);
+    const myLinesOf = (t: Ticket): Line[] | null => {
+      const all = linesOf(t);
+      const legacy = all.length > 0 && all.every((it) => !it.legId);
+      const mine = all.filter((it) => it.staffId === me || (legacy && !it.staffId && t.assignedStaffId === me));
+      if (mine.length) return mine;
+      return !all.length && t.assignedStaffId === me ? [] : null;
+    };
+    const myTickets = tickets.map((t) => ({ t, lines: myLinesOf(t) })).filter((x): x is { t: Ticket; lines: Line[] } => x.lines !== null);
+
+    const orders = ((await this.db.order.findMany({
+      where: { tenantId, status: 'PAID', paidAt: { gte: start, lt: end }, items: { some: { staffMemberId: me } } },
+      select: {
+        id: true, paidAt: true, customerId: true, walkInId: true, walkInIds: true, appointmentId: true, appointmentIds: true,
+        items: { select: { kind: true, name: true, lineTotalCents: true, tipCents: true, quantity: true, staffMemberId: true, serviceId: true, walkInId: true, guestName: true } },
+      },
+      orderBy: { paidAt: 'asc' },
+    }).catch(() => [])) ?? []) as ORow[];
+    // Which of her tickets were paid, and her tips on them (orders of ANY day: a ticket can be settled after midnight).
+    const ticketIds = myTickets.map((x) => x.t.id);
+    const ticketOrders = ticketIds.length ? (((await this.db.order.findMany({
+      where: { tenantId, status: 'PAID', OR: [{ walkInId: { in: ticketIds } }, { walkInIds: { hasSome: ticketIds } }] },
+      select: { id: true, walkInId: true, walkInIds: true, items: { select: { tipCents: true, staffMemberId: true, walkInId: true } } },
+    }).catch(() => [])) ?? []) as { id: string; walkInId: string | null; walkInIds?: string[]; items: { tipCents: number; staffMemberId: string | null; walkInId: string | null }[] }[]) : [];
+    const paidTicket = new Set<string>();
+    const tipsByTicket = new Map<string, number>();
+    for (const o of ticketOrders) {
+      const ids = [o.walkInId, ...(o.walkInIds ?? [])].filter((x): x is string => !!x);
+      for (const id of ids) paidTicket.add(id);
+      for (const it of o.items ?? []) {
+        if (it.staffMemberId !== me) continue;
+        const wid = it.walkInId ?? (ids.length === 1 ? ids[0] : null);
+        if (wid) tipsByTicket.set(wid, (tipsByTicket.get(wid) ?? 0) + (it.tipCents || 0));
+      }
+    }
+    // Bookings that are hers already show in her calendar: never twice.
+    const apptIds = [...new Set([
+      ...myTickets.map((x) => x.t.appointmentId).filter((x): x is string => !!x),
+      ...orders.flatMap((o) => [o.appointmentId, ...(o.appointmentIds ?? [])]).filter((x): x is string => !!x),
+    ])];
+    const hersBooked = new Set(apptIds.length
+      ? (await this.prisma.appointment.findMany({ where: { tenantId, id: { in: apptIds }, assignedStaffId: me }, select: { id: true } }).catch(() => [])).map((a) => a.id)
+      : []);
+
+    const out: { id: string; kind: 'walkin' | 'sale'; at: string; customer: string | null; services: string[]; cents: number; tipsCents: number; status: 'waiting' | 'serving' | 'to_pay' | 'paid' }[] = [];
+    const shownTickets = new Set<string>();
+    for (const { t, lines } of myTickets) {
+      if (t.appointmentId && hersBooked.has(t.appointmentId)) continue;
+      shownTickets.add(t.id);
+      const paid = paidTicket.has(t.id);
+      out.push({
+        id: `w:${t.id}`, kind: 'walkin', at: (t.assignedAt ?? t.createdAt).toISOString(), customer: t.customerName,
+        services: lines.map((it) => (it.kind === 'addon' ? `+ ${it.name ?? ''}` : String(it.name ?? ''))).filter((n) => n.trim()),
+        cents: lines.reduce((s, it) => s + Math.max(0, Math.round(Number(it.priceCents) || 0)), 0),
+        tipsCents: tipsByTicket.get(t.id) ?? 0,
+        status: paid ? 'paid' : t.status === 'WAITING' ? 'waiting' : t.status === 'SERVING' && !t.awaitingPayment ? 'serving' : 'to_pay',
+      });
+    }
+    const custIds = [...new Set(orders.map((o) => o.customerId).filter((x): x is string => !!x))];
+    const names = new Map((custIds.length
+      ? await this.prisma.customer.findMany({ where: { tenantId, id: { in: custIds } }, select: { id: true, firstName: true, lastName: true } }).catch(() => [])
+      : []).map((c) => [c.id, `${c.firstName ?? ''}${c.lastName ? ' ' + c.lastName : ''}`.trim()] as const));
+    for (const o of orders) {
+      const wids = [o.walkInId, ...(o.walkInIds ?? [])].filter((x): x is string => !!x);
+      if (wids.some((w) => shownTickets.has(w))) continue;
+      if ([o.appointmentId, ...(o.appointmentIds ?? [])].some((a) => !!a && hersBooked.has(a))) continue;
+      const mine = (o.items ?? []).filter((it) => it.staffMemberId === me && it.kind === 'SERVICE');
+      if (!mine.length) continue;
+      out.push({
+        id: `o:${o.id}`, kind: 'sale', at: (o.paidAt ?? new Date()).toISOString(),
+        customer: (o.customerId ? names.get(o.customerId) : null) || mine.find((it) => it.guestName)?.guestName || null,
+        services: mine.map((it) => `${it.serviceId ? '' : '+ '}${it.name}${it.quantity > 1 ? ` ×${it.quantity}` : ''}`),
+        cents: mine.reduce((s, it) => s + (it.lineTotalCents || 0), 0),
+        tipsCents: (o.items ?? []).filter((it) => it.staffMemberId === me).reduce((s, it) => s + (it.tipCents || 0), 0),
+        status: 'paid',
+      });
+    }
+    const currency = (await Promise.resolve().then(() => this.settings.getBookingRules(tenantId)).catch(() => null))?.currency ?? 'USD';
+    return out.sort((a, b) => a.at.localeCompare(b.at)).map((v) => ({ ...v, currency }));
+  }
+
   private async staffOf(user: AuthenticatedUser): Promise<string | null> {
     const tenantId = this.tenantId(user);
     const staff = await this.prisma.staffMember.findFirst({ where: { tenantId, userId: user.userId }, select: { id: true } });

@@ -26,6 +26,7 @@ import { ClockCard } from '../../../components/staff/ClockCard';
 import { NextVisitClient, NextVisitSheet } from '../../../components/staff/NextVisitSheet';
 import { BookingSheet, StaffBooking, bookingName, bookingServices, bookingMinutes, canStart } from '../../../components/staff/BookingSheet';
 import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
+import { StaffVisit, VisitRow } from '../../../components/staff/VisitRow';
 
 interface Item { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null; legId?: string }
 interface Leg {
@@ -87,6 +88,8 @@ function Inner() {
   const [chair, setChair] = useState<MyChair | null>(null);
   const [day, setDay] = useState<MyDay | null>(null);
   const [bookings, setBookings] = useState<StaffBooking[]>([]);
+  // Walk-ins she served and sales the till credited to her today.
+  const [visits, setVisits] = useState<StaffVisit[]>([]);
   const [services, setServices] = useState<Svc[]>([]);
   const [chairs, setChairs] = useState<ChairOpt[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -105,12 +108,13 @@ function Inner() {
     if (!token) return;
     try {
       const since = new Date(Date.now() - 12 * 3600_000).toISOString();
-      const [c, d, b] = await Promise.all([
+      const [c, d, b, v] = await Promise.all([
         apiFetch<MyChair>('/my-chair', { token }),
         apiFetch<MyDay>('/my-chair/today', { token }).catch(() => null),
         apiFetch<StaffBooking[]>(`/bookings/my?from=${encodeURIComponent(since)}`, { token }).catch(() => [] as StaffBooking[]),
+        apiFetch<StaffVisit[]>('/my-chair/visits', { token }).catch(() => [] as StaffVisit[]),
       ]);
-      setChair(c); setDay(d); setBookings(Array.isArray(b) ? b : []); setError(null);
+      setChair(c); setDay(d); setBookings(Array.isArray(b) ? b : []); setVisits(Array.isArray(v) ? v : []); setError(null);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
@@ -300,6 +304,17 @@ function Inner() {
           <div style={{ ...st.card, color: 'var(--c94a3b8)', fontSize: 14 }}>{L(vi, 'Không còn lịch hẹn nào sắp tới.', 'No more bookings coming up.')}</div>
         )}
       </div>
+
+      {/* ---- Done today: the walk-ins and till sales that are not bookings
+             (the client in her chair right now is already above). ---- */}
+      {visits.some((v) => v.status !== 'serving') && (
+        <div>
+          <SectionLabel>{L(vi, 'Khách hôm nay (walk-in / POS)', 'Today: walk-ins & till')}</SectionLabel>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {visits.filter((v) => v.status !== 'serving').slice().reverse().map((v) => <VisitRow key={v.id} v={v} vi={vi} />)}
+          </div>
+        </div>
+      )}
 
       {/* ---- 4. The day in numbers ---- */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>

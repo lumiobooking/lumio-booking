@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, MessageEvent, Param, Patch, Post, Sse } from '@nestjs/common';
+import { Body, Controller, Delete, Get, MessageEvent, Param, Patch, Post, Query, Sse } from '@nestjs/common';
 import { Observable, interval, merge } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { liveEvents } from '../common/live-events';
@@ -68,6 +68,12 @@ export class MyChairController {
   @Get('today')
   today(@CurrentUser() user: AuthenticatedUser) {
     return this.walkins.myDay(user);
+  }
+
+  /** The walk-ins I served and the till sales credited to me, for a day range (default: today). */
+  @Get('visits')
+  visits(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.walkins.myVisits(user, { from, to });
   }
 
   /** My booking's customer is here: check them in and start my part. */

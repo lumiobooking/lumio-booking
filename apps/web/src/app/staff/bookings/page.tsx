@@ -23,6 +23,7 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { uiLocale, dayKeyInTz, fmtInTz } from '../../../lib/datetime';
 import { IC, Icon, L, Pill, Toast, st, useToast } from '../../../components/staff/kit';
 import { BookingSheet, StaffBooking, bookingName, bookingServices, bookingMinutes, bookingStatus } from '../../../components/staff/BookingSheet';
+import { StaffVisit, VisitRow } from '../../../components/staff/VisitRow';
 
 const DEAD = ['CANCELLED', 'NO_SHOW', 'REJECTED'];
 const STATUS_COLORS: Record<string, string> = {
@@ -52,6 +53,8 @@ function Inner() {
   const vi = lang === 'vi';
   const isMobile = useIsMobile(720);
   const [bookings, setBookings] = useState<StaffBooking[]>([]);
+  // Walk-ins she served and sales the till credited to her (not bookings).
+  const [visits, setVisits] = useState<StaffVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'week' | 'month'>('week');
@@ -70,6 +73,28 @@ function Inner() {
   }, [token]);
   useEffect(() => { void load(); }, [load]);
   useLiveRefresh(load, 30000);
+  // The week on screen (a day either side, for the salon's own midnight).
+  const weekKey = ymd(mondayOf(picked));
+  const loadVisits = useCallback(async () => {
+    if (!token) return;
+    const from = addDays(fromKey(weekKey), -1);
+    const to = addDays(fromKey(weekKey), 8);
+    try {
+      const v = await apiFetch<StaffVisit[]>(`/my-chair/visits?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`, { token });
+      setVisits(Array.isArray(v) ? v : []);
+    } catch { /* an older server has no visits: the bookings still show */ }
+  }, [token, weekKey]);
+  useEffect(() => { void loadVisits(); }, [loadVisits]);
+  useLiveRefresh(loadVisits, 30000);
+  const visitsByDay = useMemo(() => {
+    const m = new Map<string, StaffVisit[]>();
+    for (const v of visits) {
+      const k = dayKeyInTz(v.at);
+      const list = m.get(k);
+      if (list) list.push(v); else m.set(k, [v]);
+    }
+    return m;
+  }, [visits]);
 
   const byDay = useMemo(() => {
     const m = new Map<string, StaffBooking[]>();
@@ -113,6 +138,7 @@ function Inner() {
   const pending = bookings.filter((b) => b.status === 'ASSIGNED' && new Date(b.startTime).getTime() > Date.now() - 3600_000);
   const week = Array.from({ length: 7 }, (_, i) => addDays(mondayOf(picked), i));
   const dayList = byDay.get(ymd(picked)) ?? [];
+  const dayVisits = visitsByDay.get(ymd(picked)) ?? [];
   const live = dayList.filter((b) => !DEAD.includes(b.status));
   const dowShort = vi ? ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const monthLabel = vi ? `Tháng ${picked.getMonth() + 1}, ${picked.getFullYear()}` : picked.toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' });
@@ -161,7 +187,7 @@ function Inner() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 6, marginBottom: 16 }}>
             {week.map((d, i) => {
               const k = ymd(d);
-              const n = (byDay.get(k) ?? []).filter((b) => !DEAD.includes(b.status)).length;
+              const n = (byDay.get(k) ?? []).filter((b) => !DEAD.includes(b.status)).length + (visitsByDay.get(k)?.length ?? 0);
               const waiting = (byDay.get(k) ?? []).some((b) => b.status === 'ASSIGNED');
               const on = k === ymd(picked);
               const isToday = k === todayKey;
@@ -183,19 +209,26 @@ function Inner() {
 
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{dayLabel}</span>
-            <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{live.length} {L(vi, 'lịch', live.length === 1 ? 'booking' : 'bookings')}</span>
+            <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{live.length} {L(vi, 'lịch', live.length === 1 ? 'booking' : 'bookings')}{dayVisits.length ? ` · ${dayVisits.length} ${L(vi, 'khách walk-in / POS', 'walk-in / POS')}` : ''}</span>
           </div>
 
-          {loading ? <p style={{ color: 'var(--c94a3b8)' }}>{L(vi, 'Đang tải…', 'Loading…')}</p> : dayList.length === 0 ? (
+          {loading ? <p style={{ color: 'var(--c94a3b8)' }}>{L(vi, 'Đang tải…', 'Loading…')}</p> : dayList.length === 0 && dayVisits.length === 0 ? (
             <div style={{ ...st.card, textAlign: 'center', color: 'var(--c94a3b8)', fontSize: 14, padding: '24px 16px' }}>
               {L(vi, 'Ngày này bạn chưa có lịch hẹn.', 'Nothing booked for you on this day.')}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {dayList.map((b) => (
-                <AgendaRow key={b.id} b={b} vi={vi} busy={busy}
-                  onOpen={() => setOpen({ b, reject: false })} onAccept={() => accept(b)} onReject={() => setOpen({ b, reject: true })} />
-              ))}
+              {[
+                ...dayList.map((b) => ({ t: b.startTime, b, v: null as StaffVisit | null })),
+                ...dayVisits.map((v) => ({ t: v.at, b: null as StaffBooking | null, v })),
+              ].sort((x, y) => x.t.localeCompare(y.t)).map((r) => {
+                if (r.v) return <VisitRow key={r.v.id} v={r.v} vi={vi} />;
+                const b = r.b as StaffBooking;
+                return (
+                  <AgendaRow key={b.id} b={b} vi={vi} busy={busy}
+                    onOpen={() => setOpen({ b, reject: false })} onAccept={() => accept(b)} onReject={() => setOpen({ b, reject: true })} />
+                );
+              })}
             </div>
           )}
         </>

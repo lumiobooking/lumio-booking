@@ -5,7 +5,7 @@ import { SalonShell } from '../../../../components/SalonShell';
 import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
-import { DateRangeBar, useDateRange } from '../../../../components/ListFilter';
+import { PeriodFilter, usePeriod } from '../../../../components/PeriodFilter';
 import { useLang, tr } from '../../../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../../components/MobileCard';
@@ -34,7 +34,7 @@ function Inner() {
   const t = (k: string) => tr(k, lang);
   // Cards up to tablet width — an iPad gets every field, not a squeezed table.
   const cardList = useIsMobile(CARD_LIST_MAX);
-  const range = useDateRange('30d');
+  const range = usePeriod('techReport', 'thisMonth');
   const [data, setData] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +62,7 @@ function Inner() {
           <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>{t('sr.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <DateRangeBar range={range} />
+          <PeriodFilter state={range} vi={lang === 'vi'} />
         </div>
       </div>
 

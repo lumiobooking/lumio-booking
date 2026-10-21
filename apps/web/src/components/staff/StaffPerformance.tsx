@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fmtInTz, dayKeyInTz, wallToInstantISO } from '../../lib/datetime';
 import { apiFetch } from '../../lib/api';
 import { ui, formatPrice } from '../../lib/ui';
-import { DateRangeBar, useDateRange, type DateRange } from '../ListFilter';
+import { DateRangeBar, useDateRange } from '../ListFilter';
 import { useLang, tr } from '../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../MobileCard';
@@ -59,7 +59,7 @@ function monthRange(): { from: string; to: string } {
  * (it used to be a tab of Payroll as well — one number, one place). Pass the
  * page's date range to share it; on its own it keeps a range of its own.
  */
-export function StaffPerformance({ range: shared }: { range?: DateRange } = {}) {
+export function StaffPerformance({ range: shared }: { range?: { from: string; to: string } } = {}) {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -126,7 +126,7 @@ export function StaffPerformance({ range: shared }: { range?: DateRange } = {}) 
           {sortChip('rating', t('pf.sRating'))}
           {sortChip('points', t('pf.sPoints'))}
         </div>
-        {!shared && <DateRangeBar range={range} />}
+        {!shared && <DateRangeBar range={own} />}
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}

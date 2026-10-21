@@ -10,7 +10,8 @@ import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
-import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { PeriodFilter, usePeriod } from '../../../components/PeriodFilter';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Payment {
@@ -42,7 +43,7 @@ function Inner() {
   const t = (k: string) => tr(k, lang);
   // Cards up to tablet width — an iPad gets every field, not a squeezed table.
   const cardList = useIsMobile(CARD_LIST_MAX);
-  const range = useDateRange('all');
+  const range = usePeriod('payments', 'thisMonth');
   const [q, setQ] = useState('');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,7 +93,7 @@ function Inner() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('pm.searchPh')} />
-        <DateRangeBar range={range} />
+        <PeriodFilter state={range} vi={lang === 'vi'} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}

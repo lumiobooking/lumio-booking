@@ -154,10 +154,13 @@ export class PosService {
     const where: Prisma.OrderWhereInput = { tenantId };
     if (status) where.status = status as OrderStatus;
     if (fromStr || toStr) {
-      where.createdAt = {};
+      // A bill belongs to the day it was paid (what the reports count); a bill
+      // never paid, to the day it was opened.
       const tz = await this.tzOf(tenantId);
-      if (fromStr) (where.createdAt as { gte?: Date }).gte = this.edgeOf(fromStr, tz, 'start');
-      if (toStr) (where.createdAt as { lte?: Date }).lte = this.edgeOf(toStr, tz, 'end');
+      const span: { gte?: Date; lte?: Date } = {};
+      if (fromStr) span.gte = this.edgeOf(fromStr, tz, 'start');
+      if (toStr) span.lte = this.edgeOf(toStr, tz, 'end');
+      where.OR = [{ paidAt: span }, { paidAt: null, createdAt: span }];
     }
     const orders = await this.prisma.order.findMany({ where, include: ORDER_INCLUDE, orderBy: { createdAt: 'desc' } });
     // Who each bill was for, and what has already gone back — the two things
@@ -1101,21 +1104,31 @@ export class PosService {
    * day the money went back. A voided bill never happened and is in no line.
    * Every query names the caller's salon.
    */
-  async salesSummary(user: AuthenticatedUser, fromStr?: string, toStr?: string) {
+  async salesSummary(user: AuthenticatedUser, fromStr?: string, toStr?: string, cmpFromStr?: string, cmpToStr?: string) {
     const tenantId = this.tenantId(user);
     const tz = await this.tzOf(tenantId);
     const to = toStr ? this.edgeOf(toStr, tz, 'end') : new Date();
     const from = fromStr ? this.edgeOf(fromStr, tz, 'start') : new Date(to.getTime() - 29 * 86400000);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) throw new BadRequestException('Khoảng ngày không hợp lệ.');
+    // What it is compared with: the range the screen chose (like-for-like:
+    // Oct 1–21 against Sep 1–21), else the same number of days just before.
     const span = to.getTime() - from.getTime() + 1;
+    let cFrom = new Date(from.getTime() - span), cTo = new Date(from.getTime() - 1);
+    if (cmpFromStr && cmpToStr) {
+      const a = this.edgeOf(cmpFromStr, tz, 'start'), b = this.edgeOf(cmpToStr, tz, 'end');
+      if (!Number.isNaN(a.getTime()) && !Number.isNaN(b.getTime()) && a <= b) { cFrom = a; cTo = b; }
+    }
     const [cur, prev] = await Promise.all([
       this.summaryOf(tenantId, tz, from, to),
-      this.summaryOf(tenantId, tz, new Date(from.getTime() - span), new Date(from.getTime() - 1)),
+      this.summaryOf(tenantId, tz, cFrom, cTo),
     ]);
     return {
       from: dayKeyTz(from, tz), to: dayKeyTz(to, tz),
       ...cur,
-      previous: { from: dayKeyTz(new Date(from.getTime() - span), tz), to: dayKeyTz(new Date(from.getTime() - 1), tz), netCents: prev.totals.netCents, bills: prev.totals.bills },
+      previous: {
+        from: dayKeyTz(cFrom, tz), to: dayKeyTz(cTo, tz),
+        netCents: prev.totals.netCents, bills: prev.totals.bills, totalCents: prev.totals.totalCents, tipsCents: prev.totals.tipsCents, refundCents: prev.totals.refundCents,
+      },
     };
   }
 

@@ -6,8 +6,10 @@ import { uiCurrency } from '../../../lib/ui-currency';
 import { Suspense, useCallback, useEffect, useState, CSSProperties, ReactNode } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { dayKeyInTz, presetRangeInTz, uiLocale } from '../../../lib/datetime';
+import { dayKeyInTz, uiLocale } from '../../../lib/datetime';
 import { SalonShell, useNavAccess } from '../../../components/SalonShell';
+import { PeriodFilter, usePeriod } from '../../../components/PeriodFilter';
+import { rangeText } from '../../../lib/period';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
@@ -48,7 +50,7 @@ interface Summary {
   totals: Omit<SumDay, 'day'> & { refundedBills: number; serviceCents: number; productCents: number; collectedCents: number };
   byMethod: { cash: number; card: number; transfer: number; online: number };
   days: SumDay[];
-  previous: { from: string; to: string; netCents: number; bills: number };
+  previous: { from: string; to: string; netCents: number; bills: number; totalCents?: number; tipsCents?: number; refundCents?: number };
 }
 interface MdRow { name: string; staffId?: string | null; lines: number; listCents: number; chargedCents: number; discountCents: number }
 interface Markdowns {
@@ -93,8 +95,10 @@ function Inner() {
   const [sum, setSum] = useState<Summary | null>(null);
 
   // Default: this month.
-  const [from, setFrom] = useState(() => presetRangeInTz('thisMonth').from);
-  const [to, setTo] = useState(() => presetRangeInTz('thisMonth').to);
+  // One period for every tab; ‹ › steps by whole months / weeks / days.
+  const range = usePeriod('reports', 'thisMonth');
+  const { from, to } = range;
+  const cmpQ = range.cmp ? `&cmpFrom=${range.cmp.from}&cmpTo=${range.cmp.to}` : '';
   const [src, setSrc] = useState<SrcReport | null>(null);
   const [dash, setDash] = useState<Dash | null>(null);
   const [currency, setCurrency] = useState('USD');
@@ -111,33 +115,19 @@ function Inner() {
         apiFetch<Dash>(`/overview/dashboard?${q}`, { token }),
         apiFetch<{ booking?: { currency?: string } }>('/settings', { token }).catch(() => ({} as { booking?: { currency?: string } })),
         // The till's own summary; a salon without the till simply has none.
-        apiFetch<Summary>(`/pos/sales-summary?${q}`, { token }).catch(() => null),
+        apiFetch<Summary>(`/pos/sales-summary?${q}${cmpQ}`, { token }).catch(() => null),
       ]);
       setSrc(s); setDash(d); setSum(ss);
       if (settings?.booking?.currency) setCurrency(settings.booking.currency);
       setError(null);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
-  }, [token, from, to]);
+  }, [token, from, to, cmpQ]);
   useEffect(() => { load(); }, [load]);
-
-  function preset(kind: 'thisMonth' | 'lastMonth' | 'thisYear' | 'last7') {
-    const r = presetRangeInTz(kind);
-    setFrom(r.from); setTo(r.to);
-  }
 
   const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
   const money = (c: number) => formatPrice(c, currency);
   const [metric, setMetric] = useState<'revenue' | 'bookings'>('revenue');
-
-  // Which preset (if any) the current range matches, so the button can light up.
-  const activePreset = (() => {
-    for (const k of ['last7', 'thisMonth', 'lastMonth', 'thisYear'] as const) {
-      const r = presetRangeInTz(k);
-      if (from === r.from && to === r.to) return k;
-    }
-    return 'custom';
-  })();
 
   if (loading && !dash) return <section><h2 style={{ fontSize: 18 }}>{T('Báo cáo', 'Reports')}</h2><p style={{ color: 'var(--c94a3b8)' }}>Loading…</p></section>;
 
@@ -205,24 +195,15 @@ function Inner() {
           <button onClick={() => window.print()} style={btn}>{T('In', 'Print')}</button>
         </div>
       </div>
-      <div className="rp-controls" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('Từ', 'From')}</span>
-        <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={dateInput} />
-        <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('đến', 'to')}</span>
-        <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} style={dateInput} />
-        <span style={{ width: 1, height: 20, background: 'var(--c334155)', margin: '0 2px' }} />
-        <button onClick={() => preset('last7')} style={chip(activePreset === 'last7')}>{T('7 ngày', 'Last 7d')}</button>
-        <button onClick={() => preset('thisMonth')} style={chip(activePreset === 'thisMonth')}>{T('Tháng này', 'This month')}</button>
-        <button onClick={() => preset('lastMonth')} style={chip(activePreset === 'lastMonth')}>{T('Tháng trước', 'Last month')}</button>
-        <button onClick={() => preset('thisYear')} style={chip(activePreset === 'thisYear')}>{T('Năm nay', 'This year')}</button>
-        {activePreset === 'custom' && <span style={{ fontSize: 12, color: 'var(--c818cf8)', fontWeight: 600 }}>{T('Khoảng tự chọn', 'Custom range')}</span>}
+      <div className="rp-controls" style={{ marginBottom: 16 }}>
+        <PeriodFilter state={range} vi={vi} showCompare={view === 'revenue'} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
 
       {view === 'revenue' && (
         <>
-          {sum ? <SummaryBlock s={sum} money={money} T={T} vi={vi} /> : (
+          {sum ? <SummaryBlock s={sum} money={money} T={T} vi={vi} cmpOn={!!range.cmp} /> : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 18 }}>
               {/* Money that came in (cash, card, transfer, online deposits) — it includes tax and the techs' tips. */}
               <Kpi label={T('Tiền thu về', 'Money collected')} value={money(k?.revenueCents ?? 0)} hint={`${T('gồm thuế & tip', 'incl. tax & tips')} · ${T('TB/hoá đơn', 'Avg/ticket')} ${money(k?.avgBookingValueCents ?? 0)}`} />
@@ -547,9 +528,7 @@ const grid2: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(aut
 const track: CSSProperties = { flex: 1, height: 18, background: 'var(--c0f172a)', borderRadius: 6, overflow: 'hidden' };
 const hint: CSSProperties = { color: 'var(--c64748b)', fontSize: 13, lineHeight: 1.6, margin: 0 };
 const btn: CSSProperties = { padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' };
-const chip = (on: boolean): CSSProperties => ({ padding: '6px 12px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });
 const miniSeg = (on: boolean): CSSProperties => ({ padding: '4px 10px', borderRadius: 6, border: 'none', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--c94a3b8)', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });
-const dateInput: CSSProperties = { background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '6px 10px', fontSize: 13 };
 
 /** A plain number for the CSV in the salon's own currency (no symbol): VND has no cents. */
 function csvMoney(minor: number): string {
@@ -563,10 +542,17 @@ function csvMoney(minor: number): string {
  * tax → tips → TOTAL, compared with the period just before, the money taken
  * by payment method, and the same lines day by day.
  */
-function SummaryBlock({ s, money, T, vi }: { s: Summary; money: (c: number) => string; T: (v: string, e: string) => string; vi: boolean }) {
+function SummaryBlock({ s, money, T, vi, cmpOn }: { s: Summary; money: (c: number) => string; T: (v: string, e: string) => string; vi: boolean; cmpOn: boolean }) {
   const t = s.totals;
   const prev = s.previous;
-  const delta = prev.netCents > 0 ? Math.round(((t.netCents - prev.netCents) / prev.netCents) * 100) : null;
+  const cmpText = rangeText(prev.from, prev.to, uiLocale());
+  // "▲ 12% vs Sep 1 – Sep 21, 2026" — like-for-like, the range the filter shows.
+  const vs = (cur: number, before: number | undefined) => {
+    if (!cmpOn || before === undefined) return undefined;
+    if (!before) return `${T('kỳ so sánh = 0', 'nothing in')} ${cmpText}`;
+    const d = Math.round(((cur - before) / Math.abs(before)) * 100);
+    return `${d > 0 ? '▲' : d < 0 ? '▼' : '='} ${Math.abs(d)}% ${T('so với', 'vs')} ${cmpText}`;
+  };
   const methods = ([
     ['cash', T('Tiền mặt', 'Cash'), '#22c55e'], ['card', T('Thẻ', 'Card'), '#6366f1'],
     ['transfer', T('Chuyển khoản / ví', 'Transfer / wallet'), '#0ea5e9'], ['online', T('Online (cọc, trả trước)', 'Online (deposits, prepaid)'), '#a78bfa'],
@@ -581,10 +567,10 @@ function SummaryBlock({ s, money, T, vi }: { s: Summary; money: (c: number) => s
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
         <Kpi label={T('Doanh thu thuần', 'Net sales')} value={money(t.netCents)} accent="var(--ink-good)"
-          hint={delta === null ? T('chưa có kỳ trước để so', 'no earlier period to compare') : `${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% ${T('so với', 'vs')} ${prev.from.slice(5)} → ${prev.to.slice(5)}`} />
-        <Kpi label={T('Tổng (có thuế & tip)', 'Total (tax & tips)')} value={money(t.totalCents)} hint={`${T('dịch vụ', 'services')} ${money(t.serviceCents)} · ${T('sản phẩm', 'products')} ${money(t.productCents)}`} />
-        <Kpi label={T('Bill', 'Bills')} value={String(t.bills)} hint={`${T('TB', 'avg')} ${money(t.bills ? Math.round(t.netCents / t.bills) : 0)} · ${T('kỳ trước', 'before')} ${prev.bills}`} />
-        <Kpi label="Tip" value={money(t.tipsCents)} hint={t.netCents > 0 ? `${Math.round((t.tipsCents / t.netCents) * 100)}% ${T('doanh thu thuần', 'of net sales')}` : undefined} />
+          hint={vs(t.netCents, prev.netCents) ?? T('gộp − giảm giá − hoàn', 'gross − discounts − refunds')} />
+        <Kpi label={T('Tổng (có thuế & tip)', 'Total (tax & tips)')} value={money(t.totalCents)} hint={vs(t.totalCents, prev.totalCents) ?? `${T('dịch vụ', 'services')} ${money(t.serviceCents)} · ${T('sản phẩm', 'products')} ${money(t.productCents)}`} />
+        <Kpi label={T('Bill', 'Bills')} value={String(t.bills)} hint={vs(t.bills, prev.bills) ?? `${T('TB', 'avg')} ${money(t.bills ? Math.round(t.netCents / t.bills) : 0)}`} />
+        <Kpi label="Tip" value={money(t.tipsCents)} hint={vs(t.tipsCents, prev.tipsCents) ?? (t.netCents > 0 ? `${Math.round((t.tipsCents / t.netCents) * 100)}% ${T('doanh thu thuần', 'of net sales')}` : undefined)} />
         <Kpi label={T('Hoàn tiền', 'Refunds')} value={t.refundCents ? `−${money(t.refundCents)}` : money(0)} accent={t.refundCents ? 'var(--ink-warn)' : undefined} hint={t.refundedBills ? `${t.refundedBills} ${T('bill hoàn toàn bộ', 'refunded in full')}` : undefined} />
       </div>
       <div className="rp-2col" style={grid2}>

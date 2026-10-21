@@ -10,7 +10,10 @@ import { useLang } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../components/MobileCard';
-import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { PeriodFilter, usePeriod, Delta } from '../../../components/PeriodFilter';
+import { rangeText } from '../../../lib/period';
+import { uiLocale } from '../../../lib/datetime';
 import { payLabel } from '../../../lib/payment-methods';
 import { csvLine } from '../../../lib/walkin-day';
 import { fromMinorUnits } from '../../../lib/money';
@@ -56,8 +59,11 @@ function Inner() {
   const vi = lang === 'vi';
   const L = (v: string, e: string) => (vi ? v : e);
   const cardList = useIsMobile(CARD_LIST_MAX);
-  const range = useDateRange('30d');
+  // The front desk lives in today; ‹ › walks back a day at a time.
+  const range = usePeriod('sales', 'today');
   const [orders, setOrders] = useState<Order[]>([]);
+  // The same bills for the period compared against (KPI arrows).
+  const [prevOrders, setPrevOrders] = useState<Order[] | null>(null);
   const [staff, setStaff] = useState<StaffLite[]>([]);
   const [state, setState] = useState('');
   const [tech, setTech] = useState('');
@@ -77,20 +83,20 @@ function Inner() {
   const load = useCallback(async () => {
     if (!token) return;
     setError(null);
-    const qs = new URLSearchParams();
-    if (range.from) qs.set('from', range.from);
-    if (range.to) qs.set('to', range.to);
+    const cmp = range.cmp;
     try {
-      const [o, st] = await Promise.all([
-        apiFetch<Order[]>(`/pos/orders${qs.toString() ? `?${qs}` : ''}`, { token }),
+      const [o, st, po] = await Promise.all([
+        apiFetch<Order[]>(`/pos/orders?from=${range.from}&to=${range.to}`, { token }),
         apiFetch<StaffLite[]>('/staff', { token }).catch(() => [] as StaffLite[]),
+        cmp ? apiFetch<Order[]>(`/pos/orders?from=${cmp.from}&to=${cmp.to}`, { token }).catch(() => null) : Promise.resolve(null),
       ]);
       setOrders(Array.isArray(o) ? o : []);
+      setPrevOrders(Array.isArray(po) ? po : null);
       setStaff(Array.isArray(st) ? st : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load orders');
     } finally { setLoading(false); }
-  }, [token, range.from, range.to]);
+  }, [token, range.from, range.to, range.cmp?.from, range.cmp?.to]);
   useEffect(() => { setLoading(true); void load(); }, [load]);
   useLiveRefresh(load);
 
@@ -104,33 +110,20 @@ function Inner() {
   const methodsOf = (o: Order) => [...new Set(o.tenders.map((t) => t.method))];
   const methodsSeen = useMemo(() => [...new Set(orders.flatMap((o) => o.tenders.map((t) => t.method)))], [orders]);
 
-  const visible = sortNewest(
-    orders.filter((o) => range.inRange(o.createdAt)
-      && (!state || orderState(o) === state)
-      && (!tech || o.items.some((l) => l.staffMemberId === tech))
-      && (!method || o.tenders.some((t) => t.method === method))
-      && matchesQuery(`#${o.orderNumber} ${o.orderNumber} ${custName(o)} ${o.customer?.phone ?? ''} ${o.items.map((i) => i.name).join(' ')} ${techsOf(o).join(' ')}`, q)),
-    (o) => o.createdAt,
-  );
+  // The filters other than the period, applied the same way to the period compared against.
+  const passes = (o: Order) => (!state || orderState(o) === state)
+    && (!tech || o.items.some((l) => l.staffMemberId === tech))
+    && (!method || o.tenders.some((t) => t.method === method))
+    && matchesQuery(`#${o.orderNumber} ${o.orderNumber} ${custName(o)} ${o.customer?.phone ?? ''} ${o.items.map((i) => i.name).join(' ')} ${techsOf(o).join(' ')}`, q);
+  const visible = sortNewest(orders.filter(passes), (o) => o.paidAt ?? o.createdAt);
+  const filtered = !!(state || tech || method || q.trim());
   const cur = orders[0]?.currency;
   const money = (c: number) => formatPrice(c, cur);
 
-  // The strip: what the bills on screen add up to.
-  const k = useMemo(() => {
-    const paid = visible.filter((o) => o.status === 'PAID');
-    const sum = (rows: Order[], f: (o: Order) => number) => rows.reduce((n, o) => n + f(o), 0);
-    const back = sum(paid, (o) => o.refundedCents) + sum(visible.filter((o) => o.status === 'REFUNDED'), (o) => o.totalCents);
-    return {
-      bills: paid.length,
-      voided: visible.filter((o) => o.status === 'VOID').length,
-      open: visible.filter((o) => o.status === 'OPEN').length,
-      taken: sum(paid, (o) => o.totalCents),
-      discount: sum(paid, (o) => o.discountCents),
-      back,
-      kept: sum(paid, (o) => o.totalCents - o.refundedCents),
-      tips: sum(paid, (o) => o.tipCents),
-    };
-  }, [visible]);
+  // The strip — the same lines as Reports › Revenue, for the bills on screen.
+  const k = useMemo(() => kpisOf(visible), [visible]);
+  const pk = useMemo(() => (prevOrders ? kpisOf(prevOrders.filter(passes)) : null), [prevOrders, state, tech, method, q, staff]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cmpText = range.cmp ? rangeText(range.cmp.from, range.cmp.to, uiLocale()) : '';
 
   const pg = usePaged(visible, 25);
 
@@ -156,13 +149,14 @@ function Inner() {
 
   const isOwner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
   const sel = { ...ui.input, width: 'auto', marginBottom: 0, padding: '7px 10px', fontSize: 13 };
-  const kpi = (label: string, value: string, sub: string, tone?: string) => (
+  const kpi = (label: string, value: string, sub: React.ReactNode, tone?: string) => (
     <div style={{ background: 'var(--c111827)', border: '1px solid var(--c334155)', borderRadius: 12, padding: '10px 13px', minWidth: 0 }}>
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', color: 'var(--c94a3b8)', textTransform: 'uppercase' }}>{label}</div>
       <div style={{ fontSize: 19, fontWeight: 800, color: tone ?? 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
-      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{sub}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
     </div>
   );
+  const vs = (cur: number, prev: number | undefined, invert = false) => (pk ? <><Delta cur={cur} prev={prev} vi={vi} invert={invert} /> {L('so với', 'vs')} {cmpText}</> : null);
   const lineText = (o: Order) => o.items.map((i) => (i.quantity > 1 ? `${i.quantity}× ${i.name}` : i.name)).join(' · ') || '—';
 
   return (
@@ -181,8 +175,8 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
+      <div style={{ marginBottom: 10 }}><PeriodFilter state={range} vi={vi} showCompare /></div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-        <DateRangeBar range={range} />
         <select value={tech} onChange={(e) => setTech(e.target.value)} style={sel} aria-label={L('Thợ', 'Technician')}>
           <option value="">{L('Mọi thợ', 'All technicians')}</option>
           {staff.map((s) => <option key={s.id} value={s.id}>{`${s.firstName} ${s.lastName ?? ''}`.trim()}</option>)}
@@ -199,17 +193,23 @@ function Inner() {
           <option value="void">{L('Đã huỷ', 'Voided')}</option>
           <option value="open">{L('Đang mở', 'Open')}</option>
         </select>
+        {filtered && (
+          <button type="button" onClick={() => { setState(''); setTech(''); setMethod(''); setQ(''); }} style={{ ...ghost, height: 34, borderStyle: 'dashed' }}>
+            ✕ {L('Bỏ lọc', 'Clear filters')}
+          </button>
+        )}
         <span style={{ flex: 1 }} />
         <SearchBox value={q} onChange={setQ} placeholder={L('Số bill, tên, SĐT, dịch vụ…', 'Bill no., name, phone, service…')} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
-        {kpi(L('Bill đã thu', 'Paid bills'), String(k.bills), `${k.voided} ${L('huỷ', 'voided')} · ${k.open} ${L('đang mở', 'open')}`)}
-        {kpi(L('Tiền bill', 'Billed'), money(k.taken), L('gồm thuế & tip', 'incl. tax & tips'))}
-        {kpi(L('Giảm giá', 'Discounts'), k.discount ? `−${money(k.discount)}` : money(0), L('trên bill đã thu', 'on paid bills'))}
-        {kpi(L('Hoàn tiền', 'Refunds'), k.back ? `−${money(k.back)}` : money(0), L('đã trả lại khách', 'given back'), k.back ? 'var(--ink-warn)' : undefined)}
-        {kpi(L('Thực thu', 'Kept'), money(k.kept), L('tiền bill − hoàn', 'billed − refunds'), 'var(--ink-good)')}
-        {kpi('Tip', money(k.tips), L('của thợ', 'for the techs'))}
+      {filtered && <div style={{ fontSize: 12, color: 'var(--ink-warn)', marginBottom: 6 }}>{L('Số liệu dưới đây chỉ tính các bill đang lọc.', 'The figures below count the filtered bills only.')}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))', gap: 10, marginBottom: 14 }}>
+        {kpi(L('Doanh thu thuần', 'Net sales'), money(k.net), vs(k.net, pk?.net) ?? L('gộp − giảm giá − hoàn', 'gross − discounts − refunds'), 'var(--ink-good)')}
+        {kpi(L('Bill đã thu', 'Paid bills'), String(k.bills), vs(k.bills, pk?.bills) ?? `${k.voided} ${L('huỷ', 'voided')} · ${k.open} ${L('đang mở', 'open')}`)}
+        {kpi(L('TB / bill', 'Avg / bill'), money(k.bills ? Math.round(k.net / k.bills) : 0), vs(k.bills ? k.net / k.bills : 0, pk ? (pk.bills ? pk.net / pk.bills : 0) : undefined) ?? L('doanh thu thuần ÷ bill', 'net ÷ bills'))}
+        {kpi('Tip', money(k.tips), vs(k.tips, pk?.tips) ?? L('của thợ', 'for the techs'))}
+        {kpi(L('Giảm giá · hoàn', 'Discounts · refunds'), `−${money(k.discount + k.back)}`, `${L('giảm', 'disc.')} ${money(k.discount)} · ${L('hoàn', 'ref.')} ${money(k.back)}`, k.back ? 'var(--ink-warn)' : undefined)}
+        {kpi(L('Tổng thu', 'Total'), money(k.total), L('thuần + thuế + tip', 'net + tax + tips'))}
       </div>
 
       {loading && orders.length === 0 ? <p style={{ color: 'var(--c94a3b8)' }}>{L('Đang tải…', 'Loading…')}</p> : cardList ? (
@@ -276,6 +276,22 @@ function Inner() {
       {importOpen && <SalesImport vi={vi} onClose={() => setImportOpen(false)} onDone={() => void load()} />}
     </section>
   );
+}
+
+/** Same arithmetic as GET /pos/sales-summary: gross (list × qty) − discounts − refunds = net; + tax + tips = total. */
+function kpisOf(rows: Order[]) {
+  let bills = 0, voided = 0, open = 0, gross = 0, discount = 0, back = 0, tax = 0, tips = 0;
+  for (const o of rows) {
+    if (o.status === 'VOID') { voided++; continue; }
+    if (o.status === 'OPEN') { open++; continue; }
+    const g = o.items.reduce((n, l) => n + l.unitPriceCents * (l.quantity || 1), 0);
+    const d = o.items.reduce((n, l) => n + (l.discountCents ?? 0), 0) + (o.discountCents ?? 0);
+    gross += g; discount += d;
+    if (o.status === 'REFUNDED') { back += Math.max(0, g - d); continue; }
+    bills++; back += o.refundedCents ?? 0; tax += o.taxCents; tips += o.tipCents;
+  }
+  const net = gross - discount - back;
+  return { bills, voided, open, gross, discount, back, net, tax, tips, total: net + tax + tips };
 }
 
 const ghost: React.CSSProperties = {

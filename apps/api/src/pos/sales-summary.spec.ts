@@ -76,6 +76,12 @@ describe('sales summary', () => {
     for (const w of wheres) expect(w.tenantId).toBe('t2');
   });
 
+  it('compares with the range the screen chose (like-for-like), and says which', async () => {
+    const { svc } = make(orders, payments);
+    const r = await svc.salesSummary(admin, '2026-10-21', '2026-10-21', '2026-10-20', '2026-10-20') as Row;
+    expect(r.previous).toMatchObject({ from: '2026-10-20', to: '2026-10-20', netCents: 5500, bills: 1, tipsCents: 900 });
+  });
+
   it('refuses a backwards range', async () => {
     const { svc } = make(orders, payments);
     await expect(svc.salesSummary(admin, '2026-10-21', '2026-10-01')).rejects.toThrow(/không hợp lệ/);

@@ -108,8 +108,8 @@ export class PosController {
   /** Gross → discounts → refunds → net → tax → tips → total, by day, plus money taken by method. */
   @Caps('reports')
   @Get('sales-summary')
-  salesSummary(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.pos.salesSummary(user, from, to);
+  salesSummary(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('to') to?: string, @Query('cmpFrom') cmpFrom?: string, @Query('cmpTo') cmpTo?: string) {
+    return this.pos.salesSummary(user, from, to, cmpFrom, cmpTo);
   }
 
   // ---- Orders ----

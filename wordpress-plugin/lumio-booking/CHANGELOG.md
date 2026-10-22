@@ -1,5 +1,10 @@
 # Changelog — Lumio Booking plugin
 
+## 1.7.4 (2026-10-22)
+- FIX: the booking form's Share button works inside the embed — the iframe now
+  grants `web-share` and `clipboard-write` (Permissions Policy). Call /
+  Directions / Share also got fallbacks in the app itself.
+
 ## 1.7.3 (2026-07-23)
 - SECURITY: conversion bridge now VALIDATES every message — origin must be the
   configured Lumio origin, schema_version must be 1, salon_slug must match this

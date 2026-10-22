@@ -93,3 +93,41 @@ export function initialsOf(name: string | null | undefined): string {
   const letters = words.slice(0, 2).map((w) => Array.from(w.replace(/^[^\p{L}\p{N}]+/u, ''))[0] ?? '');
   return letters.join('').toUpperCase();
 }
+
+// ---------------------------------------------------------------- where the page is open
+
+/**
+ * In-app browsers — Facebook, Messenger, Instagram, TikTok, Zalo, LINE,
+ * Snapchat, Pinterest, an Android WebView. Most of our visitors arrive in one
+ * (the booking link is sent in Messenger, posted on Instagram and TikTok), and
+ * in them a new tab is often swallowed, the share sheet does not exist and the
+ * clipboard can refuse — which is why "Directions / Share do nothing" was
+ * reported by customers while the owner, in Safari or Chrome, saw them work.
+ */
+export function isInAppBrowser(ua: string | null | undefined): boolean {
+  return /FBAN|FBAV|FB_IAB|FBIOS|Messenger|Orca-Android|Instagram|musical_ly|TikTok|BytedanceWebview|Line\/|Zalo|Snapchat|Pinterest|KAKAOTALK|GSA\/|; wv\)/i.test(String(ua ?? ''));
+}
+
+/**
+ * How Directions opens. Inside an embed (a salon's own website) it must be a
+ * new tab — Google Maps refuses to load inside someone else's frame. Inside an
+ * in-app browser it is the same tab, the one thing every one of them follows.
+ */
+export function mapsTarget(env: { framed: boolean; inApp: boolean }): '_blank' | '_self' {
+  if (env.framed) return '_blank';
+  return env.inApp ? '_self' : '_blank';
+}
+
+/** A text message carrying the link — the share that works everywhere (iOS and Android read `sms:?&body=`). */
+export function smsShareHref(name: string | null | undefined, url: string): string {
+  const n = String(name ?? '').trim();
+  return `sms:?&body=${encodeURIComponent(n ? `${n} — ${url}` : url)}`;
+}
+
+/** The number a person reads: (403) 555-0123 for North America, otherwise as the salon typed it. */
+export function prettyPhone(phone: string | null | undefined): string {
+  const raw = String(phone ?? '').trim();
+  const d = raw.replace(/[^\d]/g, '');
+  const us = d.length === 11 && d.startsWith('1') ? d.slice(1) : d.length === 10 && !raw.startsWith('+') ? d : null;
+  return us ? `(${us.slice(0, 3)}) ${us.slice(3, 6)}-${us.slice(6)}` : raw;
+}

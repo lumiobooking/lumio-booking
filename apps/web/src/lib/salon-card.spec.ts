@@ -1,4 +1,4 @@
-import { initialsOf, mapsHref, minutesInZone, nextOpening, openStatus, telHref } from './salon-card';
+import { initialsOf, isInAppBrowser, mapsHref, mapsTarget, minutesInZone, nextOpening, openStatus, prettyPhone, smsShareHref, telHref } from './salon-card';
 
 describe('salon card facts', () => {
   const day = { openMinutes: 600, closeMinutes: 1200 }; // 10:00 – 20:00
@@ -57,5 +57,29 @@ describe('salon card facts', () => {
     expect(initialsOf('An Sen Massage & Wellness')).toBe('AS');
     expect(initialsOf('Ánh Dương Nails')).toBe('ÁD');
     expect(initialsOf('')).toBe('');
+  });
+});
+
+describe('the three buttons work wherever the page is opened', () => {
+  it('recognises the in-app browsers our visitors arrive in', () => {
+    expect(isInAppBrowser('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBAV/440.0]')).toBe(true);
+    expect(isInAppBrowser('Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 Mobile/15E148 Instagram 300.0.0')).toBe(true);
+    expect(isInAppBrowser('Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP1A; wv) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36 musical_ly_2023')).toBe(true);
+    expect(isInAppBrowser('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1')).toBe(false);
+    expect(isInAppBrowser('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126 Safari/537.36')).toBe(false);
+    expect(isInAppBrowser(null)).toBe(false);
+  });
+  it('Directions: a new tab from an embed, the same tab in an in-app browser', () => {
+    expect(mapsTarget({ framed: true, inApp: true })).toBe('_blank');
+    expect(mapsTarget({ framed: false, inApp: true })).toBe('_self');
+    expect(mapsTarget({ framed: false, inApp: false })).toBe('_blank');
+  });
+  it('a text message carries the name and the link', () => {
+    expect(smsShareHref('An Sen', 'https://lumiobooking.com/ansen')).toBe(`sms:?&body=${encodeURIComponent('An Sen — https://lumiobooking.com/ansen')}`);
+  });
+  it('the number is shown the way people read it', () => {
+    expect(prettyPhone('4035550123')).toBe('(403) 555-0123');
+    expect(prettyPhone('+1 403-555-0123')).toBe('(403) 555-0123');
+    expect(prettyPhone('+84 90 123 4567')).toBe('+84 90 123 4567');
   });
 });

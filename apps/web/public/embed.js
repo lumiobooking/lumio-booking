@@ -192,5 +192,26 @@
   window.addEventListener('resize', function () { lastY = -1; kick(); }, { passive: true });
   window.setInterval(function () { lastY = -1; kick(); }, 1200); // lazy frames / layout shifts
 
+  /* The share button inside the form needs the host page's permission to open
+   * the phone's share sheet and to copy the link (Permissions Policy). Older
+   * plugin builds and pasted embed codes did not grant it, so Share did nothing
+   * on a salon's own website. Grant it here — before the frame loads when it
+   * has not yet, otherwise with one reload of the frame. */
+  (function grant() {
+    var want = ['web-share', 'clipboard-write'];
+    var list = L.frames || [];
+    for (var i = 0; i < list.length; i++) {
+      var el = document.getElementById(list[i].id);
+      if (!el || el.__lumioAllow) continue;
+      el.__lumioAllow = 1;
+      var cur = el.getAttribute('allow') || '';
+      var add = [];
+      for (var j = 0; j < want.length; j++) if (cur.indexOf(want[j]) < 0) add.push(want[j]);
+      if (!add.length) continue;
+      el.setAttribute('allow', (cur ? cur.replace(/;\s*$/, '') + '; ' : '') + add.join('; '));
+      try { var src = el.getAttribute('src'); if (src) el.setAttribute('src', src); } catch (err) { /* keep the frame as it is */ }
+    }
+  })();
+
   broadcast();
 })();

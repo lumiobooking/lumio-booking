@@ -21,7 +21,7 @@
  */
 import { useEffect, useState, type CSSProperties } from 'react';
 import { bt, btf, bookLocale } from '../lib/i18n-book';
-import { initialsOf, mapsHref, minutesInZone, nextOpening, openStatus, telHref, type OpenStatus } from '../lib/salon-card';
+import { initialsOf, isInAppBrowser, mapsHref, mapsTarget, minutesInZone, nextOpening, openStatus, prettyPhone, smsShareHref, telHref, type OpenStatus } from '../lib/salon-card';
 import { todayInZone } from '../lib/salon-clock';
 import type { DayLike } from '../lib/opening-bar';
 
@@ -118,6 +118,17 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
     return () => window.clearInterval(iv);
   }, [timezone]);
   const [copied, setCopied] = useState(false);
+  /** The share sheet of last resort: the link to copy by hand, by text, by email. */
+  const [sheet, setSheet] = useState(false);
+  // Where the page is open decides how the buttons behave (lib/salon-card.ts):
+  // inside a salon's website (a frame), in an in-app browser, on a computer.
+  const [env, setEnv] = useState({ framed: false, inApp: false, touch: true });
+  useEffect(() => {
+    let framed = false;
+    try { framed = window.self !== window.top; } catch { framed = true; }
+    const touch = typeof window.matchMedia === 'function' ? window.matchMedia('(pointer: coarse)').matches : true;
+    setEnv({ framed, inApp: isInAppBrowser(navigator.userAgent), touch });
+  }, []);
 
   const status = now === null || !today ? null : openStatus({ day: today.day, isDayOff: today.isDayOff, nowMinutes: now, mode: today.mode });
   const next: Next = status && (status.kind === 'closedNow' || status.kind === 'closedToday') && today?.week
@@ -129,12 +140,36 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
   const maps = mapsHref(name, address);
   const addr = String(address ?? '').trim();
 
-  async function share() {
-    const url = typeof window !== 'undefined' ? window.location.href : '';
+  const pageUrl = () => (typeof window !== 'undefined' ? window.location.href.split('#')[0] : '');
+
+  /** Copy with the modern API, then the old one (it still works in frames and in-app browsers). */
+  async function copyText(text: string): Promise<boolean> {
+    try { await navigator.clipboard.writeText(text); return true; } catch { /* not allowed here */ }
     try {
-      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') { await navigator.share({ title: name, url }); return; }
-    } catch { return; /* the visitor closed the share sheet */ }
-    try { await navigator.clipboard.writeText(url); setCopied(true); window.setTimeout(() => setCopied(false), 2000); } catch { /* no clipboard: nothing to do */ }
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch { return false; }
+  }
+
+  /**
+   * Share: the phone's own share sheet when there is one; otherwise copy the
+   * link; and when even that is refused, a small sheet with the link and
+   * "Text it" / "Email it". Only a visitor CLOSING the share sheet ends it —
+   * before, ANY error (an embed or an in-app browser refusing the sheet) ended
+   * it too, silently, and the button "did nothing".
+   */
+  async function share() {
+    const url = pageUrl();
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function' && !env.framed) {
+      try { await navigator.share({ title: name, url }); return; }
+      catch (e) { if ((e as { name?: string })?.name === 'AbortError') return; }
+    }
+    if (await copyText(url)) { setCopied(true); window.setTimeout(() => setCopied(false), 2500); return; }
+    setSheet(true);
   }
 
   const btn: CSSProperties = {
@@ -142,9 +177,20 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
     borderRadius: 12, border: `1.5px solid ${ring}`, background: '#ffffff', color: dark,
     fontSize: 13, fontWeight: 700, textDecoration: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
   };
+  // A computer has no phone app behind tel:, so the button shows the number itself.
+  const shown = prettyPhone(phone);
+  const target = mapsTarget(env);
   const buttons = [
-    tel && <a key="call" href={tel} style={btn}><Icon name="phone" color={dark} />{bt('Call')}</a>,
-    maps && <a key="map" href={maps} target="_blank" rel="noopener noreferrer" style={btn}><Icon name="nav" color={dark} />{bt('Directions')}</a>,
+    tel && <a key="call" href={tel} target={env.framed ? '_top' : undefined} style={btn} title={shown}><Icon name="phone" color={dark} />{env.touch ? bt('Call') : shown}</a>,
+    maps && (
+      <a key="map" href={maps} target={target} rel="noopener noreferrer" style={btn}
+        onClick={(e) => {
+          // An in-app browser may swallow a new tab: open Maps right here instead.
+          if (target === '_self') { e.preventDefault(); window.location.href = maps; }
+        }}>
+        <Icon name="nav" color={dark} />{bt('Directions')}
+      </a>
+    ),
     <button key="share" type="button" onClick={share} style={btn}><Icon name={copied ? 'check' : 'share'} color={dark} />{copied ? bt('Link copied') : bt('Share')}</button>,
   ].filter(Boolean);
 
@@ -159,14 +205,43 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
       )}
     </div>
   );
-  const where = addr ? (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: MUTED, lineHeight: 1.5 }}>
-      <span style={{ marginTop: 1 }}><Icon name="pin" color={MUTED} /></span>
-      <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{addr}</span>
+  const where = addr || shown ? (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {addr && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: MUTED, lineHeight: 1.5 }}>
+          <span style={{ marginTop: 1 }}><Icon name="pin" color={MUTED} /></span>
+          <span style={{ minWidth: 0, overflowWrap: 'anywhere', userSelect: 'text' }}>{addr}</span>
+        </div>
+      )}
+      {/* The number in plain sight: where a tap on Call is blocked (some in-app
+          browsers), it can still be read, held to copy, and dialled. */}
+      {shown && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, color: MUTED, lineHeight: 1.5 }}>
+          <Icon name="phone" color={MUTED} />
+          <a href={tel || undefined} target={env.framed ? '_top' : undefined} style={{ color: MUTED, textDecoration: 'none', userSelect: 'text' }}>{shown}</a>
+        </div>
+      )}
+    </div>
+  ) : null;
+  const shareSheet = sheet ? (
+    <div style={{ border: `1.5px solid ${ring}`, borderRadius: 12, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, background: '#ffffff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: INK }}>{bt('Share this booking page')}</span>
+        <button type="button" onClick={() => setSheet(false)} aria-label={bt('Close')} style={{ border: 'none', background: 'transparent', color: MUTED, fontSize: 16, cursor: 'pointer', padding: 4 }}>✕</button>
+      </div>
+      <input readOnly value={pageUrl()} onFocus={(e) => e.currentTarget.select()} aria-label={bt('Link')}
+        style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, padding: '9px 10px', borderRadius: 10, border: '1px solid #dbe2ee', color: INK, background: '#f8fafc' }} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <a href={smsShareHref(name, pageUrl())} target={env.framed ? '_top' : undefined} style={btn}>💬 {bt('Text it')}</a>
+        <a href={`mailto:?subject=${encodeURIComponent(name)}&body=${encodeURIComponent(pageUrl())}`} target={env.framed ? '_top' : undefined} style={btn}>✉️ {bt('Email it')}</a>
+      </div>
     </div>
   ) : null;
   const row = buttons.length ? (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${buttons.length}, minmax(0, 1fr))`, gap: 8 }}>{buttons}</div>
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${buttons.length}, minmax(0, 1fr))`, gap: 8 }}>{buttons}</div>
+      {shareSheet}
+    </>
   ) : null;
 
   if (compact) {

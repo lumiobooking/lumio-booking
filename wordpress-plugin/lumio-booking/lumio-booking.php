@@ -3,7 +3,7 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings. Any "Book now" button then opens the form FULL SCREEN in one tap (phone + desktop); [lumio_booking] still embeds it inline.
- * Version:           1.7.3
+ * Version:           1.7.4
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://lumiobooking.com/wp-update/lumio-booking
@@ -162,7 +162,7 @@ if (!function_exists('lumio_booking_base')) {
         $fid    = 'lumio-booking-' . wp_rand(1000, 99999);
 
         $html  = '<div class="lumio-booking-embed" style="width:100%;max-width:1200px;margin:0 auto;">';
-        $html .= '<iframe id="' . esc_attr($fid) . '" src="' . $src . '" loading="lazy" title="Book an appointment" allow="payment" ';
+        $html .= '<iframe id="' . esc_attr($fid) . '" src="' . $src . '" loading="lazy" title="Book an appointment" allow="payment; web-share; clipboard-write" ';
         $html .= 'style="width:100%;min-height:' . $height . 'px;border:0;border-radius:16px;overflow:hidden;background:transparent;display:block;"></iframe>';
         $html .= '</div>';
         // Auto-resize: match the iframe to the form's reported content height.

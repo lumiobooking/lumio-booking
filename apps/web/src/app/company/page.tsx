@@ -29,7 +29,8 @@ export default function CompanyPage() {
       <header style={{ borderBottom: `1px solid ${LINE}` }}>
         <nav aria-label="Main" style={{ ...wrap, minHeight: mobile ? 64 : 72, display: 'flex', alignItems: 'center', gap: mobile ? 12 : 32, flexWrap: 'wrap' }}>
           <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: INK, fontWeight: 700, fontSize: mobile ? 17 : 18 }}>
-            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#4f46e5" /><path d="M10 7v14h9" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo/lumio-mark.png" alt="" width={28} height={28} style={{ width: 28, height: 28, display: 'block', objectFit: 'contain' }} />
             Lumio Booking
           </Link>
           {!mobile && (

@@ -37,7 +37,7 @@ const appFont = Be_Vietnam_Pro({
 
 export const metadata = {
   title: 'Lumio Booking',
-  description: 'Multi-tenant booking platform for nail salons',
+  description: 'Online booking, calendar, checkout and appointment reminders for nail and beauty salons in the United States and Canada. By Lumio Agency LLC.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,

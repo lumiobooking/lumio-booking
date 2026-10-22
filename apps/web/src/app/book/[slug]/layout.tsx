@@ -7,6 +7,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { adsInlineSnippet } from '../../../lib/ads-tag';
+import { cancelLine, hoursRows, priceLabel, uses12h, type SeoPolicy } from '../../../lib/static-menu';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 /** Just the scheme + host of the API, for the preconnect hint. */
@@ -33,6 +34,8 @@ interface Seo {
   analytics?: { ga4Id?: string; gtmId?: string; mode?: string; adsId?: string } | null;
   /** The bookable menu, for the server-rendered first paint (see StaticMenu). */
   menu?: { id: string; name: string; priceCents: number; priceFrom: boolean; durationMinutes: number; category: string | null }[];
+  /** The salon's cancellation rule (older API builds do not send it). */
+  policy?: SeoPolicy | null;
 }
 
 async function getSeo(slug: string): Promise<Seo | null> {
@@ -147,33 +150,59 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 function StaticMenu({ s }: { s: Seo }) {
   const menu = s.menu ?? [];
   if (!menu.length) return null;
-  const accent = /^#[0-9a-f]{6}$/i.test(s.accentColor || '') ? s.accentColor : '#6366f1';
+  const accent = /^#[0-9a-f]{6}$/i.test(s.accentColor || '') ? s.accentColor : '#4f46e5';
   const groups = new Map<string, typeof menu>();
   for (const m of menu) { const k = m.category ?? ''; groups.set(k, [...(groups.get(k) ?? []), m]); }
-  const open = (s.hours ?? []).filter((h) => !h.closed);
+  const hours = hoursRows(s.hours, uses12h(s.currency));
+  const muted = '#475569';
   return (
-    <section id="lumio-ssr-menu" aria-label={`${s.name} services`} style={{ maxWidth: 760, margin: '0 auto', padding: '20px 16px 32px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#0f172a' }}>
+    <section id="lumio-ssr-menu" aria-label={`${s.name} services`} style={{ maxWidth: 760, margin: '0 auto', padding: '20px 16px 32px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#0f172a', lineHeight: 1.5 }}>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{s.name}</h1>
-      <p style={{ margin: '0 0 12px', color: '#475569', fontSize: 14 }}>
+      <p style={{ margin: '0 0 12px', color: muted, fontSize: 14 }}>
         {s.address ? <span>{s.address}</span> : null}
-        {s.contactPhone ? <span> · <a href={`tel:${s.contactPhone}`} style={{ color: accent }}>{s.contactPhone}</a></span> : null}
-        {open.length ? <span> · Open {open.length} days a week</span> : null}
+        {s.contactPhone ? <span>{s.address ? ' · ' : ''}<a href={`tel:${s.contactPhone}`} style={{ color: '#0f172a' }}>{s.contactPhone}</a></span> : null}
       </p>
-      <a href="#book" style={{ display: 'inline-block', background: accent, color: '#fff', borderRadius: 10, padding: '10px 18px', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>Book an appointment</a>
+      <a href="#book" style={{ display: 'inline-block', background: accent, color: '#ffffff', borderRadius: 10, padding: '10px 18px', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>Book an appointment</a>
+
       <h2 style={{ fontSize: 17, margin: '20px 0 8px' }}>Services &amp; prices</h2>
       {[...groups.entries()].map(([cat, items]) => (
         <div key={cat || '_'} style={{ marginBottom: 12 }}>
-          {cat ? <h3 style={{ fontSize: 14, margin: '8px 0 4px', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{cat}</h3> : null}
+          {cat ? <h3 style={{ fontSize: 14, margin: '8px 0 4px', color: muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>{cat}</h3> : null}
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {items.map((m) => (
               <li key={m.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderBottom: '1px solid #e5e7eb', fontSize: 14 }}>
                 <a href={`?service=${encodeURIComponent(m.id)}#book`} style={{ color: '#0f172a', textDecoration: 'none', flex: 1 }}>{m.name}{m.durationMinutes ? <span style={{ color: '#64748b' }}> · {m.durationMinutes} min</span> : null}</a>
-                <b>{m.priceFrom ? 'from ' : ''}{money(m.priceCents, s.currency)}</b>
+                <b>{priceLabel(m.priceCents, m.priceFrom, s.currency)}</b>
               </li>
             ))}
           </ul>
         </div>
       ))}
+      <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>Prices are set by the salon. Tips are not included.</p>
+
+      {hours.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 17, margin: '20px 0 8px' }}>Opening hours</h2>
+          <table style={{ borderCollapse: 'collapse', fontSize: 14 }}>
+            <tbody>
+              {hours.map((h) => (
+                <tr key={h.day}>
+                  <td style={{ padding: '3px 16px 3px 0', color: muted }}>{h.day}</td>
+                  <td style={{ padding: '3px 0' }}>{h.text}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      <h2 style={{ fontSize: 17, margin: '20px 0 8px' }}>Cancellation policy</h2>
+      <p style={{ margin: 0, fontSize: 14 }}>{cancelLine(s.policy, s.contactPhone)}</p>
+
+      <p style={{ margin: '28px 0 0', paddingTop: 14, borderTop: '1px solid #e5e7eb', fontSize: 12.5, color: '#64748b' }}>
+        Online booking for {s.name} is provided by <a href={WEB_URL} style={{ color: '#4338ca' }}>Lumio Booking</a>, operated by Lumio Agency LLC.
+        {' '}<a href={`${WEB_URL}/privacy`} style={{ color: '#4338ca' }}>Privacy policy</a> · <a href={`${WEB_URL}/terms`} style={{ color: '#4338ca' }}>Terms</a> · <a href={`${WEB_URL}/booking-policy`} style={{ color: '#4338ca' }}>Booking policy</a>
+      </p>
     </section>
   );
 }

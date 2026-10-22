@@ -301,6 +301,12 @@ export class PublicSalonController {
       rating: ratingCount > 0 ? { value: Math.round(ratingValue * 10) / 10, count: ratingCount } : null,
       analytics,
       menu,
+      // The salon's own cancellation rule, printed beside the menu on the
+      // server-rendered page: Google's merchant-page review looks for it there.
+      policy: {
+        selfCancel: Boolean(booking.selfCancelEnabled),
+        cancelNoticeHours: booking.selfCancelEnabled ? (booking.selfCancelNoticeHours ?? 24) : null,
+      },
     };
   }
 

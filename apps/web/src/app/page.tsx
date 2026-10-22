@@ -131,13 +131,11 @@ function ComparisonTable() {
   );
 }
 
-/** A thin brand mark. Kept as SVG so it is crisp everywhere and needs no request. */
+/** The Lumio logo — the real artwork in /public/logo, never a redraw. */
 function Mark({ size = 28 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 28 28" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
-      <rect width="28" height="28" rx="7" fill={BRAND} />
-      <path d="M10 7v14h9" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/logo/lumio-mark.png" alt="" width={size} height={size} style={{ width: size, height: size, display: 'block', flexShrink: 0, objectFit: 'contain' }} />
   );
 }
 

@@ -131,7 +131,7 @@ export default function AgencyGoogleBookPage() {
     <main style={{ minHeight: '100dvh', background: C.bg, color: C.ink2, padding: '24px 20px' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-          <a href="/agency" style={{ color: C.link, textDecoration: 'none', fontSize: 13, fontWeight: 700 }}>← Tiệm</a>
+          <a href={user?.role === 'SUPER_ADMIN' ? '/super-admin/tenants' : '/agency'} style={{ color: C.link, textDecoration: 'none', fontSize: 13, fontWeight: 700 }}>{user?.role === 'SUPER_ADMIN' ? '← Salons' : '← Tiệm'}</a>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: C.ink }}>Nút “Đặt lịch” trên Google</h1>
           <span style={{ fontSize: 13, color: C.sub }}>feed Actions Center · {counts.ready} sẵn sàng · {counts.fix} cần sửa · {counts.off} tắt</span>
           <span style={{ flex: 1 }} />

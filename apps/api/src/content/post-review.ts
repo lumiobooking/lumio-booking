@@ -68,3 +68,34 @@ export function clientStatusOf(
   if (p.approvedAt) return 'approved';
   return 'wait';
 }
+
+/** What a posted post earned, added up across the networks it went to. null = no network has reported it. */
+export interface PostStats { views: number | null; likes: number | null; comments: number | null }
+
+/**
+ * One scheduled post can land on Facebook AND Instagram — two social_posts
+ * rows pointing at it. The owner asks "how did it do", not "how did it do on
+ * each", so the numbers are added up. A network that never gave a number
+ * stays out of the sum (null is "not reported", which is not zero). Views
+ * fall back to reach for the rows that only have reach.
+ */
+export function statsByPost(rows: {
+  scheduledPostId?: string | null;
+  views?: number | null;
+  reach?: number | null;
+  likes?: number | null;
+  comments?: number | null;
+}[]): Map<string, PostStats> {
+  const add = (a: number | null, b: number | null | undefined) => (typeof b === 'number' && Number.isFinite(b) ? (a ?? 0) + b : a);
+  const out = new Map<string, PostStats>();
+  for (const r of rows) {
+    if (!r.scheduledPostId) continue;
+    const cur = out.get(r.scheduledPostId) ?? { views: null, likes: null, comments: null };
+    out.set(r.scheduledPostId, {
+      views: add(cur.views, typeof r.views === 'number' ? r.views : r.reach),
+      likes: add(cur.likes, r.likes),
+      comments: add(cur.comments, r.comments),
+    });
+  }
+  return out;
+}

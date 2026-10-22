@@ -142,3 +142,11 @@ export function RoundDone({ vi, mobile, rows, todo, onSend, onClose }: {
     </>
   );
 }
+
+/** 1234 → "1.2k": a count she reads at a glance, not an accounting figure. */
+export function compact(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10_000) return `${(Math.floor(n / 100) / 10).toString().replace(/\.0$/, '')}k`;
+  if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
+  return `${(Math.floor(n / 100_000) / 10).toString().replace(/\.0$/, '')}M`;
+}

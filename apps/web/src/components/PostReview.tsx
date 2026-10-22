@@ -36,6 +36,8 @@ export interface ReviewPost {
   approvedAt: string | null;
   approvedByName: string | null;
   links: { channel: string; url: string | null }[];
+  /** Posted only: what the networks reported, added up across them. */
+  stats?: { views: number | null; likes: number | null; comments: number | null } | null;
 }
 export interface ReviewFeed {
   salonName: string;
@@ -54,6 +56,8 @@ export interface ReviewApi {
   comment(postId: string, body: string, name?: string): Promise<unknown>;
   /** The public door has no account, so it asks who is approving — once. */
   needsName: boolean;
+  /** Logged-in door only: store a photo she attaches to a note, return its address. */
+  upload?: (file: File) => Promise<string>;
 }
 
 const NAME_KEY = 'lumio_review_name';
@@ -352,7 +356,7 @@ export function PostThumb({ media, w = '100%', h = '100%', radius = 10, badge = 
   const first = media[0];
   const label = !first ? null
     : media.length > 1 ? `${first.kind === 'video' ? '▶ ' : ''}${T('Album', 'Album')} ${media.length}`
-      : first.kind === 'video' ? `▶ ${T('Video', 'Video')}` : null;
+      : first.kind === 'video' ? `▶ ${T('Video', 'Video')}` : T('Ảnh', 'Photo');
   return (
     <span style={{ position: 'relative', display: 'block', width: w, height: h, borderRadius: radius, overflow: 'hidden', flexShrink: 0, background: 'var(--c334155)' }}>
       {first
@@ -448,6 +452,17 @@ function Detail(props: {
   const [nameDraft, setNameDraft] = useState('');
   const pendingAction = useRef<null | ((name: string) => void)>(null);
   const approveRef = useRef<null | (() => void)>(null);
+  /** Photos she attaches to a note (already uploaded), and the dictation state. */
+  const [shots, setShots] = useState<{ url: string; name: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [shotErr, setShotErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<SpeechRec | null>(null);
+  useEffect(() => () => { try { recRef.current?.stop(); } catch { /* already stopped */ } }, []);
+  /** The phone's swipe: how far the post has been dragged sideways. */
+  const [dragX, setDragX] = useState(0);
+  const swipe = useRef<{ x: number; y: number; on: boolean } | null>(null);
 
   useEffect(() => {
     api.comments(p.id).then((r) => setMsgs(r.messages ?? [])).catch(() => {});
@@ -511,13 +526,16 @@ function Detail(props: {
   const sendFix = () => withName(async (name) => {
     const chip = FIXES.find((f) => f.id === fix) ?? null;
     const note = draft.trim();
-    if ((!chip && !note) || busy) return;
-    const what = chip ? T(chip.vi, chip.en) : note;
-    const body = chip ? `${chip.icon} ${what}${note ? `: ${note}` : ''}` : note;
+    if ((!chip && !note && !shots.length) || busy || uploading) return;
+    const what = chip ? T(chip.vi, chip.en) : note || T('Ảnh gửi kèm', 'Photo attached');
+    const text = chip ? `${chip.icon} ${what}${note ? `: ${note}` : ''}` : note;
+    // A photo travels as its address on its own line: the team's thread
+    // already turns links into links, and nothing new has to be stored.
+    const body = [text, ...shots.map((x) => `📷 ${x.url}`)].filter(Boolean).join('\n');
     setBusy(true);
     try {
       await api.comment(p.id, body, name || undefined);
-      setDraft(''); setFix(null); setFixOpen(false);
+      setDraft(''); setFix(null); setFixOpen(false); setShots([]);
       onChanged(); // the hold pill just appeared on the day behind us
       if (queue && p.clientStatus !== 'posted') { queue.onFixed(note && chip ? `${what} — ${note}` : what); return; }
       setMsgs((await api.comments(p.id)).messages ?? []);
@@ -537,11 +555,94 @@ function Detail(props: {
   const showApprove = (p.clientStatus === 'wait' || p.clientStatus === 'held') && !justApproved;
   const canFix = p.clientStatus !== 'posted';
   approveRef.current = showApprove && !busy ? doApprove : null;
+  const fixReady = !busy && !uploading && Boolean(fix || draft.trim() || shots.length);
+
+  // ---- say it instead of typing it (the browser's own dictation) ----
+  const speechCtor = typeof window === 'undefined' ? null
+    : ((window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition) as (new () => SpeechRec) | null | undefined;
+  const dictate = () => {
+    if (listening) { try { recRef.current?.stop(); } catch { /* already stopped */ } return; }
+    if (!speechCtor) return;
+    try {
+      const rec = new speechCtor();
+      rec.lang = vi ? 'vi-VN' : 'en-US';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      rec.onresult = (ev) => {
+        const said = Array.from(ev.results).map((r) => r[0]?.transcript ?? '').join(' ').trim();
+        if (said) setDraft((d) => (d.trim() ? `${d.trim()} ${said}` : said));
+      };
+      rec.onend = () => { setListening(false); recRef.current = null; };
+      rec.onerror = () => { setListening(false); recRef.current = null; };
+      recRef.current = rec;
+      setListening(true);
+      rec.start();
+    } catch { setListening(false); recRef.current = null; }
+  };
+
+  // ---- a photo with the note: "use this one instead" ----
+  const pickShots = async (list: FileList | null) => {
+    if (!list?.length || !api.upload) return;
+    setUploading(true); setShotErr(null);
+    try {
+      for (const f of Array.from(list).slice(0, 4)) {
+        const url = await api.upload(f);
+        if (url) setShots((x) => [...x, { url, name: f.name || T('ảnh', 'photo') }]);
+      }
+    } catch (e) {
+      setShotErr(e instanceof Error && e.message ? e.message : T('Không gửi được ảnh — thử lại nhé.', 'Could not send the photo — try again.'));
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  // ---- the phone's swipe: right approves, left shows the next one ----
+  // Not on a carousel: there a sideways swipe means "next picture".
+  const canSwipe = phone && showApprove && !fixOpen && !askName;
+  const onSwipeStart = (e: React.TouchEvent) => {
+    if (!canSwipe) return;
+    const el = e.target as HTMLElement | null;
+    if (el?.closest('[data-noswipe], input, textarea, button, a')) { swipe.current = null; return; }
+    const t = e.touches[0];
+    swipe.current = t ? { x: t.clientX, y: t.clientY, on: false } : null;
+  };
+  const onSwipeMove = (e: React.TouchEvent) => {
+    const s = swipe.current;
+    const t = e.touches[0];
+    if (!s || !t) return;
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    if (!s.on) {
+      if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx)) { swipe.current = null; return; }
+      if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+      s.on = true;
+    }
+    setDragX(dx < 0 && !queue?.onSkip ? Math.max(dx, -40) : dx);
+  };
+  const onSwipeEnd = () => {
+    const s = swipe.current;
+    swipe.current = null;
+    const dx = dragX;
+    setDragX(0);
+    if (!s?.on) return;
+    if (dx > SWIPE_AT) doApprove();
+    else if (dx < -SWIPE_AT && queue?.onSkip) queue.onSkip();
+  };
+  const swipeStyle: React.CSSProperties = {
+    position: 'relative',
+    transform: dragX ? `translateX(${dragX}px) rotate(${dragX / 45}deg)` : undefined,
+    transition: dragX ? 'none' : 'transform .2s ease',
+  };
+  const swipeBadge = Math.abs(dragX) > 40
+    ? <span style={dragX > 0 ? swipeYes : swipeNext}>{dragX > 0 ? `✓ ${dragX > SWIPE_AT ? T('Thả tay để duyệt', 'Let go to approve') : T('Duyệt', 'Approve')}` : `${T('Bài sau', 'Next')} ›`}</span>
+    : null;
   const lines = p.message.split('\n');
 
   // ---- the post, as it will look over there ----
   const preview = (
-    <div>
+    <div style={swipeStyle}>
+      {swipeBadge}
       {/* channel toggle — only when the post goes to both */}
       {hasFb && hasIg && (
         <div style={{ display: 'flex', background: 'var(--c151f38)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 3, marginBottom: 12 }}>
@@ -591,7 +692,9 @@ function Detail(props: {
                ten pictures were approved unseen. Arrows, a swipe, and a
                strip of thumbnails; the counter now says which one is up. */}
           {p.media.length > 0 && (
-            <MediaGallery media={mode === 'instagram' ? [...p.media].sort((a, b) => (a.kind === 'image' ? 0 : 1) - (b.kind === 'image' ? 0 : 1)) : p.media} square={mode === 'instagram'} T={T} />
+            <div data-noswipe={p.media.length > 1 ? '' : undefined}>
+              <MediaGallery media={mode === 'instagram' ? [...p.media].sort((a, b) => (a.kind === 'image' ? 0 : 1) - (b.kind === 'image' ? 0 : 1)) : p.media} square={mode === 'instagram'} T={T} />
+            </div>
           )}
 
           {mode === 'facebook' ? (
@@ -650,15 +753,37 @@ function Detail(props: {
       )}
       <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12.5, fontWeight: 700, color: 'var(--c94a3b8)' }}>
         {canFix ? (fix ? T('Nói thêm cho Lumio (không bắt buộc)', 'Anything to add? (optional)') : T('Hoặc nhắn Lumio', 'Or write to Lumio')) : T('Góp ý cho bài đã đăng', 'A note about this post')}
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') sendFix(); }}
-          placeholder={fix === 'text' ? T('Ví dụ: ghi giá 45$ thay vì 15%', 'e.g. say $45 instead of 15%') : fix === 'photo' ? T('Ví dụ: dùng ảnh bộ móng cam tuần trước', 'e.g. the orange set from last week') : fix === 'time' ? T('Ví dụ: đăng thứ Bảy 10 giờ sáng', 'e.g. Saturday 10am') : T('Viết góp ý…', 'Write a note…')}
-          style={{ font: 'inherit', fontSize: 16, fontWeight: 500, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 12, padding: '12px 13px', color: 'var(--ce2e8f0)', minWidth: 0, minHeight: 48, boxSizing: 'border-box' }}
-        />
+        <span style={{ display: 'flex', gap: 8 }}>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') sendFix(); }}
+            placeholder={listening ? T('Đang nghe…', 'Listening…') : fix === 'text' ? T('Ví dụ: ghi giá 45$ thay vì 15%', 'e.g. say $45 instead of 15%') : fix === 'photo' ? T('Ví dụ: dùng ảnh bộ móng cam tuần trước', 'e.g. the orange set from last week') : fix === 'time' ? T('Ví dụ: đăng thứ Bảy 10 giờ sáng', 'e.g. Saturday 10am') : T('Viết góp ý…', 'Write a note…')}
+            style={{ flex: 1, font: 'inherit', fontSize: 16, fontWeight: 500, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 12, padding: '12px 13px', color: 'var(--ce2e8f0)', minWidth: 0, minHeight: 48, boxSizing: 'border-box' }}
+          />
+          {speechCtor && (
+            <button type="button" onClick={dictate} aria-pressed={listening} aria-label={listening ? T('Dừng nghe', 'Stop') : T('Nói thay vì gõ', 'Speak instead of typing')} style={listening ? iconBtnOn : iconBtn}>🎤</button>
+          )}
+          {api.upload && (
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} aria-label={T('Gửi kèm ảnh', 'Attach a photo')} style={iconBtn}>{uploading ? '…' : '📷'}</button>
+          )}
+        </span>
       </label>
-      <button onClick={sendFix} disabled={busy || (!fix && !draft.trim())} style={{ ...(busy || (!fix && !draft.trim()) ? sendIdle : sendReady), minHeight: inSheet ? 54 : 46 }}>
+      {api.upload && <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => pickShots(e.target.files)} />}
+      {listening && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-bad)' }}>● {T('Đang nghe — chị cứ nói, bấm 🎤 lần nữa để dừng.', 'Listening — tap 🎤 again to stop.')}</span>}
+      {uploading && <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('Đang gửi ảnh…', 'Sending the photo…')}</span>}
+      {shotErr && <span style={{ fontSize: 12, color: 'var(--ink-bad)' }}>{shotErr}</span>}
+      {shots.length > 0 && (
+        <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {shots.map((x, i) => (
+            <span key={x.url} style={shotChip}>
+              📷 {x.name.length > 20 ? `${x.name.slice(0, 18)}…` : x.name}
+              <button type="button" onClick={() => setShots((all) => all.filter((_, k) => k !== i))} aria-label={T('Bỏ ảnh này', 'Remove')} style={shotX}>✕</button>
+            </span>
+          ))}
+        </span>
+      )}
+      <button onClick={sendFix} disabled={!fixReady} style={{ ...(fixReady ? sendReady : sendIdle), minHeight: inSheet ? 54 : 46 }}>
         {queue && canFix ? T('Gửi góp ý · xem bài sau', 'Send · next post') : T('Gửi góp ý', 'Send note')}
       </button>
       {canFix && (
@@ -777,7 +902,8 @@ function Detail(props: {
       </div>
 
       {/* scrolling body */}
-      <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' as never, padding: wide ? '18px 22px 24px' : '14px 12px 24px' }}>
+      <div onTouchStart={onSwipeStart} onTouchMove={onSwipeMove} onTouchEnd={onSwipeEnd} onTouchCancel={onSwipeEnd}
+        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch' as never, touchAction: canSwipe ? 'pan-y' : undefined, padding: wide ? '18px 22px 24px' : '14px 12px 24px' }}>
         {wide ? (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr)', gap: 22, alignItems: 'start', maxWidth: 1020, margin: '0 auto' }}>
@@ -833,6 +959,11 @@ function Detail(props: {
                   <button onClick={doApprove} disabled={busy} style={{ ...approveWide, opacity: busy ? 0.6 : 1 }}>
                     ✓ {T('Duyệt đăng bài này', 'Approve this post')}
                   </button>
+                )}
+                {phone && (
+                  <div style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--c64748b)', marginTop: 6 }}>
+                    {queue?.onSkip ? T('Hoặc vuốt bài sang phải để duyệt · sang trái để xem bài sau', 'Or swipe right to approve · left for the next post') : T('Hoặc vuốt bài sang phải để duyệt', 'Or swipe the post right to approve')}
+                  </div>
                 )}
                 {phone && queue && (queue.onSkip || (queue.onApproveAll && queue.remaining > 1)) && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 6 }}>
@@ -919,3 +1050,23 @@ const linkish: React.CSSProperties = { background: 'none', border: 'none', paddi
 const allArmedBtn: React.CSSProperties = { ...BTN, minHeight: 38, fontSize: 13, border: 'none', background: '#16a34a', color: '#fff' };
 const queueOff: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'center', padding: '5px 10px 5px 5px', borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, textAlign: 'left' };
 const queueOn: React.CSSProperties = { ...queueOff, border: '2px solid #7c3aed', background: 'var(--c1e1b4b)' };
+const iconBtn: React.CSSProperties = { width: 48, minHeight: 48, flexShrink: 0, borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 18, cursor: 'pointer', fontFamily: 'inherit' };
+const iconBtnOn: React.CSSProperties = { ...iconBtn, border: '2px solid #ef4444', background: 'var(--c450a0a)' };
+const shotChip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, padding: '4px 4px 4px 10px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)' };
+const shotX: React.CSSProperties = { width: 26, height: 26, borderRadius: 999, border: 'none', background: 'var(--c334155)', color: 'var(--ce2e8f0)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' };
+const SWIPE_AT = 110;
+const SWIPE_TAG: React.CSSProperties = { position: 'absolute', top: 64, zIndex: 3, padding: '8px 14px', borderRadius: 12, fontSize: 15, fontWeight: 800, pointerEvents: 'none', boxShadow: '0 10px 24px rgba(0,0,0,.35)' };
+const swipeYes: React.CSSProperties = { ...SWIPE_TAG, left: 12, background: '#16a34a', color: '#fff' };
+const swipeNext: React.CSSProperties = { ...SWIPE_TAG, right: 12, background: '#4f46e5', color: '#fff' };
+
+/** The slice of the browser's speech recognition the note box uses (not in every TS DOM lib). */
+interface SpeechRec {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((ev: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start(): void;
+  stop(): void;
+}

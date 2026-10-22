@@ -204,12 +204,23 @@ export default function TenantsPage() {
             Super Admin · {user.email}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setShowAccount((s) => !s)} style={ghostBtn}>
             {showAccount ? 'Close' : 'My account'}
           </button>
           <a href="/super-admin/content" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Nội dung &amp; xu hướng
+          </a>
+          {/* The Google "Book" button for every salon (Actions Center feed)
+              lived only behind the agency desk — found by asking where it was. */}
+          <a href="/agency/google-book" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
+            📍 Nút Google
+          </a>
+          <a href="/agency" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
+            🗂 Bàn Agency
+          </a>
+          <a href="/super-admin/ai-usage" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
+            Chi phí AI
           </a>
           <a href="/super-admin/plans" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Manage plans

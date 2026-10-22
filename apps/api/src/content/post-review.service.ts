@@ -4,7 +4,7 @@ import { UserRole } from '@prisma/client';
 import { ContentChatService } from './content-chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { clientStatusOf, makeReviewToken, parseReviewToken, tokenFresh } from './post-review';
+import { clientStatusOf, makeReviewToken, parseReviewToken, statsByPost, tokenFresh, type PostStats } from './post-review';
 
 const LINK_KEY = 'post_review_link';
 
@@ -27,6 +27,8 @@ export interface ClientPost {
   /** The team sent it back after a change — the salon sees "updated, please look again". */
   reviewRequestedAt: Date | null;
   links: { channel: string; url: string | null }[];
+  /** Posted only: views, likes and comments the networks reported (social_posts), summed. */
+  stats: PostStats | null;
 }
 
 /**
@@ -112,7 +114,19 @@ export class PostReviewService {
         heldAt: (r.heldAt as Date | null) ?? null,
         reviewRequestedAt: (r.reviewRequestedAt as Date | null) ?? null,
         links: results.map((x) => ({ channel: String(x.channel ?? ''), url: x.url ?? null })),
+        stats: null,
       });
+    }
+    // What went out, and what it earned. Same tenantId as the posts above —
+    // a post id is only ever looked up under the salon that owns it.
+    const postedIds = posts.filter((p) => p.clientStatus === 'posted').map((p) => p.id);
+    if (postedIds.length) {
+      const social = await (this.loose.socialPost?.findMany({
+        where: { tenantId, scheduledPostId: { in: postedIds }, deletedAt: null },
+        select: { scheduledPostId: true, views: true, reach: true, likes: true, comments: true },
+      }).catch(() => []) ?? Promise.resolve([])) as { scheduledPostId?: string | null; views?: number | null; reach?: number | null; likes?: number | null; comments?: number | null }[];
+      const byPost = statsByPost(social ?? []);
+      for (const p of posts) p.stats = byPost.get(p.id) ?? null;
     }
     return {
       salonName: tenant.name,

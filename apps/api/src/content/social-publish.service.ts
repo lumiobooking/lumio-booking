@@ -1018,7 +1018,8 @@ export class SocialPublishService {
       await this.push.sendToTenant(tenantId, {
         title: 'Bài đã sửa xong — mời bạn duyệt',
         body: title,
-        url: '/salon/approve-posts',
+        // Straight into the post, as a round: the tap on the phone is the review.
+        url: `/salon/approve-posts?post=${encodeURIComponent(id)}`,
         tag: `post-review-${id}`,
       }, { exceptUserId: user.userId ?? null }).then(() => { notified = true; }).catch(() => undefined);
     }

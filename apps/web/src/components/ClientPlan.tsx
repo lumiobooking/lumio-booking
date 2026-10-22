@@ -6,7 +6,7 @@ import { fresh, useLive } from '../lib/live';
 import { useIsMobile } from '../lib/responsive';
 import { ind } from '../lib/ui-industry';
 import { PostReviewDetail, PostThumb, type ReviewApi, type ReviewFeed, type ReviewPost, type ReviewQueue } from './PostReview';
-import { RoundDone, StatusPill, filterOf, pillWord, type Filter, type RoundRow, type Tone } from './ApproveViews';
+import { RoundDone, StatusPill, compact, filterOf, pillWord, type Filter, type RoundRow, type Tone } from './ApproveViews';
 import { SalonWorkspace, SendAnything } from './SalonWorkspace';
 import type { LastWeek, ShopPlanSheet, ShopWeekData } from './ShopWeek';
 import { DEFAULT_TAGS, monthTitle, shiftMonth, tagViews, type PlanTags } from './plan-sheet';
@@ -309,6 +309,20 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
     };
   })() : undefined;
 
+  // A push or a link can name one post (?post=…): open it — as a round when
+  // it waits on her — so the tap on the phone lands on the post, not the month.
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    if (deepLinked.current || !feed) return;
+    deepLinked.current = true;
+    let id: string | null = null;
+    try { id = new URLSearchParams(window.location.search).get('post'); } catch { id = null; }
+    if (!id) return;
+    const p = livePosts.find((x) => x.id === id);
+    if (p) openOne(p);
+    try { const u = new URL(window.location.href); u.searchParams.delete('post'); window.history.replaceState(null, '', u.toString()); } catch { /* harmless if it stays */ }
+  }, [feed, livePosts]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const tone = (c: DayCell) => standing(c.post, vi, fmtTime);
   const cellBg = (t: ReturnType<typeof standing>['tone'], outside: boolean) =>
     t === 'wait' ? 'var(--c1e1b4b)' : t === 'fix' ? 'var(--c451a03)' : outside ? 'var(--c0f172a)' : 'var(--c1e293b)';
@@ -335,7 +349,10 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
       default: return pillWord(t, vi);
     }
   };
-  const cellFoot = (c: DayCell, t: Tone) => (t === 'sched' && c.post ? `⏰ ${T('Đăng lúc', 'Goes out at')} ${fmtTime(c.post.scheduledAt)}` : t === 'held' ? T('Lumio đang sửa theo góp ý', 'Lumio is fixing it') : '');
+  const viewsOf = (p: ReviewPost | null) => (typeof p?.stats?.views === 'number' ? `👁 ${compact(p.stats.views)}` : '');
+  const cellFoot = (c: DayCell, t: Tone) => (t === 'sched' && c.post ? `⏰ ${T('Đăng lúc', 'Goes out at')} ${fmtTime(c.post.scheduledAt)}`
+    : t === 'held' ? T('Lumio đang sửa theo góp ý', 'Lumio is fixing it')
+      : t === 'done' && viewsOf(c.post) ? `${viewsOf(c.post)} ${T('lượt xem', 'views')}` : '');
   const gridWord = (t: Tone, key: string, p: ReviewPost | null) => {
     const d = Number(key.slice(8, 10));
     switch (t) {
@@ -427,6 +444,7 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
             {has && (
               <>
                 {c.post && c.post.media.length > 0 && <PostThumb media={c.post.media} h={84} radius={9} badge vi={vi} />}
+                {st.tone === 'plan' && <span style={planBox}>{T('Lumio đang chuẩn bị — chưa cần chị làm gì', 'Lumio is preparing it — nothing for you yet')}</span>}
                 <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, color: st.tone === 'done' ? 'var(--c94a3b8)' : 'var(--ce2e8f0)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: c.post?.media.length ? 2 : 3, WebkitBoxOrient: 'vertical' }}>
                   {topicOf(c) || T('(bài chỉ có ảnh)', '(media only)')}
                 </span>
@@ -541,6 +559,7 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
                 : <span style={{ position: 'absolute', inset: 0, border: '1.5px dashed var(--c475569)', borderRadius: r, display: 'grid', placeItems: 'center', textAlign: 'center', padding: '24px 8px 8px', fontSize: 11.5, lineHeight: 1.35, color: 'var(--c94a3b8)', boxSizing: 'border-box', overflow: 'hidden' }}>{title || T('Lumio đang làm', 'Lumio is on it')}</span>}
               {ask && <span style={{ position: 'absolute', inset: 0, border: '3px solid #7c3aed', borderRadius: r, pointerEvents: 'none' }} />}
               <span style={{ position: 'absolute', left: 5, top: 5, maxWidth: 'calc(100% - 10px)' }}><StatusPill tone={st.tone} vi={vi} text={gridWord(st.tone, it.key, it.post)} /></span>
+              {viewsOf(it.post) && <span style={viewsTag}>{viewsOf(it.post)}</span>}
             </span>
             {!isMobile && (
               <>
@@ -580,6 +599,7 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
               <span style={{ fontSize: 14, fontWeight: 600, color: st.tone === 'done' ? 'var(--c94a3b8)' : 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{itemTitle(it.key, it.post) || T('(bài chỉ có ảnh)', '(media only)')}</span>
               <span style={{ fontSize: 12, color: 'var(--c94a3b8)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 {it.post ? fmtTime(it.post.scheduledAt) : T('Dự kiến', 'Planned')}
+                {viewsOf(it.post) ? <span>· {viewsOf(it.post)} {T('lượt xem', 'views')}</span> : null}
                 {e?.pillar ? <>· {pillarChip(e.pillar)}</> : null}
                 {e?.format ? <span>· {formatName(e.format)}</span> : null}
                 <ChannelDots list={it.post?.channels ?? e?.air ?? []} size={14} />
@@ -874,3 +894,5 @@ const reviewCta: React.CSSProperties = { marginTop: 'auto', minHeight: 34, borde
 const startBtn: React.CSSProperties = { flexShrink: 0, minHeight: 48, padding: '0 20px', borderRadius: 14, border: 'none', background: '#fff', color: '#3730a3', fontFamily: 'inherit', fontSize: 15, fontWeight: 800, cursor: 'pointer' };
 const listRow: React.CSSProperties = { display: 'flex', gap: 14, alignItems: 'center', padding: 10, borderRadius: 14, cursor: 'pointer', background: 'var(--c1e293b)', border: '1px solid var(--c334155)' };
 const listRowAsk: React.CSSProperties = { ...listRow, background: 'var(--c1e1b4b)', border: '2px solid #7c3aed' };
+const planBox: React.CSSProperties = { minHeight: 52, border: '1.5px dashed var(--c475569)', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '6px 8px', fontSize: 11.5, lineHeight: 1.35, color: 'var(--c94a3b8)', boxSizing: 'border-box' };
+const viewsTag: React.CSSProperties = { position: 'absolute', right: 5, bottom: 5, fontSize: 11, fontWeight: 800, padding: '2px 7px', borderRadius: 6, background: 'rgba(2,6,23,.72)', color: '#fff' };

@@ -19,7 +19,7 @@ import { TeamChatWindow } from '../../../components/ContentChat';
 import { ClientPlan } from '../../../components/ClientPlan';
 import { PushEnable } from '../../../components/PushEnable';
 import { useAuth } from '../../../lib/auth';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, apiUploadForm } from '../../../lib/api';
 import { useLang } from '../../../lib/i18n';
 
 export default function ApprovePostsPage() {
@@ -56,6 +56,13 @@ function Inner() {
       return { messages: r?.messages ?? [] };
     },
     comment: (postId, body) => apiFetch('/content/chat', { method: 'POST', token, body: { subject: `post:${postId}`, body } }),
+    // A photo with a note: the same store the "send photos/clips" box uses (tenant from the token).
+    upload: async (file) => {
+      const form = new FormData();
+      form.append('file', file);
+      const r = await apiUploadForm<{ url: string }>('/uploads/media', form, token);
+      return r?.url ?? '';
+    },
   }), [token]);
 
   // The calendar wants every pixel a laptop gives it: seven readable days.

@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminBack } from '../../../components/AdminBack';
+
 /**
  * WHERE THE API MONEY WENT — the screen that answers "nothing is running, so
  * why is the balance going down?"
@@ -82,6 +84,7 @@ export default function AiUsagePage() {
 
   return (
     <main style={wrap}>
+      <AdminBack />
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>API đang tốn vào đâu</h1>
       <p style={{ color: 'var(--c94a3b8)', margin: '0 0 18px', fontSize: 14, lineHeight: 1.6 }}>
         Mỗi lần hệ thống gọi AI đều được ghi lại: <b>mục nào</b>, <b>tiệm nào</b>, <b>giờ nào</b>.

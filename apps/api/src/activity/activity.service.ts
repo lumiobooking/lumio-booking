@@ -171,7 +171,7 @@ export class ActivityService {
         at: p.reviewRequestedAt.toISOString(),
         when: p.scheduledAt.toISOString(),
         appointmentId: null,
-        link: '/salon/approve-posts',
+        link: `/salon/approve-posts?post=${encodeURIComponent(p.id)}`,
       });
     }
 

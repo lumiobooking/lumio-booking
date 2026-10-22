@@ -1,5 +1,7 @@
 'use client';
 
+import { AdminBack } from '../../../components/AdminBack';
+
 /**
  * The Lumio team's content console.
  *
@@ -102,6 +104,7 @@ export default function ContentConsolePage() {
 
   return (
     <main style={wrap}>
+      <AdminBack />
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Nội dung &amp; xu hướng</h1>
       <p style={{ color: 'var(--c94a3b8)', margin: '0 0 20px', fontSize: 14 }}>
         Cập nhật thư viện 30 phút mỗi tuần — mọi tiệm cùng ngành nhận ngay sáng hôm sau.

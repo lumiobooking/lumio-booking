@@ -686,6 +686,9 @@ export default function AgencyPage() {
       <style dangerouslySetInnerHTML={{ __html: cssFor }} />
       <div style={{ maxWidth: narrow ? 1060 : 1720, margin: '0 auto', paddingBottom: 80 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          {user?.role === 'SUPER_ADMIN' && (
+            <a href="/super-admin/tenants" style={{ color: C.link, textDecoration: 'none', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>← Super Admin</a>
+          )}
           <h1 style={{ fontSize: 22, margin: 0 }}><LumioLogo size={phone ? 30 : 34} sub="Support" /></h1>
           <span style={{ marginLeft: 'auto' }} />
           <TeamBell items={notices} onOpen={openNotice} busy={Boolean(busy)} />

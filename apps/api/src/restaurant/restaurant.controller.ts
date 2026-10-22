@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -6,7 +6,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { RestaurantService } from './restaurant.service';
 import {
-  AddLineDto, MergeCheckDto, MoveCheckDto, OpenCheckDto, PayCheckDto, PrebillDto, SaveRestaurantSettingsDto, SoldOutDto, SplitCheckDto,
+  AcceptQrDto, AddLineDto, BankFeedDto, HoldDto, MergeCheckDto, ReadyDto, SendDto, MoveCheckDto, OpenCheckDto, PayCheckDto, PrebillDto, SaveRestaurantSettingsDto, SoldOutDto, SplitCheckDto,
   UpdateCheckDto, UpdateLineDto, VoidCheckDto, VoidLineDto,
 } from './dto/restaurant.dto';
 
@@ -71,7 +71,41 @@ export class RestaurantController {
   }
 
   @Post('checks/:id/send')
-  send(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.svc.send(user, id); }
+  send(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: SendDto) { return this.svc.send(user, id, { held: dto?.held === true }); }
+
+  @Patch('checks/:id/lines/:lineId/hold')
+  hold(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('lineId') lineId: string, @Body() dto: HoldDto) { return this.svc.setHold(user, id, lineId, dto.held); }
+
+  @Post('checks/:id/accept-qr')
+  acceptQr(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AcceptQrDto) { return this.svc.acceptQr(user, id, dto?.send !== false); }
+
+  @Post('checks/:id/reject-qr')
+  rejectQr(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.svc.rejectQr(user, id); }
+
+  @Post('checks/:id/clear-call')
+  clearCall(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.svc.clearCall(user, id); }
+
+  @Get('kitchen')
+  kitchen(@CurrentUser() user: AuthenticatedUser, @Query('station') station?: string) { return this.svc.kitchen(user, station); }
+
+  @Post('kitchen/ready')
+  ready(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReadyDto) { return this.svc.markReady(user, dto.lineIds, dto.ready !== false); }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('qr-codes')
+  qrCodes(@CurrentUser() user: AuthenticatedUser) { return this.svc.qrCodes(user); }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('tables/:tableId/qr-reset')
+  resetQr(@CurrentUser() user: AuthenticatedUser, @Param('tableId') tableId: string) { return this.svc.resetQr(user, tableId); }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('bank-feed')
+  bankFeed(@CurrentUser() user: AuthenticatedUser) { return this.svc.bankFeed(user); }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('bank-feed')
+  setupBankFeed(@CurrentUser() user: AuthenticatedUser, @Body() dto: BankFeedDto) { return this.svc.setupBankFeed(user, dto.provider); }
 
   @Post('checks/:id/lines/:lineId/void')
   voidLine(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('lineId') lineId: string, @Body() dto: VoidLineDto) {

@@ -1,4 +1,7 @@
-import { byTableName, cashQuickAmounts, combinedState, evenShares, isTableIndustry, lineGroups, minutesOpen, optionsReady, priceWith, tableState, tillError, timerTone, type CheckLine } from './restaurant-till';
+import {
+  addToCart, bankName, byTableName, callText, cartKey, cartToOrder, cartTotal, cashQuickAmounts, combinedState, evenShares, formatMoney, isTableIndustry, lineGroups, minutesOpen,
+  optionsReady, pendingLines, priceWith, tableState, ticketTone, tillError, timerTone, vietQr, type CheckLine,
+} from './restaurant-till';
 import { countTotal, denominationsFor } from './cash-count';
 
 const L = (id: string, over: Partial<CheckLine> = {}): CheckLine => ({ id, menuItemId: 'm', name: 'Phở', unitPriceCents: 85000, quantity: 1, note: null, station: 'KITCHEN', state: 'UNSENT', batch: null, sentAt: null, sentByName: null, voidReason: null, ...over });
@@ -100,5 +103,73 @@ describe('restaurant till', () => {
     expect(denominationsFor('VND')[0]).toBe(500000);
     expect(denominationsFor('xyz')).toEqual(denominationsFor('USD'));
     expect(countTotal({ 500000: 12, 200000: 10, 100000: 15, 50000: 8, 20000: 5, 10000: 4, 5000: 2 })).toBe(10_050_000);
+  });
+
+  describe('phase 3', () => {
+    it('a guest waiting on staff paints the table first', () => {
+      expect(tableState({ status: 'OPEN', itemCount: 0, unsentCount: 0, preBilledAt: null, pendingCount: 2 })).toBe('call');
+      expect(tableState({ status: 'OPEN', itemCount: 3, unsentCount: 1, preBilledAt: null, callReason: 'water' })).toBe('call');
+      expect(tableState({ status: 'PAYING', itemCount: 3, unsentCount: 0, preBilledAt: null, callReason: 'bill' })).toBe('paying');
+      expect(combinedState([{ status: 'OPEN', itemCount: 2, unsentCount: 2, preBilledAt: null }, { status: 'OPEN', itemCount: 0, unsentCount: 0, preBilledAt: null, pendingCount: 1 }])).toBe('call');
+    });
+
+    it('keeps the guests\' QR dishes out of the bill rounds', () => {
+      const lines = [L('a', { state: 'SENT', batch: 1 }), L('b', { state: 'PENDING', source: 'QR' }), L('c', { held: true })];
+      const g = lineGroups(lines);
+      expect(g.map((x) => x.key)).toEqual(['b1', 'unsent']);
+      expect(g.flatMap((x) => x.lines.map((l) => l.id))).toEqual(['a', 'c']);
+      expect(pendingLines(lines).map((l) => l.id)).toEqual(['b']);
+    });
+
+    it('says what the guest asked for', () => {
+      expect(callText('bill', true)).toBe('Khách xin thanh toán');
+      expect(callText('staff', false)).toBe('Guest is calling');
+      expect(callText('nonsense', true)).toBe('Khách gọi nhân viên');
+    });
+
+    it('makes a VietQR for exactly what is owed, in đồng only', () => {
+      const bank = { bin: '970436', accountNo: '0123456789', accountName: 'NHA HANG LUMIO' };
+      const u = vietQr(bank, 255000, 'LM57', 'VND')!;
+      expect(u.startsWith('https://img.vietqr.io/image/970436-0123456789-compact2.png?')).toBe(true);
+      expect(u).toContain('amount=255000');
+      expect(u).toContain('addInfo=LM57');
+      expect(vietQr(bank, 2500, 'LM57', 'USD')).toBeNull();
+      expect(vietQr(null, 1, 'LM1', 'VND')).toBeNull();
+      expect(vietQr({ bin: '97', accountNo: '01', accountName: '' }, 1, 'LM1', 'VND')).toBeNull();
+      expect(bankName('Nhà hàng Đông Á')).toBe('NHA HANG DONG A');
+    });
+
+    it('formats money the way the restaurant counts it', () => {
+      expect(formatMoney(255000, 'VND').replace(/\s/g, ' ')).toMatch(/255\.000/);
+      expect(formatMoney(1250, 'USD')).toBe('$12.50');
+    });
+
+    it('ages a kitchen ticket', () => {
+      const now = new Date('2026-10-22T12:20:00Z');
+      expect(ticketTone('2026-10-22T12:15:00Z', now)).toEqual({ mins: 5, tone: 'ok' });
+      expect(ticketTone('2026-10-22T12:09:00Z', now)).toEqual({ mins: 11, tone: 'warn' });
+      expect(ticketTone('2026-10-22T12:00:00Z', now)).toEqual({ mins: 20, tone: 'late' });
+      expect(ticketTone(null, now).mins).toBe(0);
+    });
+
+    it('keeps the guest cart tidy and sends only ids', () => {
+      const base = { menuItemId: 'm1', name: 'Phở', unitPriceCents: 85000, quantity: 1, optionNames: [], note: '' };
+      let cart = addToCart([], { ...base, options: [{ groupId: 'g', choiceIds: ['b', 'a'] }] });
+      cart = addToCart(cart, { ...base, options: [{ groupId: 'g', choiceIds: ['a', 'b'] }] });
+      cart = addToCart(cart, { ...base, options: [], note: 'Không hành' });
+      expect(cart).toHaveLength(2);
+      expect(cart[0].quantity).toBe(2);
+      expect(cartTotal(cart)).toEqual({ count: 3, cents: 255000 });
+      expect(cartKey('m1', [{ groupId: 'g', choiceIds: [] }])).toBe(cartKey('m1', []));
+      const order = cartToOrder(cart);
+      expect(order[1]).toEqual({ menuItemId: 'm1', quantity: 1, options: [], note: 'Không hành' });
+      expect(JSON.stringify(order)).not.toContain('85000');
+      expect(addToCart([], { ...base, quantity: 50, options: [] })[0].quantity).toBe(20);
+    });
+
+    it('explains the new refusals', () => {
+      expect(tillError('QR_PENDING', true)).toContain('QR');
+      expect(tillError('QR_OFF', false)).toBe('QR ordering is turned off.');
+    });
   });
 });

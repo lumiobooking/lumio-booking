@@ -44,6 +44,7 @@ export const SUPPORT_HREF_CAP: Record<string, string> = {
   // the till
   '/salon/pos': 'pos',
   '/salon/pos/report': 'reports',
+  '/salon/pos/kitchen': 'pos',
   '/salon/orders': 'orders',
   '/salon/gift-cards': 'pos',
   '/salon/payments': 'payments',

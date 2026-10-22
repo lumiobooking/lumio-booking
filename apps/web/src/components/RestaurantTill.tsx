@@ -27,14 +27,17 @@ import { tillMethodsFrom, payLabel, type PayMethod } from '../lib/payment-method
 import { buildReceiptText, type ReceiptProfile } from '../lib/receipt';
 import { CashShiftPanel, useShiftState } from './CashShiftPanel';
 import {
-  byTableName, cashQuickAmounts, combinedState, evenShares, lineGroups, minutesOpen, optionsReady, priceWith, tillError, timerTone,
-  type CheckLine, type CheckView, type FloorCheck, type OptionGroup, type TableState,
+  bankName, byTableName, callText, cashQuickAmounts, combinedState, evenShares, lineGroups, minutesOpen, optionsReady, pendingLines, priceWith, tillError, timerTone, vietQr, VN_BANKS,
+  type BankAccount, type CheckLine, type CheckView, type FloorCheck, type InvoiceInfo, type OptionGroup, type TableState,
 } from '../lib/restaurant-till';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 
 interface Station { key: string; name: string }
 interface Settings {
   stations: Station[]; byCategory: Record<string, string>; defaultStation: string; printVoid: boolean; printMove: boolean;
   voidNeedsApproval: boolean; warnMinutes: number; lateMinutes: number; soldOutReset: boolean; cashierUserIds: string[];
+  qrOrdering: 'off' | 'confirm' | 'auto'; serviceChargePercent: number; vatPercent: number; vatIncluded: boolean; bank: BankAccount | null;
 }
 interface Table { id: string; name: string; seats: number; area: string | null }
 interface Floor { currency: string; settings: Settings; canPay: boolean; tables: Table[]; checks: FloorCheck[] }
@@ -81,6 +84,7 @@ const TILE: Record<TableState, CSSProperties> = {
   prebilled: { background: '#0f766e', border: '1.5px solid #0f766e', color: '#fff' },
   askpay: { background: '#be185d', border: '1.5px solid #be185d', color: '#fff' },
   paying: { background: '#0f766e', border: '1.5px dashed #0f766e', color: '#fff' },
+  call: { background: '#b45309', border: '2.5px solid #fbbf24', color: '#fff' },
 };
 
 function Modal({ title, vi, onClose, children, width = 460 }: { title: string; vi: boolean; onClose: () => void; children: ReactNode; width?: number }) {
@@ -168,6 +172,11 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     if (!token) return;
     try { setCheck(await apiFetch<CheckView>(`/restaurant/checks/${encodeURIComponent(id)}`, { token })); } catch (e) { fail(e); setCheck(null); }
   }, [token, fail]);
+  // A quiet re-read (the pay screen watching for the bank transfer): a blip never closes the bill.
+  const refreshCheck = useCallback(async (id: string) => {
+    if (!token) return;
+    try { setCheck(await apiFetch<CheckView>(`/restaurant/checks/${encodeURIComponent(id)}`, { token })); } catch { /* keep what is on screen */ }
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
@@ -185,7 +194,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
       setNow(new Date());
       if (check) void loadCheck(check.id); else void loadFloor();
       void loadMenu();
-    }, 15000);
+    }, 10000);
     return () => clearInterval(t);
   }, [check, loadCheck, loadFloor, loadMenu]);
 
@@ -203,8 +212,10 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     return menu.filter((m) => (!cat || (m.category || '') === cat) && (!f || fold(m.name).includes(f)));
   }, [menu, cat, q]);
   const stationName = useCallback((k: string) => floor?.settings.stations.find((s) => s.key === k)?.name ?? k, [floor]);
-  const taxCents = useMemo(() => Math.round(((check?.subtotalCents ?? 0) * taxRate) / 100), [check, taxRate]);
-  const dueCents = (check?.subtotalCents ?? 0) + taxCents;
+  // Dishes + the restaurant's service charge; the till's own tax (if any) goes on top, as at checkout.
+  const billCents = check?.billCents ?? check?.subtotalCents ?? 0;
+  const taxCents = useMemo(() => Math.round((billCents * taxRate) / 100), [billCents, taxRate]);
+  const dueCents = billCents + taxCents;
   const canPay = floor?.canPay !== false;
 
   async function call<T>(path: string, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', body?: unknown): Promise<T | null> {
@@ -263,9 +274,37 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     const c = await call<CheckView>(`/restaurant/checks/${check.id}/request-pay`, 'POST');
     if (c) { setCheck(c); say(true, L('Đã báo thu ngân: bàn muốn thanh toán.', 'The cashier has been told this table wants to pay.')); }
   }
+  async function fire() {
+    if (!check) return;
+    const r = await call<{ sent: number; stations: string[]; check: CheckView }>(`/restaurant/checks/${check.id}/send`, 'POST', { held: true });
+    if (!r) return;
+    setCheck(r.check);
+    say(true, r.sent ? L(`Đã gọi ${r.sent} món đang giữ · ${r.stations.map(stationName).join(', ')}`, `Fired ${r.sent} held · ${r.stations.map(stationName).join(', ')}`) : L('Không có món đang giữ.', 'Nothing held.'));
+  }
+  async function toggleHold(l: CheckLine) {
+    if (!check) return;
+    const c = await call<CheckView>(`/restaurant/checks/${check.id}/lines/${l.id}/hold`, 'PATCH', { held: !l.held });
+    if (c) setCheck(c);
+  }
+  async function acceptQr(sendNow: boolean) {
+    if (!check) return;
+    const c = await call<CheckView>(`/restaurant/checks/${check.id}/accept-qr`, 'POST', { send: sendNow });
+    if (c) { setCheck(c); say(true, sendNow ? L('Đã nhận món khách gọi và báo bếp.', 'Accepted and sent to the kitchen.') : L('Đã nhận món khách gọi vào bill.', 'Accepted onto the bill.')); }
+  }
+  async function rejectQr() {
+    if (!check) return;
+    const c = await call<CheckView>(`/restaurant/checks/${check.id}/reject-qr`, 'POST');
+    if (c) { setCheck(c); say(true, L('Đã bỏ các món khách gọi qua QR.', 'QR dishes rejected.')); }
+  }
+  async function clearCall(id: string) {
+    const c = await call<CheckView>(`/restaurant/checks/${id}/clear-call`, 'POST');
+    if (c && check?.id === id) setCheck(c);
+    if (!check) void loadFloor();
+  }
   function startPay() {
     if (!check) return;
-    if (check.unsentCount > 0) { setUnsentAsk(true); return; }
+    if ((check.pendingCount ?? 0) > 0) { say(false, tillError('QR_PENDING', vi)); return; }
+    if (check.unsentCount + (check.heldCount ?? 0) > 0) { setUnsentAsk(true); return; }
     setShowPay(true);
   }
   async function toggleSoldOut(d: Dish) {
@@ -276,6 +315,8 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const shiftPanel = showShift && typeof document !== 'undefined' && createPortal(
     <CashShiftPanel token={token} vi={vi} currency={currency} fmt={fmt} salonName={profile?.shop.name} cashierName={user?.firstName || undefined}
       onState={shiftCtl.setState} onClose={() => setShowShift(false)} onHistory={() => { window.location.href = '/salon/pos/shifts'; }} />, document.body);
+
+  const calls = (floor?.checks ?? []).filter((c) => (c.pendingCount ?? 0) > 0 || c.callReason);
 
   // ---------------------------------------------------------------- floor ----
   if (!check) {
@@ -289,6 +330,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
       const total = cs.reduce((s, c) => s + c.subtotalCents, 0);
       const unsent = cs.reduce((s, c) => s + c.unsentCount, 0);
       const guests = cs.reduce((s, c) => s + c.guests, 0);
+      const caller = cs.find((c) => (c.pendingCount ?? 0) > 0 || c.callReason);
       return (
         <button key={key} type="button" onClick={onClick} aria-label={label}
           style={{ ...TILE[st], minHeight: mobile ? 92 : 112, borderRadius: 14, padding: 10, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 4 }}>
@@ -298,6 +340,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
           </span>
           <span style={{ fontSize: 12, fontWeight: 600 }}>
             {!first ? L(`Trống · ${seats ?? 0} ghế`, `Free · ${seats ?? 0} seats`)
+              : st === 'call' && caller ? ((caller.pendingCount ?? 0) > 0 ? L(`QR: ${caller.pendingCount} món chờ nhận`, `QR: ${caller.pendingCount} to accept`) : callText(caller.callReason, vi))
               : st === 'unsent' ? L(`${unsent} món chưa báo bếp`, `${unsent} not sent`)
                 : st === 'askpay' ? L('Khách gọi thanh toán', 'Wants to pay')
                   : st === 'seated' ? L(`${guests} khách · chưa gọi`, `${guests} guests · no order`)
@@ -316,6 +359,20 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
           onShift={() => setShowShift(true)} onPrints={() => setShowPrints(true)} onTakeaway={() => void openTable(null, 1)} onRetail={onQuickSale}
           onSoldOut={() => setShowSoldOut(true)} onSettings={isOwner ? () => setShowSettings(true) : undefined} />
         {msg && <Toast {...msg} />}
+        {calls.length > 0 && (
+          <div role="alert" style={{ ...card, padding: 10, border: '2px solid #f59e0b', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {calls.map((c) => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <b style={{ flex: '1 1 220px', minWidth: 0, color: C.strong }}>
+                  {c.takeaway ? c.tables : `${L('Bàn', 'Table')} ${c.tables}`} · {(c.pendingCount ?? 0) > 0 ? L(`${c.pendingCount} món khách gọi qua QR, chờ xác nhận`, `${c.pendingCount} dishes ordered by QR, waiting`) : callText(c.callReason, vi)}
+                  {c.callAt ? <span style={{ color: C.muted, fontWeight: 600 }}> · {minutesOpen(c.callAt, now)}′</span> : null}
+                </b>
+                {c.callReason && <button type="button" disabled={busy} onClick={() => void clearCall(c.id)} style={btn}>{L('Đã xem', 'Seen')}</button>}
+                <button type="button" onClick={() => openBill(c)} style={primary}>{L('Mở bill', 'Open bill')}</button>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <button type="button" onClick={() => setArea('')} style={chip(!area)}>{L('Tất cả', 'All')} · {floor?.tables.length ?? 0}</button>
           {areas.filter(Boolean).map((a) => (
@@ -381,6 +438,12 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   // ---------------------------------------------------------------- order ----
   const groups = lineGroups(check.lines);
   const unsent = check.unsentCount;
+  const held = check.heldCount ?? 0;
+  const pending = pendingLines(check.lines);
+  const bankPaid = check.bankPaidCents ?? 0;
+  const row = (label: ReactNode, value: string, style?: CSSProperties) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', color: C.muted, ...style }}><span>{label}</span><span>{value}</span></div>
+  );
   const otherBills = (floor?.checks ?? []).filter((c) => c.id !== check.id && c.status === 'OPEN');
   const lineText = (l: CheckLine) => [...(l.options ?? []), ...(l.note ? [l.note] : [])].join(' · ');
   const menuPane = (
@@ -419,17 +482,44 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
         {check.payRequestedAt && <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-bad)' }}>{L('Khách gọi thanh toán', 'Wants to pay')}</span>}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 200 }}>
+        {check.callReason && (
+          <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 10, borderRadius: 14, border: '2px solid #f59e0b' }}>
+            <b style={{ flex: 1, color: 'var(--ink-warn)' }}>{callText(check.callReason, vi)}{check.callAt ? ` · ${minutesOpen(check.callAt, now)}′` : ''}</b>
+            <button type="button" disabled={busy} onClick={() => void clearCall(check.id)} style={btn}>{L('Đã xem', 'Seen')}</button>
+          </div>
+        )}
+        {pending.length > 0 && (
+          <section aria-label={L('Món khách gọi qua QR', 'QR order')} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 14, border: '2px solid #f59e0b' }}>
+            <b style={{ fontSize: 12, letterSpacing: '.04em', color: 'var(--ink-warn)' }}>{L('KHÁCH GỌI QUA QR · CHỜ XÁC NHẬN', 'ORDERED BY QR · WAITING FOR YOU')}</b>
+            {pending.map((l) => (
+              <div key={l.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <b style={{ minWidth: 26 }}>{l.quantity}×</b>
+                <span style={{ flex: 1, minWidth: 0 }}><b style={{ color: C.strong }}>{l.name}</b>{lineText(l) && <><br /><span style={{ fontSize: 12.5, color: C.muted }}>{lineText(l)}</span></>}</span>
+                <span style={{ fontWeight: 700 }}>{fmt(l.quantity * l.unitPriceCents)}</span>
+              </div>
+            ))}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 6 }}>
+              <button type="button" disabled={busy} onClick={() => void acceptQr(true)} style={{ ...btn, border: 'none', background: '#ea580c', color: '#fff', minHeight: 46 }}>{L('Nhận & báo bếp', 'Accept & send')}</button>
+              <button type="button" disabled={busy} onClick={() => void acceptQr(false)} style={{ ...btn, minHeight: 46 }}>{L('Nhận, chưa báo', 'Accept only')}</button>
+              <button type="button" disabled={busy} onClick={() => void rejectQr()} style={{ ...btn, minHeight: 46, color: 'var(--ink-bad)' }}>{L('Từ chối', 'Reject')}</button>
+            </div>
+          </section>
+        )}
         {check.lines.length === 0 && <p style={{ color: C.muted, textAlign: 'center', margin: '30px 0' }}>{L('Chạm món để thêm vào bill.', 'Tap a dish to add it.')}</p>}
         {groups.map((g) => g.key === 'unsent' ? (
           <section key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 14, border: '2px solid #ea580c', background: 'var(--c451a03)' }}>
             <b style={{ fontSize: 12, letterSpacing: '.04em', color: 'var(--cfde68a)' }}>{L('CHƯA BÁO BẾP · SỬA THOẢI MÁI', 'NOT SENT YET · EDIT FREELY')}</b>
             {g.lines.map((l) => (
-              <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, ...(l.held ? { opacity: 0.72 } : {}) }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <b style={{ color: C.strong }}>{l.name}</b>
+                  {l.source === 'QR' && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, padding: '1px 6px', borderRadius: 6, border: `1px solid ${C.border}` }}>QR</span>}
                   {(l.options ?? []).length > 0 && <><br /><span style={{ fontSize: 12.5, color: C.text }}>{(l.options ?? []).join(' · ')}</span></>}
                   <br />
-                  <button type="button" onClick={() => setNoteLine(l)} style={{ border: 0, background: 'none', padding: 0, color: 'var(--ink-link)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>{l.note ? `“${l.note}”` : L('+ Ghi chú cho bếp', '+ Note for the kitchen')}</button>
+                  <span style={{ display: 'inline-flex', gap: 12, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={() => setNoteLine(l)} style={{ border: 0, background: 'none', padding: 0, color: 'var(--ink-link)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>{l.note ? `“${l.note}”` : L('+ Ghi chú cho bếp', '+ Note for the kitchen')}</button>
+                    <button type="button" aria-pressed={!!l.held} disabled={busy} onClick={() => void toggleHold(l)} style={{ border: 0, background: 'none', padding: 0, color: l.held ? 'var(--ink-warn)' : 'var(--ink-link)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l.held ? L('⏸ Đang giữ · bỏ giữ', '⏸ Held · release') : L('Giữ lại, gọi sau', 'Hold for later')}</button>
+                  </span>
                 </span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 10, border: `1px solid ${C.border}`, background: C.panel }}>
                   <button type="button" aria-label={L('Bớt', 'Less')} disabled={busy} onClick={() => void setQty(l, l.quantity - 1)} style={{ width: 40, height: 40, border: 0, background: 'none', color: C.text, fontSize: 18, fontWeight: 800, cursor: 'pointer' }}>−</button>
@@ -453,6 +543,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                   {lineText(l) && <><br /><span style={{ fontSize: 12.5, color: C.muted }}>{lineText(l)}</span></>}
                   {l.state === 'VOID' && <><br /><span style={{ fontSize: 12.5, color: 'var(--ink-bad)', fontWeight: 600 }}>{L('Đã huỷ', 'Cancelled')}{l.voidReason ? ` · ${l.voidReason}` : ''}</span></>}
                 </span>
+                {l.state === 'SENT' && l.readyAt && <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--ink-good)' }}>✓ {L('Bếp xong', 'Ready')}</span>}
                 <span style={{ fontWeight: 700, textDecoration: l.state === 'VOID' ? 'line-through' : undefined }}>{fmt(l.quantity * l.unitPriceCents)}</span>
                 {l.state === 'SENT' && <button type="button" aria-label={L('Huỷ món', 'Cancel dish')} onClick={() => setVoidLine(l)} style={{ ...btn, width: 40, minHeight: 40, padding: 0 }}>⋯</button>}
               </div>
@@ -461,12 +552,21 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
         ))}
       </div>
       <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {taxCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: C.muted }}><span>{L('Thuế', 'Tax')} {taxRate}%</span><span>{fmt(taxCents)}</span></div>}
+        {(check.serviceCents ?? 0) > 0 && row(L('Tiền món', 'Dishes'), fmt(check.subtotalCents))}
+        {(check.serviceCents ?? 0) > 0 && row(`${L('Phí phục vụ', 'Service charge')} ${check.serviceChargePercent ?? 0}%`, fmt(check.serviceCents ?? 0))}
+        {taxCents > 0 && row(`${L('Thuế', 'Tax')} ${taxRate}%`, fmt(taxCents))}
+        {(check.vatCents ?? 0) > 0 && row(`${L('Đã gồm VAT', 'Incl. VAT')} ${check.vatPercent ?? 0}%`, fmt(check.vatCents ?? 0), { fontSize: 12.5 })}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><b style={{ fontSize: 16 }}>{L('Tổng', 'Total')}</b><b style={{ fontSize: 26, color: C.strong }}>{fmt(dueCents)}</b></div>
+        {bankPaid > 0 && row(L('Đã nhận chuyển khoản', 'Bank transfer received'), fmt(bankPaid), { color: 'var(--ink-good)', fontWeight: 800 })}
         <button type="button" disabled={busy || unsent === 0} onClick={() => void send()}
           style={{ ...btn, minHeight: 52, border: 'none', fontSize: 15.5, ...(unsent > 0 ? { background: '#ea580c', color: '#fff' } : { opacity: 0.55 }) }}>
           {unsent > 0 ? L(`Báo bếp · ${unsent} món mới`, `Send to kitchen · ${unsent} new`) : L('Không có món mới', 'Nothing new to send')}
         </button>
+        {held > 0 && (
+          <button type="button" disabled={busy} onClick={() => void fire()} style={{ ...btn, minHeight: 50, border: 'none', background: '#7c3aed', color: '#fff' }}>
+            {L(`Gọi món đang giữ · ${held} món`, `Fire held dishes · ${held}`)}
+          </button>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 8 }}>
           <button type="button" disabled={busy || check.itemCount === 0} onClick={() => void prebill()} style={{ ...btn, minHeight: 50 }}>{L('In tạm tính', 'Print check')}{check.preBillCount ? ` (${check.preBillCount})` : ''}</button>
           {canPay
@@ -562,12 +662,13 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
         }} />}
       {unsentAsk && (
         <Modal vi={vi} title={L('Còn món chưa báo bếp', 'Dishes not sent yet')} onClose={() => setUnsentAsk(false)}>
-          <span>{L(`${check.unsentCount} món chưa gửi bếp. Báo bếp trước, hay thu tiền luôn (ví dụ nước lấy tại quầy)?`, `${check.unsentCount} dishes were never sent. Send them first, or take payment as is?`)}</span>
-          <button type="button" onClick={async () => { setUnsentAsk(false); await send(); setShowPay(true); }} style={{ ...btn, minHeight: 50, border: 'none', background: '#ea580c', color: '#fff' }}>{L('Báo bếp rồi thu tiền', 'Send, then pay')}</button>
+          <span>{L(`${check.unsentCount + (check.heldCount ?? 0)} món chưa gửi bếp. Báo bếp trước, hay thu tiền luôn (ví dụ nước lấy tại quầy)?`, `${check.unsentCount + (check.heldCount ?? 0)} dishes were never sent. Send them first, or take payment as is?`)}</span>
+          <button type="button" onClick={async () => { setUnsentAsk(false); if (check.unsentCount > 0) await send(); if ((check.heldCount ?? 0) > 0) await fire(); setShowPay(true); }} style={{ ...btn, minHeight: 50, border: 'none', background: '#ea580c', color: '#fff' }}>{L('Báo bếp rồi thu tiền', 'Send, then pay')}</button>
           <button type="button" onClick={() => { setUnsentAsk(false); setShowPay(true); }} style={{ ...btn, minHeight: 50 }}>{L('Thu tiền luôn, không báo bếp', 'Pay without sending')}</button>
         </Modal>
       )}
       {showPay && <PayModal vi={vi} token={token} check={check} dueCents={dueCents} taxCents={taxCents} currency={currency} fmt={fmt} methods={methods} payInfo={payInfo} profile={profile}
+        bank={floor?.settings.bank ?? null} onRefresh={() => refreshCheck(check.id)}
         shiftRequired={!!shiftCtl.mustOpen} onOpenShift={() => setShowShift(true)}
         onClose={() => setShowPay(false)}
         onPaid={() => { setShowPay(false); say(true, L('Đã thu tiền, bàn đã trống.', 'Paid; the table is free.')); backToFloor(); }} />}
@@ -597,7 +698,8 @@ function TillHeader({ vi, cashier, shiftOpen, failed, onShift, onPrints, onTakea
       <button type="button" onClick={onTakeaway} style={primary}>+ {L('Mang về', 'To go')}</button>
       <button type="button" onClick={onSoldOut} style={btn}>{L('Hết món', 'Sold out')}</button>
       <button type="button" onClick={onRetail} style={btn}>{L('Bán lẻ', 'Retail')}</button>
-      {onSettings && <button type="button" onClick={onSettings} style={btn}>{L('Bếp & máy in', 'Kitchen & printers')}</button>}
+      <a href="/salon/pos/kitchen" style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>{L('Màn hình bếp', 'Kitchen screen')}</a>
+      {onSettings && <button type="button" onClick={onSettings} style={btn}>{L('Cài đặt nhà hàng', 'Restaurant settings')}</button>}
     </div>
   );
 }
@@ -607,6 +709,7 @@ function Legend({ vi }: { vi: boolean }) {
   const items: [TableState, string][] = [
     ['free', L('Trống', 'Free')], ['seated', L('Có khách, chưa gọi', 'Seated')], ['ordered', L('Đã báo bếp', 'Ordered')],
     ['unsent', L('Có món chưa báo bếp', 'Not sent')], ['prebilled', L('Đã in tạm tính', 'Check printed')], ['askpay', L('Khách gọi thanh toán', 'Wants to pay')],
+    ['call', L('Khách gọi / món QR chờ nhận', 'Guest calling / QR order')],
   ];
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12.5, fontWeight: 600, color: C.muted }}>
@@ -678,7 +781,7 @@ function SoldOutModal({ vi, menu, busy, onToggle, onClose }: { vi: boolean; menu
 
 function SplitModal({ vi, check, fmt, busy, onClose, onSplit }: { vi: boolean; check: CheckView; fmt: (c: number) => string; busy: boolean; onClose: () => void; onSplit: (lines: { lineId: string; quantity: number }[]) => void }) {
   const L = (v: string, e: string) => (vi ? v : e);
-  const lines = check.lines.filter((l) => l.state !== 'VOID');
+  const lines = check.lines.filter((l) => l.state !== 'VOID' && l.state !== 'PENDING');
   const [take, setTake] = useState<Record<string, number>>({});
   const moving = lines.reduce((s, l) => s + (take[l.id] ?? 0) * l.unitPriceCents, 0);
   const picks = Object.entries(take).filter(([, n]) => n > 0).map(([lineId, quantity]) => ({ lineId, quantity }));
@@ -803,7 +906,9 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
   const catKey = (c: string) => c.trim().toLowerCase().replace(/\s+/g, ' ');
   async function save() {
     try {
-      await apiFetch('/restaurant/settings', { method: 'PATCH', token, body: { settings: s } });
+      const bank = bin.trim() && acct.trim() ? { bin: bin.replace(/\D/g, ''), accountNo: acct.replace(/[^0-9A-Za-z]/g, ''), accountName: bankName(acctName) } : null;
+      if (bank && (bank.bin.length !== 6 || bank.accountNo.length < 4)) { setErr(L('Số tài khoản hoặc mã ngân hàng (BIN 6 số) chưa đúng.', 'Check the account number and the 6-digit bank BIN.')); return; }
+      await apiFetch('/restaurant/settings', { method: 'PATCH', token, body: { settings: { ...s, bank } } });
       onSaved();
     } catch (e) { setErr(tillError(e instanceof Error ? e.message : String(e), vi)); }
   }
@@ -815,7 +920,12 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
     setS({ ...s, stations: [...s.stations, { key: unique, name }] });
     setNewName('');
   }
-  const toggle = (k: 'printVoid' | 'printMove' | 'voidNeedsApproval' | 'soldOutReset', label: string) => (
+  const [bin, setBin] = useState(settings.bank?.bin ?? '');
+  const [acct, setAcct] = useState(settings.bank?.accountNo ?? '');
+  const [acctName, setAcctName] = useState(settings.bank?.accountName ?? '');
+  const known = VN_BANKS.some((b) => b.bin === bin);
+  const [otherBin, setOtherBin] = useState(() => !!settings.bank && !VN_BANKS.some((b) => b.bin === settings.bank?.bin));
+  const toggle = (k: 'printVoid' | 'printMove' | 'voidNeedsApproval' | 'soldOutReset' | 'vatIncluded', label: string) => (
     <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
       <span>{label}</span>
       <input type="checkbox" checked={s[k]} onChange={(e) => setS({ ...s, [k]: e.target.checked })} style={{ width: 22, height: 22 }} />
@@ -823,7 +933,7 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
   );
   const sel: CSSProperties = { minHeight: 40, borderRadius: 10, border: `1px solid ${C.border}`, background: C.panel, color: C.text, padding: '0 8px', fontFamily: 'inherit' };
   return (
-    <Modal vi={vi} title={L('Bếp & máy in', 'Kitchen & printers')} onClose={onClose} width={560}>
+    <Modal vi={vi} title={L('Cài đặt nhà hàng', 'Restaurant settings')} onClose={onClose} width={560}>
       <b>{L('Khu chế biến', 'Prep stations')}</b>
       {s.stations.map((st, i) => (
         <div key={st.key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -873,6 +983,40 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
           <input type="checkbox" checked={s.cashierUserIds.includes(p.id)} onChange={(e) => setS({ ...s, cashierUserIds: e.target.checked ? [...s.cashierUserIds, p.id] : s.cashierUserIds.filter((x) => x !== p.id) })} style={{ width: 22, height: 22 }} />
         </label>
       ))}
+      <b>{L('Khách gọi món bằng QR tại bàn', 'Guests order from a QR on the table')}</b>
+      <select value={s.qrOrdering ?? 'off'} aria-label={L('Gọi món QR', 'QR ordering')} onChange={(e) => setS({ ...s, qrOrdering: e.target.value as Settings['qrOrdering'] })} style={{ ...sel, minHeight: 46 }}>
+        <option value="off">{L('Tắt', 'Off')}</option>
+        <option value="confirm">{L('Bật · nhân viên xác nhận rồi mới báo bếp (khuyên dùng)', 'On · staff accept before the kitchen sees it (recommended)')}</option>
+        <option value="auto">{L('Bật · món khách gọi vào bếp ngay', 'On · straight to the kitchen')}</option>
+      </select>
+      <span style={{ fontSize: 12.5, color: C.muted }}>{L('In mã QR cho từng bàn ở mục Bàn › Mã QR gọi món. Khách còn bấm được “Gọi nhân viên” và “Xin thanh toán”.', 'Print each table’s QR under Tables › QR codes. Guests can also tap “Call staff” and “The bill”.')} <a href="/salon/tables?view=qr">{L('Mở Mã QR', 'Open QR codes')}</a></span>
+
+      <b>{L('Phí phục vụ & VAT', 'Service charge & VAT')}</b>
+      <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <span>{L('Phí phục vụ (% tiền món, 0 = không thu)', 'Service charge (% of dishes, 0 = none)')}</span>
+        <input type="number" min={0} max={20} value={s.serviceChargePercent ?? 0} aria-label={L('Phí phục vụ', 'Service charge')} onChange={(e) => setS({ ...s, serviceChargePercent: Math.max(0, Math.min(20, Number(e.target.value) || 0)) })} style={{ ...sel, width: 80, textAlign: 'center' }} />
+      </label>
+      <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <span>{L('Thuế suất VAT in trên bill', 'VAT rate on the bill')}</span>
+        <select value={s.vatPercent ?? 0} onChange={(e) => setS({ ...s, vatPercent: Number(e.target.value) })} style={sel}>
+          {[0, 5, 8, 10].map((v) => <option key={v} value={v}>{v === 0 ? L('Không in', 'None') : `${v}%`}</option>)}
+        </select>
+      </label>
+      {toggle('vatIncluded', L('Giá món đã gồm VAT', 'Menu prices include VAT'))}
+      <span style={{ fontSize: 12.5, color: C.muted }}>{L('Giá đã gồm VAT: bill in dòng “Đã gồm VAT”. Giá chưa gồm VAT: thuế cộng thêm theo thuế suất ở Cài đặt › Thu ngân.', 'Prices include VAT: the bill prints “Incl. VAT”. Prices without VAT: tax is added at the rate set under Settings › Checkout.')}</span>
+
+      <b>{L('Tài khoản nhận chuyển khoản (VietQR)', 'Bank account for transfers (VietQR)')}</b>
+      <span style={{ fontSize: 12.5, color: C.muted }}>{L('Bill hiện mã VietQR đúng số tiền, nội dung là mã bill (VD: LM57) để đối soát.', 'The bill shows a VietQR for the exact amount, with the bill code (e.g. LM57) as the note.')}</span>
+      <select value={otherBin || (bin && !known) ? '_other' : bin} aria-label={L('Ngân hàng', 'Bank')} onChange={(e) => { if (e.target.value === '_other') { setOtherBin(true); setBin(''); } else { setOtherBin(false); setBin(e.target.value); } }} style={{ ...sel, minHeight: 46 }}>
+        <option value="">{L('Chưa chọn ngân hàng', 'No bank')}</option>
+        {VN_BANKS.map((b) => <option key={b.bin} value={b.bin}>{b.name}</option>)}
+        <option value="_other">{L('Ngân hàng khác (nhập BIN)', 'Other bank (type the BIN)')}</option>
+      </select>
+      {(otherBin || (bin && !known)) && <input value={bin} inputMode="numeric" maxLength={6} onChange={(e) => setBin(e.target.value.replace(/\D/g, ''))} placeholder={L('Mã BIN 6 số (VD: 970436)', '6-digit BIN (e.g. 970436)')} aria-label="BIN" style={field} />}
+      <input value={acct} inputMode="numeric" maxLength={24} onChange={(e) => setAcct(e.target.value)} placeholder={L('Số tài khoản', 'Account number')} aria-label={L('Số tài khoản', 'Account number')} style={field} />
+      <input value={acctName} maxLength={50} onChange={(e) => setAcctName(e.target.value)} onBlur={() => setAcctName(bankName(acctName))} placeholder={L('Tên chủ tài khoản (không dấu)', 'Account holder')} aria-label={L('Tên chủ tài khoản', 'Account holder')} style={field} />
+      <BankFeedBox vi={vi} token={token} />
+
       <div style={{ fontSize: 12.5, color: C.muted }}>{L('Máy in: cài Lumio Print trên máy tính ở quầy, ghi máy in cho từng mã khu (COUNTER, KITCHEN, BAR…) trong config.json.', 'Printers: run Lumio Print on the counter PC and map each station code (COUNTER, KITCHEN, BAR…) to a printer in config.json.')}</div>
       {err && <span style={{ color: 'var(--ink-bad)' }}>{err}</span>}
       <button type="button" onClick={() => void save()} style={{ ...primary, minHeight: 50 }}>{L('Lưu', 'Save')}</button>
@@ -880,19 +1024,91 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
   );
 }
 
+interface BankFeed { configured: boolean; provider: string | null; hookId: string | null; lastAt: string | null }
+
+/**
+ * Bank feed: SePay or Casso tell us when money lands on the restaurant's
+ * account; a transfer carrying the bill code shows up on that bill. The secret
+ * is shown once, here, and only its hash is kept on the server.
+ */
+function BankFeedBox({ vi, token }: { vi: boolean; token: string | null }) {
+  const L = (v: string, e: string) => (vi ? v : e);
+  const [feed, setFeed] = useState<BankFeed | null>(null);
+  const [provider, setProvider] = useState<'sepay' | 'casso'>('sepay');
+  const [made, setMade] = useState<{ provider: string; hookId: string; secret: string; path: string } | null>(null);
+  const [sure, setSure] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<BankFeed>('/restaurant/bank-feed', { token }).then((f) => { setFeed(f); if (f.provider === 'casso') setProvider('casso'); }).catch(() => undefined);
+  }, [token]);
+  async function setup() {
+    if (feed?.configured && !sure) { setSure(true); return; }
+    setErr('');
+    try {
+      const r = await apiFetch<{ provider: string; hookId: string; secret: string; path: string }>('/restaurant/bank-feed', { method: 'POST', token, body: { provider } });
+      setMade(r); setSure(false);
+      setFeed({ configured: true, provider: r.provider, hookId: r.hookId, lastAt: feed?.lastAt ?? null });
+    } catch (e) { setErr(tillError(e instanceof Error ? e.message : String(e), vi)); }
+  }
+  const copy = (t: string) => { try { void navigator.clipboard.writeText(t); } catch { /* no clipboard */ } };
+  const url = made ? `${API_URL}${made.path}` : feed?.hookId ? `${API_URL}/public/bank-feed/${feed.hookId}` : '';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 14, background: C.raised }}>
+      <b>{L('Tự xác nhận tiền về (SePay / Casso)', 'Confirm transfers automatically (SePay / Casso)')}</b>
+      <span style={{ fontSize: 12.5, color: C.muted }}>
+        {feed?.configured
+          ? L(`Đã nối ${feed.provider === 'casso' ? 'Casso' : 'SePay'}${feed.lastAt ? ` · lần nhận gần nhất ${new Date(feed.lastAt).toLocaleString('vi-VN')}` : ' · chưa nhận giao dịch nào'}.`, `Connected to ${feed.provider === 'casso' ? 'Casso' : 'SePay'}${feed.lastAt ? ` · last ${new Date(feed.lastAt).toLocaleString()}` : ' · nothing received yet'}.`)
+          : L('Chưa nối. Không nối vẫn dùng được VietQR, thu ngân tự kiểm tra app ngân hàng.', 'Not connected. VietQR still works; the cashier checks the banking app.')}
+      </span>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {(['sepay', 'casso'] as const).map((p) => <button key={p} type="button" onClick={() => setProvider(p)} style={chip(provider === p)}>{p === 'sepay' ? 'SePay' : 'Casso'}</button>)}
+      </div>
+      <button type="button" onClick={() => void setup()} style={{ ...btn, ...(sure ? { borderColor: '#b91c1c', color: 'var(--ink-bad)' } : {}) }}>
+        {sure ? L('Chắc chắn? Khoá cũ sẽ ngừng hoạt động', 'Sure? The old secret stops working') : feed?.configured ? L('Tạo khoá mới', 'New secret') : L('Tạo địa chỉ & khoá kết nối', 'Create address & secret')}
+      </button>
+      {url && (
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ fontSize: 12.5, color: C.muted, fontWeight: 600 }}>{L('Địa chỉ webhook', 'Webhook URL')}</span>
+          <span style={{ display: 'flex', gap: 6 }}><input readOnly value={url} style={{ ...field, flex: 1, fontSize: 12.5 }} /><button type="button" onClick={() => copy(url)} style={btn}>{L('Chép', 'Copy')}</button></span>
+        </label>
+      )}
+      {made && (
+        <>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 12.5, color: 'var(--ink-warn)', fontWeight: 700 }}>{L('Khoá bí mật (chỉ hiện một lần, chép ngay)', 'Secret (shown once, copy it now)')}</span>
+            <span style={{ display: 'flex', gap: 6 }}><input readOnly value={made.secret} style={{ ...field, flex: 1, fontFamily: 'monospace' }} /><button type="button" onClick={() => copy(made.secret)} style={btn}>{L('Chép', 'Copy')}</button></span>
+          </label>
+          <span style={{ fontSize: 12.5, whiteSpace: 'pre-line' }}>
+            {made.provider === 'casso'
+              ? L('Casso › Webhook: dán địa chỉ trên, dán khoá vào ô “Khoá bảo mật / secure token”. Lưu và bấm gửi thử.', 'Casso › Webhook: paste the URL, and the secret as the “secure token”. Save and send a test.')
+              : L('SePay › Tích hợp WebHooks › Thêm: dán địa chỉ trên, chọn chứng thực “API Key”, dán khoá vào ô API Key, chỉ nhận tiền vào. Lưu và bấm gửi thử.', 'SePay › WebHooks › Add: paste the URL, pick “API Key” authentication, paste the secret as the key, money in only. Save and send a test.')}
+          </span>
+        </>
+      )}
+      {err && <span style={{ color: 'var(--ink-bad)' }}>{err}</span>}
+    </div>
+  );
+}
+
 interface Part { method: PayMethod; amount: string }
 
-function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods, payInfo, profile, shiftRequired, onOpenShift, onClose, onPaid }: {
+const EMPTY_INVOICE: InvoiceInfo = { company: '', taxCode: '', address: '', email: '' };
+
+function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods, payInfo, profile, bank, shiftRequired, onOpenShift, onRefresh, onClose, onPaid }: {
   vi: boolean; token: string | null; check: CheckView; dueCents: number; taxCents: number; currency: string; fmt: (c: number) => string;
-  methods: PayMethod[]; payInfo: Record<string, { instructions?: string; qrUrl?: string }>; profile: ReceiptProfile | null;
-  shiftRequired: boolean; onOpenShift: () => void; onClose: () => void; onPaid: () => void;
+  methods: PayMethod[]; payInfo: Record<string, { instructions?: string; qrUrl?: string }>; profile: ReceiptProfile | null; bank: BankAccount | null;
+  shiftRequired: boolean; onOpenShift: () => void; onRefresh: () => Promise<void> | void; onClose: () => void; onPaid: () => void;
 }) {
   const L = (v: string, e: string) => (vi ? v : e);
   const first = methods[0] ?? 'CASH';
+  const bankMethod: PayMethod | null = methods.includes('VIETQR') ? 'VIETQR' : methods.includes('TRANSFER') ? 'TRANSFER' : null;
   const [parts, setParts] = useState<Part[]>([{ method: first, amount: '' }]);
   const [print, setPrint] = useState(() => { try { return localStorage.getItem('lumio_rt_print') !== '0'; } catch { return true; } });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [inv, setInv] = useState<InvoiceInfo>(() => ({ ...EMPTY_INVOICE, ...(check.invoiceInfo ?? {}) }));
+  const [showInv, setShowInv] = useState(() => !!check.invoiceInfo);
   const single = parts.length === 1;
   // One method: an empty amount means "exactly the total"; cash can be more (change).
   const amounts = parts.map((p) => (p.amount.trim() ? parseMoney(p.amount, currency) : single ? dueCents : 0));
@@ -906,28 +1122,52 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
   const setPart = (i: number, p: Partial<Part>) => setParts((xs) => xs.map((x, j) => (j === i ? { ...x, ...p } : x)));
   const splitEven = (n: number) => setParts(evenShares(dueCents, n).map((c) => ({ method: first, amount: toInput(c, currency) })));
 
+  // The bank QR asks for exactly what is still owed and carries the bill code;
+  // with SePay / Casso connected the money shows up here by itself.
+  const bankPaid = check.bankPaidCents ?? 0;
+  const owed = Math.max(0, dueCents - bankPaid);
+  const bankPick = single && (parts[0].method === 'VIETQR' || parts[0].method === 'TRANSFER');
+  const dynQr = bankPick && owed > 0 ? vietQr(bank, owed, check.payCode ?? '', currency) : null;
+  const covered = bankPaid > 0 && bankPaid >= dueCents;
+  const watch = !!vietQr(bank, 1, 'LM0', currency) && (bankPick || bankPaid > 0) && !covered;
+  const refresh = useRef(onRefresh);
+  refresh.current = onRefresh;
+  useEffect(() => {
+    if (!watch) return;
+    const t = setInterval(() => { void refresh.current(); }, 4000);
+    return () => clearInterval(t);
+  }, [watch]);
+  useEffect(() => {
+    // The transfer landed: the bill is paid by bank, one tap closes it.
+    if (covered && bankMethod) setParts([{ method: bankMethod, amount: '' }]);
+  }, [covered, bankMethod]);
+
   async function pay() {
     if (!token || short || overNonCash) return;
     setBusy(true); setErr('');
     try {
       const tenders = parts.map((p, i) => ({ method: p.method, amountCents: amounts[i] })).filter((t) => t.amountCents > 0);
+      const invoice = showInv && (inv.company.trim() || inv.taxCode.trim()) ? inv : undefined;
       const r = await apiFetch<{ order: { id: string; orderNumber?: number } }>(`/restaurant/checks/${check.id}/pay`, {
-        method: 'POST', token, body: { tenders, allowUnsent: true },
+        method: 'POST', token, body: { tenders, allowUnsent: true, ...(invoice ? { invoice } : {}) },
       });
       try { localStorage.setItem('lumio_rt_print', print ? '1' : '0'); } catch { /* private mode */ }
       if (print && profile) {
-        const live = check.lines.filter((l) => l.state !== 'VOID');
+        const live = check.lines.filter((l) => l.state !== 'VOID' && l.state !== 'PENDING');
+        const service = check.serviceCents ?? 0;
         const text = buildReceiptText({
           orderNumber: r.order.orderNumber ?? check.number,
           when: new Date().toLocaleString(vi ? 'vi-VN' : 'en-US'),
-          lines: live.map((l) => {
+          lines: [...live.map((l) => {
             const extra = [...(l.options ?? []), ...(l.note ? [l.note] : [])].join(', ');
             return { qty: l.quantity, name: extra ? `${l.name} (${extra})` : l.name, amountCents: l.quantity * l.unitPriceCents };
-          }),
-          subtotal: check.subtotalCents, tax: taxCents || undefined, total: dueCents,
+          }), ...(service > 0 ? [{ qty: 1, name: `${L('Phí phục vụ', 'Service charge')} ${check.serviceChargePercent ?? 0}%`, amountCents: service }] : [])],
+          subtotal: check.subtotalCents + service, tax: taxCents || undefined, total: dueCents,
           paid: tenders.map((t) => ({ method: t.method, cents: t.amountCents })), change: change || undefined,
         }, profile.shop, profile.design, fmt);
-        await apiFetch('/print-jobs', { method: 'POST', token, body: { title: `${L('Hoá đơn', 'Receipt')} #${r.order.orderNumber ?? ''} · ${check.tables}`, text } }).catch(() => undefined);
+        const vat = (check.vatCents ?? 0) > 0 ? `\n${L('Đã gồm VAT', 'Incl. VAT')} ${check.vatPercent ?? 0}%: ${fmt(check.vatCents ?? 0)}` : '';
+        const invText = invoice ? `\n${L('Xuất hoá đơn VAT cho', 'VAT invoice for')}: ${invoice.company}${invoice.taxCode ? ` · MST ${invoice.taxCode}` : ''}` : '';
+        await apiFetch('/print-jobs', { method: 'POST', token, body: { title: `${L('Hoá đơn', 'Receipt')} #${r.order.orderNumber ?? ''} · ${check.tables}`, text: text + vat + invText } }).catch(() => undefined);
       }
       onPaid();
     } catch (e) {
@@ -935,17 +1175,39 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
     } finally { setBusy(false); }
   }
 
+  const invField = (k: keyof InvoiceInfo, label: string, mode?: 'numeric' | 'email') => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ fontSize: 12.5, color: C.muted, fontWeight: 600 }}>{label}</span>
+      <input value={inv[k]} inputMode={mode} maxLength={k === 'taxCode' ? 20 : 200} onChange={(e) => setInv({ ...inv, [k]: e.target.value })} style={field} />
+    </label>
+  );
+
   return (
     <Modal vi={vi} title={L(`Thanh toán · ${check.tables}`, `Pay · ${check.tables}`)} onClose={onClose} width={540}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <span style={{ color: C.muted, fontWeight: 700 }}>{L('Phải thu', 'Amount due')}</span>
         <b style={{ fontSize: 30, color: C.strong }}>{fmt(dueCents)}</b>
       </div>
-      {taxCents > 0 && <span style={{ fontSize: 12.5, color: C.muted }}>{L('Gồm thuế', 'Includes tax')} {fmt(taxCents)}</span>}
+      {((check.serviceCents ?? 0) > 0 || taxCents > 0 || (check.vatCents ?? 0) > 0) && (
+        <span style={{ fontSize: 12.5, color: C.muted }}>
+          {[
+            (check.serviceCents ?? 0) > 0 ? `${L('Phí phục vụ', 'Service')} ${check.serviceChargePercent ?? 0}% ${fmt(check.serviceCents ?? 0)}` : '',
+            taxCents > 0 ? `${L('Thuế', 'Tax')} ${fmt(taxCents)}` : '',
+            (check.vatCents ?? 0) > 0 ? `${L('Đã gồm VAT', 'Incl. VAT')} ${check.vatPercent ?? 0}% ${fmt(check.vatCents ?? 0)}` : '',
+          ].filter(Boolean).join(' · ')}
+        </span>
+      )}
       {shiftRequired && (
         <div style={{ padding: 10, borderRadius: 12, background: 'var(--c451a03)', color: 'var(--cfde68a)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ flex: 1 }}>{L('Chưa mở ca thu ngân.', 'No cashier shift open.')}</span>
           <button type="button" onClick={onOpenShift} style={btn}>{L('Mở ca', 'Open shift')}</button>
+        </div>
+      )}
+      {bankPaid > 0 && (
+        <div role="status" style={{ padding: 12, borderRadius: 12, border: '2px solid #16a34a', fontWeight: 800, color: 'var(--ink-good)' }}>
+          {covered
+            ? L(`Đã nhận đủ ${fmt(bankPaid)} qua chuyển khoản. Bấm nút dưới để đóng bill.`, `${fmt(bankPaid)} received by bank transfer. Tap below to close the bill.`)
+            : L(`Đã nhận ${fmt(bankPaid)} qua chuyển khoản · còn ${fmt(owed)}`, `${fmt(bankPaid)} received by transfer · ${fmt(owed)} to go`)}
         </div>
       )}
       {single ? (
@@ -966,7 +1228,16 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
               </div>
             </>
           )}
-          {parts[0].method !== 'CASH' && (info.qrUrl || info.instructions) && (
+          {dynQr ? (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 14, background: C.raised, flexWrap: 'wrap' }}>
+              <img src={dynQr} alt={L('Mã VietQR đúng số tiền', 'VietQR for the exact amount')} style={{ width: 180, height: 180, objectFit: 'contain', background: '#fff', borderRadius: 10 }} />
+              <span style={{ flex: '1 1 160px', fontSize: 13.5, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <b style={{ fontSize: 18, color: C.strong }}>{fmt(owed)}</b>
+                <span>{L('Nội dung CK', 'Transfer note')}: <b style={{ fontSize: 16, letterSpacing: '.04em' }}>{check.payCode}</b></span>
+                <span style={{ color: C.muted }}>{L('Khách quét bằng app ngân hàng: số tiền và nội dung đã điền sẵn. Nếu đã nối SePay / Casso, tiền về sẽ tự hiện ở đây.', 'Guests scan with their banking app; amount and note are filled in. With SePay / Casso connected, the money shows up here by itself.')}</span>
+              </span>
+            </div>
+          ) : parts[0].method !== 'CASH' && (info.qrUrl || info.instructions) && (
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 14, background: C.raised }}>
               {info.qrUrl && <img src={info.qrUrl} alt={L('Mã chuyển khoản', 'Payment QR')} style={{ width: 140, height: 140, objectFit: 'contain', background: '#fff', borderRadius: 10 }} />}
               {info.instructions && <span style={{ whiteSpace: 'pre-line', fontSize: 13.5 }}>{info.instructions}</span>}
@@ -996,12 +1267,25 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
       </div>
       {overNonCash && <span style={{ color: 'var(--ink-bad)', fontSize: 13 }}>{L('Thẻ / chuyển khoản không được vượt số phải thu.', 'Card / transfer cannot exceed the amount due.')}</span>}
       <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input type="checkbox" checked={showInv} onChange={(e) => setShowInv(e.target.checked)} style={{ width: 20, height: 20 }} />
+        <span>{L('Khách lấy hoá đơn VAT (hoá đơn đỏ)', 'Guest wants a VAT invoice')}</span>
+      </label>
+      {showInv && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 14, background: C.raised }}>
+          {invField('company', L('Tên công ty', 'Company name'))}
+          {invField('taxCode', L('Mã số thuế', 'Tax code'), 'numeric')}
+          {invField('address', L('Địa chỉ', 'Address'))}
+          {invField('email', L('Email nhận hoá đơn', 'Email for the invoice'), 'email')}
+          <span style={{ fontSize: 12, color: C.muted }}>{L('Lưu theo bill và in trên hoá đơn để kế toán xuất hoá đơn điện tử.', 'Kept with the bill and printed on the receipt so the accountant can issue the e-invoice.')}</span>
+        </div>
+      )}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <input type="checkbox" checked={print} onChange={(e) => setPrint(e.target.checked)} style={{ width: 20, height: 20 }} />
         <span>{L('In hoá đơn ra máy quầy', 'Print the receipt at the counter')}</span>
       </label>
       {err && <span style={{ color: 'var(--ink-bad)', fontWeight: 700 }}>{err}</span>}
       <button type="button" disabled={busy || short || overNonCash} onClick={() => void pay()} style={{ ...primary, minHeight: 56, fontSize: 16, opacity: busy || short || overNonCash ? 0.6 : 1 }}>
-        {busy ? L('Đang thu…', 'Taking payment…') : L(`Thu ${fmt(dueCents)} · đóng bill`, `Take ${fmt(dueCents)} · close bill`)}
+        {busy ? L('Đang thu…', 'Taking payment…') : covered ? L('Đã nhận chuyển khoản · đóng bill', 'Paid by transfer · close bill') : L(`Thu ${fmt(dueCents)} · đóng bill`, `Take ${fmt(dueCents)} · close bill`)}
       </button>
     </Modal>
   );

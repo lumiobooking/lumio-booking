@@ -1,4 +1,5 @@
 import {
+  bankCredits, cleanBank, cleanGuestOrder, payCodeIn, payCodeOf, serviceChargeOf, vatInside, vietQrUrl,
   checkLabel, chosenOf, cleanOptionGroups, dayIn, optionsKey, pickOptions, soldOutNow,
   DEFAULT_SETTINGS, checkTotals, cleanNote, cleanSettings, groupForSend, langFor, moneyText, prebillText, qty, stationFor,
   stationsCooking, tablesLabel, ticketText, LineLike,
@@ -191,5 +192,66 @@ describe('sold out, to-go bills, cashiers', () => {
     const s = cleanSettings({ cashierUserIds: ['3f2a9c1e-1111-2222-3333-444455556666', 'x', 42, '3f2a9c1e-1111-2222-3333-444455556666'] });
     expect(s.cashierUserIds).toEqual(['3f2a9c1e-1111-2222-3333-444455556666']);
     expect(s.soldOutReset).toBe(true);
+  });
+});
+
+describe('phase 3: hold & fire, QR orders, money, bank feed', () => {
+  const s0 = cleanSettings(null);
+  it('a normal send leaves held dishes; fire sends exactly those', () => {
+    const lines = [line('a'), line('b', { held: true }), line('c', { held: true, station: 'BAR' })];
+    expect(groupForSend(lines, s0).flatMap((g) => g.lines.map((l) => l.id))).toEqual(['a']);
+    expect(groupForSend(lines, s0, true).flatMap((g) => g.lines.map((l) => l.id))).toEqual(['b', 'c']);
+    const t = checkTotals(lines);
+    expect(t.unsentCount).toBe(1);
+    expect(t.heldCount).toBe(2);
+    expect(ticketText({ kind: 'FIRE', lang: 'vi', stationName: 'Bếp', tables: 'A1', checkNumber: 3, batch: 2, at: 'x', lines: [{ quantity: 1, name: 'Lẩu' }] })).toContain('LÀM MÓN ĐANG GIỮ');
+  });
+  it('a guest QR order waits off the bill until staff accept it', () => {
+    const t = checkTotals([line('a', { state: 'SENT' }), line('q', { state: 'PENDING', quantity: 3 })]);
+    expect(t.subtotalCents).toBe(85000);
+    expect(t.pendingCount).toBe(3);
+    expect(groupForSend([line('q', { state: 'PENDING' })], s0)).toEqual([]);
+  });
+  it('guest baskets keep only real ids, whole quantities and short notes', () => {
+    const g = cleanGuestOrder([{ menuItemId: '3f2a9c1e-1111-2222-3333-444455556666', quantity: 50, note: ' ít  cay ', priceCents: 1 }, { menuItemId: 'x' }, { menuItemId: 'a b' }, null]);
+    expect(g).toEqual([{ menuItemId: '3f2a9c1e-1111-2222-3333-444455556666', quantity: 20, note: 'ít cay', options: [] }]);
+    expect(cleanGuestOrder('nope')).toEqual([]);
+  });
+  it('service charge and VAT included', () => {
+    expect(serviceChargeOf(500000, 5)).toBe(25000);
+    expect(serviceChargeOf(500000, 0)).toBe(0);
+    expect(vatInside(108000, 8)).toBe(8000);
+    expect(vatInside(110000, 10)).toBe(10000);
+    const s = cleanSettings({ serviceChargePercent: 50, vatPercent: 7, qrOrdering: 'auto' });
+    expect(s.serviceChargePercent).toBe(0);
+    expect(s.vatPercent).toBe(0);
+    expect(s.qrOrdering).toBe('auto');
+    expect(cleanSettings({ serviceChargePercent: 5, vatPercent: 8 }).vatPercent).toBe(8);
+    const p = prebillText({ lang: 'vi', business: 'X', tables: 'A1', checkNumber: 7, count: 1, at: 'x', lines: [{ quantity: 1, name: 'Phở', amountCents: 100000 }], serviceCents: 5000, servicePercent: 5, vatPercent: 8, vatCents: 7778, vatIncluded: true, payCode: 'LM7', totalCents: 105000, money: (c) => moneyText(c, 'VND') });
+    expect(p).toMatch(/Phí phục vụ 5%\s+5\.000 đ/);
+    expect(p).toContain('Đã gồm VAT 8%');
+    expect(p).toContain('LM7');
+  });
+  it('bill codes are found in a bank description and a VietQR carries amount and code', () => {
+    expect(payCodeOf(57)).toBe('LM57');
+    expect(payCodeIn('NGUYEN VAN A CK LM57 an toi')).toBe(57);
+    expect(payCodeIn('MBVCB.1234.lm 57.CT')).toBe(57);
+    expect(payCodeIn('FILM57')).toBeNull();
+    expect(payCodeIn('LM5712345678')).toBeNull();
+    expect(payCodeIn(null)).toBeNull();
+    const bank = cleanBank({ bin: '970436', accountNo: '0123 456 789', accountName: 'Phở Lumio Đặc biệt' });
+    expect(bank).toEqual({ bin: '970436', accountNo: '0123456789', accountName: 'PHO LUMIO DAC BIET' });
+    expect(cleanBank({ bin: '12', accountNo: '1' })).toBeNull();
+    const url = vietQrUrl(bank, 415000, 'LM57')!;
+    expect(url).toContain('970436-0123456789-compact2.png');
+    expect(url).toContain('amount=415000');
+    expect(url).toContain('addInfo=LM57');
+    expect(vietQrUrl(null, 1, 'x')).toBeNull();
+  });
+  it('reads SePay and Casso webhooks, keeps money in only', () => {
+    expect(bankCredits({ id: 92704, gateway: 'Vietcombank', transferType: 'in', transferAmount: 415000, content: 'LM57', accountNumber: '0123' })).toEqual([{ id: '92704', amount: 415000, description: 'LM57', accountNo: '0123', at: null }]);
+    expect(bankCredits({ id: 1, transferType: 'out', transferAmount: 5000, content: 'x' })).toEqual([]);
+    expect(bankCredits({ error: 0, data: [{ id: 7, tid: 'TF1', amount: 200000, description: 'CK LM3', when: '2026-10-23 10:00:00' }, { id: 8, amount: -5 }] }).map((c) => [c.id, c.amount])).toEqual([['7', 200000]]);
+    expect(bankCredits(null)).toEqual([]);
   });
 });

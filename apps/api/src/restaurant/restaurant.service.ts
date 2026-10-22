@@ -1,20 +1,25 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { OrderItemKind, PaymentMethod, PrintJobStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { PosService } from '../pos/pos.service';
+import { PushService } from '../push/push.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { hasCapability } from '../auth/capabilities';
 import { cleanLayout, withDefaults } from '../tables/floor';
 import {
-  DEFAULT_SETTINGS, Lang, LineLike, RestaurantSettings, SETTINGS_KEY, checkLabel, checkTotals, chosenOf, cleanNote, cleanOptionGroups,
-  cleanSettings, clockText, groupForSend, langFor, moneyText, optionsKey, pickOptions, prebillText, qty, soldOutNow, stationFor,
-  stationName, stationsCooking, ticketText,
+  CALL_REASONS, CallReason, DEFAULT_SETTINGS, Lang, LineLike, RestaurantSettings, SETTINGS_KEY, bankCredits, checkLabel, checkTotals, chosenOf,
+  cleanGuestOrder, cleanNote, cleanOptionGroups, cleanSettings, clockText, groupForSend, langFor, moneyText, optionsKey, payCodeIn, payCodeOf,
+  pickOptions, prebillText, qty, serviceChargeOf, soldOutNow, stationFor, stationName, stationsCooking, ticketText, vatInside, vietQrUrl,
 } from './check-logic';
 
 const LIVE = ['OPEN', 'PAYING'];
 const MAX_TABLES = 6;
+/** Where the bank-feed hook id and the hash of its secret live (never sent to the till). */
+const BANK_FEED_KEY = 'restaurant_bank_feed';
+const sha = (x: string) => createHash('sha256').update(x).digest('hex');
 
 /**
  * Table service for restaurants: open a bill on a table (or a to-go bill),
@@ -36,7 +41,13 @@ export class RestaurantService {
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
     private readonly pos: PosService,
+    @Optional() private readonly push?: PushService,
   ) {}
+
+  /** Best effort: a phone in the restaurant buzzes. A failed push never fails the action. */
+  private ping(tenantId: string, title: string, body: string) {
+    void this.push?.sendToTenant(tenantId, { title, body, url: '/salon/pos', tag: `rt-${title}` }).catch(() => undefined);
+  }
 
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -116,8 +127,11 @@ export class RestaurantService {
     if (check.status !== 'OPEN') throw new ConflictException(check.status === 'PAYING' ? 'CHECK_PAYING' : 'CHECK_CLOSED');
   }
 
-  private view(check: Awaited<ReturnType<RestaurantService['loadCheck']>>, names: Map<string, string>, lang: Lang) {
+  private view(check: Awaited<ReturnType<RestaurantService['loadCheck']>>, names: Map<string, string>, lang: Lang, settings: RestaurantSettings = DEFAULT_SETTINGS) {
     const totals = checkTotals(check.lines as LineLike[]);
+    const serviceCents = serviceChargeOf(totals.subtotalCents, settings.serviceChargePercent);
+    const billCents = totals.subtotalCents + serviceCents;
+    const payCode = payCodeOf(check.number);
     return {
       id: check.id,
       number: check.number,
@@ -135,11 +149,24 @@ export class RestaurantService {
       preBillCount: check.preBillCount,
       changedAfterPrebill: check.changedAfterPrebill,
       payRequestedAt: check.payRequestedAt,
+      callReason: check.callReason,
+      callAt: check.callAt,
       orderId: check.orderId,
       ...totals,
+      serviceChargePercent: settings.serviceChargePercent,
+      serviceCents,
+      billCents,
+      vatPercent: settings.vatPercent,
+      vatIncluded: settings.vatIncluded,
+      vatCents: settings.vatIncluded ? vatInside(billCents, settings.vatPercent) : 0,
+      payCode,
+      bankPaidCents: check.bankPaidCents,
+      bankPaidAt: check.bankPaidAt,
+      invoiceInfo: check.invoiceInfo ?? null,
       lines: check.lines.map((l) => ({
         id: l.id, menuItemId: l.menuItemId, name: l.name, unitPriceCents: l.unitPriceCents, quantity: l.quantity,
         note: l.note, options: chosenOf(l.options).map((o) => o.name), station: l.station, state: l.state, batch: l.batch,
+        held: l.held, readyAt: l.readyAt, source: l.source,
         sentAt: l.sentAt, sentByName: l.sentByName, voidReason: l.voidReason, voidedAt: l.voidedAt,
       })),
     };
@@ -153,7 +180,7 @@ export class RestaurantService {
       this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'table_layout' } } }).catch(() => null),
       this.prisma.tableCheck.findMany({
         where: { tenantId, status: { in: LIVE } },
-        include: { lines: { where: { tenantId }, select: { state: true, quantity: true, unitPriceCents: true } } },
+        include: { lines: { where: { tenantId }, select: { state: true, quantity: true, unitPriceCents: true, held: true } } },
         orderBy: { openedAt: 'asc' },
       }),
       this.getSettings(tenantId),
@@ -171,6 +198,7 @@ export class RestaurantService {
         id: c.id, number: c.number, status: c.status, tableIds: c.tableIds, takeaway: c.tableIds.length === 0,
         tables: checkLabel(c.tableIds, names, c.number, ctx.lang),
         guests: c.guests, serverName: c.serverName, openedAt: c.openedAt, preBilledAt: c.preBilledAt, payRequestedAt: c.payRequestedAt,
+        callReason: c.callReason, callAt: c.callAt, bankPaidCents: c.bankPaidCents,
         ...checkTotals(c.lines.map((l, i) => ({ id: String(i), name: '', station: '', ...l }))),
       })),
     };
@@ -203,8 +231,9 @@ export class RestaurantService {
 
   async getCheck(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
-    const [check, names, ctx] = await Promise.all([this.loadCheck(tenantId, id), this.tableNames(tenantId), this.context(tenantId)]);
-    return this.view(check, names, ctx.lang);
+    const [check, names, ctx, settings] = await Promise.all([this.loadCheck(tenantId, id), this.tableNames(tenantId), this.context(tenantId), this.getSettings(tenantId)]);
+    const v = this.view(check, names, ctx.lang, settings);
+    return { ...v, qrUrl: v.billCents > 0 ? vietQrUrl(settings.bank, v.billCents - Math.min(v.bankPaidCents, v.billCents), v.payCode) : null };
   }
 
   /** Checks a set of table ids: all this restaurant's, active, and free. */
@@ -347,12 +376,13 @@ export class RestaurantService {
    * station; the bill's send counter moves with a compare-and-set, so two
    * phones pressing at once print each dish once.
    */
-  async send(user: AuthenticatedUser, id: string) {
+  async send(user: AuthenticatedUser, id: string, opts: { held?: boolean } = {}) {
     const tenantId = this.tenantId(user);
     const check = await this.loadCheck(tenantId, id);
     this.assertOpen(check);
     const settings = await this.getSettings(tenantId);
-    const groups = groupForSend(check.lines as LineLike[], settings);
+    const fire = opts.held === true;
+    const groups = groupForSend(check.lines as LineLike[], settings, fire);
     if (!groups.length) return { sent: 0, batch: null, stations: [], check: await this.getCheck(user, id) };
     const [ctx, names, by] = await Promise.all([this.context(tenantId), this.tableNames(tenantId), this.nameOf(user)]);
     const batch = check.sendCount + 1;
@@ -363,10 +393,10 @@ export class RestaurantService {
     const sent = await this.prisma.$transaction(async (tx) => {
       const moved = await tx.tableCheck.updateMany({ where: { id, tenantId, status: 'OPEN', sendCount: check.sendCount }, data: { sendCount: batch } });
       if (moved.count === 0) return 0;
-      const res = await tx.tableCheckLine.updateMany({ where: { tenantId, checkId: id, id: { in: ids }, state: 'UNSENT' }, data: { state: 'SENT', batch, sentAt: now, sentByName: by } });
+      const res = await tx.tableCheckLine.updateMany({ where: { tenantId, checkId: id, id: { in: ids }, state: 'UNSENT' }, data: { state: 'SENT', held: false, batch, sentAt: now, sentByName: by } });
       for (const g of groups) {
         const text = ticketText({
-          kind: 'NEW', lang: ctx.lang, stationName: stationName(g.station, settings), tables: label, takeaway: check.tableIds.length === 0,
+          kind: fire ? 'FIRE' : 'NEW', lang: ctx.lang, stationName: stationName(g.station, settings), tables: label, takeaway: check.tableIds.length === 0,
           checkNumber: check.number, batch, guests: check.guests, server: check.serverName, at: clockText(now, ctx.tz, ctx.lang),
           lines: g.lines.map((l) => ({ quantity: l.quantity, name: l.name, note: l.note, options: optionsOf.get(l.id) })),
         });
@@ -375,7 +405,7 @@ export class RestaurantService {
       return res.count;
     });
     if (!sent) return { sent: 0, batch: null, stations: [], check: await this.getCheck(user, id) };
-    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.sent_to_kitchen', resourceType: 'table_check', resourceId: id, metadata: { batch, lines: ids.length } });
+    await this.audit.log({ tenantId, userId: user.userId, action: fire ? 'restaurant.fired_held' : 'restaurant.sent_to_kitchen', resourceType: 'table_check', resourceId: id, metadata: { batch, lines: ids.length } });
     return { sent, batch, stations: groups.map((g) => g.station), check: await this.getCheck(user, id) };
   }
 
@@ -459,13 +489,19 @@ export class RestaurantService {
     ]);
     const now = new Date();
     const count = check.preBillCount + 1;
-    const live = check.lines.filter((l) => l.state !== 'VOID');
+    const live = check.lines.filter((l) => l.state !== 'VOID' && l.state !== 'PENDING');
     const label = checkLabel(check.tableIds, names, check.number, ctx.lang);
+    const settings = await this.getSettings(tenantId);
+    const service = serviceChargeOf(totals.subtotalCents, settings.serviceChargePercent);
+    const bill = totals.subtotalCents + service;
     const text = prebillText({
       lang: ctx.lang, business: profile?.shop.name ?? '', address: profile?.shop.address, phone: profile?.shop.phone,
       tables: label, takeaway: check.tableIds.length === 0, checkNumber: check.number, count, at: clockText(now, ctx.tz, ctx.lang), cashier,
       lines: live.map((l) => ({ quantity: l.quantity, name: l.name, amountCents: l.quantity * l.unitPriceCents, options: chosenOf(l.options).map((o) => o.name) })),
-      totalCents: totals.subtotalCents, money: (c) => moneyText(c, ctx.currency),
+      serviceCents: service, servicePercent: settings.serviceChargePercent,
+      vatPercent: settings.vatPercent, vatIncluded: settings.vatIncluded, vatCents: settings.vatIncluded ? vatInside(bill, settings.vatPercent) : 0,
+      payCode: settings.bank ? payCodeOf(check.number) : null,
+      totalCents: bill, money: (c) => moneyText(c, ctx.currency),
     });
     await this.prisma.tableCheck.updateMany({ where: { id, tenantId }, data: { preBilledAt: now, preBillCount: count, changedAfterPrebill: false } });
     if (dto.print !== false) {
@@ -549,12 +585,13 @@ export class RestaurantService {
       const line = check.lines.find((l) => l.id === String(p?.lineId ?? ''));
       if (!line) throw new NotFoundException('LINE_NOT_FOUND');
       if (line.state === 'VOID') throw new ConflictException('LINE_VOID');
+      if (line.state === 'PENDING') throw new ConflictException('QR_PENDING');
       const n = qty(p?.quantity ?? line.quantity);
       if (!n || n > line.quantity) throw new BadRequestException('BAD_QUANTITY');
       picks.set(line.id, n);
     }
     if (!picks.size) throw new BadRequestException('SPLIT_EMPTY');
-    const left = check.lines.filter((l) => l.state !== 'VOID').reduce((s, l) => s + l.quantity - (picks.get(l.id) ?? 0), 0);
+    const left = check.lines.filter((l) => l.state !== 'VOID' && l.state !== 'PENDING').reduce((s, l) => s + l.quantity - (picks.get(l.id) ?? 0), 0);
     if (left <= 0) throw new BadRequestException('SPLIT_ALL');
     const serverName = await this.nameOf(user);
     let newId = '';
@@ -601,6 +638,9 @@ export class RestaurantService {
     this.assertOpen(check);
     await this.prisma.tableCheck.updateMany({ where: { id, tenantId }, data: { payRequestedAt: new Date() } });
     await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.pay_requested', resourceType: 'table_check', resourceId: id });
+    const [names, ctx] = await Promise.all([this.tableNames(tenantId), this.context(tenantId)]);
+    const label = checkLabel(check.tableIds, names, check.number, ctx.lang);
+    this.ping(tenantId, ctx.lang === 'vi' ? 'Bàn gọi thanh toán' : 'Table wants to pay', ctx.lang === 'vi' ? `${label} muốn thanh toán.` : `${label} is ready to pay.`);
     return this.getCheck(user, id);
   }
 
@@ -627,7 +667,7 @@ export class RestaurantService {
     await this.prisma.$transaction(async (tx) => {
       const r = await tx.tableCheck.updateMany({ where: { id, tenantId, status: 'OPEN' }, data: { status: 'VOID', closedAt: now, voidReason: reason } });
       if (r.count === 0) throw new ConflictException('CHECK_CLOSED');
-      await tx.tableCheckLine.deleteMany({ where: { tenantId, checkId: id, state: 'UNSENT' } });
+      await tx.tableCheckLine.deleteMany({ where: { tenantId, checkId: id, state: { in: ['UNSENT', 'PENDING'] } } });
       if (cooking.length) {
         await tx.tableCheckLine.updateMany({ where: { tenantId, checkId: id, state: 'SENT' }, data: { state: 'VOID', voidReason: reason, voidByUserId: user.userId, voidApprovedBy: approverId, voidedAt: now } });
         if (settings.printVoid) {
@@ -661,15 +701,18 @@ export class RestaurantService {
   async pay(user: AuthenticatedUser, id: string, dto: {
     tenders?: { method: PaymentMethod; amountCents: number }[]; discountCents?: number; manualDiscountCents?: number;
     customerId?: string; allowUnsent?: boolean; note?: string;
+    invoice?: { company?: string; taxCode?: string; address?: string; email?: string } | null;
   }) {
     const tenantId = this.tenantId(user);
     const check = await this.loadCheck(tenantId, id);
     this.assertOpen(check);
     const settings = await this.getSettings(tenantId);
     if (!this.canPay(user, settings)) throw new ForbiddenException('PAY_NOT_ALLOWED');
-    const live = check.lines.filter((l) => l.state !== 'VOID' && l.quantity > 0);
+    if (check.lines.some((l) => l.state === 'PENDING')) throw new ConflictException('QR_PENDING');
+    const live = check.lines.filter((l) => l.state !== 'VOID' && l.state !== 'PENDING' && l.quantity > 0);
     if (!live.length) throw new BadRequestException('EMPTY_CHECK');
     if (!dto.allowUnsent && live.some((l) => l.state === 'UNSENT')) throw new ConflictException('UNSENT_LINES');
+    const invoice = cleanInvoice(dto.invoice);
     const tenders = Array.isArray(dto.tenders) ? dto.tenders.filter((t) => t && Number(t.amountCents) >= 0) : [];
     if (!tenders.length) throw new BadRequestException('TENDER_REQUIRED');
     if ((dto.manualDiscountCents ?? 0) > 0 && !hasCapability(user.role, user.staffRole, 'pos.discount', user.staffCaps)) {
@@ -684,10 +727,12 @@ export class RestaurantService {
     if (locked.count === 0) throw new ConflictException('CHECK_PAYING');
     const [names, ctx] = await Promise.all([this.tableNames(tenantId), this.context(tenantId)]);
     const label = checkLabel(check.tableIds, names, check.number, ctx.lang);
+    const subtotal = live.reduce((sum, l) => sum + l.quantity * l.unitPriceCents, 0);
+    const service = serviceChargeOf(subtotal, settings.serviceChargePercent);
     let order: { id: string; status?: string; orderNumber?: number } | null = null;
     try {
       order = await this.pos.createOrder(user, {
-        items: live.map((l) => {
+        items: [...live.map((l) => {
           const extra = [...chosenOf(l.options).map((o) => o.name), ...(l.note ? [l.note] : [])].join(', ');
           return {
             kind: OrderItemKind.PRODUCT,
@@ -695,21 +740,325 @@ export class RestaurantService {
             unitPriceCents: l.unitPriceCents,
             quantity: l.quantity,
           };
-        }),
+        }), ...(service > 0 ? [{ kind: OrderItemKind.PRODUCT, name: `${ctx.lang === 'vi' ? 'Phí phục vụ' : 'Service charge'} ${settings.serviceChargePercent}%`, unitPriceCents: service, quantity: 1 }] : [])],
         tenders: tenders.map((t) => ({ method: t.method, amountCents: Math.round(Number(t.amountCents)) })),
         discountCents: dto.discountCents,
         manualDiscountCents: dto.manualDiscountCents,
         customerId,
-        note: [`${label} · #${check.number}`, check.note, dto.note].filter(Boolean).join(' · ').slice(0, 500),
+        note: [`${label} · #${check.number}`, check.note, dto.note, invoice ? `HĐ VAT: ${[invoice.company, invoice.taxCode && `MST ${invoice.taxCode}`, invoice.email].filter(Boolean).join(', ')}` : null].filter(Boolean).join(' · ').slice(0, 500),
       } as never) as unknown as { id: string; status?: string; orderNumber?: number };
       if (!order || order.status !== 'PAID') throw new BadRequestException('NOT_PAID');
     } catch (e) {
       await this.prisma.tableCheck.updateMany({ where: { id, tenantId, status: 'PAYING' }, data: { status: 'OPEN' } });
       throw e;
     }
-    await this.prisma.tableCheck.updateMany({ where: { id, tenantId, status: 'PAYING' }, data: { status: 'PAID', orderId: order.id, closedAt: new Date() } });
+    await this.prisma.tableCheck.updateMany({ where: { id, tenantId, status: 'PAYING' }, data: { status: 'PAID', orderId: order.id, closedAt: new Date(), ...(invoice ? { invoiceInfo: invoice as never } : {}) } });
     await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.check_paid', resourceType: 'table_check', resourceId: id, metadata: { orderId: order.id, orderNumber: order.orderNumber } });
     return { order, check: await this.getCheck(user, id) };
+  }
+
+  // ------------------------------------------------------------ hold / fire --
+
+  /** Keep an unsent dish back (the mains after the starters), or let it go with the next send. */
+  async setHold(user: AuthenticatedUser, id: string, lineId: string, held: boolean) {
+    const tenantId = this.tenantId(user);
+    const check = await this.loadCheck(tenantId, id);
+    this.assertOpen(check);
+    const line = await this.unsentLine(tenantId, id, lineId);
+    await this.prisma.tableCheckLine.updateMany({ where: { id: line.id, tenantId, state: 'UNSENT' }, data: { held } });
+    return this.getCheck(user, id);
+  }
+
+  // -------------------------------------------------------- kitchen display --
+
+  /**
+   * What the kitchen (or one station) is cooking: sent dishes not yet marked
+   * ready, one ticket per bill and send round, oldest first, with dishes
+   * cancelled in the last 15 minutes struck through so nobody keeps cooking
+   * them. Recently finished tickets come back separately.
+   */
+  async kitchen(user: AuthenticatedUser, station?: string) {
+    const tenantId = this.tenantId(user);
+    const st = station && /^[A-Z0-9_]{2,20}$/.test(station) ? station : undefined;
+    const [checks, names, ctx, settings] = await Promise.all([
+      this.prisma.tableCheck.findMany({
+        where: { tenantId, status: { in: [...LIVE, 'PAID'] }, openedAt: { gte: new Date(Date.now() - 18 * 3600_000) } },
+        include: { lines: { where: { tenantId, state: { in: ['SENT', 'VOID'] }, ...(st ? { station: st } : {}) }, orderBy: { createdAt: 'asc' } } },
+        orderBy: { openedAt: 'asc' },
+      }),
+      this.tableNames(tenantId),
+      this.context(tenantId),
+      this.getSettings(tenantId),
+    ]);
+    const now = Date.now();
+    type T = { key: string; checkId: string; number: number; label: string; takeaway: boolean; guests: number; server: string | null; batch: number; sentAt: Date | null; lines: unknown[] };
+    const open: T[] = []; const done: (T & { readyAt: Date })[] = [];
+    for (const c of checks) {
+      const byBatch = new Map<number, typeof c.lines>();
+      for (const l of c.lines) {
+        if (l.state === 'VOID' && (!l.sentAt || !l.voidedAt || now - l.voidedAt.getTime() > 15 * 60_000)) continue;
+        byBatch.set(l.batch ?? 0, [...(byBatch.get(l.batch ?? 0) ?? []), l]);
+      }
+      for (const [batch, ls] of byBatch) {
+        const cooking = ls.filter((l) => l.state === 'SENT' && !l.readyAt);
+        const t: T = {
+          key: `${c.id}:${batch}`, checkId: c.id, number: c.number, label: checkLabel(c.tableIds, names, c.number, ctx.lang), takeaway: c.tableIds.length === 0,
+          guests: c.guests, server: c.serverName, batch, sentAt: ls[0].sentAt,
+          lines: ls.map((l) => ({ id: l.id, name: l.name, quantity: l.quantity, note: l.note, options: chosenOf(l.options).map((o) => o.name), station: l.station, state: l.state, readyAt: l.readyAt, voidReason: l.voidReason })),
+        };
+        if (cooking.length && (c.status === 'OPEN' || c.status === 'PAYING' || c.status === 'PAID')) open.push(t);
+        else {
+          const last = ls.filter((l) => l.readyAt).map((l) => l.readyAt!.getTime()).sort((a, b) => b - a)[0];
+          if (last && now - last < 30 * 60_000) done.push({ ...t, readyAt: new Date(last) });
+        }
+      }
+    }
+    open.sort((a, b) => (a.sentAt?.getTime() ?? 0) - (b.sentAt?.getTime() ?? 0));
+    done.sort((a, b) => b.readyAt.getTime() - a.readyAt.getTime());
+    return { stations: settings.stations, warnMinutes: 15, tickets: open, done: done.slice(0, 20) };
+  }
+
+  /** The kitchen marks dishes ready (or takes the mark back). Only this restaurant's sent dishes. */
+  async markReady(user: AuthenticatedUser, lineIds: unknown, ready = true) {
+    const tenantId = this.tenantId(user);
+    const ids = (Array.isArray(lineIds) ? lineIds : []).map((x) => String(x)).filter((x) => /^[A-Za-z0-9_-]{2,64}$/.test(x)).slice(0, 100);
+    if (!ids.length) throw new BadRequestException('LINE_REQUIRED');
+    const r = await this.prisma.tableCheckLine.updateMany({ where: { tenantId, id: { in: ids }, state: 'SENT' }, data: { readyAt: ready ? new Date() : null } });
+    return { updated: r.count };
+  }
+
+  // --------------------------------------------------------- QR at the table --
+
+  /** Every active table's QR token (made on first use). Owner only. */
+  async qrCodes(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const tables = await this.prisma.restaurantTable.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, area: true, qrToken: true } });
+    for (const t of tables) {
+      if (!t.qrToken) {
+        t.qrToken = randomBytes(12).toString('base64url');
+        await this.prisma.restaurantTable.updateMany({ where: { id: t.id, tenantId }, data: { qrToken: t.qrToken } });
+      }
+    }
+    return tables.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map((t) => ({ id: t.id, name: t.name, area: t.area, token: t.qrToken }));
+  }
+
+  /** A new QR for one table: the old printed code stops working at once. */
+  async resetQr(user: AuthenticatedUser, tableId: string) {
+    const tenantId = this.tenantId(user);
+    const token = randomBytes(12).toString('base64url');
+    const r = await this.prisma.restaurantTable.updateMany({ where: { id: tableId, tenantId }, data: { qrToken: token } });
+    if (r.count === 0) throw new NotFoundException('TABLE_NOT_FOUND');
+    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.qr_reset', resourceType: 'restaurant_table', resourceId: tableId });
+    return { id: tableId, token };
+  }
+
+  /** The table behind a printed QR, its restaurant's rules, and the actor that stands for the guest. */
+  private async tableByToken(token: string) {
+    if (!/^[A-Za-z0-9_-]{12,40}$/.test(String(token ?? ''))) throw new NotFoundException('TABLE_NOT_FOUND');
+    const table = await this.prisma.restaurantTable.findFirst({ where: { qrToken: token, isActive: true }, select: { id: true, name: true, tenantId: true } });
+    if (!table) throw new NotFoundException('TABLE_NOT_FOUND');
+    const settings = await this.getSettings(table.tenantId);
+    if (settings.qrOrdering === 'off') throw new ForbiddenException('QR_OFF');
+    const guest = { userId: null, email: '', role: UserRole.SALON_ADMIN, tenantId: table.tenantId } as unknown as AuthenticatedUser;
+    return { table, settings, guest, tenantId: table.tenantId };
+  }
+
+  private openCheckOn(tenantId: string, tableId: string) {
+    return this.prisma.tableCheck.findFirst({ where: { tenantId, status: 'OPEN', tableIds: { has: tableId } }, orderBy: { openedAt: 'desc' }, select: { id: true, number: true } });
+  }
+
+  /** What a guest sees after scanning: the restaurant, the table, the menu, and what this table has ordered. */
+  async guestMenu(token: string) {
+    const { table, settings, tenantId } = await this.tableByToken(token);
+    const [tenant, items, ctx, open] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+      this.prisma.menuItem.findMany({ where: { tenantId, isActive: true }, orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }] }),
+      this.context(tenantId),
+      this.openCheckOn(tenantId, table.id),
+    ]);
+    const lines = open ? await this.prisma.tableCheckLine.findMany({ where: { tenantId, checkId: open.id, state: { not: 'VOID' } }, select: { name: true, quantity: true, state: true, unitPriceCents: true, readyAt: true }, orderBy: { createdAt: 'asc' } }) : [];
+    const now = new Date();
+    return {
+      restaurant: tenant?.name ?? '', table: table.name, currency: ctx.currency, lang: ctx.lang, mode: settings.qrOrdering,
+      menu: items.map((m) => ({
+        id: m.id, name: m.name, category: m.category, priceCents: m.priceCents, imageUrl: m.imageUrl, description: m.description,
+        options: cleanOptionGroups(m.options), soldOut: soldOutNow(m.soldOutAt, settings.soldOutReset, ctx.tz, now),
+      })),
+      ordered: lines.map((l) => ({ name: l.name, quantity: l.quantity, status: l.state === 'PENDING' ? 'waiting' : l.readyAt ? 'ready' : l.state === 'SENT' ? 'cooking' : 'ordered' })),
+      totalCents: lines.filter((l) => l.state !== 'PENDING').reduce((sum, l) => sum + l.quantity * l.unitPriceCents, 0),
+    };
+  }
+
+  /**
+   * A guest orders from the table QR. Names and prices come from the menu,
+   * never from the request; sold-out dishes are skipped and said so. With
+   * staff confirmation (the default) the dishes wait on the bill as PENDING;
+   * with "auto" they go straight to the kitchen.
+   */
+  async guestOrder(token: string, dto: { lines?: unknown; note?: unknown }) {
+    const { table, settings, guest, tenantId } = await this.tableByToken(token);
+    const wanted = cleanGuestOrder(dto.lines);
+    if (!wanted.length) throw new BadRequestException('EMPTY_ORDER');
+    let open = await this.openCheckOn(tenantId, table.id);
+    if (!open) {
+      for (let attempt = 0; attempt < 3 && !open; attempt++) {
+        try {
+          open = await this.prisma.tableCheck.create({
+            data: { tenantId, number: await this.nextNumber(tenantId), tableIds: [table.id], guests: 1, serverName: 'QR' },
+            select: { id: true, number: true },
+          });
+        } catch (e) {
+          if ((e as { code?: string }).code !== 'P2002' || attempt === 2) throw e;
+        }
+      }
+    }
+    const waiting = await this.prisma.tableCheckLine.count({ where: { tenantId, checkId: open!.id, state: 'PENDING' } });
+    if (waiting + wanted.length > 60) throw new ConflictException('QR_TOO_MANY');
+    const ctx = await this.context(tenantId);
+    const ids = [...new Set(wanted.map((w) => w.menuItemId))];
+    const items = await this.prisma.menuItem.findMany({ where: { tenantId, id: { in: ids }, isActive: true } });
+    const byId = new Map(items.map((m) => [m.id, m]));
+    const state = settings.qrOrdering === 'auto' ? 'UNSENT' : 'PENDING';
+    const skipped: string[] = [];
+    let added = 0;
+    for (const w of wanted) {
+      const item = byId.get(w.menuItemId);
+      if (!item) continue;
+      if (soldOutNow(item.soldOutAt, settings.soldOutReset, ctx.tz)) { skipped.push(item.name); continue; }
+      let picked: ReturnType<typeof pickOptions>;
+      try { picked = pickOptions(cleanOptionGroups(item.options), w.options); } catch (e) { throw new BadRequestException((e as Error).message); }
+      await this.prisma.tableCheckLine.create({
+        data: {
+          tenantId, checkId: open!.id, menuItemId: item.id, name: item.name, unitPriceCents: item.priceCents + picked.extraCents, quantity: w.quantity,
+          note: w.note, options: picked.chosen as never, station: stationFor(item.category, settings), state, source: 'QR',
+        },
+      });
+      added += w.quantity;
+    }
+    if (!added) throw new ConflictException(skipped.length ? 'SOLD_OUT' : 'EMPTY_ORDER');
+    await this.audit.log({ tenantId, action: 'restaurant.qr_order', resourceType: 'table_check', resourceId: open!.id, metadata: { table: table.name, items: added, skipped } });
+    if (state === 'UNSENT') await this.send(guest, open!.id).catch(() => undefined);
+    this.ping(tenantId, ctx.lang === 'vi' ? 'Khách gọi món qua QR' : 'QR order', ctx.lang === 'vi'
+      ? `Bàn ${table.name}: ${added} món${state === 'PENDING' ? ' · chờ xác nhận' : ''}`
+      : `Table ${table.name}: ${added} items${state === 'PENDING' ? ' · waiting for you' : ''}`);
+    return { ok: true, added, skipped, waitingForStaff: state === 'PENDING' };
+  }
+
+  /** A guest taps "call staff" / "the bill" on the table page. */
+  async guestCall(token: string, reason: unknown) {
+    const { table, tenantId } = await this.tableByToken(token);
+    const why: CallReason = (CALL_REASONS as readonly string[]).includes(String(reason)) ? (String(reason) as CallReason) : 'staff';
+    const open = await this.openCheckOn(tenantId, table.id);
+    if (open) {
+      await this.prisma.tableCheck.updateMany({ where: { id: open.id, tenantId }, data: { callReason: why, callAt: new Date(), ...(why === 'bill' ? { payRequestedAt: new Date() } : {}) } });
+    }
+    const ctx = await this.context(tenantId);
+    const words: Record<CallReason, [string, string]> = { staff: ['gọi nhân viên', 'needs a server'], bill: ['muốn thanh toán', 'wants the bill'], water: ['xin thêm nước', 'wants water'], cutlery: ['xin thêm chén đũa', 'wants cutlery'] };
+    this.ping(tenantId, ctx.lang === 'vi' ? `Bàn ${table.name}` : `Table ${table.name}`, ctx.lang === 'vi' ? `Khách ${words[why][0]}.` : `Guest ${words[why][1]}.`);
+    await this.audit.log({ tenantId, action: 'restaurant.guest_call', resourceType: 'restaurant_table', resourceId: table.id, metadata: { reason: why } });
+    return { ok: true };
+  }
+
+  /** Staff saw the call. */
+  async clearCall(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    await this.loadCheck(tenantId, id);
+    await this.prisma.tableCheck.updateMany({ where: { id, tenantId }, data: { callReason: null, callAt: null } });
+    return this.getCheck(user, id);
+  }
+
+  /** Accept the guests' QR dishes onto the bill (and, usually, straight to the kitchen). */
+  async acceptQr(user: AuthenticatedUser, id: string, sendNow = true) {
+    const tenantId = this.tenantId(user);
+    const check = await this.loadCheck(tenantId, id);
+    this.assertOpen(check);
+    const r = await this.prisma.tableCheckLine.updateMany({ where: { tenantId, checkId: id, state: 'PENDING' }, data: { state: 'UNSENT', createdByUserId: user.userId } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.qr_accepted', resourceType: 'table_check', resourceId: id, metadata: { lines: r.count } });
+    if (sendNow && r.count) return (await this.send(user, id)).check;
+    return this.getCheck(user, id);
+  }
+
+  /** Turn the guests' QR dishes down (a prank, a double tap). */
+  async rejectQr(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const check = await this.loadCheck(tenantId, id);
+    this.assertOpen(check);
+    const r = await this.prisma.tableCheckLine.deleteMany({ where: { tenantId, checkId: id, state: 'PENDING' } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.qr_rejected', resourceType: 'table_check', resourceId: id, metadata: { lines: r.count } });
+    return this.getCheck(user, id);
+  }
+
+  // ------------------------------------------------------------ the bank feed --
+
+  /** Is a bank feed set up (never the secret)? Owner only. */
+  async bankFeed(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: BANK_FEED_KEY } } }).catch(() => null);
+    const v = (row?.value ?? {}) as { hookId?: string; provider?: string; secretHash?: string; lastAt?: string };
+    return { configured: !!(v.hookId && v.secretHash), provider: v.provider ?? null, hookId: v.hookId ?? null, lastAt: v.lastAt ?? null };
+  }
+
+  /**
+   * Set up (or rotate) the bank feed: a webhook address for this restaurant
+   * and a fresh secret, shown once. The owner pastes both into SePay (API
+   * key) or Casso (secure token). Only a hash of the secret is kept.
+   */
+  async setupBankFeed(user: AuthenticatedUser, provider: unknown) {
+    const tenantId = this.tenantId(user);
+    const p = provider === 'casso' ? 'casso' : 'sepay';
+    const current = await this.bankFeed(user);
+    const hookId = current.hookId ?? randomBytes(12).toString('base64url');
+    const secret = randomBytes(18).toString('base64url');
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: BANK_FEED_KEY } },
+      update: { value: { hookId, provider: p, secretHash: sha(secret) } },
+      create: { tenantId, key: BANK_FEED_KEY, value: { hookId, provider: p, secretHash: sha(secret) } },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.bank_feed_set', resourceType: 'tenant', resourceId: tenantId, metadata: { provider: p } });
+    return { provider: p, hookId, secret, path: `/public/bank-feed/${hookId}` };
+  }
+
+  /**
+   * Money arriving on the restaurant's bank account (SePay / Casso webhook).
+   * A transfer whose description carries a bill code (LM57) is recorded on
+   * that open bill; the cashier's screen sees it and closes the bill in one
+   * tap. Each bank transaction counts once. Nothing here closes a bill or
+   * touches another restaurant: the hook id names the restaurant, and the
+   * secret proves the caller is its bank feed.
+   */
+  async bankWebhook(hookId: string, headers: Record<string, unknown>, body: unknown) {
+    if (!/^[A-Za-z0-9_-]{12,40}$/.test(String(hookId ?? ''))) throw new NotFoundException('HOOK_NOT_FOUND');
+    const row = await this.prisma.setting.findFirst({ where: { key: BANK_FEED_KEY, value: { path: ['hookId'], equals: hookId } } as never });
+    if (!row) throw new NotFoundException('HOOK_NOT_FOUND');
+    const tenantId = row.tenantId;
+    const v = (row.value ?? {}) as { provider?: string; secretHash?: string };
+    const auth = String(headers['authorization'] ?? '').replace(/^Apikey\s+/i, '').trim();
+    const token = String(headers['secure-token'] ?? headers['x-secure-token'] ?? '').trim();
+    const given = v.provider === 'casso' ? token || auth : auth || token;
+    const a = Buffer.from(sha(given || '-')); const b = Buffer.from(v.secretHash ?? '');
+    if (!v.secretHash || a.length !== b.length || !timingSafeEqual(a, b)) throw new UnauthorizedException('BAD_SECRET');
+    const ctx = await this.context(tenantId);
+    const names = await this.tableNames(tenantId);
+    let matched = 0;
+    for (const credit of bankCredits(body)) {
+      try {
+        await this.prisma.paymentWebhookEvent.create({ data: { tenantId, provider: `bankfeed:${v.provider ?? 'sepay'}`, externalEventId: `${tenantId}:${credit.id}`, type: 'credit', payload: credit as never } });
+      } catch (e) {
+        if ((e as { code?: string }).code === 'P2002') continue; // this transaction was already counted
+        throw e;
+      }
+      const number = payCodeIn(credit.description);
+      if (number == null) continue;
+      const check = await this.prisma.tableCheck.findFirst({ where: { tenantId, number, status: { in: LIVE } }, select: { id: true, number: true, tableIds: true } });
+      if (!check) continue;
+      await this.prisma.tableCheck.updateMany({ where: { id: check.id, tenantId }, data: { bankPaidCents: { increment: credit.amount }, bankPaidAt: new Date(), bankRef: credit.id.slice(0, 80) } });
+      matched++;
+      const label = checkLabel(check.tableIds, names, check.number, ctx.lang);
+      this.ping(tenantId, ctx.lang === 'vi' ? 'Đã nhận chuyển khoản' : 'Bank transfer received', `${label}: ${moneyText(credit.amount, ctx.currency)}`);
+      await this.audit.log({ tenantId, action: 'restaurant.bank_credit', resourceType: 'table_check', resourceId: check.id, metadata: { amount: credit.amount, ref: credit.id } });
+    }
+    await this.prisma.setting.updateMany({ where: { id: row.id, tenantId }, data: { value: { ...(row.value as object), lastAt: new Date().toISOString() } as never } });
+    return { success: true, matched };
   }
 
   /** Print jobs that did not come out, so the till can say so and reprint. */
@@ -730,4 +1079,12 @@ export class RestaurantService {
     if (r.count === 0) throw new NotFoundException('PRINT_NOT_FOUND');
     return { ok: true };
   }
+}
+
+/** What a guest asked to be on their VAT invoice, made safe. Nothing filled = no invoice. */
+export function cleanInvoice(raw: unknown): { company: string; taxCode: string; address: string; email: string } | null {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const t = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+  const out = { company: t(o.company, 160), taxCode: t(o.taxCode, 20).replace(/[^0-9-]/g, ''), address: t(o.address, 240), email: t(o.email, 160) };
+  return out.company || out.taxCode ? out : null;
 }

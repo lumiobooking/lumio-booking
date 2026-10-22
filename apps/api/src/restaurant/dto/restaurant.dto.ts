@@ -49,7 +49,15 @@ export class PrebillDto {
   @IsOptional() @IsBoolean() print?: boolean;
 }
 
+export class InvoiceInfoDto {
+  @IsOptional() @IsString() @MaxLength(160) company?: string;
+  @IsOptional() @IsString() @MaxLength(20) taxCode?: string;
+  @IsOptional() @IsString() @MaxLength(240) address?: string;
+  @IsOptional() @IsString() @MaxLength(160) email?: string;
+}
+
 export class PayCheckDto {
+  @IsOptional() @ValidateNested() @Type(() => InvoiceInfoDto) invoice?: InvoiceInfoDto;
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(6) @ValidateNested({ each: true }) @Type(() => TenderDto) tenders!: TenderDto[];
   @IsOptional() @IsInt() @Min(0) discountCents?: number;
   @IsOptional() @IsInt() @Min(0) manualDiscountCents?: number;
@@ -77,4 +85,34 @@ export class SplitLineDto {
 
 export class SplitCheckDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(60) @ValidateNested({ each: true }) @Type(() => SplitLineDto) lines!: SplitLineDto[];
+}
+
+export class SendDto {
+  /** true = fire the dishes that were held back. */
+  @IsOptional() @IsBoolean() held?: boolean;
+}
+
+export class HoldDto {
+  @IsBoolean() held!: boolean;
+}
+
+export class ReadyDto {
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsString({ each: true }) lineIds!: string[];
+  @IsOptional() @IsBoolean() ready?: boolean;
+}
+
+export class AcceptQrDto {
+  @IsOptional() @IsBoolean() send?: boolean;
+}
+
+export class BankFeedDto {
+  @IsString() @MaxLength(10) provider!: string;
+}
+
+export class GuestOrderDto {
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(30) lines!: unknown[];
+}
+
+export class GuestCallDto {
+  @IsString() @MaxLength(20) reason!: string;
 }

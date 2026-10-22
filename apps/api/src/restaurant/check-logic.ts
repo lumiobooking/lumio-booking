@@ -9,7 +9,8 @@
  * nothing the second time. Kept pure so every rule is tested.
  */
 
-export type LineState = 'UNSENT' | 'SENT' | 'VOID';
+/** PENDING = a guest ordered from the table's QR code and staff have not accepted it yet. */
+export type LineState = 'PENDING' | 'UNSENT' | 'SENT' | 'VOID';
 export type CheckStatus = 'OPEN' | 'PAYING' | 'PAID' | 'VOID';
 
 export interface Station { key: string; name: string }
@@ -32,6 +33,15 @@ export interface RestaurantSettings {
   soldOutReset: boolean;
   /** When set, only these staff logins (and the owner) may take payment; the rest send "ready to pay". */
   cashierUserIds: string[];
+  /** Guests order from a QR code on the table: off, staff accept first (VN default), or straight to the kitchen. */
+  qrOrdering: 'off' | 'confirm' | 'auto';
+  /** Phí phục vụ, % of the dishes, added as its own line when paying. 0 = none. */
+  serviceChargePercent: number;
+  /** VAT rate printed on the guest check; prices already include it unless vatIncluded is false. */
+  vatPercent: number;
+  vatIncluded: boolean;
+  /** The restaurant's bank account, for a VietQR with the exact amount and bill code. */
+  bank: { bin: string; accountNo: string; accountName: string } | null;
 }
 
 export const SETTINGS_KEY = 'restaurant_service';
@@ -47,6 +57,11 @@ export const DEFAULT_SETTINGS: RestaurantSettings = {
   lateMinutes: 90,
   soldOutReset: true,
   cashierUserIds: [],
+  qrOrdering: 'off',
+  serviceChargePercent: 0,
+  vatPercent: 0,
+  vatIncluded: true,
+  bank: null,
 };
 
 const KEY_RE = /^[A-Z0-9_]{2,20}$/;
@@ -94,7 +109,26 @@ export function cleanSettings(raw: unknown): RestaurantSettings {
     cashierUserIds: Array.isArray(r.cashierUserIds)
       ? [...new Set(r.cashierUserIds.map((x) => String(x ?? '').trim()).filter((x) => /^[A-Za-z0-9-]{8,64}$/.test(x)))].slice(0, 50)
       : [],
+    qrOrdering: r.qrOrdering === 'confirm' || r.qrOrdering === 'auto' ? r.qrOrdering : 'off',
+    serviceChargePercent: pct(r.serviceChargePercent, 0, 20),
+    vatPercent: [0, 5, 8, 10].includes(Math.round(Number(r.vatPercent))) ? Math.round(Number(r.vatPercent)) : 0,
+    vatIncluded: bool(r.vatIncluded, true),
+    bank: cleanBank(r.bank),
   };
+}
+
+function pct(v: unknown, min: number, max: number): number {
+  const n = Math.round(Number(v) * 10) / 10;
+  return Number.isFinite(n) && n >= min && n <= max ? n : 0;
+}
+
+/** A bank account a VietQR can be made for: a 6-digit bank BIN and an account number. */
+export function cleanBank(raw: unknown): RestaurantSettings['bank'] {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const bin = String(o.bin ?? '').replace(/\D/g, '');
+  const accountNo = String(o.accountNo ?? '').replace(/[^0-9A-Za-z]/g, '').slice(0, 24);
+  const accountName = String(o.accountName ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 50);
+  return bin.length === 6 && accountNo.length >= 4 ? { bin, accountNo, accountName } : null;
 }
 
 /** Categories are matched loosely: "Đồ uống" and " đồ  uống " are the same. */
@@ -129,24 +163,31 @@ export interface LineLike {
   station: string;
   state: LineState | string;
   batch?: number | null;
+  /** Unsent, and kept back on purpose (the main course after the starters). */
+  held?: boolean | null;
 }
 
 /** What the guests owe: every line not taken back. */
 export function checkTotals(lines: LineLike[]) {
-  let subtotal = 0; let unsent = 0; let sent = 0; let voided = 0; let count = 0;
+  let subtotal = 0; let unsent = 0; let sent = 0; let voided = 0; let count = 0; let pending = 0; let held = 0;
   for (const l of lines) {
     const amt = Math.max(0, l.unitPriceCents) * Math.max(0, l.quantity);
     if (l.state === 'VOID') { voided += amt; continue; }
+    // A guest's QR order is not on the bill until staff accept it.
+    if (l.state === 'PENDING') { pending += l.quantity; continue; }
     subtotal += amt;
     count += l.quantity;
-    if (l.state === 'UNSENT') unsent += l.quantity; else sent += l.quantity;
+    if (l.state === 'UNSENT') { unsent += l.quantity; if (l.held) held += l.quantity; } else sent += l.quantity;
   }
-  return { subtotalCents: subtotal, itemCount: count, unsentCount: unsent, sentCount: sent, voidedCents: voided };
+  return { subtotalCents: subtotal, itemCount: count, unsentCount: unsent - held, heldCount: held, sentCount: sent, voidedCents: voided, pendingCount: pending };
 }
 
-/** The new lines of one send, one group per station, in the station order. */
-export function groupForSend(lines: LineLike[], s: RestaurantSettings): { station: string; lines: LineLike[] }[] {
-  const todo = lines.filter((l) => l.state === 'UNSENT' && l.quantity > 0);
+/**
+ * The new lines of one send, one group per station, in the station order.
+ * A normal send leaves held dishes behind; "fire" sends exactly those.
+ */
+export function groupForSend(lines: LineLike[], s: RestaurantSettings, fireHeld = false): { station: string; lines: LineLike[] }[] {
+  const todo = lines.filter((l) => l.state === 'UNSENT' && l.quantity > 0 && !!l.held === fireHeld);
   const order = s.stations.map((x) => x.key);
   const keys = [...new Set(todo.map((l) => l.station))].sort((a, b) => {
     const ia = order.indexOf(a); const ib = order.indexOf(b);
@@ -180,8 +221,8 @@ export const langFor = (currency: string | null | undefined): Lang => (String(cu
 const W = 32; // fits 58 mm and 80 mm paper in the default font
 
 const L = {
-  vi: { NEW: 'MÓN MỚI', VOID: '*** HUỶ MÓN ***', MOVE: 'CHUYỂN BÀN', table: 'BÀN', check: 'Bill bàn', send: 'Lần gửi', guests: 'khách', server: 'PV', reason: 'Lý do', by: 'Huỷ', ok: 'Duyệt', items: 'món', sentAt: 'gửi lúc', still: 'Món đang làm ra bàn mới:', prebill: 'PHIẾU TẠM TÍNH', printed: 'in lần', total: 'TỔNG', notReceipt: 'CHƯA PHẢI HOÁ ĐƠN', cashier: 'TN' },
-  en: { NEW: 'NEW ORDER', VOID: '*** CANCEL ***', MOVE: 'TABLE MOVED', table: 'TABLE', check: 'Check', send: 'Send', guests: 'guests', server: 'Server', reason: 'Reason', by: 'By', ok: 'Approved', items: 'items', sentAt: 'sent', still: 'Now cooking for the new table:', prebill: 'GUEST CHECK', printed: 'print', total: 'TOTAL', notReceipt: 'NOT A RECEIPT', cashier: 'Cashier' },
+  vi: { FIRE: 'LÀM MÓN ĐANG GIỮ', NEW: 'MÓN MỚI', VOID: '*** HUỶ MÓN ***', MOVE: 'CHUYỂN BÀN', table: 'BÀN', check: 'Bill bàn', send: 'Lần gửi', guests: 'khách', server: 'PV', reason: 'Lý do', by: 'Huỷ', ok: 'Duyệt', items: 'món', sentAt: 'gửi lúc', still: 'Món đang làm ra bàn mới:', prebill: 'PHIẾU TẠM TÍNH', printed: 'in lần', total: 'TỔNG', notReceipt: 'CHƯA PHẢI HOÁ ĐƠN', cashier: 'TN' },
+  en: { FIRE: 'FIRE HELD DISHES', NEW: 'NEW ORDER', VOID: '*** CANCEL ***', MOVE: 'TABLE MOVED', table: 'TABLE', check: 'Check', send: 'Send', guests: 'guests', server: 'Server', reason: 'Reason', by: 'By', ok: 'Approved', items: 'items', sentAt: 'sent', still: 'Now cooking for the new table:', prebill: 'GUEST CHECK', printed: 'print', total: 'TOTAL', notReceipt: 'NOT A RECEIPT', cashier: 'Cashier' },
 };
 
 const center = (t: string) => {
@@ -206,7 +247,7 @@ const twoCol = (left: string, right: string) => {
 };
 
 export interface TicketInput {
-  kind: 'NEW' | 'VOID' | 'MOVE';
+  kind: 'NEW' | 'FIRE' | 'VOID' | 'MOVE';
   lang: Lang;
   stationName: string;
   tables: string;
@@ -231,7 +272,7 @@ export function ticketText(t: TicketInput): string {
   out.push(center(`${t.stationName.toUpperCase()} · ${w[t.kind]}`));
   if (t.kind === 'MOVE') out.push(center(`${t.fromTables ?? ''} -> ${t.tables}`));
   else out.push(center(t.takeaway ? t.tables.toUpperCase() : `${w.table} ${t.tables}`));
-  out.push(`${w.check} #${t.checkNumber}${t.kind === 'NEW' && t.batch ? ` · ${w.send} ${t.batch}` : ''}`);
+  out.push(`${w.check} #${t.checkNumber}${(t.kind === 'NEW' || t.kind === 'FIRE') && t.batch ? ` · ${w.send} ${t.batch}` : ''}`);
   const who = [t.guests ? `${t.guests} ${w.guests}` : '', t.server ? `${w.server}: ${t.server}` : ''].filter(Boolean).join(' · ');
   if (who) out.push(who);
   out.push(t.at);
@@ -266,6 +307,15 @@ export interface PrebillInput {
   at: string;
   cashier?: string | null;
   lines: { quantity: number; name: string; amountCents: number; options?: string[] | null }[];
+  /** Phí phục vụ, already in totalCents. */
+  serviceCents?: number;
+  servicePercent?: number;
+  /** VAT printed as "included" (or as added, when the till adds it). */
+  vatPercent?: number;
+  vatCents?: number;
+  vatIncluded?: boolean;
+  /** A VietQR for the exact amount (the till prints it as a link/code line). */
+  payCode?: string | null;
   totalCents: number;
   money: (cents: number) => string;
   footer?: string | null;
@@ -288,7 +338,10 @@ export function prebillText(p: PrebillInput): string {
     for (const o of l.options ?? []) out.push(...wrap(`+ ${o}`, '  '));
   }
   out.push(rule());
+  if (p.serviceCents) out.push(twoCol(`${p.lang === 'vi' ? 'Phí phục vụ' : 'Service charge'} ${p.servicePercent ?? ''}%`, p.money(p.serviceCents)));
   out.push(twoCol(w.total, p.money(p.totalCents)));
+  if (p.vatPercent && p.vatCents) out.push(twoCol(p.vatIncluded === false ? `VAT ${p.vatPercent}%` : `${p.lang === 'vi' ? 'Đã gồm VAT' : 'Incl. VAT'} ${p.vatPercent}%`, p.money(p.vatCents)));
+  if (p.payCode) out.push(...wrap(`${p.lang === 'vi' ? 'Chuyển khoản ghi nội dung' : 'Bank transfer reference'}: ${p.payCode}`));
   out.push('');
   if (p.footer) out.push(...wrap(p.footer).map(center));
   out.push(center(w.notReceipt));
@@ -422,3 +475,80 @@ export function soldOutNow(soldOutAt: Date | null | undefined, reset: boolean, t
 export function checkLabel(tableIds: string[], names: Map<string, string>, number: number, lang: Lang): string {
   return tableIds.length ? tablesLabel(tableIds, names) : `${lang === 'vi' ? 'Mang về' : 'To go'} #${number}`;
 }
+
+// ------------------------------------------------------- money on the bill --
+
+/** Phí phục vụ on the dishes, rounded to the currency (whole đồng). */
+export function serviceChargeOf(subtotalCents: number, percent: number): number {
+  return percent > 0 ? Math.round((subtotalCents * percent) / 100) : 0;
+}
+
+/** The VAT inside a VAT-inclusive total (8% of 108 → 8). */
+export function vatInside(totalCents: number, percent: number): number {
+  return percent > 0 ? Math.round((totalCents * percent) / (100 + percent)) : 0;
+}
+
+// -------------------------------------------------- VietQR and the bank feed --
+
+/** The code a guest types (or the QR fills in) as the transfer description: LM + bill number. */
+export const payCodeOf = (checkNumber: number) => `LM${checkNumber}`;
+
+/** The bill number in a bank transfer's description, wherever the bank put it. */
+export function payCodeIn(text: string | null | undefined): number | null {
+  const m = /(?:^|[^A-Z0-9])LM\s?(\d{1,7})(?![0-9])/i.exec(String(text ?? '').toUpperCase());
+  return m ? Number(m[1]) : null;
+}
+
+/** A VietQR image (napas 247 via img.vietqr.io) with the exact amount and bill code. */
+export function vietQrUrl(bank: RestaurantSettings['bank'], amount: number, code: string): string | null {
+  if (!bank) return null;
+  const q = new URLSearchParams({ amount: String(Math.max(0, Math.round(amount))), addInfo: code, ...(bank.accountName ? { accountName: bank.accountName } : {}) });
+  return `https://img.vietqr.io/image/${bank.bin}-${bank.accountNo}-compact2.png?${q.toString()}`;
+}
+
+export interface BankCredit { id: string; amount: number; description: string; accountNo: string | null; at: string | null }
+
+/**
+ * Money IN from a bank-feed webhook, in one shape. SePay sends one transfer
+ * per call ({ id, transferType: "in", transferAmount, content }); Casso's
+ * classic webhook sends a batch ({ data: [{ id|tid, amount, description }] }).
+ * Outgoing transfers and junk are dropped.
+ */
+export function bankCredits(body: unknown): BankCredit[] {
+  const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  const out: BankCredit[] = [];
+  const add = (id: unknown, amount: unknown, desc: unknown, acct: unknown, at: unknown) => {
+    const a = Math.round(Number(amount));
+    const i = String(id ?? '').trim();
+    if (!i || !Number.isFinite(a) || a <= 0) return;
+    out.push({ id: i.slice(0, 80), amount: a, description: String(desc ?? '').slice(0, 500), accountNo: acct ? String(acct).slice(0, 40) : null, at: at ? String(at).slice(0, 40) : null });
+  };
+  if ('transferAmount' in b || 'transferType' in b) {
+    if (String(b.transferType ?? 'in').toLowerCase() === 'in') add(b.id, b.transferAmount, b.content ?? b.description, b.accountNumber, b.transactionDate);
+  } else if (Array.isArray(b.data)) {
+    for (const d of b.data.slice(0, 50)) {
+      const x = (d && typeof d === 'object' ? d : {}) as Record<string, unknown>;
+      add(x.id ?? x.tid, x.amount, x.description, x.bank_sub_acc_id ?? x.subAccId, x.when);
+    }
+  }
+  return out;
+}
+
+// --------------------------------------------------------- guest QR orders --
+
+/** A guest's basket from the table QR: known shape, sane sizes, never a price. */
+export function cleanGuestOrder(raw: unknown): { menuItemId: string; quantity: number; note: string | null; options: unknown }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { menuItemId: string; quantity: number; note: string | null; options: unknown }[] = [];
+  for (const r of raw.slice(0, 30)) {
+    const o = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>;
+    const id = String(o.menuItemId ?? '').trim();
+    const n = qty(o.quantity ?? 1);
+    if (!/^[A-Za-z0-9_-]{2,64}$/.test(id) || !n) continue;
+    out.push({ menuItemId: id, quantity: Math.min(n, 20), note: cleanNote(o.note), options: Array.isArray(o.options) ? o.options.slice(0, 8) : [] });
+  }
+  return out;
+}
+
+export const CALL_REASONS = ['staff', 'bill', 'water', 'cutlery'] as const;
+export type CallReason = typeof CALL_REASONS[number];

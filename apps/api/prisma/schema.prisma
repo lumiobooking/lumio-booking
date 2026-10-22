@@ -1183,6 +1183,10 @@ model RestaurantTable {
   seats     Int     @default(2) // capacity (number of guests)
   area      String? // optional zone: indoor / outdoor / bar / private
   isActive  Boolean @default(true)
+  // Opaque token printed as the table's QR code (guests order from it). Unique
+  // across restaurants, so it names one table of one restaurant; regenerating
+  // it retires the old printout.
+  qrToken   String? @unique
   sortOrder Int     @default(0)
 
   createdAt DateTime @default(now())
@@ -2598,6 +2602,12 @@ model TableCheck {
   payRequestedAt      DateTime? // a server said the table wants to pay
   mergedInto          String?   // closed by merging into this bill
   splitFrom           String?   // made by splitting dishes off this bill
+  callReason          String?   // a guest pressed "call staff" / "the bill" on the table QR
+  callAt              DateTime?
+  bankPaidCents       Int       @default(0) // money the bank feed matched to this bill (code LM<number>)
+  bankPaidAt          DateTime?
+  bankRef             String?
+  invoiceInfo         Json?     // what the guest asked to be on a VAT invoice
   closedAt            DateTime?
   voidReason          String?
   lines               TableCheckLine[]
@@ -2623,6 +2633,9 @@ model TableCheckLine {
   quantity        Int        @default(1)
   note            String?
   options         Json       @default("[]") // chosen options, priced into unitPriceCents
+  held            Boolean    @default(false) // unsent and kept back (fired later)
+  readyAt         DateTime?  // the kitchen marked it done
+  source          String?    // 'QR' when a guest ordered it from the table
   station         String     @default("KITCHEN")
   state           String     @default("UNSENT") // UNSENT | SENT | VOID
   batch           Int?

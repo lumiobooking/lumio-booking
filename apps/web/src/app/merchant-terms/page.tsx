@@ -14,7 +14,7 @@ export default function MerchantTermsPage() {
       <div style={card}>
         <h1 style={h1}>Merchant Service Agreement</h1>
         <p style={muted}>
-          Lumio Booking, operated by Lumio Agency LLC · 5900 Balcones Drive STE 100, Austin, TX 78731, United States ·
+          Lumio Booking, operated by Lumio Agency LLC · 10650 Montclair Way, Johns Creek, GA 30097, United States ·
           Last updated: July 2026.
         </p>
 
@@ -81,8 +81,10 @@ export default function MerchantTermsPage() {
 
         <h2 style={h2}>Contact</h2>
         <p style={p}>
-          Lumio Agency LLC · 5900 Balcones Drive STE 100, Austin, TX 78731, United States<br />
-          <a href="mailto:lumioagency.com@gmail.com" style={a}>lumioagency.com@gmail.com</a> · +1 (512) 886-8189 ·{' '}
+          Lumio Agency LLC<br />
+          Office: 10650 Montclair Way, Johns Creek, GA 30097, United States<br />
+          Registered address: 5900 Balcones Drive, Suite 100, Austin, TX 78731, United States<br />
+          <a href="mailto:support@lumiobooking.com" style={a}>support@lumiobooking.com</a> · +1 (512) 886-8189 ·{' '}
           <a href="https://lumiobooking.com" style={a}>lumiobooking.com</a>
         </p>
       </div>

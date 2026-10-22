@@ -1,15 +1,39 @@
 'use client';
 
-import { Fragment, useEffect, useRef, useState, CSSProperties } from 'react';
+/**
+ * lumiobooking.com — the public home page.
+ *
+ * WHO READS THIS PAGE, AND WHY IT IS WRITTEN THE WAY IT IS
+ *
+ * Salon owners deciding whether to try us, and — just as often — a reviewer at
+ * Google (Actions Center), Meta, TikTok or an SMS carrier deciding whether
+ * Lumio is a real software company. Both are put off by the same things: a
+ * gradient hero, emoji for icons, five stars nobody gave us. So this page says
+ * only what can be checked: what the product does, what it costs, how a client
+ * books and cancels, who runs it and where, and how to reach a person.
+ *
+ * Company facts come from lib/company-info so this page, /company and the
+ * legal pages can never disagree with each other.
+ */
+
+import { Fragment, useEffect, useRef, useState, CSSProperties, ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { homeFor, useAuth } from '../lib/auth';
 import { useIsMobile } from '../lib/responsive';
 import { uiLocale } from '../lib/datetime';
+import { COMPANY, officeLine } from '../lib/company-info';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
+
+// One small palette. Ink does the work; indigo is the brand mark and the links.
 const INK = '#0f172a';
-const INDIGO = '#6366f1';
+const BODY = '#475569';
+const MUTED = '#64748b';
+const LINE = '#e2e8f0';
+const WASH = '#f8fafc';
+const BRAND = '#4f46e5';
+const LINK = '#4338ca';
 
 interface PublicPlan {
   id: string; name: string; tagline: string | null; description: string | null; currency: string;
@@ -21,97 +45,138 @@ interface PublicPlan {
 const money = (cents: number, currency = 'USD') =>
   new Intl.NumberFormat(uiLocale(), { style: 'currency', currency, maximumFractionDigits: 0 }).format(cents / 100);
 
-// Static 3-tier fallback (shown until the DB Plans are created) + the full
-// feature comparison that always renders below the plan cards.
+// Shown until the plans in the database load (or if they never do).
 const STATIC_PLANS = [
-  { name: 'Starter', tag: 'Small & new salons', monthly: 29, yearly: 290, hi: false,
-    bullets: ['Online booking 24/7', 'Calendar & customer CRM', 'Email confirmations', 'Google review QR', 'Installable app (PWA)', '100 SMS / month'] },
-  { name: 'Pro', tag: 'Full-service salons', monthly: 69, yearly: 690, hi: true,
-    bullets: ['Everything in Starter', 'POS & checkout', 'Walk-ins & waitlist', 'Payroll & tips', 'Messenger AI booking bot', 'Marketing & referrals', '500 SMS/mo · AI Hotline add-on'] },
-  { name: 'Premium', tag: 'Multi-location + full AI', monthly: 149, yearly: 1490, hi: false,
-    bullets: ['Everything in Pro', 'AI Hotline included (300 min)', 'Multi-branch + reports', 'Priority support', 'White-label ready', '1,500 SMS / month'] },
+  { name: 'Starter', tag: 'For small and new salons', monthly: 29, yearly: 290, hi: false,
+    bullets: ['Booking page and calendar', 'Client list', 'Email confirmations and reminders', '100 text messages a month'] },
+  { name: 'Pro', tag: 'For full-service salons', monthly: 69, yearly: 690, hi: true,
+    bullets: ['Everything in Starter', 'Checkout, walk-ins and waitlist', 'Deposits, payroll and tips', 'Messenger and Instagram inbox', '500 text messages a month'] },
+  { name: 'Premium', tag: 'For salons with several locations', monthly: 149, yearly: 1490, hi: false,
+    bullets: ['Everything in Pro', 'Several locations and combined reports', 'Phone assistant, 300 minutes', 'Priority phone support', '1,500 text messages a month'] },
 ];
 
 const COMPARE: [string, [string, string, string, string][]][] = [
-  ['Booking & scheduling', [
-    ['Online booking 24/7', '✓', '✓', '✓'], ['Calendar & appointment statuses', '✓', '✓', '✓'],
-    ['Automatic email reminders', '✓', '✓', '✓'], ['No-show deposits', '—', '✓', '✓'],
-    ['Waitlist', '—', '✓', '✓'], ['Walk-in turn queue', '—', '✓', '✓'],
+  ['Booking and scheduling', [
+    ['Online booking page', '✓', '✓', '✓'], ['Calendar and appointment statuses', '✓', '✓', '✓'],
+    ['Email confirmations and reminders', '✓', '✓', '✓'], ['Deposits for no-show protection', '—', '✓', '✓'],
+    ['Waitlist', '—', '✓', '✓'], ['Walk-in queue', '—', '✓', '✓'],
   ]],
-  ['Point of sale (POS)', [
-    ['Checkout + receipts', '—', '✓', '✓'], ['Gift cards + barcode', '—', '✓', '✓'],
-    ['Tips (3 channels)', '—', '✓', '✓'], ['Offline mode + receipt printing', '—', '✓', '✓'],
+  ['Checkout', [
+    ['Checkout and receipts', '—', '✓', '✓'], ['Gift cards', '—', '✓', '✓'],
+    ['Tips', '—', '✓', '✓'], ['Offline mode and receipt printing', '—', '✓', '✓'],
   ]],
-  ['Customers & staff', [
-    ['Customer CRM', '✓', '✓', '✓'], ['Services & categories', '✓', '✓', '✓'],
-    ['Staff management + roles', '✓', '✓', '✓'], ['Payroll + tips + CSV export', '—', '✓', '✓'],
+  ['Clients and staff', [
+    ['Client list', '✓', '✓', '✓'], ['Services and categories', '✓', '✓', '✓'],
+    ['Staff accounts and roles', '✓', '✓', '✓'], ['Payroll, tips and CSV export', '—', '✓', '✓'],
   ]],
-  ['Marketing & growth', [
-    ['Google review QR + tracking', '✓', '✓', '✓'], ['AI review replies + leaderboard', '—', '✓', '✓'],
-    ['Loyalty rewards + installable app', 'Basic', '✓', '✓'], ['Referral program', '—', '✓', '✓'],
-    ['Campaigns (birthday, email + SMS)', '—', '✓', '✓'], ['Messenger AI booking bot (FB/IG)', '—', '✓', '✓'],
-    ['Social scheduling (TikTok, Facebook, Instagram)', '—', '✓', '✓'],
-    ['AI-SEO booking page', '✓', '✓', '✓'],
+  ['Marketing', [
+    ['Google review requests', '✓', '✓', '✓'], ['Review replies and leaderboard', '—', '✓', '✓'],
+    ['Loyalty points', 'Basic', '✓', '✓'], ['Referrals', '—', '✓', '✓'],
+    ['Birthday and email/text campaigns', '—', '✓', '✓'], ['Messenger and Instagram inbox with assistant', '—', '✓', '✓'],
+    ['Scheduled posts to TikTok, Facebook and Instagram', '—', '✓', '✓'],
   ]],
-  ['Communications', [
-    ['Email notifications', '✓', '✓', '✓'], ['SMS included / month', '100', '500', '1,500'],
-    ['SMS overage / message', '$0.03', '$0.03', '$0.02'], ['AI phone hotline', '—', 'Add-on', '✓'],
-    ['AI hotline minutes / month', '—', '150*', '300'], ['Minute overage', '—', '$0.25', '$0.20'],
+  ['Messages and calls', [
+    ['Email notifications', '✓', '✓', '✓'], ['Text messages included per month', '100', '500', '1,500'],
+    ['Extra text message', '$0.03', '$0.03', '$0.02'], ['Phone assistant', '—', 'Add-on', '✓'],
+    ['Phone assistant minutes per month', '—', '150*', '300'], ['Extra minute', '—', '$0.25', '$0.20'],
   ]],
-  ['Operations & support', [
-    ['Inventory / supplies', '—', '✓', '✓'], ['Multi-branch + consolidated reports', '—', '—', '✓'],
-    ['WordPress connector', '✓', '✓', '✓'], ['Customer display (iPad + 2nd monitor)', '—', '✓', '✓'],
-    ['Sales & payroll reports', 'Basic', '✓', '✓'], ['White-label ready', '—', '—', '✓'],
-    ['Support', 'Email', 'Priority', 'Priority + phone'],
+  ['Operations and support', [
+    ['Inventory', '—', '✓', '✓'], ['Several locations and combined reports', '—', '—', '✓'],
+    ['WordPress plugin', '✓', '✓', '✓'], ['Client-facing display (iPad or second screen)', '—', '✓', '✓'],
+    ['Sales and payroll reports', 'Basic', '✓', '✓'], ['Support', 'Email', 'Email and phone', 'Priority phone'],
   ]],
 ];
 
 const cCell = (v: string) => v === '✓'
-  ? <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>
-  : v === '—' ? <span style={{ color: '#cbd5e1' }}>—</span>
-  : <span style={{ color: '#4f46e5', fontWeight: 600, fontSize: 12.5 }}>{v}</span>;
+  ? <span style={{ color: INK, fontWeight: 700 }} aria-label="Included">✓</span>
+  : v === '—' ? <span style={{ color: '#94a3b8' }} aria-label="Not included">—</span>
+  : <span style={{ color: INK, fontSize: 13.5 }}>{v}</span>;
 
-function ComparisonTable({ mobile }: { mobile: boolean }) {
-  const th: CSSProperties = { padding: '12px 10px', fontSize: 13.5, fontWeight: 600, textAlign: 'center', background: '#0f172a', color: '#f8fafc' };
-  const cat: CSSProperties = { padding: '9px 12px', fontSize: 13, fontWeight: 700, color: '#0f172a', background: '#eef2f7' };
-  const feat: CSSProperties = { padding: '9px 12px', fontSize: 13.5, color: '#334155', borderBottom: '1px solid #f1f5f9' };
-  const val: CSSProperties = { padding: '9px 10px', fontSize: 14, textAlign: 'center', borderBottom: '1px solid #f1f5f9' };
+function ComparisonTable() {
+  const th: CSSProperties = { padding: '12px 14px', fontSize: 14, fontWeight: 700, textAlign: 'center', borderBottom: `1px solid ${INK}` };
+  const cat: CSSProperties = { padding: '18px 14px 8px', fontSize: 13, fontWeight: 700, letterSpacing: 0.5, color: MUTED, textTransform: 'uppercase' };
+  const feat: CSSProperties = { padding: '10px 14px', fontSize: 14.5, color: '#334155', borderBottom: `1px solid ${LINE}` };
+  const val: CSSProperties = { padding: '10px 14px', fontSize: 14.5, textAlign: 'center', borderBottom: `1px solid ${LINE}` };
   return (
-    <div style={{ marginTop: 48 }}>
-      <div style={{ textAlign: 'center', fontSize: mobile ? 20 : 26, fontWeight: 700, letterSpacing: -0.5, marginBottom: 20 }}>Compare every feature</div>
-      <div style={{ overflowX: 'auto', border: '1px solid #eef2f7', borderRadius: 14 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
-          <thead>
-            <tr>
-              <th style={{ ...th, textAlign: 'left', paddingLeft: 14 }}>Feature</th>
-              <th style={th}>Starter<br /><span style={{ fontWeight: 600, color: '#cbd5e1' }}>$29/mo</span></th>
-              <th style={{ ...th, background: '#4f46e5' }}>Pro<br /><span style={{ fontWeight: 600, color: '#c7d2fe' }}>$69/mo</span></th>
-              <th style={th}>Premium<br /><span style={{ fontWeight: 600, color: '#cbd5e1' }}>$149/mo</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {COMPARE.map(([c, rows]) => (
-              <Fragment key={c}>
-                <tr><td colSpan={4} style={cat}>{c}</td></tr>
-                {rows.map((r) => (
-                  <tr key={r[0]}>
-                    <td style={feat}>{r[0]}</td>
-                    <td style={val}>{cCell(r[1])}</td>
-                    <td style={{ ...val, background: '#f5f6ff' }}>{cCell(r[2])}</td>
-                    <td style={val}>{cCell(r[3])}</td>
-                  </tr>
-                ))}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p style={{ color: '#94a3b8', fontSize: 12.5, marginTop: 14, textAlign: 'center' }}>
-        * On Pro, AI Hotline is an add-on (~$39/mo, 150 minutes). Premium includes 300 minutes. Annual billing saves ~2 months. SMS &amp; minute overage billed as used.
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: 'left' }}>Feature</th>
+            <th style={th}>Starter</th>
+            <th style={th}>Pro</th>
+            <th style={th}>Premium</th>
+          </tr>
+        </thead>
+        <tbody>
+          {COMPARE.map(([c, rows]) => (
+            <Fragment key={c}>
+              <tr><td colSpan={4} style={cat}>{c}</td></tr>
+              {rows.map((r) => (
+                <tr key={r[0]}>
+                  <td style={feat}>{r[0]}</td>
+                  <td style={val}>{cCell(r[1])}</td>
+                  <td style={val}>{cCell(r[2])}</td>
+                  <td style={val}>{cCell(r[3])}</td>
+                </tr>
+              ))}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+      <p style={{ color: MUTED, fontSize: 13, margin: '14px 0 0' }}>
+        * On Pro the phone assistant is an add-on (about $39 a month for 150 minutes). Premium includes 300 minutes.
       </p>
     </div>
   );
 }
+
+/** A thin brand mark. Kept as SVG so it is crisp everywhere and needs no request. */
+function Mark({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 28 28" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
+      <rect width="28" height="28" rx="7" fill={BRAND} />
+      <path d="M10 7v14h9" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function Icon({ children }: { children: ReactNode }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={LINK} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
+  );
+}
+
+const FEATURES: { title: string; desc: string; icon: ReactNode }[] = [
+  { title: 'Booking page', icon: <><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4M8 14h3" /></>,
+    desc: 'A page at lumiobooking.com/your-salon with services, prices, technicians and live availability. It can be added to the salon’s website and Google Business Profile.' },
+  { title: 'Calendar and staff', icon: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c2 .8 3.2 2.6 3.5 5.2" /></>,
+    desc: 'One calendar for the whole team, with working hours, time off, a break between appointments, and a walk-in queue.' },
+  { title: 'Checkout', icon: <><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z" /><path d="M9 8h6M9 12h6" /></>,
+    desc: 'Ring up services and retail at the front desk, record tips, and print or text the receipt.' },
+  { title: 'Confirmations and reminders', icon: <><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" /><path d="M10.3 20a2 2 0 0 0 3.4 0" /></>,
+    desc: 'By email, and by text message for clients who agree to receive texts. Each salon chooses when reminders go out.' },
+  { title: 'Deposits and payments', icon: <><rect x="2.5" y="5" width="19" height="14" rx="2" /><path d="M2.5 10h19M6 15h4" /></>,
+    desc: 'Optional deposits are charged through the salon’s own Stripe, Square, PayPal or Clover account. Money goes straight to the salon.' },
+  { title: 'Messages in one place', icon: <path d="M21 12a8 8 0 0 1-11.8 7L4 20.5l1.5-4.6A8 8 0 1 1 21 12z" />,
+    desc: 'Facebook Messenger, Instagram and website chat in a single inbox, with an optional assistant that answers booking questions.' },
+  // NAMED ON PURPOSE. TikTok's app reviewer reads this page to decide whether
+  // Lumio is a product other businesses use or an internal tool, and an
+  // integration a product never mentions in public reads as the latter. Our
+  // first submission was refused on exactly that reading. Every social network
+  // a salon can connect is named here, where it can be checked.
+  { title: 'Scheduled social posts', icon: <><rect x="3" y="3" width="18" height="18" rx="3" /><path d="M8 12h8M12 8v8" /></>,
+    desc: 'Each salon connects its own TikTok, Facebook and Instagram accounts, plans posts, approves them, and Lumio publishes them at the time the salon picked.' },
+  { title: 'Works with your website', icon: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></>,
+    desc: 'Add the booking form to an existing site with our WordPress plugin or a short embed code, connected by the salon’s own key.' },
+];
+
+const STEPS = [
+  { title: 'Choose a service', desc: 'From the salon’s booking page, its website, or its Google Business Profile.' },
+  { title: 'Pick a time', desc: 'Only times the salon has open are shown, with the salon’s own prices and durations.' },
+  { title: 'Get a confirmation', desc: 'By email, and by text message if the client agrees to receive texts. No account is needed.' },
+  { title: 'Change or cancel', desc: 'Every confirmation links to a page where the client can reschedule or cancel, under the salon’s policy.' },
+];
 
 export default function HomePage() {
   const { user, ready } = useAuth();
@@ -119,6 +184,7 @@ export default function HomePage() {
   const router = useRouter();
   const [plans, setPlans] = useState<PublicPlan[]>([]);
   const [yearly, setYearly] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/public/plans`).then((r) => r.json()).then((d) => Array.isArray(d) && setPlans(d)).catch(() => {});
@@ -149,283 +215,374 @@ export default function HomePage() {
     } catch { /* an odd browser reads the page as usual */ }
   }, [ready, router, user, dashHref]);
 
+  const pad = mobile ? 20 : 32;
+  const wrap: CSSProperties = { maxWidth: 1200, margin: '0 auto', paddingLeft: pad, paddingRight: pad, boxSizing: 'border-box' };
+  const h2: CSSProperties = { margin: 0, fontSize: mobile ? 28 : 38, lineHeight: 1.15, fontWeight: 700, letterSpacing: mobile ? -0.5 : -0.8, color: INK };
+  const lead: CSSProperties = { margin: 0, fontSize: mobile ? 16.5 : 18, color: BODY, lineHeight: 1.6 };
+  const sectionY = mobile ? 64 : 104;
+  const navLinks: [string, string][] = [['Product', '/#product'], ['For clients', '/#clients'], ['Pricing', '/#pricing'], ['Company', '/company'], ['Support', '/support']];
+
   return (
-    <div style={{ background: '#fff', color: INK, minHeight: '100vh', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
+    <div style={{ background: '#ffffff', color: INK, minHeight: '100vh', fontFamily: 'inherit', fontSize: 16, lineHeight: 1.6 }}>
       {/* ---------------- Nav ---------------- */}
-      <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 50, background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #eef2f7' }}>
-        <nav style={{ maxWidth: 1120, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 24 }}>
-          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 20, fontWeight: 700, color: INK, textDecoration: 'none', letterSpacing: -0.5 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo/lumio-mark.png" alt="" width={34} height={34} style={{ width: 34, height: 34, display: 'block' }} />
-            <span>Lumio<span style={{ color: INDIGO }}>Booking</span></span>
+      <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 50, background: '#ffffff', borderBottom: `1px solid ${LINE}` }}>
+        <nav aria-label="Main" style={{ ...wrap, minHeight: mobile ? 64 : 72, display: 'flex', alignItems: 'center', gap: mobile ? 12 : 32 }}>
+          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: mobile ? 17 : 18, fontWeight: 700, color: INK, textDecoration: 'none', letterSpacing: -0.2 }}>
+            <Mark size={mobile ? 26 : 28} />Lumio Booking
           </Link>
           {!mobile && (
-            <div style={{ display: 'flex', gap: 22, marginLeft: 16 }}>
-              <a href="#features" style={navLink}>Features</a>
-              <a href="#how" style={navLink}>How it works</a>
-              <a href="#pricing" style={navLink}>Pricing</a>
+            <div style={{ display: 'flex', gap: 28, fontSize: 15 }}>
+              {navLinks.map(([t, h]) => <Link key={t} href={h} style={navLink}>{t}</Link>)}
             </div>
           )}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: mobile ? 4 : 20, alignItems: 'center' }}>
             {ready && user ? (
-              <Link href={dashHref} style={primaryBtn}>{mobile ? 'Dashboard' : 'Go to dashboard'}</Link>
+              <Link href={dashHref} style={darkBtn}>{mobile ? 'Dashboard' : 'Go to dashboard'}</Link>
             ) : (
               <>
-                <Link href="/login" style={{ ...navLink, fontWeight: 600 }}>Sign in</Link>
-                <a href="#pricing" style={primaryBtn}>{mobile ? 'Try free' : 'Start free trial'}</a>
+                <Link href="/login" style={{ ...navLink, color: INK, fontWeight: 600, padding: '10px 4px' }}>Sign in</Link>
+                {!mobile && <a href="#pricing" style={darkBtn}>Start free trial</a>}
               </>
+            )}
+            {mobile && (
+              <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen}
+                style={{ width: 44, height: 44, border: 'none', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={INK} strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+                </svg>
+              </button>
             )}
           </div>
         </nav>
+        {mobile && menuOpen && (
+          <div style={{ borderTop: `1px solid ${LINE}`, padding: '8px 20px 16px', display: 'flex', flexDirection: 'column' }}>
+            {navLinks.map(([t, h]) => (
+              <Link key={t} href={h} onClick={() => setMenuOpen(false)} style={{ ...navLink, color: INK, fontSize: 16, padding: '12px 0', borderBottom: `1px solid ${LINE}` }}>{t}</Link>
+            ))}
+            {!(ready && user) && <a href="#pricing" onClick={() => setMenuOpen(false)} style={{ ...darkBtn, marginTop: 14, justifyContent: 'center' }}>Start free trial</a>}
+          </div>
+        )}
       </header>
 
       {/* ---------------- Hero ---------------- */}
-      <section style={{ background: 'linear-gradient(180deg,#eef2ff 0%, #ffffff 70%)' }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: mobile ? '52px 20px 44px' : '84px 24px 64px', textAlign: 'center' }}>
-          <span style={pill}>For nail salons in the US &amp; Canada</span>
-          <h1 style={{ fontSize: mobile ? 33 : 52, lineHeight: 1.1, fontWeight: 700, letterSpacing: mobile ? -0.8 : -1.5, margin: '18px 0 0' }}>
-            The booking system that fills your chairs — and runs your salon.
+      <section style={{ ...wrap, paddingTop: mobile ? 40 : 88, paddingBottom: mobile ? 48 : 80, display: 'flex', flexWrap: 'wrap', gap: mobile ? 36 : 64, alignItems: 'center' }}>
+        <div style={{ flex: '1 1 460px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: mobile ? 18 : 24 }}>
+          <div style={{ fontSize: mobile ? 13 : 14, fontWeight: 600, color: LINK }}>Booking and point-of-sale software for salons</div>
+          <h1 style={{ margin: 0, fontSize: mobile ? 33 : 52, lineHeight: 1.08, fontWeight: 700, letterSpacing: mobile ? -0.8 : -1.4 }}>
+            Online booking and front-desk software for nail and beauty salons.
           </h1>
-          <p style={{ fontSize: mobile ? 16 : 20, color: '#475569', maxWidth: 640, margin: '16px auto 0', lineHeight: 1.5 }}>
-            Online booking, point-of-sale checkout, loyalty rewards, automatic reminders and payments — all in one beautiful app your clients can install on their phone.
+          <p style={{ ...lead, fontSize: mobile ? 16.5 : 19, maxWidth: 560 }}>
+            Each salon gets its own booking page, one calendar for the whole team, checkout at the front desk, and automatic
+            appointment reminders. Lumio Booking is used by independent salons in the United States and Canada.
           </p>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 28, flexWrap: 'wrap' }}>
-            <a href="#pricing" style={{ ...primaryBtn, padding: '14px 28px', fontSize: 16, width: mobile ? '100%' : 'auto', textAlign: 'center' }}>Start your 14-day free trial</a>
-            <Link href="/book/lumio-salon" style={{ ...ghostBtn, padding: '14px 28px', fontSize: 16, width: mobile ? '100%' : 'auto', textAlign: 'center' }}>See a live booking page →</Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 8 : 24, flexWrap: 'wrap', flexDirection: mobile ? 'column' : 'row' }}>
+            <a href="#pricing" style={{ ...darkBtn, minHeight: 52, padding: '0 24px', fontSize: 16, width: mobile ? '100%' : 'auto', justifyContent: 'center', boxSizing: 'border-box' }}>Start 14-day free trial</a>
+            <Link href="/book/lumio-salon" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44, color: INK, textDecoration: 'none', fontSize: 16, fontWeight: 600 }}>
+              View a sample booking page
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={INK} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            </Link>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 16 }}>No setup fees · Cancel anytime · Card or PayPal</p>
+          <div style={{ fontSize: 14, color: MUTED, textAlign: mobile ? 'center' : 'left' }}>No setup fee · Cancel any time · Plans from $29 a month</div>
         </div>
+        <BookingPreview mobile={mobile} />
       </section>
 
-      {/* ---------------- Trust strip ---------------- */}
-      <section style={{ borderTop: '1px solid #eef2f7', borderBottom: '1px solid #eef2f7', background: '#fbfcfe' }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '22px 24px', display: 'flex', gap: 36, justifyContent: 'center', flexWrap: 'wrap', color: '#64748b', fontSize: 14, fontWeight: 600 }}>
-          <span>★★★★★ Loved by busy salons</span>
-          <span>· Secure payments by Stripe &amp; PayPal</span>
-          <span>· Works with your WordPress site</span>
-        </div>
-      </section>
-
-      {/* ---------------- Features ---------------- */}
-      <section id="features" style={{ maxWidth: 1120, margin: '0 auto', padding: mobile ? '52px 20px' : '80px 24px' }}>
-        <SectionHead eyebrow="Everything in one place" title="Run the whole salon, not just the calendar" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20, marginTop: 40 }}>
-          {FEATURES.map((f) => (
-            <div key={f.title} style={featureCard}>
-              <div style={{ fontSize: 26 }}>{f.icon}</div>
-              <h3 style={{ fontSize: 17, margin: '12px 0 6px' }}>{f.title}</h3>
-              <p style={{ color: '#64748b', fontSize: 14, margin: 0, lineHeight: 1.5 }}>{f.desc}</p>
+      {/* ---------------- Facts that can be checked ---------------- */}
+      <section aria-label="At a glance" style={{ borderTop: `1px solid ${LINE}`, borderBottom: `1px solid ${LINE}`, background: WASH }}>
+        <div style={{ ...wrap, paddingTop: mobile ? 24 : 32, paddingBottom: mobile ? 24 : 32, display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: mobile ? '20px 16px' : 32 }}>
+          {[
+            ['14 days', 'Free trial, no card required'],
+            ['From $29 / month', 'Published prices, no setup fee'],
+            [COMPANY.replyTime, 'Support reply time'],
+            ['US & Canada', 'Where our salons operate'],
+          ].map(([big, small]) => (
+            <div key={big} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: mobile ? 18 : 22, fontWeight: 700 }}>{big}</span>
+              <span style={{ fontSize: mobile ? 13 : 14, color: BODY }}>{small}</span>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ---------------- How it works ---------------- */}
-      <section id="how" style={{ background: '#0b1120', color: '#e2e8f0' }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto', padding: mobile ? '52px 20px' : '80px 24px' }}>
-          <SectionHead eyebrow="Up and running today" title="Launch in three simple steps" dark />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24, marginTop: 44 }}>
+      {/* ---------------- Product ---------------- */}
+      <section id="product" style={{ ...wrap, paddingTop: sectionY, paddingBottom: mobile ? 40 : 56, display: 'flex', flexDirection: 'column', gap: mobile ? 32 : 56, scrollMarginTop: 80 }}>
+        <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <h2 style={h2}>What a salon gets</h2>
+          <p style={lead}>One account covers the booking page clients see and the tools the front desk uses every day. Each salon’s data is kept separate and belongs to the salon.</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: mobile ? 28 : '48px 40px' }}>
+          {FEATURES.map((f) => (
+            <div key={f.title} style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: `1px solid ${INK}`, paddingTop: 20 }}>
+              <Icon>{f.icon}</Icon>
+              <h3 style={{ margin: 0, fontSize: mobile ? 17 : 19, fontWeight: 700 }}>{f.title}</h3>
+              <p style={{ margin: 0, color: BODY, fontSize: mobile ? 15 : 16 }}>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section aria-label="Calendar preview" style={{ ...wrap, paddingBottom: sectionY }}>
+        <CalendarPreview />
+      </section>
+
+      {/* ---------------- How clients book ---------------- */}
+      <section id="clients" style={{ background: WASH, borderTop: `1px solid ${LINE}`, borderBottom: `1px solid ${LINE}`, scrollMarginTop: 80 }}>
+        <div style={{ ...wrap, paddingTop: sectionY, paddingBottom: sectionY, display: 'flex', flexDirection: 'column', gap: mobile ? 32 : 48 }}>
+          <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <h2 style={h2}>How clients book with a Lumio salon</h2>
+            <p style={lead}>Clients book directly with the salon. Lumio Booking provides the software; the salon sets its own services, prices, hours and cancellation policy.</p>
+          </div>
+          <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: mobile ? 24 : 32 }}>
             {STEPS.map((s, i) => (
-              <div key={s.title} style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 16, padding: 26 }}>
-                <div style={{ width: 38, height: 38, borderRadius: '50%', background: INDIGO, display: 'grid', placeItems: 'center', fontWeight: 600, fontSize: 16 }}>{i + 1}</div>
-                <h3 style={{ fontSize: 18, margin: '16px 0 6px' }}>{s.title}</h3>
-                <p style={{ color: '#94a3b8', fontSize: 14, margin: 0, lineHeight: 1.5 }}>{s.desc}</p>
-              </div>
+              <li key={s.title} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: LINK }}>{String(i + 1).padStart(2, '0')}</span>
+                <span style={{ fontSize: 18, fontWeight: 700 }}>{s.title}</span>
+                <span style={{ color: BODY }}>{s.desc}</span>
+              </li>
             ))}
+          </ol>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px 48px', alignItems: 'center', padding: mobile ? 20 : '24px 28px', border: `1px solid ${LINE}`, borderRadius: 12, background: '#ffffff' }}>
+            <div style={{ flex: '1 1 420px', minWidth: 0 }}>
+              <div style={{ fontWeight: 700 }}>Questions about an appointment?</div>
+              <div style={{ color: BODY }}>
+                Contact the salon directly. Its phone number is on the booking page and in every confirmation. For help with the
+                booking page itself, write to <a href={`mailto:${COMPANY.supportEmail}`} style={linkStyle}>{COMPANY.supportEmail}</a>.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontWeight: 600, fontSize: 15 }}>
+              <Link href="/booking-policy" style={linkStyle}>Cancellation policy</Link>
+              <Link href="/privacy" style={linkStyle}>Privacy policy</Link>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ---------------- Pricing ---------------- */}
-      <section id="pricing" style={{ maxWidth: 1120, margin: '0 auto', padding: mobile ? '52px 20px' : '80px 24px' }}>
-        <SectionHead eyebrow="Simple, transparent pricing" title="Choose the plan that fits your salon" />
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
-          <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: 999, padding: 4 }}>
-            <button onClick={() => setYearly(false)} style={toggleBtn(!yearly)}>Monthly</button>
-            <button onClick={() => setYearly(true)} style={toggleBtn(yearly)}>Yearly <span style={{ color: yearly ? '#c7d2fe' : '#16a34a', fontWeight: 600 }}>save ~17%</span></button>
+      <section id="pricing" style={{ ...wrap, paddingTop: sectionY, paddingBottom: sectionY, display: 'flex', flexDirection: 'column', gap: mobile ? 28 : 40, scrollMarginTop: 80 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <h2 style={h2}>Pricing</h2>
+            <p style={lead}>Prices are in US dollars, per salon location. Every plan starts with a 14-day free trial. Yearly billing costs the same as 10 months.</p>
+          </div>
+          <div role="group" aria-label="Billing period" style={{ display: 'inline-flex', border: `1px solid ${LINE}`, borderRadius: 8, padding: 3 }}>
+            <button type="button" onClick={() => setYearly(false)} aria-pressed={!yearly} style={toggleBtn(!yearly)}>Monthly</button>
+            <button type="button" onClick={() => setYearly(true)} aria-pressed={yearly} style={toggleBtn(yearly)}>Yearly</button>
           </div>
         </div>
 
-        {plans.length === 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : `repeat(${Math.min(STATIC_PLANS.length, 3)}, minmax(0, 1fr))`, gap: 20, alignItems: 'start', justifyContent: 'center', marginTop: 40 }}>
-            {STATIC_PLANS.map((p) => (
-              <div key={p.name} style={{ ...priceCard, ...(p.hi ? priceCardHi : {}) }}>
-                {p.hi && <span style={popularBadge}>MOST POPULAR</span>}
-                <h3 style={{ fontSize: 22, margin: 0 }}>{p.name}</h3>
-                <p style={{ color: '#64748b', fontSize: 14, margin: '6px 0 0' }}>{p.tag}</p>
-                <div style={{ margin: '20px 0 4px' }}>
-                  <span style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>${yearly ? p.yearly : p.monthly}</span>
-                  <span style={{ color: '#64748b', fontSize: 16 }}>{yearly ? '/year' : '/month'}</span>
-                </div>
-                <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>14-day free trial · no card upfront</p>
-                <Link href="/signup" style={{ ...primaryBtn, display: 'block', textAlign: 'center', padding: '13px', marginTop: 20, ...(p.hi ? {} : { background: '#fff', color: INDIGO, border: `1.5px solid ${INDIGO}` }) }}>Start free trial</Link>
-                <ul style={{ listStyle: 'none', padding: 0, margin: '22px 0 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {p.bullets.map((f) => (
-                    <li key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: '#334155' }}>
-                      <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span> {f}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: 24, alignItems: 'stretch' }}>
+          {plans.length === 0
+            ? STATIC_PLANS.map((p) => (
+              <PlanCard key={p.name} name={p.name} tag={p.tag} hi={p.hi}
+                price={`$${yearly ? p.yearly : p.monthly}`} per={yearly ? '/ year' : '/ month'}
+                note="14-day free trial" bullets={p.bullets} href="/signup" />
+            ))
+            : plans.map((p) => (
+              <PlanCard key={p.id} name={p.name} tag={p.tagline ?? ''} hi={p.highlighted}
+                price={money(yearly ? p.priceYearlyCents : p.priceMonthlyCents, p.currency)} per={yearly ? '/ year' : '/ month'}
+                note={[
+                  yearly && p.priceMonthlyCents > 0 ? `About ${money(Math.round(p.priceYearlyCents / 12), p.currency)} a month, billed yearly` : '',
+                  p.trialDays > 0 ? `${p.trialDays}-day free trial` : '',
+                ].filter(Boolean).join(' · ')}
+                bullets={p.features.length ? p.features : ['Online booking page', 'Email confirmations and reminders']}
+                href={`/signup?plan=${p.id}&interval=${yearly ? 'year' : 'month'}`} />
             ))}
-          </div>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: mobile
-              ? '1fr'
-              : plans.length === 1
-                ? 'minmax(0, 420px)'
-                : `repeat(${Math.min(plans.length, 3)}, minmax(0, 1fr))`,
-            gap: 20, alignItems: 'start', justifyContent: 'center', marginTop: 40,
-          }}>
-            {plans.map((p) => {
-              const cents = yearly ? p.priceYearlyCents : p.priceMonthlyCents;
-              const per = yearly ? '/year' : '/month';
-              return (
-                <div key={p.id} style={{ ...priceCard, ...(p.highlighted ? priceCardHi : {}) }}>
-                  {p.highlighted && <span style={popularBadge}>MOST POPULAR</span>}
-                  <h3 style={{ fontSize: 22, margin: 0 }}>{p.name}</h3>
-                  {p.tagline && <p style={{ color: '#64748b', fontSize: 14, margin: '6px 0 0' }}>{p.tagline}</p>}
-                  <div style={{ margin: '20px 0 4px' }}>
-                    <span style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>{money(cents, p.currency)}</span>
-                    <span style={{ color: '#64748b', fontSize: 16 }}>{per}</span>
-                  </div>
-                  {yearly && p.priceMonthlyCents > 0 && (
-                    <p style={{ color: '#16a34a', fontSize: 13, margin: '0 0 8px', fontWeight: 600 }}>
-                      ≈ {money(Math.round(p.priceYearlyCents / 12), p.currency)}/mo billed yearly
-                    </p>
-                  )}
-                  {p.trialDays > 0 && <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>{p.trialDays}-day free trial</p>}
-                  <Link href={`/signup?plan=${p.id}&interval=${yearly ? 'year' : 'month'}`} style={{ ...primaryBtn, display: 'block', textAlign: 'center', padding: '13px', marginTop: 20, ...(p.highlighted ? {} : { background: '#fff', color: INDIGO, border: `1.5px solid ${INDIGO}` }) }}>
-                    Start free trial
-                  </Link>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: '22px 0 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {(p.features.length ? p.features : defaultFeatures(p)).map((f) => (
-                      <li key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: '#334155' }}>
-                        <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span> {f}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <ComparisonTable mobile={mobile} />
-        <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, marginTop: 28 }}>
-          All plans include secure card payments (Stripe) and PayPal · cancel anytime from your dashboard.
+        </div>
+
+        <p style={{ margin: 0, fontSize: 14, color: MUTED }}>
+          Extra text messages are billed at $0.03 each ($0.02 on Premium). Card payments and deposits are processed by the
+          salon’s own payment provider, at that provider’s rates. Subscriptions are billed by card or PayPal and can be
+          cancelled at any time from the dashboard.
         </p>
+
+        <details style={{ borderTop: `1px solid ${LINE}`, paddingTop: 20 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 16, minHeight: 44, display: 'flex', alignItems: 'center' }}>Compare all features</summary>
+          <div style={{ marginTop: 12 }}><ComparisonTable /></div>
+        </details>
       </section>
 
-      {/* ---------------- Final CTA ---------------- */}
-      <section style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', color: '#fff' }}>
-        <div style={{ maxWidth: 800, margin: '0 auto', padding: mobile ? '52px 20px' : '72px 24px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: mobile ? 26 : 34, fontWeight: 700, margin: 0, letterSpacing: -1 }}>Ready to grow your salon?</h2>
-          <p style={{ fontSize: 18, opacity: 0.9, margin: '14px 0 28px' }}>Start free for 14 days. No card charged until your trial ends.</p>
-          <a href="#pricing" style={{ ...primaryBtn, background: '#fff', color: INDIGO, padding: '14px 30px', fontSize: 16 }}>Get started</a>
+      {/* ---------------- Company ---------------- */}
+      <section id="company" style={{ borderTop: `1px solid ${LINE}` }}>
+        <div style={{ ...wrap, paddingTop: mobile ? 56 : 88, paddingBottom: mobile ? 56 : 88, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: mobile ? 32 : 48 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <h2 style={{ ...h2, fontSize: mobile ? 24 : 30 }}>About the company</h2>
+            <p style={{ margin: 0, color: BODY }}>Lumio Booking is software developed and operated by {COMPANY.legalName}, a company registered in the United States.</p>
+            <Link href="/company" style={{ ...linkStyle, fontWeight: 600 }}>More about {COMPANY.legalName}</Link>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={label}>OFFICE</div>
+            <address style={{ fontStyle: 'normal' }}>{COMPANY.office.map((l) => <Fragment key={l}>{l}<br /></Fragment>)}</address>
+            <div style={{ ...label, marginTop: 14 }}>REGISTERED ADDRESS</div>
+            <address style={{ fontStyle: 'normal' }}>{COMPANY.registered.map((l) => <Fragment key={l}>{l}<br /></Fragment>)}</address>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={label}>CONTACT</div>
+            <a href={`mailto:${COMPANY.supportEmail}`} style={linkStyle}>{COMPANY.supportEmail}</a>
+            <a href={`mailto:${COMPANY.partnersEmail}`} style={linkStyle}>{COMPANY.partnersEmail}</a>
+            <a href={COMPANY.phoneHref} style={linkStyle}>{COMPANY.phone}</a>
+            <div style={{ color: BODY, marginTop: 8 }}>We reply within {COMPANY.replyTime}.</div>
+          </div>
         </div>
       </section>
 
       {/* ---------------- Footer ---------------- */}
-      <footer style={{ background: '#0b1120', color: '#94a3b8' }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '40px 24px', display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 18, fontWeight: 700, color: '#f8fafc' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo/lumio-mark.png" alt="" width={28} height={28} style={{ width: 28, height: 28, display: 'block' }} />
-              <span>Lumio<span style={{ color: INDIGO }}>Booking</span></span>
+      <footer style={{ background: INK, color: '#cbd5e1' }}>
+        <div style={{ ...wrap, paddingTop: mobile ? 40 : 64, paddingBottom: 32, display: 'flex', flexDirection: 'column', gap: mobile ? 28 : 40 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(5, minmax(0, 1fr))', gap: mobile ? 28 : 32, fontSize: 15 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, gridColumn: mobile ? '1 / -1' : undefined }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#f8fafc', fontWeight: 700, fontSize: 17 }}><Mark size={26} />Lumio Booking</span>
+              <span style={{ color: '#94a3b8', fontSize: 14 }}>Booking and point-of-sale software for salons.</span>
             </div>
-            <p style={{ fontSize: 13, margin: '6px 0 0' }}>Booking &amp; salon management software.</p>
-            <p style={{ fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.6, color: '#64748b' }}>
-              Lumio Agency LLC · 5900 Balcones Drive STE 100, Austin, TX 78731, USA<br />
-              <a href="tel:+15128868189" style={{ color: '#94a3b8', textDecoration: 'none' }}>+1 (512) 886-8189</a> ·{' '}
-              <a href="mailto:lumioagency.com@gmail.com" style={{ color: '#94a3b8', textDecoration: 'none' }}>lumioagency.com@gmail.com</a>
-            </p>
+            <FooterCol title="Product" links={[['Features', '/#product'], ['Pricing', '/#pricing'], ['Sign in', '/login'], ['Start free trial', '/signup']]} />
+            <FooterCol title="For clients" links={[['How booking works', '/#clients'], ['Cancellation policy', '/booking-policy'], ['Text message alerts', '/sms-optin'], ['Delete my data', '/data-deletion']]} />
+            <FooterCol title="Company" links={[['About and contact', '/company'], ['Support', '/support'], ['Merchant agreement', '/merchant-terms']]} />
+            <FooterCol title="Legal" links={[['Privacy policy', '/privacy'], ['Terms of service', '/terms'], ['Messaging terms', '/terms']]} />
           </div>
-          <div style={{ display: 'flex', gap: 20, fontSize: 14, flexWrap: 'wrap' }}>
-            <a href="#features" style={{ color: '#94a3b8', textDecoration: 'none' }}>Features</a>
-            <a href="#pricing" style={{ color: '#94a3b8', textDecoration: 'none' }}>Pricing</a>
-            <Link href="/privacy" style={{ color: '#94a3b8', textDecoration: 'none' }}>Privacy Policy</Link>
-            <Link href="/terms" style={{ color: '#94a3b8', textDecoration: 'none' }}>Terms &amp; SMS Terms</Link>
-            <Link href="/sms-optin" style={{ color: '#94a3b8', textDecoration: 'none' }}>Text Alerts</Link>
-            <Link href="/booking-policy" style={{ color: '#94a3b8', textDecoration: 'none' }}>Cancellation Policy</Link>
-            <Link href="/merchant-terms" style={{ color: '#94a3b8', textDecoration: 'none' }}>Merchant Agreement</Link>
-            <Link href="/company" style={{ color: '#94a3b8', textDecoration: 'none' }}>Company</Link>
-            <Link href="/support" style={{ color: '#94a3b8', textDecoration: 'none' }}>Support</Link>
-            <Link href="/login" style={{ color: '#94a3b8', textDecoration: 'none' }}>Sign in</Link>
+          {/* SMS program disclosure — public and verifiable for A2P 10DLC review. */}
+          <p style={{ margin: 0, paddingTop: 24, borderTop: '1px solid #1e293b', fontSize: 13, color: '#94a3b8', lineHeight: 1.7 }}>
+            Text messages: when a client books with a salon that uses Lumio Booking and gives a mobile number, the salon may
+            send appointment confirmations and reminders by text. Promotional texts are sent only with separate consent. Up
+            to 6 messages a month. Message and data rates may apply. Reply STOP to opt out or HELP for help. Opt-in and
+            consent data is never shared with third parties.{' '}
+            <Link href="/sms-optin" style={{ color: '#e2e8f0' }}>Sign up for text alerts</Link> ·{' '}
+            <Link href="/privacy" style={{ color: '#e2e8f0' }}>Privacy policy</Link> ·{' '}
+            <Link href="/terms" style={{ color: '#e2e8f0' }}>Messaging terms</Link>.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 24px', fontSize: 13, color: '#94a3b8' }}>
+            <span>© {new Date().getFullYear()} {COMPANY.legalName}</span>
+            <span>{officeLine()}</span>
+            <a href={COMPANY.phoneHref} style={{ color: '#94a3b8', textDecoration: 'none' }}>{COMPANY.phone}</a>
           </div>
-        </div>
-        {/* SMS program disclosure — public & verifiable for A2P 10DLC review */}
-        <div style={{ borderTop: '1px solid #1f2937', padding: '18px 24px', maxWidth: 1120, margin: '0 auto', fontSize: 12.5, lineHeight: 1.6, color: '#64748b' }}>
-          <strong style={{ color: '#94a3b8' }}>Text messaging:</strong> When a client books with a salon using Lumio Booking and provides a
-          mobile number, the salon may send appointment confirmations and reminders by SMS, and — only with separate
-          opt-in — promotional offers. Up to ~6 msgs/month. Msg &amp; data rates may apply. Reply STOP to opt out,
-          HELP for help. Opt-in and consent data is never shared with third parties.{' '}
-          <Link href="/sms-optin" style={{ color: '#c7d2fe', textDecoration: 'none' }}>Sign up for text alerts</Link> ·{' '}
-          <Link href="/privacy" style={{ color: '#c7d2fe', textDecoration: 'none' }}>Privacy Policy</Link> ·{' '}
-          <Link href="/terms" style={{ color: '#c7d2fe', textDecoration: 'none' }}>Messaging Terms</Link>.
-        </div>
-        <div style={{ borderTop: '1px solid #1f2937', padding: '18px 24px', textAlign: 'center', fontSize: 13 }}>
-          © {new Date().getFullYear()} Lumio Booking · Developed by{' '}
-          <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#c7d2fe', fontWeight: 600, textDecoration: 'none' }}>Lumio Agency</a>
         </div>
       </footer>
     </div>
   );
 }
 
-function defaultFeatures(p: PublicPlan): string[] {
-  const out = [
-    p.priceYearlyCents ? 'Online booking 24/7' : 'Online booking 24/7',
-    'Automatic email reminders',
-  ];
-  return out;
-}
-
-function SectionHead({ eyebrow, title, dark }: { eyebrow: string; title: string; dark?: boolean }) {
+function PlanCard({ name, tag, hi, price, per, note, bullets, href }: { name: string; tag: string; hi: boolean; price: string; per: string; note: string; bullets: string[]; href: string }) {
   return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ color: INDIGO, fontWeight: 600, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase' }}>{eyebrow}</div>
-      <h2 style={{ fontSize: 'clamp(24px, 6vw, 34px)', fontWeight: 700, letterSpacing: -1, margin: '10px 0 0', color: dark ? '#fff' : INK, maxWidth: 640, marginLeft: 'auto', marginRight: 'auto' }}>{title}</h2>
+    <div style={{ border: hi ? `2px solid ${INK}` : `1px solid ${LINE}`, borderRadius: 12, padding: hi ? 27 : 28, display: 'flex', flexDirection: 'column', gap: 20, background: '#ffffff' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>{name}</div>
+          {tag && <div style={{ fontSize: 14, color: MUTED }}>{tag}</div>}
+        </div>
+        {hi && <span style={{ fontSize: 12, fontWeight: 600, color: '#334155', border: '1px solid #cbd5e1', borderRadius: 999, padding: '2px 10px', whiteSpace: 'nowrap' }}>Recommended</span>}
+      </div>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+          <span style={{ fontSize: 40, fontWeight: 700, letterSpacing: -1 }}>{price}</span>
+          <span style={{ color: MUTED }}>{per}</span>
+        </div>
+        {note && <div style={{ fontSize: 13.5, color: MUTED }}>{note}</div>}
+      </div>
+      <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8, color: '#334155', fontSize: 15 }}>
+        {bullets.map((b) => <li key={b}>{b}</li>)}
+      </ul>
+      <Link href={href} style={hi
+        ? { marginTop: 'auto', minHeight: 48, display: 'grid', placeItems: 'center', borderRadius: 8, background: INK, color: '#f8fafc', textDecoration: 'none', fontWeight: 600 }
+        : { marginTop: 'auto', minHeight: 48, display: 'grid', placeItems: 'center', borderRadius: 8, border: `1px solid ${INK}`, color: INK, textDecoration: 'none', fontWeight: 600 }}>Start free trial</Link>
     </div>
   );
 }
 
-const FEATURES = [
-  { icon: '📅', title: 'Online booking 24/7', desc: 'Clients book in seconds from your own salon page — picks date, service, add-ons and technician with no double-booking.' },
-  { icon: '🧾', title: 'Point of sale & receipts', desc: 'Ring up services and retail at the counter, take tips, split payment methods, and print or text receipts.' },
-  { icon: '🎁', title: 'Loyalty rewards', desc: 'Clients earn points on every paid visit and redeem them for discounts — automatically.' },
-  { icon: '💳', title: 'Payments built in', desc: 'Accept cards, Apple Pay, Google Pay and PayPal online or in-salon. Money lands in your account.' },
-  { icon: '✉️', title: 'Reminders that reduce no-shows', desc: 'Automatic email confirmations and reminders to clients and staff for every appointment.' },
-  { icon: '👩‍🔧', title: 'Staff & smart assignment', desc: 'Manage technicians, working hours and let the system fairly auto-assign or honor client preferences.' },
-  { icon: '📱', title: 'Installable app (PWA)', desc: 'Your booking page installs like a real app on iPhone, Android, Windows and Mac — no app store needed.' },
-  { icon: '🔌', title: 'WordPress connector', desc: 'Embed the booking form on your existing WordPress site with a lightweight plugin and a license key.' },
-  // NAMED ON PURPOSE. TikTok's app reviewer visits this page to decide whether
-  // Lumio is a product other businesses buy, or a tool its own team uses
-  // internally — and an integration a product never advertises reads as the
-  // latter. Our first submission was refused on exactly that reading ("does
-  // not support personal or internal company use"), with a site that never
-  // said the word TikTok. Every social network a salon can connect is listed
-  // here, in public, where it can be checked.
-  { icon: '📣', title: 'Social posts on a schedule', desc: 'Each salon connects its OWN TikTok, Facebook and Instagram accounts, plans a month of posts with AI, approves them, and Lumio publishes on the day and time chosen — from one calendar.' },
-];
+function FooterCol({ title, links }: { title: string; links: [string, string][] }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <span style={{ color: '#f8fafc', fontWeight: 600 }}>{title}</span>
+      {links.map(([t, h]) => <Link key={t} href={h} style={{ color: '#cbd5e1', textDecoration: 'none' }}>{t}</Link>)}
+    </div>
+  );
+}
 
-const STEPS = [
-  { title: 'Pick a plan & sign up', desc: 'Choose Starter or Pro, create your login, and start a 14-day free trial. No card charged upfront.' },
-  { title: 'Set up your salon', desc: 'Add your services, prices, staff and working hours — or import them. Connect your domain and payments.' },
-  { title: 'Take bookings & get paid', desc: 'Share your booking link, accept appointments and payments, and watch loyalty bring clients back.' },
-];
+/** A drawn example of a salon's booking page — labelled as an example, never a real salon. */
+function BookingPreview({ mobile }: { mobile: boolean }) {
+  const row: CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px' };
+  const slot: CSSProperties = { textAlign: 'center', padding: '9px 0', border: `1px solid ${LINE}`, borderRadius: 8, fontSize: 14 };
+  return (
+    <div aria-label="Example of a salon booking page" role="img" style={{ flex: '1 1 400px', minWidth: 0, maxWidth: 520, border: `1px solid ${LINE}`, borderRadius: 16, background: '#ffffff', boxShadow: '0 1px 2px rgba(15,23,42,.04), 0 24px 48px -32px rgba(15,23,42,.35)', overflow: 'hidden' }}>
+      <div style={{ padding: mobile ? '14px 16px' : '20px 24px', borderBottom: `1px solid ${LINE}`, display: 'flex', alignItems: 'center', gap: 14 }}>
+        <span style={{ width: 44, height: 44, borderRadius: '50%', background: '#f1f5f9', display: 'grid', placeItems: 'center', fontWeight: 700, color: '#334155', flexShrink: 0 }}>SN</span>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.35, minWidth: 0 }}>
+          <span style={{ fontWeight: 700 }}>Sample Nail Studio</span>
+          <span style={{ fontSize: 13, color: MUTED }}>Open today 9:30 am – 7:00 pm</span>
+        </div>
+        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: BODY, border: `1px solid ${LINE}`, borderRadius: 999, padding: '2px 10px' }}>Example</span>
+      </div>
+      <div style={{ padding: '16px 24px 8px', fontSize: 12, fontWeight: 600, letterSpacing: 0.6, color: MUTED }}>SERVICE</div>
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '0 16px' }}>
+        <div style={{ ...row, borderBottom: '1px solid #f1f5f9' }}><span style={{ flex: 1 }}>Gel manicure</span><span style={{ fontSize: 13, color: MUTED }}>45 min</span><span style={{ width: 52, textAlign: 'right', fontWeight: 600 }}>$35</span></div>
+        <div style={{ ...row, borderRadius: 10, background: '#eef2ff', border: '1px solid #c7d2fe' }}><span style={{ flex: 1, fontWeight: 600 }}>Spa pedicure</span><span style={{ fontSize: 13, color: BODY }}>50 min</span><span style={{ width: 52, textAlign: 'right', fontWeight: 600 }}>$49</span></div>
+        {!mobile && <div style={row}><span style={{ flex: 1 }}>Gel-X full set</span><span style={{ fontSize: 13, color: MUTED }}>90 min</span><span style={{ width: 52, textAlign: 'right', fontWeight: 600 }}>$65</span></div>}
+      </div>
+      <div style={{ padding: '16px 24px 8px', fontSize: 12, fontWeight: 600, letterSpacing: 0.6, color: MUTED }}>TUESDAY, OCTOBER 27</div>
+      <div style={{ padding: '0 24px', display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+        <span style={slot}>10:00</span>
+        <span style={slot}>10:45</span>
+        <span style={{ ...slot, border: `1px solid ${INK}`, background: INK, color: '#f8fafc', fontWeight: 600 }}>1:15</span>
+        <span style={slot}>2:30</span>
+      </div>
+      <div style={{ padding: '20px 24px 24px' }}>
+        <div style={{ minHeight: 48, borderRadius: 8, background: BRAND, color: '#f8fafc', display: 'grid', placeItems: 'center', fontWeight: 600 }}>Book appointment · $49</div>
+        <div style={{ marginTop: 10, fontSize: 12.5, color: MUTED, textAlign: 'center' }}>Free cancellation up to 24 hours before · salon policy</div>
+      </div>
+    </div>
+  );
+}
 
-const navLink: React.CSSProperties = { color: '#475569', textDecoration: 'none', fontSize: 15 };
-const pill: React.CSSProperties = { display: 'inline-block', background: '#e0e7ff', color: '#3730a3', fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 999 };
-const primaryBtn: React.CSSProperties = { background: INDIGO, color: '#fff', fontWeight: 600, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: 'none', cursor: 'pointer' };
-const ghostBtn: React.CSSProperties = { background: '#fff', color: INK, fontWeight: 600, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: '1.5px solid #cbd5e1', cursor: 'pointer' };
-const featureCard: React.CSSProperties = { background: '#fff', border: '1px solid #eef2f7', borderRadius: 16, padding: 24, boxShadow: '0 1px 3px rgba(15,23,42,0.04)' };
-const priceCard: React.CSSProperties = { position: 'relative', background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 20, padding: 26, boxShadow: '0 4px 20px rgba(15,23,42,0.05)' };
-const priceCardHi: React.CSSProperties = { border: `2px solid ${INDIGO}`, boxShadow: '0 12px 36px rgba(99,102,241,0.18)' };
-const popularBadge: React.CSSProperties = { position: 'absolute', top: -12, right: 24, background: INDIGO, color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, padding: '4px 12px', borderRadius: 999 };
+/** A drawn example of one day in a salon's calendar. */
+function CalendarPreview() {
+  const appt = (bg: string, bd: string, h: number, who: string, what: string, dashed = false) => (
+    <div style={{ height: h, boxSizing: 'border-box', borderRadius: 8, background: dashed ? 'transparent' : bg, border: `1px ${dashed ? 'dashed' : 'solid'} ${bd}`, padding: '8px 10px', fontSize: 13, lineHeight: 1.4, color: dashed ? MUTED : INK }}>
+      {who && <b>{who}</b>}{who && <br />}{what}
+    </div>
+  );
+  const col: CSSProperties = { padding: 6, display: 'flex', flexDirection: 'column', gap: 6 };
+  return (
+    <div role="img" aria-label="Example of a salon calendar for one day" style={{ border: `1px solid ${LINE}`, borderRadius: 16, overflow: 'hidden', background: '#ffffff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 24px', borderBottom: `1px solid ${LINE}`, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 700 }}>Tuesday, October 27</span>
+        <span style={{ fontSize: 13, color: MUTED }}>Sample salon · 3 technicians</span>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, fontSize: 13 }}>
+          <span style={{ padding: '4px 12px', borderRadius: 999, background: INK, color: '#f8fafc', fontWeight: 600 }}>Day</span>
+          <span style={{ padding: '4px 12px', borderRadius: 999, border: `1px solid ${LINE}`, color: '#334155' }}>Week</span>
+        </span>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <div style={{ minWidth: 700, display: 'grid', gridTemplateColumns: '72px repeat(3, minmax(0, 1fr))' }}>
+          <div style={{ borderRight: `1px solid ${LINE}` }} />
+          {['Anna', 'Lily', 'Kim'].map((n, i) => (
+            <div key={n} style={{ padding: '12px 16px', fontWeight: 600, borderBottom: `1px solid ${LINE}`, borderRight: i < 2 ? `1px solid ${LINE}` : 'none' }}>{n}</div>
+          ))}
+          <div style={{ display: 'flex', flexDirection: 'column', borderRight: `1px solid ${LINE}`, fontSize: 12, color: MUTED }}>
+            {['10 am', '11 am', '12 pm', '1 pm'].map((t) => <span key={t} style={{ height: 64, padding: '6px 10px', boxSizing: 'border-box' }}>{t}</span>)}
+          </div>
+          <div style={{ ...col, borderRight: `1px solid ${LINE}` }}>
+            {appt('#eef2ff', '#c7d2fe', 82, 'Maria G.', 'Gel manicure · 10:00')}
+            <div style={{ height: 58 }} />
+            {appt('#ecfdf5', '#a7f3d0', 100, 'Walk-in', 'Spa pedicure · 12:30')}
+          </div>
+          <div style={{ ...col, borderRight: `1px solid ${LINE}` }}>
+            <div style={{ height: 30 }} />
+            {appt('#eef2ff', '#c7d2fe', 120, 'Jenny T.', 'Gel-X full set · 10:30')}
+            {appt('#fff7ed', '#fed7aa', 64, 'Deposit paid', 'Dip powder · 1:00')}
+          </div>
+          <div style={col}>
+            {appt('#eef2ff', '#c7d2fe', 64, 'Sara L.', 'Pedicure · 10:00')}
+            {appt('', '#cbd5e1', 90, '', 'Open · 11:15', true)}
+            {appt('#eef2ff', '#c7d2fe', 64, 'Anh N.', 'Manicure · 1:00')}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-function toggleBtn(active: boolean): React.CSSProperties {
-  return { border: 'none', cursor: 'pointer', padding: '8px 18px', borderRadius: 999, fontSize: 14, fontWeight: 600, background: active ? INDIGO : 'transparent', color: active ? '#fff' : '#475569', display: 'flex', gap: 6, alignItems: 'center' };
+const navLink: CSSProperties = { color: '#334155', textDecoration: 'none', fontSize: 15 };
+const linkStyle: CSSProperties = { color: LINK, textDecoration: 'none' };
+const label: CSSProperties = { fontSize: 13, fontWeight: 600, letterSpacing: 0.6, color: MUTED };
+const darkBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 18px', borderRadius: 8, background: INK, color: '#f8fafc', textDecoration: 'none', fontSize: 15, fontWeight: 600, border: 'none', cursor: 'pointer' };
+
+function toggleBtn(active: boolean): CSSProperties {
+  return { border: 'none', cursor: 'pointer', minHeight: 36, padding: '0 16px', borderRadius: 6, fontSize: 14, fontWeight: 600, fontFamily: 'inherit', background: active ? INK : 'transparent', color: active ? '#f8fafc' : BODY };
 }

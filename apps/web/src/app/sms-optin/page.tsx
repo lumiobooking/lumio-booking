@@ -130,7 +130,7 @@ export default function SmsOptInPage() {
         </div>
         <p style={{ ...fine, marginTop: 4 }}>
           Program operated by <strong>Lumio Booking</strong>, a service of <strong>Lumio Agency</strong> ·{' '}
-          <a href="mailto:lumioagency.com@gmail.com" style={a}>lumioagency.com@gmail.com</a>. Messages are sent to
+          <a href="mailto:support@lumiobooking.com" style={a}>support@lumiobooking.com</a>. Messages are sent to
           customers of the salons that use Lumio Booking, only after the customer opts in as shown above.
         </p>
       </div>

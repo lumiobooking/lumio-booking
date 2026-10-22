@@ -2,86 +2,171 @@
 
 // Public company / contact page.
 //
-// A partner-review team (Google Actions Center, payment providers, Meta) checks
-// that the company behind the platform is verifiable: legal entity, registered
-// address, phone, email, and what the product actually does. Keeping it on one
-// public page means nobody has to email us to establish that.
+// A partner-review team (Google Actions Center, payment providers, Meta,
+// TikTok) checks that the company behind the platform is verifiable: legal
+// entity, addresses, phone, email, what the product actually does and how
+// people get help. Everything here comes from lib/company-info so it matches
+// the home page and the legal pages word for word.
+
+import { Fragment, CSSProperties, ReactNode } from 'react';
+import Link from 'next/link';
+import { useIsMobile } from '../../lib/responsive';
+import { COMPANY, officeLine } from '../../lib/company-info';
+
+const INK = '#0f172a';
+const BODY = '#334155';
+const MUTED = '#64748b';
+const LINE = '#e2e8f0';
+const LINK = '#4338ca';
 
 export default function CompanyPage() {
+  const mobile = useIsMobile();
+  const pad = mobile ? 20 : 32;
+  const wrap: CSSProperties = { maxWidth: 1200, margin: '0 auto', paddingLeft: pad, paddingRight: pad, boxSizing: 'border-box' };
+
   return (
-    <main style={wrap}>
-      <div style={card}>
-        <h1 style={h1}>About Lumio Booking</h1>
-        <p style={muted}>Appointment-booking software for nail salons, spas and wellness businesses.</p>
+    <div style={{ background: '#ffffff', color: INK, minHeight: '100vh', fontFamily: 'inherit', fontSize: 16, lineHeight: 1.6 }}>
+      <header style={{ borderBottom: `1px solid ${LINE}` }}>
+        <nav aria-label="Main" style={{ ...wrap, minHeight: mobile ? 64 : 72, display: 'flex', alignItems: 'center', gap: mobile ? 12 : 32, flexWrap: 'wrap' }}>
+          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: INK, fontWeight: 700, fontSize: mobile ? 17 : 18 }}>
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#4f46e5" /><path d="M10 7v14h9" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            Lumio Booking
+          </Link>
+          {!mobile && (
+            <div style={{ display: 'flex', gap: 28, fontSize: 15 }}>
+              <Link href="/#product" style={nav}>Product</Link>
+              <Link href="/#clients" style={nav}>For clients</Link>
+              <Link href="/#pricing" style={nav}>Pricing</Link>
+              <Link href="/company" style={{ ...nav, color: INK, fontWeight: 600 }} aria-current="page">Company</Link>
+              <Link href="/support" style={nav}>Support</Link>
+            </div>
+          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 20 }}>
+            <Link href="/login" style={{ ...nav, color: INK, fontWeight: 600 }}>Sign in</Link>
+            {!mobile && <Link href="/signup" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 18px', borderRadius: 8, background: INK, color: '#f8fafc', textDecoration: 'none', fontSize: 15, fontWeight: 600 }}>Start free trial</Link>}
+          </div>
+        </nav>
+      </header>
 
-        <h2 style={h2}>What we do</h2>
-        <p style={p}>
-          Lumio Booking is a multi-tenant booking platform. Each business on the platform gets its own booking page,
-          calendar, staff scheduling, customer records, point of sale, and automated email/SMS reminders. Customers book
-          in a few taps — no account, no app — and the appointment lands in the salon&rsquo;s calendar immediately.
-        </p>
-        <p style={p}>
-          We operate the booking channel on behalf of every salon under a direct service agreement, and we manage their
-          online presence, including their Google Business Profiles. Bookings taken online, at the counter, over the phone
-          or through a salon&rsquo;s social channels all flow into one calendar.
-        </p>
+      <main style={{ ...wrap, paddingTop: mobile ? 40 : 72, paddingBottom: mobile ? 56 : 96, display: 'flex', flexWrap: 'wrap', gap: mobile ? 40 : 64, alignItems: 'flex-start' }}>
+        <div style={{ flex: '999 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 40 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: LINK }}>Company</div>
+            <h1 style={{ margin: 0, fontSize: mobile ? 32 : 44, lineHeight: 1.12, fontWeight: 700, letterSpacing: mobile ? -0.6 : -1 }}>About Lumio Booking</h1>
+            <p style={{ margin: 0, fontSize: mobile ? 17 : 19, color: '#475569' }}>
+              Lumio Booking is appointment and point-of-sale software for nail salons, spas and other beauty businesses. It is
+              developed and operated by {COMPANY.legalName}.
+            </p>
+          </div>
 
-        <h2 style={h2}>Company details</h2>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14.5 }}>
-          <tbody>
-            {[
-              ['Legal entity', 'Lumio Agency LLC'],
-              ['Trading name', 'Lumio Booking'],
-              ['Registered address', '5900 Balcones Drive STE 100, Austin, TX 78731, United States'],
-              ['Phone', '+1 (512) 886-8189'],
-              ['Email', 'lumioagency.com@gmail.com'],
-              ['Website', 'https://lumiobooking.com'],
-              ['Markets served', 'United States · Canada · Australia'],
-              ['Verticals', 'Nail salons, spas, medical spas, wellness, restaurants'],
-            ].map(([k, v]) => (
-              <tr key={k} style={{ borderTop: '1px solid #eef1f6' }}>
-                <td style={{ padding: '8px 0', color: 'var(--c64748b)', width: 180, verticalAlign: 'top' }}>{k}</td>
-                <td style={{ padding: '8px 0', color: 'var(--c1e293b)' }}>
-                  {k === 'Email' ? <a href={`mailto:${v}`} style={a}>{v}</a>
-                    : k === 'Website' ? <a href={v} style={a}>{v}</a>
-                    : v}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          <Section title="What we do">
+            <p style={p}>
+              Each business on Lumio Booking gets its own booking page, calendar, staff schedules, client records, checkout and
+              automatic reminders. Clients book in a few steps without creating an account, and the appointment goes straight
+              into the salon&rsquo;s calendar.
+            </p>
+            <p style={p}>
+              Lumio Booking is a software provider. Services are performed and priced by each salon, and payments for services go
+              to the salon through its own payment provider.
+            </p>
+          </Section>
 
-        <h2 style={h2}>Support</h2>
-        <p style={p}>
-          Salons reach us by email or phone during US business hours; urgent booking issues are answered within one
-          business day. Customers who booked an appointment should contact the salon first — its number is in the
-          confirmation message — or write to us if they cannot reach it.
-        </p>
+          <Section title="How we work with salons">
+            <ul style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8, color: BODY }}>
+              <li>Every salon accepts our <Link href="/merchant-terms" style={a}>Merchant Agreement</Link> and confirms its business name, address and phone number.</li>
+              <li>Salons set their own services, prices, opening hours and cancellation policy. Prices shown to clients are the salon&rsquo;s final prices before tips.</li>
+              <li>Each salon&rsquo;s data is kept separate. Client details are used only to run that salon&rsquo;s bookings.</li>
+              <li>Salons can cancel their subscription at any time from their dashboard.</li>
+            </ul>
+          </Section>
 
-        <h2 style={h2}>Policies</h2>
-        <p style={p}>
-          <a href="/terms" style={a}>Terms of Service &amp; SMS Terms</a> ·{' '}
-          <a href="/privacy" style={a}>Privacy Policy</a> ·{' '}
-          <a href="/booking-policy" style={a}>Booking, Cancellation &amp; No-Show Policy</a> ·{' '}
-          <a href="/merchant-terms" style={a}>Merchant Service Agreement</a> ·{' '}
-          <a href="/support" style={a}>Support &amp; Help Center</a> ·{' '}
-          <a href="/data-deletion" style={a}>Data deletion</a>
-        </p>
+          <Section title="Support">
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 12, overflow: 'hidden' }}>
+              <Row who="Clients with an appointment" last={false}>
+                Contact the salon first; its phone number is in your confirmation. If you can&rsquo;t reach it, write to{' '}
+                <a href={`mailto:${COMPANY.supportEmail}`} style={a}>{COMPANY.supportEmail}</a>.
+              </Row>
+              <Row who="Salons using Lumio" last={false}>
+                Email <a href={`mailto:${COMPANY.supportEmail}`} style={a}>{COMPANY.supportEmail}</a> or call{' '}
+                <a href={COMPANY.phoneHref} style={a}>{COMPANY.phone}</a>. We reply within {COMPANY.replyTime}; problems that stop
+                bookings are handled first.
+              </Row>
+              <Row who="Partners and press" last>
+                <a href={`mailto:${COMPANY.partnersEmail}`} style={a}>{COMPANY.partnersEmail}</a>
+              </Row>
+            </div>
+          </Section>
 
-        <h2 style={h2}>Try it</h2>
-        <p style={p}>
-          A live salon booking page: <a href="/lux-nail-spa" style={a}>lumiobooking.com/lux-nail-spa</a> — no login
-          required to see availability and complete a booking.
-        </p>
-      </div>
-    </main>
+          <Section title="Policies">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px 28px', fontWeight: 600 }}>
+              <Link href="/terms" style={a}>Terms of service</Link>
+              <Link href="/privacy" style={a}>Privacy policy</Link>
+              <Link href="/booking-policy" style={a}>Booking and cancellation policy</Link>
+              <Link href="/merchant-terms" style={a}>Merchant agreement</Link>
+              <Link href="/terms" style={a}>Messaging terms</Link>
+              <Link href="/data-deletion" style={a}>Delete my data</Link>
+            </div>
+          </Section>
+
+          <Section title="See it working">
+            <p style={p}>
+              A sample salon booking page: <Link href="/book/lumio-salon" style={a}>lumiobooking.com/book/lumio-salon</Link>. No sign-in
+              is needed to see availability.
+            </p>
+          </Section>
+        </div>
+
+        <aside aria-label="Company details" style={{ flex: '1 1 320px', minWidth: 0, border: `1px solid ${LINE}`, borderRadius: 12, background: '#f8fafc', padding: mobile ? 22 : 28, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>Company details</div>
+          <Fact label="LEGAL ENTITY">{COMPANY.legalName}</Fact>
+          <Fact label="TRADING NAME">{COMPANY.tradingName}</Fact>
+          <Fact label="OFFICE"><address style={{ fontStyle: 'normal' }}>{COMPANY.office.map((l) => <Fragment key={l}>{l}<br /></Fragment>)}</address></Fact>
+          <Fact label="REGISTERED ADDRESS"><address style={{ fontStyle: 'normal' }}>{COMPANY.registered.map((l) => <Fragment key={l}>{l}<br /></Fragment>)}</address></Fact>
+          <Fact label="PHONE"><a href={COMPANY.phoneHref} style={a}>{COMPANY.phone}</a></Fact>
+          <Fact label="EMAIL"><a href={`mailto:${COMPANY.supportEmail}`} style={a}>{COMPANY.supportEmail}</a></Fact>
+          <Fact label="WEBSITE"><a href={COMPANY.website} style={a}>lumiobooking.com</a></Fact>
+          <Fact label="MARKETS">{COMPANY.markets}</Fact>
+        </aside>
+      </main>
+
+      <footer style={{ background: INK, color: '#94a3b8' }}>
+        <div style={{ ...wrap, paddingTop: 28, paddingBottom: 28, display: 'flex', flexWrap: 'wrap', gap: '8px 24px', fontSize: 13 }}>
+          <span>© {new Date().getFullYear()} {COMPANY.legalName}</span>
+          <span>{officeLine()}</span>
+          <a href={`mailto:${COMPANY.supportEmail}`} style={{ color: '#cbd5e1', textDecoration: 'none' }}>{COMPANY.supportEmail}</a>
+        </div>
+      </footer>
+    </div>
   );
 }
 
-const wrap: React.CSSProperties = { minHeight: '100vh', background: 'var(--cf8fafc)', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
-const card: React.CSSProperties = { maxWidth: 760, margin: '0 auto', background: '#fff', borderRadius: 16, padding: '32px 36px', boxShadow: '0 8px 30px rgba(15,23,42,0.08)', color: 'var(--c1e293b)' };
-const h1: React.CSSProperties = { fontSize: 28, margin: '0 0 4px', color: 'var(--c0f172a)' };
-const h2: React.CSSProperties = { fontSize: 17, margin: '24px 0 8px', color: 'var(--c0f172a)' };
-const p: React.CSSProperties = { fontSize: 14.5, lineHeight: 1.65, color: 'var(--c334155)', margin: '0 0 10px' };
-const muted: React.CSSProperties = { fontSize: 13, color: 'var(--c64748b)', margin: '0 0 18px' };
-const a: React.CSSProperties = { color: '#4f46e5', textDecoration: 'none' };
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function Row({ who, last, children }: { who: string; last: boolean; children: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', borderBottom: last ? 'none' : `1px solid ${LINE}` }}>
+      <div style={{ flex: '1 1 200px', padding: '14px 20px', fontWeight: 600 }}>{who}</div>
+      <div style={{ flex: '2 1 320px', padding: '14px 20px', color: BODY }}>{children}</div>
+    </div>
+  );
+}
+
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: 0.5, color: MUTED }}>{label}</span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+const nav: CSSProperties = { color: '#334155', textDecoration: 'none', fontSize: 15 };
+const p: CSSProperties = { margin: 0, color: BODY };
+const a: CSSProperties = { color: LINK, textDecoration: 'none' };

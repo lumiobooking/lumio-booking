@@ -61,7 +61,7 @@ export default function BookingPolicyPage() {
         <p style={p}>
           Contact the salon first — its phone number is in your confirmation message. If you cannot reach the salon, or
           your booking did not arrive, contact us and we will resolve it:{' '}
-          <a href="mailto:lumioagency.com@gmail.com" style={a}>lumioagency.com@gmail.com</a> · +1 (512) 886-8189. We
+          <a href="mailto:support@lumiobooking.com" style={a}>support@lumiobooking.com</a> · +1 (512) 886-8189. We
           answer within one business day.
         </p>
 

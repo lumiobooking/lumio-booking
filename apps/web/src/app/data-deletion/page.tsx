@@ -6,7 +6,7 @@ export const metadata = {
   description: 'How to request deletion of your data from the Lumio Booking messaging assistant.',
 };
 
-const SUPPORT_EMAIL = 'lumioagency.com@gmail.com';
+const SUPPORT_EMAIL = 'support@lumiobooking.com';
 
 export default function DataDeletionPage({ searchParams }: { searchParams: { id?: string } }) {
   const ref = typeof searchParams?.id === 'string' ? searchParams.id : '';

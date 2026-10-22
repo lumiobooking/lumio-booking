@@ -43,10 +43,11 @@ export default function SupportPage() {
 
         <h2 style={h2}>Contact us</h2>
         <p style={p}>
-          Email: <a href="mailto:lumioagency.com@gmail.com" style={a}>lumioagency.com@gmail.com</a><br />
-          Website: <a href="https://lumioagency.com" style={a}>lumioagency.com</a>
+          Email: <a href="mailto:support@lumiobooking.com" style={a}>support@lumiobooking.com</a><br />
+          Phone: <a href="tel:+15128868189" style={a}>+1 (512) 886-8189</a><br />
+          Lumio Agency LLC · 10650 Montclair Way, Johns Creek, GA 30097, United States
         </p>
-        <p style={p}>We aim to respond within 1–2 business days.</p>
+        <p style={p}>We reply within 1 business day.</p>
 
         <p style={{ ...muted, marginTop: 22 }}>
           See also our <a href="/privacy" style={a}>Privacy Policy</a> and{' '}

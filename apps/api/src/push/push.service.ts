@@ -206,7 +206,9 @@ export class PushService {
       const out = new Set<string>();
       for (const u of users) {
         const sm = staff.find((x) => x.userId === u.id);
-        if (capabilitiesFor(UserRole.STAFF, (sm?.staffRole ?? 'TECHNICIAN') as never, sm?.permissions).length === 0) out.add(u.id);
+        const caps = capabilitiesFor(UserRole.STAFF, (sm?.staffRole ?? 'TECHNICIAN') as never, sm?.permissions);
+        // A technician's own app, or a restaurant's kitchen tablet: no salon-wide alerts.
+        if (caps.length === 0 || caps.every((c) => c === 'kitchen')) out.add(u.id);
       }
       return out;
     } catch { return new Set(); }

@@ -13,9 +13,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
-import { ind } from '../../../lib/ui-industry';
+import { ind, uiIndustry } from '../../../lib/ui-industry';
+import { isTableIndustry } from '../../../lib/restaurant-till';
 
-export type Role = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN';
+/** The groups this business needs: the restaurant block only for restaurants, cafés, quán ăn. */
+const groupsFor = () => ACCESS_GROUPS.filter((g) => g.id !== 'restaurant' || isTableIndustry(uiIndustry()));
+/** The roles this business uses. */
+const rolesFor = (): Role[] => (isTableIndustry(uiIndustry()) ? ['MANAGER', 'RECEPTIONIST', 'WAITER', 'KITCHEN', 'TECHNICIAN'] : ['MANAGER', 'RECEPTIONIST', 'TECHNICIAN']);
+
+export type Role = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN' | 'WAITER' | 'KITCHEN';
 type Cap = string;
 
 /** Fallback when the catalogue cannot be read — mirrors api/src/auth/capabilities.ts. */
@@ -23,6 +29,8 @@ const FALLBACK_PRESETS: Record<Role, Cap[]> = {
   MANAGER: ['dashboard', 'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers', 'services', 'products', 'staff', 'payroll', 'reviews', 'marketing', 'inventory', 'reports', 'payments', 'notifications', 'pos.discount', 'pos.void', 'bookings.delete', 'customers.delete'],
   RECEPTIONIST: ['pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers', 'pos.discount'],
   TECHNICIAN: [],
+  WAITER: ['pos'],
+  KITCHEN: ['kitchen'],
 };
 
 /** The screens, grouped the way an owner thinks about them. */
@@ -48,6 +56,13 @@ export const ACCESS_GROUPS: { id: string; vi: string; en: string; items: { cap: 
       { cap: 'pos.void', vi: 'Huỷ / xoá hoá đơn đã thu', en: 'Void or delete a paid ticket', hintVi: 'Trả tiền lại cho khách', hintEn: 'Moves money back' },
       { cap: 'bookings.delete', vi: 'Xoá hẳn lịch hẹn', en: 'Delete a booking for good', hintVi: 'Huỷ lịch thì luôn được', hintEn: 'Cancelling is always allowed' },
       { cap: 'customers.delete', vi: 'Xoá khách hàng', en: 'Delete a client', hintVi: 'Mất cả lịch sử của khách', hintEn: 'Erases their history' },
+    ],
+  },
+  {
+    // Restaurants only (filtered out for every other business).
+    id: 'restaurant', vi: 'Nhà hàng', en: 'Restaurant',
+    items: [
+      { cap: 'kitchen', vi: 'Màn hình bếp', en: 'Kitchen screen', hintVi: 'Món cần làm, báo xong, báo hết món. Không thấy tiền.', hintEn: 'Dishes to cook, done, sold out. No money.' },
     ],
   },
   {
@@ -95,11 +110,13 @@ const ROLE_TEXT: Record<Role, { vi: string; en: string; emoji: string; whoVi: st
   TECHNICIAN: { vi: 'Thợ', en: 'Technician', emoji: '💅', whoVi: 'Dùng app thợ: chỉ thấy lịch, khách và thu nhập của chính mình.', whoEn: 'Uses the tech app: only their own schedule, clients and earnings.' },
   RECEPTIONIST: { vi: 'Lễ tân', en: 'Receptionist', emoji: '💵', whoVi: 'Quầy lễ tân: nhận khách, đặt/dời lịch, giao thợ, tính tiền. Không thấy doanh thu, báo cáo, lương.', whoEn: 'Front desk: greet, book and move, hand to techs, check out. No takings, reports or pay.' },
   MANAGER: { vi: 'Quản lý', en: 'Manager', emoji: '👔', whoVi: 'Gần như toàn quyền vận hành, trừ cài đặt tiệm, gói Lumio và kết nối tài khoản.', whoEn: 'Runs the shop: everything except settings, the Lumio plan and connected accounts.' },
+  WAITER: { vi: 'Phục vụ', en: 'Server', emoji: '🍽️', whoVi: 'Điện thoại / iPad: mở bàn, gọi món, báo bếp, yêu cầu thanh toán. Đăng nhập vào thẳng sơ đồ bàn. Thu tiền chỉ khi chủ cho phép (Cài đặt nhà hàng › Ai được thu tiền).', whoEn: 'Phone / iPad: open tables, order, send to the kitchen, ask for the bill. Signs in to the floor plan. Takes money only if the owner allows it.' },
+  KITCHEN: { vi: 'Bếp', en: 'Kitchen', emoji: '🔥', whoVi: 'Máy tính bảng ở bếp: chỉ màn hình bếp (món cần làm, báo xong, báo hết món). Không thấy bàn, tiền hay mục nào khác.', whoEn: 'The kitchen tablet: only the kitchen screen (dishes to cook, done, sold out). No tables, money or other screens.' },
 };
 
 /** The role comparison, so an owner sees in one glance what each role opens. */
 export function RoleMatrix({ vi, presets }: { vi: boolean; presets: Record<Role, Cap[]> }) {
-  const roles: Role[] = ['MANAGER', 'RECEPTIONIST', 'TECHNICIAN'];
+  const roles: Role[] = rolesFor();
   const cell: React.CSSProperties = { padding: '7px 10px', borderTop: '1px solid var(--line)', fontSize: 13, whiteSpace: 'nowrap' };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -121,7 +138,7 @@ export function RoleMatrix({ vi, presets }: { vi: boolean; presets: Record<Role,
             </tr>
           </thead>
           <tbody>
-            {ACCESS_GROUPS.flatMap((g) => g.items).map((it) => (
+            {groupsFor().flatMap((g) => g.items).map((it) => (
               <tr key={it.cap}>
                 <td style={{ ...cell, color: 'var(--ce2e8f0)' }}>{vi ? it.vi : it.en}</td>
                 <td style={{ ...cell, textAlign: 'center', color: 'var(--ink-good)' }}>✓</td>
@@ -183,7 +200,7 @@ export function PermissionChecklist({ vi, role, presets, custom, onChange }: {
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-        {ACCESS_GROUPS.map((g) => (
+        {groupsFor().map((g) => (
           <div key={g.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px', background: 'var(--c0f172a)' }}>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--c94a3b8)', marginBottom: 6 }}>{vi ? g.vi : g.en}</div>
             {g.items.map((it) => {

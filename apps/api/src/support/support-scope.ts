@@ -171,6 +171,7 @@ export const CAP_CATALOG: { id: Capability; label: string; private: boolean }[] 
   { id: 'pos.void', label: 'Huỷ / xoá hoá đơn đã thu', private: true },
   { id: 'bookings.delete', label: 'Xoá hẳn lịch hẹn', private: true },
   { id: 'customers.delete', label: 'Xoá khách hàng', private: true },
+  { id: 'kitchen', label: 'Màn hình bếp (nhà hàng)', private: false },
 ];
 
 /**

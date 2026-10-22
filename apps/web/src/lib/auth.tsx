@@ -6,7 +6,7 @@ import { readSession, clearAllSessions, AUTH_KEY, leaveSupportSession, planForRe
 
 export type UserRole = 'SUPER_ADMIN' | 'SALON_ADMIN' | 'STAFF' | 'SUPPORT';
 
-export type StaffRole = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN';
+export type StaffRole = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN' | 'WAITER' | 'KITCHEN';
 
 export interface AuthUser {
   id: string;
@@ -154,6 +154,9 @@ export function homeFor(user: { role: string; staffRole?: string | null; capabil
   // A technician stays in the technicians' app even when the owner lets her
   // help at the till — those screens are one tap away from the salon menu.
   if (user.staffRole === 'TECHNICIAN' || !caps.length) return '/staff/today';
+  // Restaurants: the kitchen tablet opens on the kitchen screen, a server on the tables.
+  if (user.staffRole === 'KITCHEN' || (caps.includes('kitchen') && !caps.includes('pos'))) return '/kitchen';
+  if (user.staffRole === 'WAITER') return '/salon/pos';
   if (caps.includes('dashboard')) return '/salon';
   if (caps.includes('walkins')) return '/salon/front-desk';
   return '/salon';

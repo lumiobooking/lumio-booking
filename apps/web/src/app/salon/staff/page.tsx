@@ -15,7 +15,8 @@ import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '.
 import { PayFields, payBody, payFormFrom, paySummary, type PayForm } from './PayFields';
 import { AccessBlock, LoginSection, PermissionChecklist, RoleMatrix, useAccessCatalog } from './AccessPanel';
 import { TimeOffPanel } from './TimeOffPanel';
-import { ind } from '../../../lib/ui-industry';
+import { ind, uiIndustry } from '../../../lib/ui-industry';
+import { isTableIndustry } from '../../../lib/restaurant-till';
 
 interface Service {
   id: string;
@@ -25,7 +26,7 @@ interface Service {
   category?: { id: string; name: string } | null;
 }
 
-type Role = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN';
+type Role = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN' | 'WAITER' | 'KITCHEN';
 
 interface StaffMember {
   id: string;
@@ -77,6 +78,11 @@ function RolePicker({
     { v: 'TECHNICIAN', label: t('st.roleTech'), emoji: '💅' },
     { v: 'RECEPTIONIST', label: t('st.roleReception'), emoji: '💵' },
     { v: 'MANAGER', label: t('st.roleManager'), emoji: '👔' },
+    // Restaurants: servers at the tables and the kitchen tablet.
+    ...(isTableIndustry(uiIndustry()) ? [
+      { v: 'WAITER' as Role, label: lang === 'vi' ? 'Phục vụ' : 'Server', emoji: '🍽️' },
+      { v: 'KITCHEN' as Role, label: lang === 'vi' ? 'Bếp' : 'Kitchen', emoji: '🔥' },
+    ] : []),
   ];
   return (
     <div>
@@ -121,6 +127,8 @@ function RoleBadge({ role, takes }: { role?: Role; takes?: boolean }) {
     TECHNICIAN: { label: t('st.roleTech'), bg: 'var(--c312e81)', fg: 'var(--cc7d2fe)' },
     RECEPTIONIST: { label: t('st.roleReception'), bg: 'var(--c78350f)', fg: 'var(--cfcd34d)' },
     MANAGER: { label: t('st.roleManager'), bg: '#155e75', fg: '#a5f3fc' },
+    WAITER: { label: lang === 'vi' ? 'Phục vụ' : 'Server', bg: 'var(--c14532d)', fg: 'var(--cbbf7d0)' },
+    KITCHEN: { label: lang === 'vi' ? 'Bếp' : 'Kitchen', bg: '#9a3412', fg: '#ffedd5' },
   };
   const m = map[r];
   return (

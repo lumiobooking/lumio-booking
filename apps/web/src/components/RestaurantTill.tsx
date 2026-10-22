@@ -355,7 +355,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     };
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, color: C.text }}>
-        <TillHeader vi={vi} cashier={user?.firstName ?? ''} shiftOpen={!!shiftCtl.state?.shift} failed={failed.length}
+        <TillHeader vi={vi} cashier={user?.firstName ?? ''} shiftOpen={!!shiftCtl.state?.shift} failed={failed.length} canPay={canPay}
           onShift={() => setShowShift(true)} onPrints={() => setShowPrints(true)} onTakeaway={() => void openTable(null, 1)} onRetail={onQuickSale}
           onSoldOut={() => setShowSoldOut(true)} onSettings={isOwner ? () => setShowSettings(true) : undefined} />
         {msg && <Toast {...msg} />}
@@ -683,22 +683,22 @@ function Toast({ ok, text }: { ok: boolean; text: string }) {
   );
 }
 
-function TillHeader({ vi, cashier, shiftOpen, failed, onShift, onPrints, onTakeaway, onRetail, onSoldOut, onSettings }: {
-  vi: boolean; cashier: string; shiftOpen: boolean; failed: number; onShift: () => void; onPrints: () => void; onTakeaway: () => void; onRetail: () => void; onSoldOut: () => void; onSettings?: () => void;
+function TillHeader({ vi, cashier, shiftOpen, failed, canPay, onShift, onPrints, onTakeaway, onRetail, onSoldOut, onSettings }: {
+  vi: boolean; cashier: string; shiftOpen: boolean; failed: number; canPay: boolean; onShift: () => void; onPrints: () => void; onTakeaway: () => void; onRetail: () => void; onSoldOut: () => void; onSettings?: () => void;
 }) {
   const L = (v: string, e: string) => (vi ? v : e);
   return (
     <div style={{ ...card, padding: '10px 12px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
       <div style={{ flex: '1 1 180px', minWidth: 0 }}>
         <div style={{ fontWeight: 800, fontSize: 17, color: C.strong }}>{L('Sơ đồ bàn', 'Tables')}</div>
-        <div style={{ fontSize: 12.5, color: C.muted }}>{L('Quầy thu ngân', 'Checkout')}{cashier ? ` · ${L('Thu ngân', 'Cashier')}: ${cashier}` : ''}</div>
+        <div style={{ fontSize: 12.5, color: C.muted }}>{canPay ? L('Quầy thu ngân', 'Checkout') : L('Phục vụ', 'Server')}{cashier ? ` · ${cashier}` : ''}</div>
       </div>
-      <button type="button" onClick={onShift} style={{ ...btn, ...(shiftOpen ? { color: 'var(--ink-good)' } : { color: 'var(--ink-warn)' }) }}>{shiftOpen ? L('Ca đang mở', 'Shift open') : L('Chưa mở ca', 'No shift')}</button>
+      {canPay && <button type="button" onClick={onShift} style={{ ...btn, ...(shiftOpen ? { color: 'var(--ink-good)' } : { color: 'var(--ink-warn)' }) }}>{shiftOpen ? L('Ca đang mở', 'Shift open') : L('Chưa mở ca', 'No shift')}</button>}
       {failed > 0 && <button type="button" onClick={onPrints} style={{ ...btn, color: 'var(--ink-bad)' }}>⚠ {L(`${failed} phiếu in lỗi`, `${failed} print failed`)}</button>}
       <button type="button" onClick={onTakeaway} style={primary}>+ {L('Mang về', 'To go')}</button>
       <button type="button" onClick={onSoldOut} style={btn}>{L('Hết món', 'Sold out')}</button>
-      <button type="button" onClick={onRetail} style={btn}>{L('Bán lẻ', 'Retail')}</button>
-      <a href="/salon/pos/kitchen" style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>{L('Màn hình bếp', 'Kitchen screen')}</a>
+      {canPay && <button type="button" onClick={onRetail} style={btn}>{L('Bán lẻ', 'Retail')}</button>}
+      <a href="/kitchen" style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>{L('Màn hình bếp', 'Kitchen screen')}</a>
       {onSettings && <button type="button" onClick={onSettings} style={btn}>{L('Cài đặt nhà hàng', 'Restaurant settings')}</button>}
     </div>
   );

@@ -25,9 +25,11 @@ export class RestaurantController {
   @Get('floor')
   floor(@CurrentUser() user: AuthenticatedUser) { return this.svc.floor(user); }
 
+  @Caps('pos', 'kitchen')
   @Get('menu')
   menu(@CurrentUser() user: AuthenticatedUser) { return this.svc.menu(user); }
 
+  @Caps('pos', 'kitchen')
   @Post('menu/:itemId/sold-out')
   soldOut(@CurrentUser() user: AuthenticatedUser, @Param('itemId') itemId: string, @Body() dto: SoldOutDto) { return this.svc.setSoldOut(user, itemId, dto.soldOut); }
 
@@ -85,9 +87,11 @@ export class RestaurantController {
   @Post('checks/:id/clear-call')
   clearCall(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.svc.clearCall(user, id); }
 
+  @Caps('pos', 'kitchen')
   @Get('kitchen')
   kitchen(@CurrentUser() user: AuthenticatedUser, @Query('station') station?: string) { return this.svc.kitchen(user, station); }
 
+  @Caps('pos', 'kitchen')
   @Post('kitchen/ready')
   ready(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReadyDto) { return this.svc.markReady(user, dto.lineIds, dto.ready !== false); }
 

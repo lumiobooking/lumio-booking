@@ -27,6 +27,8 @@ export type Capability =
   | 'integrations'
   | 'billing'
   | 'settings'
+  // Restaurants: the kitchen screen (dishes to cook, done, sold out). No money, no tables.
+  | 'kitchen'
   // Actions at the counter, not screens — the owner decides them per person:
   | 'pos.discount'      // type a discount at checkout
   | 'pos.void'          // void or delete a paid ticket
@@ -37,7 +39,7 @@ export const ALL_CAPS: Capability[] = [
   'dashboard', 'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist',
   'customers', 'services', 'products', 'staff', 'payroll', 'reviews', 'marketing',
   'inventory', 'reports', 'payments', 'notifications', 'integrations', 'billing', 'settings',
-  'pos.discount', 'pos.void', 'bookings.delete', 'customers.delete',
+  'pos.discount', 'pos.void', 'bookings.delete', 'customers.delete', 'kitchen',
 ];
 
 // Owner-only areas no staff account is ever handed, whatever its role or the
@@ -63,6 +65,11 @@ export const ROLE_PRESETS: Record<StaffRole, Capability[]> = {
   MANAGER: MANAGER_CAPS,
   RECEPTIONIST: RECEPTIONIST_CAPS,
   TECHNICIAN: [], // their own schedule and work only — the staff portal
+  // Restaurants. A server opens tables, orders and sends to the kitchen; who
+  // may take the money is the restaurant's own setting (cashierUserIds).
+  WAITER: ['pos'],
+  // The kitchen tablet: the kitchen screen and "sold out", nothing else.
+  KITCHEN: ['kitchen'],
 };
 
 /**

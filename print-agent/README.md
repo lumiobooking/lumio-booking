@@ -49,28 +49,49 @@ Từ giờ mỗi lần bật máy lễ tân, cầu nối in tự chạy.
 - **Cửa sổ báo "needs Node.js 18":** cài lại Node bản mới.
 - Máy lễ tân **phải có mạng internet** (để nhận lệnh in từ điện thoại qua máy chủ).
 
-> Lưu ý: bản này in theo dạng văn bản qua máy in Windows. Nếu cần định dạng nhiệt
-> đặc biệt (tự cắt giấy, in logo…), báo để nâng cấp dùng lệnh ESC/POS cho đúng
-> đời máy in của tiệm.
+---
+
+## In thử
+
+Bấm đúp **`test.bat`**: mỗi máy in trong `config.json` in ra một phiếu mẫu (có tiếng Việt, tên bàn chữ to). Dùng mỗi khi cài máy mới hoặc đổi máy in.
+
+---
+
+## Kiểu in (mới)
+
+| Kiểu | Khi nào dùng | Ưu điểm |
+|---|---|---|
+| **Font Windows** (mặc định) | Máy in cắm USB / LAN đã cài driver Windows | **Có dấu tiếng Việt**, tên bàn **chữ to**, món **in đậm**, cỡ chữ tự vừa khổ giấy 58/80mm. Máy **tự cắt giấy** nếu driver bật "Cut at end of document" (Xprinter, Epson, Rongta… đều có, thường bật sẵn). |
+| **ESC/POS qua mạng** | Máy in nhiệt có cổng LAN (có IP), không cần cài driver | Chữ to, tự cắt giấy, có thể **kêu bíp** ở bếp. Hầu hết máy in nhiệt không có bảng mã tiếng Việt nên phiếu **in không dấu** ("Pho bo tai"). |
+| **Văn bản** (`"mode": "text"`) | Chỉ khi hai kiểu trên không chạy | Cách in cũ, chữ thường. |
+
+Nếu in kiểu Font Windows bị lỗi, chương trình **tự in lại bằng kiểu văn bản**, không mất phiếu.
+
+Đổi font (mặc định Consolas; máy không có thì dùng Courier New): thêm `"font": "Courier New"` vào `config.json`.
 
 ---
 
 ## Nhà hàng: in phiếu bếp / bar riêng
 
-Mỗi lần bấm **Báo bếp**, Lumio tạo một phiếu cho từng khu (Bếp, Bar…). Muốn mỗi
-khu ra đúng máy in của khu đó, thêm `printers` vào `config.json`:
+Mỗi lần bấm **Báo bếp**, Lumio tạo một phiếu cho từng khu (Bếp, Bar…). Muốn mỗi khu ra đúng máy in của khu đó, thêm `printers` vào `config.json`:
 
 ```json
 {
   "apiBase": "https://YOUR-LUMIO-API.onrender.com/api",
   "apiKey": "PASTE-YOUR-SALON-API-KEY-HERE",
   "printer": "",
-  "printers": { "COUNTER": "EPSON TM-T82", "KITCHEN": "XP-80 Bep", "BAR": "XP-58 Bar" },
+  "printers": {
+    "COUNTER": "EPSON TM-T82",
+    "KITCHEN": { "host": "192.168.1.50", "beep": true },
+    "BAR": "XP-58 Bar"
+  },
   "pollMs": 3000
 }
 ```
 
-- `COUNTER` = máy ở quầy (bill, phiếu tạm tính). `KITCHEN`, `BAR` = mã khu trong Cài đặt nhà hàng.
-- Tên bên phải là **tên máy in trong Windows** (Settings → Printers & scanners).
+- `COUNTER` = máy ở quầy (hoá đơn, phiếu tạm tính). `KITCHEN`, `BAR` = mã khu trong Thu ngân › Cài đặt nhà hàng (mã hiện cạnh tên khu).
+- Ghi **tên máy in trong Windows** (Settings › Printers & scanners) để in kiểu Font Windows.
+- Ghi `{ "host": "IP máy in" }` để in thẳng qua mạng (ESC/POS, cổng 9100). Thêm `"beep": true` cho máy có còi; `"port": 9100` nếu máy dùng cổng khác.
+- Xem IP máy in: tắt máy in, giữ nút FEED rồi bật lại, máy in ra trang cấu hình có dòng IP.
 - Không có `printers`: mọi phiếu ra một máy (`printer`) như trước.
-- Hai máy tính khác nhau có thể chạy hai bản agent, mỗi bản ghi những khu mình phụ trách.
+- Hai máy tính khác nhau có thể chạy hai bản Lumio Print, mỗi bản chỉ ghi những khu mình phụ trách.

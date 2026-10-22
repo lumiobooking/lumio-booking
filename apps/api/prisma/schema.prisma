@@ -29,6 +29,8 @@ enum StaffRole {
   MANAGER // Almost full access (no billing/integrations/settings)
   RECEPTIONIST // Front desk + POS (cashier)
   TECHNICIAN // Own schedule/work only (staff portal)
+  WAITER // Restaurants: takes orders at the tables (the table till); pays only if the owner allows
+  KITCHEN // Restaurants: the kitchen screen and sold-out dishes, nothing else
 }
 
 enum UserRole {

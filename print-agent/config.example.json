@@ -3,5 +3,7 @@
   "apiKey": "PASTE-YOUR-SALON-API-KEY-HERE",
   "printer": "",
   "printers": null,
+  "mode": "gdi",
+  "font": "Consolas",
   "pollMs": 4000
 }

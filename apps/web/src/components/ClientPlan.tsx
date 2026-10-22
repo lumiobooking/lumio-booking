@@ -5,7 +5,8 @@ import { apiFetch } from '../lib/api';
 import { fresh, useLive } from '../lib/live';
 import { useIsMobile } from '../lib/responsive';
 import { ind } from '../lib/ui-industry';
-import { PostReviewDetail, type ReviewApi, type ReviewFeed, type ReviewPost } from './PostReview';
+import { PostReviewDetail, PostThumb, type ReviewApi, type ReviewFeed, type ReviewPost, type ReviewQueue } from './PostReview';
+import { RoundDone, StatusPill, filterOf, pillWord, type Filter, type RoundRow, type Tone } from './ApproveViews';
 import { SalonWorkspace, SendAnything } from './SalonWorkspace';
 import type { LastWeek, ShopPlanSheet, ShopWeekData } from './ShopWeek';
 import { DEFAULT_TAGS, monthTitle, shiftMonth, tagViews, type PlanTags } from './plan-sheet';
@@ -49,6 +50,15 @@ interface DayCell {
   post: ReviewPost | null;
 }
 
+/** A round of approvals: the waiting posts in order, and what she did with each. */
+interface Round {
+  ids: string[];
+  result: Record<string, 'approved' | 'fixed'>;
+  /** What she asked to change, in her words (the tapped reason, plus her line). */
+  tags: Record<string, string>;
+}
+const VIEW_KEY = 'lumio_plan_view';
+
 const CHANNEL_ICON: Record<string, { text: string; bg: string; fg: string }> = {
   facebook: { text: 'f', bg: '#1877f2', fg: '#fff' },
   instagram: { text: '◎', bg: 'linear-gradient(135deg,#f58529,#dd2a7b 55%,#8134af)', fg: '#fff' },
@@ -79,7 +89,7 @@ function ChannelDots({ list, size = 18 }: { list: string[]; size?: number }) {
  * this: purple = waiting on her, orange = waiting on her again after a note,
  * green tick = out, clock = approved and will go by itself.
  */
-function standing(post: ReviewPost | null, vi: boolean, fmtTime: (iso: string) => string): { text: string; color: string; tone: 'wait' | 'fix' | 'done' | 'sched' | 'plan' | 'held' } {
+function standing(post: ReviewPost | null, vi: boolean, fmtTime: (iso: string) => string): { text: string; color: string; tone: Tone } {
   const T = (v: string, e: string) => ind(vi ? v : e);
   if (!post) return { text: '', color: 'var(--c64748b)', tone: 'plan' };
   switch (post.clientStatus) {
@@ -120,6 +130,17 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
   const [holidays, setHolidays] = useState<{ key: string; name: string; daysAway: number }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const sendRef = useRef<(() => void) | null>(null);
+  /** How the month is drawn: the calendar, the photo grid (the page as it will look), or a list. */
+  const [view, setView] = useState<'cal' | 'grid' | 'list'>('cal');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [round, setRound] = useState<Round | null>(null);
+  const [roundDone, setRoundDone] = useState<Round | null>(null);
+  useEffect(() => {
+    try { const v = window.localStorage.getItem(VIEW_KEY); if (v === 'cal' || v === 'grid' || v === 'list') setView(v); } catch { /* the default is fine */ }
+  }, []);
+  const pickView = (v: 'cal' | 'grid' | 'list') => { setView(v); try { window.localStorage.setItem(VIEW_KEY, v); } catch { /* this visit only */ } };
+  // The phone has no seven-column month: its "by day" list is the agenda.
+  const shownView = isMobile ? (view === 'grid' ? 'grid' : 'list') : view;
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -205,7 +226,8 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
     return Array.from({ length: rows * 7 }, (_, i) => addDays(start, i)).map((k) => ({ key: k, outside: k < first || k > end }));
   }, [month]);
 
-  const waiting = useMemo(() => livePosts.filter((p) => p.clientStatus === 'wait' || (p.clientStatus === 'held' && p.reviewRequestedAt)), [livePosts]);
+  const waiting = useMemo(() => livePosts.filter((p) => p.clientStatus === 'wait' || (p.clientStatus === 'held' && p.reviewRequestedAt))
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)), [livePosts]);
   const counts = useMemo(() => {
     const inMonth = Object.entries(plan?.entries ?? {}).filter(([k, e]) => k.startsWith(month) && (e.topic || e.pillar));
     const posted = livePosts.filter((p) => p.clientStatus === 'posted' && dayKeyOf(p.scheduledAt).startsWith(month)).length;
@@ -219,11 +241,73 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
   const shopJobs = (week?.jobs ?? []).filter((j) => j.by === 'shop');
   const ask = week?.ask ?? null;
 
-  /** Open the first post that waits on her, then the next with "Bài sau". */
-  const nextWaiting = (afterId: string | null) => {
-    const i = afterId ? waiting.findIndex((p) => p.id === afterId) : -1;
-    return waiting[i + 1] ?? null;
+  // ---- a round: the waiting posts, one after another, then "done" ----
+  const nextOpen = (r: Round, fromId: string) => {
+    const i = r.ids.indexOf(fromId);
+    return [...r.ids.slice(i + 1), ...r.ids.slice(0, Math.max(i, 0))].find((id) => !r.result[id]) ?? null;
   };
+  const prevOpen = (r: Round, fromId: string) => {
+    const i = r.ids.indexOf(fromId);
+    return [...r.ids.slice(0, Math.max(i, 0)).reverse(), ...r.ids.slice(i + 1).reverse()].find((id) => !r.result[id]) ?? null;
+  };
+  /** Every post that waits on her, soonest first, starting from the one she tapped. */
+  const startReview = (firstId?: string) => {
+    const ids = waiting.map((p) => p.id);
+    if (!ids.length) return;
+    setRound({ ids, result: {}, tags: {} });
+    setOpenDay(null);
+    setOpenId(firstId && ids.includes(firstId) ? firstId : ids[0]);
+  };
+  /** A waiting post opens as a round; anything else opens on its own. */
+  const openOne = (p: ReviewPost) => {
+    if (waiting.some((w) => w.id === p.id)) { startReview(p.id); return; }
+    setRound(null); setOpenDay(null); setOpenId(p.id);
+  };
+  const closeDetail = () => { setOpenId(null); setRound(null); };
+  const settle = (id: string, res: 'approved' | 'fixed', tag?: string) => {
+    if (!round) return;
+    const r: Round = { ...round, result: { ...round.result, [id]: res }, tags: tag ? { ...round.tags, [id]: tag } : round.tags };
+    const next = nextOpen(r, id);
+    if (next) { setRound(r); setOpenId(next); return; }
+    setRound(null); setOpenId(null); setRoundDone(r);
+  };
+  const approveAll = async () => {
+    if (!round) return;
+    const r: Round = { ...round, result: { ...round.result } };
+    for (const id of r.ids) {
+      if (r.result[id]) continue;
+      try { await api.approve(id); r.result[id] = 'approved'; } catch { /* left open; the summary says so */ }
+    }
+    setRound(null); setOpenId(null); setRoundDone(r);
+    load();
+  };
+  const openSend = () => { setSendOpen(true); setTimeout(() => sendRef.current?.(), 150); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const shortDay = (iso: string) => new Date(iso).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'numeric', ...(tz ? { timeZone: tz } : {}) });
+  const firstLine = (p: ReviewPost) => p.message.split('\n').find((l) => l.trim())?.trim() ?? '';
+  /** The plan's topic when the team linked the post to its day, else the post's first line. */
+  const titleOf = (p: ReviewPost) => { const e = plan?.entries?.[dayKeyOf(p.scheduledAt)]; return (e && e.postId === p.id && e.topic) || firstLine(p); };
+  const roundRows = (r: Round): RoundRow[] => r.ids.map((id) => {
+    const p = livePosts.find((x) => x.id === id) ?? feed?.posts.find((x) => x.id === id) ?? null;
+    return { id, media: p?.media ?? [], title: p ? titleOf(p) : '', when: p ? `${shortDay(p.scheduledAt)} · ${fmtTime(p.scheduledAt)}` : '', result: r.result[id] ?? null, tag: r.tags[id] };
+  });
+  const queue: ReviewQueue | undefined = round && openPost && round.ids.includes(openPost.id) ? (() => {
+    const r = round;
+    const id = openPost.id;
+    const next = nextOpen(r, id);
+    const prev = prevOpen(r, id);
+    return {
+      index: r.ids.indexOf(id),
+      total: r.ids.length,
+      remaining: r.ids.filter((x) => !r.result[x]).length,
+      items: roundRows(r).map((row) => ({ id: row.id, media: row.media, when: row.when, title: row.title, result: row.result })),
+      onJump: (x: string) => setOpenId(x),
+      onSkip: next ? () => setOpenId(next) : null,
+      onPrev: prev ? () => setOpenId(prev) : null,
+      onApproved: () => settle(id, 'approved'),
+      onFixed: (what: string) => settle(id, 'fixed', what),
+      onApproveAll: api.needsName ? undefined : approveAll,
+    };
+  })() : undefined;
 
   const tone = (c: DayCell) => standing(c.post, vi, fmtTime);
   const cellBg = (t: ReturnType<typeof standing>['tone'], outside: boolean) =>
@@ -242,7 +326,27 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
   const formatName = (id: string) => { const f = formatOf(id); return f ? (vi ? f.vi : f.en) : ''; };
   const topicOf = (c: DayCell) => c.entry?.topic || (c.post ? (c.post.message.split('\n').find((l) => l.trim()) ?? '') : '');
   const channelsOf = (c: DayCell) => c.post?.channels ?? c.entry?.air ?? [];
-  const openCell = (c: DayCell) => { if (c.post) { setOpenId(c.post.id); setOpenDay(null); } else if (c.entry) { setOpenDay(c.key); } };
+  const openCell = (c: DayCell) => { if (c.post) openOne(c.post); else if (c.entry) { setOpenDay(c.key); } };
+  const cellWord = (t: Tone) => {
+    switch (t) {
+      case 'wait': return `● ${T('Chờ duyệt', 'To approve')}`;
+      case 'fix': return `🔄 ${T('Đã sửa', 'Revised')}`;
+      case 'plan': return T('Đang làm', 'In progress');
+      default: return pillWord(t, vi);
+    }
+  };
+  const cellFoot = (c: DayCell, t: Tone) => (t === 'sched' && c.post ? `⏰ ${T('Đăng lúc', 'Goes out at')} ${fmtTime(c.post.scheduledAt)}` : t === 'held' ? T('Lumio đang sửa theo góp ý', 'Lumio is fixing it') : '');
+  const gridWord = (t: Tone, key: string, p: ReviewPost | null) => {
+    const d = Number(key.slice(8, 10));
+    switch (t) {
+      case 'wait': return `${T('Duyệt', 'Approve')} · ${d}`;
+      case 'fix': return `${T('Đã sửa', 'Revised')} · ${d}`;
+      case 'held': return `${T('Đang sửa', 'Fixing')} · ${d}`;
+      case 'sched': return `${p ? fmtTime(p.scheduledAt) : ''} · ${d}`;
+      case 'done': return `✓ ${d}`;
+      default: return `${d} · ${T('Đang làm', 'In progress')}`;
+    }
+  };
 
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -260,11 +364,6 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
         <button onClick={() => pickMonth(shiftMonth(month, 1))} aria-label={T('Tháng sau', 'Next month')} style={{ ...navBtn, width: 34, padding: 0 }}>›</button>
       </span>
       <span style={{ flex: 1 }} />
-      {waiting.length > 0 && !isMobile && (
-        <button onClick={() => setOpenId(waiting[0].id)} style={{ ...navBtn, minHeight: 40, background: 'var(--c1e1b4b)', borderColor: '#7c3aed', color: 'var(--ca5b4fc)', fontWeight: 700 }}>
-          🟣 {waiting.length} {T('bài chờ duyệt', 'to approve')} <span style={{ fontWeight: 500, opacity: .8 }}>· {T('bấm vào ô tím', 'the purple days')}</span>
-        </button>
-      )}
       <button onClick={() => { setSendOpen((v) => !v); setTimeout(() => sendRef.current?.(), 150); }} style={{ ...navBtn, minHeight: 40, background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 700 }}>
         📷 {T('Gửi ảnh/clip', 'Send photos/clips')}
       </button>
@@ -273,10 +372,15 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
 
   const legend = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 12, color: 'var(--c94a3b8)', flexWrap: 'wrap' }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 13, height: 13, borderRadius: 4, background: 'var(--c1e1b4b)', boxShadow: 'inset 0 0 0 2px #7c3aed', display: 'inline-block' }} />{T('Chờ chị duyệt — bấm vào để xem & duyệt', 'Awaiting your OK — tap to review')}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 13, height: 13, borderRadius: 4, background: 'var(--c451a03)', boxShadow: 'inset 0 0 0 2px #f59e0b', display: 'inline-block' }} />{T('Team đã sửa theo góp ý', 'Revised after your note')}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>✓</span>{T('Đã đăng', 'Posted')}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ color: 'var(--ca5b4fc)', fontWeight: 700 }}>⏰</span>{T('Đã duyệt, tự đăng đúng giờ', 'Approved, posts itself')}</span>
+      {([
+        ['wait', T('cần chị bấm', 'needs your tap')],
+        ['sched', T('tự đăng đúng giờ', 'posts itself on time')],
+        ['done', T('đã lên trang', 'live on your page')],
+        ['held', T('Lumio sửa theo góp ý', 'Lumio is fixing it')],
+        ['plan', T('chưa cần chị', 'nothing for you yet')],
+      ] as [Tone, string][]).map(([t, words]) => (
+        <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><StatusPill tone={t} vi={vi} />{words}</span>
+      ))}
       {!isMobile && (
         <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
           {pillars.filter((p) => !p.hidden).map((p) => <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--c94a3b8)', marginRight: 6 }}><i style={{ width: 9, height: 9, borderRadius: 999, background: p.bg, border: `1px solid ${p.ink}`, display: 'inline-block', boxSizing: 'border-box' }} />{vi ? p.vi : p.en}</span>)}
@@ -308,32 +412,38 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
               display: 'flex', flexDirection: 'column', gap: 5, cursor: has ? 'pointer' : 'default',
               // Yesterday and before, and the other months' days, step back; the
               // weeks ahead are what she is here to read.
-              opacity: outside && !has ? 0.5 : key < today && st.tone !== 'wait' && st.tone !== 'fix' ? 0.72 : 1,
+              opacity: filter !== 'all' && !(has && filterOf(st.tone) === filter) ? 0.28 : outside && !has ? 0.5 : key < today && st.tone !== 'wait' && st.tone !== 'fix' ? 0.72 : 1,
             }}
           >
-            {/* ONE voice per cell: a small day number, the title as the only
-                strong text, then one quiet line of pillar · kind, and at the
-                foot the standing with the networks. Nothing bold but the title. */}
-            <span style={{ display: 'flex', alignItems: 'center', height: 22, fontSize: 12.5, fontWeight: 600, color: outside ? 'var(--c64748b)' : key === today ? '#fff' : 'var(--c94a3b8)' }}>
+            {/* ONE voice per cell: the day and where it stands on one line,
+                the picture as it will go out, the title as the only strong
+                text, then the one thing to do — or when it goes by itself. */}
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, minHeight: 22, fontSize: 12.5, fontWeight: 600, color: outside ? 'var(--c64748b)' : key === today ? 'var(--ce2e8f0)' : 'var(--c94a3b8)' }}>
               {key === today
-                ? <span style={{ width: 22, height: 22, borderRadius: 999, background: '#6366f1', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>{dayN}</span>
+                ? <span style={{ width: 22, height: 22, borderRadius: 999, background: '#6366f1', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>{dayN}</span>
                 : dayN}
+              {has && <span style={{ minWidth: 0, overflow: 'hidden', display: 'inline-flex' }}><StatusPill tone={st.tone} vi={vi} text={cellWord(st.tone)} /></span>}
             </span>
             {has && (
               <>
-                <span style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.35, color: st.tone === 'done' ? 'var(--c94a3b8)' : 'var(--ce2e8f0)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                {c.post && c.post.media.length > 0 && <PostThumb media={c.post.media} h={84} radius={9} badge vi={vi} />}
+                <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, color: st.tone === 'done' ? 'var(--c94a3b8)' : 'var(--ce2e8f0)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: c.post?.media.length ? 2 : 3, WebkitBoxOrient: 'vertical' }}>
                   {topicOf(c) || T('(bài chỉ có ảnh)', '(media only)')}
                 </span>
-                {(c.entry?.pillar || c.entry?.format) && (
+                {(c.entry?.pillar || c.entry?.format) && !c.post?.media.length && (
                   <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', lineHeight: 1.3 }}>
                     {c.entry?.pillar ? pillarChip(c.entry.pillar) : null}
                     {c.entry?.format ? <span>{c.entry.pillar ? '· ' : ''}{formatName(c.entry.format)}</span> : null}
                   </span>
                 )}
-                <span style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 6, minHeight: 16 }}>
-                  {st.text && <span style={{ fontSize: 12, fontWeight: st.tone === 'done' ? 600 : 700, color: st.color, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{st.text}</span>}
-                  <span style={{ marginLeft: 'auto' }}><ChannelDots list={channelsOf(c)} size={14} /></span>
-                </span>
+                {st.tone === 'wait' || st.tone === 'fix' ? (
+                  <span style={reviewCta}>{st.tone === 'fix' ? T('Xem lại & duyệt', 'Look again & approve') : T('Xem & duyệt', 'Review & approve')}</span>
+                ) : (
+                  <span style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 6, minHeight: 16 }}>
+                    {cellFoot(c, st.tone) && <span style={{ fontSize: 11.5, fontWeight: 700, color: st.tone === 'sched' ? 'var(--ink-sky)' : st.tone === 'held' ? 'var(--ink-warn)' : 'var(--c94a3b8)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{cellFoot(c, st.tone)}</span>}
+                    <span style={{ marginLeft: 'auto' }}><ChannelDots list={channelsOf(c)} size={14} /></span>
+                  </span>
+                )}
               </>
             )}
           </div>
@@ -346,7 +456,8 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
   const agenda = (() => {
     const from = addDays(today, -mondayIndex(today));
     const strip = Array.from({ length: 7 }, (_, i) => addDays(from, i));
-    const upcoming = gridDays.filter((d) => !d.outside && d.key >= addDays(today, -1)).map((d) => cellOf(d.key)).filter((c) => c.entry || c.post);
+    const upcoming = gridDays.filter((d) => !d.outside && d.key >= addDays(today, -1)).map((d) => cellOf(d.key)).filter((c) => c.entry || c.post)
+      .filter((c) => filter === 'all' || filterOf(tone(c).tone) === filter);
     return (
       <>
         <div style={{ display: 'flex', gap: 4, padding: '8px 0 2px' }}>
@@ -382,14 +493,143 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
                   {c.entry?.format ? <span>· {formatName(c.entry.format)}</span> : null}
                   <ChannelDots list={channelsOf(c)} size={14} />
                 </span>
-                {st.text && <span style={{ fontSize: 12.5, fontWeight: 700, color: st.color, marginTop: 2 }}>{st.text}</span>}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
+                  <StatusPill tone={st.tone} vi={vi} />
+                  {st.tone === 'sched' && c.post ? <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-sky)' }}>⏰ {fmtTime(c.post.scheduledAt)}</span> : null}
+                </span>
               </div>
+              {c.post && c.post.media.length > 0 && <PostThumb media={c.post.media} w={64} h={64} radius={10} vi={vi} />}
             </div>
           );
         })}
       </>
     );
   })();
+
+  /** The month as its feed: every post's picture, what is ahead first (soonest on top), then what went out. */
+  const monthItems = (() => {
+    const posts = livePosts.filter((p) => dayKeyOf(p.scheduledAt).startsWith(month));
+    const ahead = posts.filter((p) => p.clientStatus !== 'posted').map((p) => ({ key: dayKeyOf(p.scheduledAt), post: p as ReviewPost | null, at: p.scheduledAt }));
+    const planned = gridDays.filter((d) => !d.outside && d.key >= today).map((d) => cellOf(d.key)).filter((c) => c.entry && !c.post)
+      .map((c) => ({ key: c.key, post: null as ReviewPost | null, at: `${c.key}T23:59:00` }));
+    const out = posts.filter((p) => p.clientStatus === 'posted').map((p) => ({ key: dayKeyOf(p.scheduledAt), post: p as ReviewPost | null, at: p.scheduledAt }))
+      .sort((a, b) => b.at.localeCompare(a.at));
+    return [...[...ahead, ...planned].sort((a, b) => a.at.localeCompare(b.at)), ...out]
+      .filter((it) => filter === 'all' || filterOf(standing(it.post, vi, fmtTime).tone) === filter);
+  })();
+  const itemTitle = (key: string, post: ReviewPost | null) => (post ? titleOf(post) : (cellOf(key).entry?.topic ?? ''));
+  const itemEntry = (key: string, post: ReviewPost | null) => { const c = cellOf(key); return !post || c.post?.id === post.id ? c.entry : null; };
+  const plannedDay = (key: string) => new Date(`${key}T12:00:00`).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'numeric' });
+  const nothingHere = <div style={{ gridColumn: '1 / -1', padding: '28px 14px', textAlign: 'center', color: 'var(--c64748b)', fontSize: 13.5 }}>{T('Không có bài nào ở mục này trong tháng.', 'Nothing in this group this month.')}</div>;
+
+  /** The photo grid: what the page will look like, the waiting posts ringed in purple. */
+  const photoGrid = (
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, minmax(0, 1fr))' : 'repeat(auto-fill, minmax(176px, 1fr))', gap: isMobile ? 3 : 14 }}>
+      {monthItems.length === 0 && nothingHere}
+      {monthItems.map((it) => {
+        const st = standing(it.post, vi, fmtTime);
+        const ask = st.tone === 'wait' || st.tone === 'fix';
+        const title = itemTitle(it.key, it.post);
+        const r = isMobile ? 2 : 12;
+        const go = () => (it.post ? openOne(it.post) : setOpenDay(it.key));
+        return (
+          <div key={it.post?.id ?? `d-${it.key}`} role="button" tabIndex={0} onClick={go} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 6, cursor: 'pointer', minWidth: 0, opacity: st.tone === 'done' && !isMobile ? 0.85 : 1 }}>
+            <span style={{ position: 'relative', display: 'block', aspectRatio: '1 / 1', borderRadius: r, overflow: 'hidden' }}>
+              {it.post
+                ? <span style={{ position: 'absolute', inset: 0 }}><PostThumb media={it.post.media} radius={0} badge={!isMobile} vi={vi} /></span>
+                : <span style={{ position: 'absolute', inset: 0, border: '1.5px dashed var(--c475569)', borderRadius: r, display: 'grid', placeItems: 'center', textAlign: 'center', padding: '24px 8px 8px', fontSize: 11.5, lineHeight: 1.35, color: 'var(--c94a3b8)', boxSizing: 'border-box', overflow: 'hidden' }}>{title || T('Lumio đang làm', 'Lumio is on it')}</span>}
+              {ask && <span style={{ position: 'absolute', inset: 0, border: '3px solid #7c3aed', borderRadius: r, pointerEvents: 'none' }} />}
+              <span style={{ position: 'absolute', left: 5, top: 5, maxWidth: 'calc(100% - 10px)' }}><StatusPill tone={st.tone} vi={vi} text={gridWord(st.tone, it.key, it.post)} /></span>
+            </span>
+            {!isMobile && (
+              <>
+                <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, color: st.tone === 'done' ? 'var(--c94a3b8)' : 'var(--ce2e8f0)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{title || T('(bài chỉ có ảnh)', '(media only)')}</span>
+                <span style={{ fontSize: 12, color: 'var(--c94a3b8)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {it.post ? `${shortDay(it.post.scheduledAt)} · ${fmtTime(it.post.scheduledAt)}` : plannedDay(it.key)}
+                  <span style={{ marginLeft: 'auto' }}><ChannelDots list={it.post?.channels ?? itemEntry(it.key, null)?.air ?? []} size={14} /></span>
+                </span>
+                {ask && <span style={{ ...reviewCta, marginTop: 0 }}>{st.tone === 'fix' ? T('Xem lại & duyệt', 'Look again & approve') : T('Xem & duyệt', 'Review & approve')}</span>}
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  /** The list: one row per post, for a laptop that wants to read rather than look. */
+  const listView = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {monthItems.length === 0 && nothingHere}
+      {monthItems.map((it) => {
+        const st = standing(it.post, vi, fmtTime);
+        const ask = st.tone === 'wait' || st.tone === 'fix';
+        const e = itemEntry(it.key, it.post);
+        const go = () => (it.post ? openOne(it.post) : setOpenDay(it.key));
+        return (
+          <div key={it.post?.id ?? `d-${it.key}`} role="button" tabIndex={0} onClick={go} onKeyDown={(ev) => { if (ev.key === 'Enter') go(); }} style={ask ? listRowAsk : listRow}>
+            <div style={{ width: 52, display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 600 }}>{new Date(`${it.key}T12:00:00`).toLocaleDateString(locale, { weekday: 'short' })}</span>
+              <span style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1, color: it.key === today ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)' }}>{Number(it.key.slice(8, 10))}</span>
+            </div>
+            {it.post
+              ? <PostThumb media={it.post.media} w={64} h={64} radius={10} vi={vi} />
+              : <span style={{ width: 64, height: 64, borderRadius: 10, border: '1.5px dashed var(--c475569)', boxSizing: 'border-box', flexShrink: 0 }} />}
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: st.tone === 'done' ? 'var(--c94a3b8)' : 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{itemTitle(it.key, it.post) || T('(bài chỉ có ảnh)', '(media only)')}</span>
+              <span style={{ fontSize: 12, color: 'var(--c94a3b8)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {it.post ? fmtTime(it.post.scheduledAt) : T('Dự kiến', 'Planned')}
+                {e?.pillar ? <>· {pillarChip(e.pillar)}</> : null}
+                {e?.format ? <span>· {formatName(e.format)}</span> : null}
+                <ChannelDots list={it.post?.channels ?? e?.air ?? []} size={14} />
+              </span>
+            </div>
+            <StatusPill tone={st.tone} vi={vi} />
+            {ask && <span style={{ ...reviewCta, marginTop: 0, minHeight: 40, padding: '0 16px', flexShrink: 0 }}>{st.tone === 'fix' ? T('Xem lại & duyệt', 'Look again & approve') : T('Xem & duyệt', 'Review & approve')}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  /** How many of the month's posts sit in each group, for the chips. */
+  const groupCounts = (() => {
+    const n: Record<'wait' | 'sched' | 'done' | 'fix', number> = { wait: 0, sched: 0, done: 0, fix: 0 };
+    for (const p of livePosts) {
+      if (!dayKeyOf(p.scheduledAt).startsWith(month)) continue;
+      const f = filterOf(standing(p, vi, fmtTime).tone);
+      if (f === 'wait' || f === 'sched' || f === 'done' || f === 'fix') n[f] += 1;
+    }
+    return n;
+  })();
+  const VIEWS: ['cal' | 'grid' | 'list', string][] = isMobile
+    ? [['grid', T('Lưới ảnh', 'Photo grid')], ['list', T('Theo ngày', 'By day')]]
+    : [['cal', T('Lịch', 'Calendar')], ['grid', T('Lưới ảnh', 'Photo grid')], ['list', T('Danh sách', 'List')]];
+  const viewToggle = (
+    <div role="tablist" aria-label={T('Cách xem', 'View')} style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: 11, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', flexShrink: 0 }}>
+      {VIEWS.map(([id, label]) => (
+        <button key={id} role="tab" aria-selected={shownView === id} onClick={() => pickView(id)} style={shownView === id ? segOn : segOff}>{label}</button>
+      ))}
+    </div>
+  );
+  const toolbar = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? 2 : 0 }}>
+      {([
+        ['all', T('Tất cả', 'All'), null],
+        ['wait', T('Chờ chị duyệt', 'Needs your OK'), groupCounts.wait],
+        ['sched', T('Sắp đăng', 'Coming up'), groupCounts.sched],
+        ['done', T('Đã đăng', 'Posted'), groupCounts.done],
+        ['fix', T('Đang sửa', 'Being fixed'), groupCounts.fix],
+      ] as [Filter, string, number | null][]).map(([id, label, n]) => (
+        <button key={id} onClick={() => setFilter(id)} aria-pressed={filter === id} style={filter === id ? chipOn : id === 'wait' && n ? chipWait : chipOff}>
+          {label}{n !== null ? ` · ${n}` : ''}
+        </button>
+      ))}
+      {!isMobile && <span style={{ flex: 1 }} />}
+      {!isMobile && viewToggle}
+    </div>
+  );
 
   /** Lumio's side of the month, in three numbers the owner can check. */
   const lumioNow = useMemo(() => {
@@ -415,25 +655,52 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
     </div>
   );
 
-  const below = (
-    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-      {/* 1. what the shop has to go and do */}
-      <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 10, ...(shopTodo.length ? { borderColor: '#f59e0b' } : {}) }}>
-        {cardHead('📷', `${T('Việc của tiệm', 'Your part')}${shopTodo.length ? ` · ${shopTodo.length}` : ''}`, T('Chi tiết ›', 'Details ›'), () => setPanel('work'))}
-        {shopTodo.length === 0 ? (
-          <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>{T('Tuần này không cần tiệm làm gì thêm. Quay/chụp được gì cứ gửi, bên em dựng bài.', 'Nothing needed from you this week. Anything you shoot, send it — we make the post.')}</div>
-        ) : shopTodo.slice(0, 3).map((it, i) => (
-          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, lineHeight: 1.45, color: 'var(--ce2e8f0)' }}>
-            <span style={{ flexShrink: 0 }}>{it.icon}</span>
-            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{it.text}</span>
+  /** The top of the screen answers "what do I have to do?" before the month says anything else. */
+  const band = (
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile || !shopTodo.length ? '1fr' : 'minmax(0, 1.7fr) minmax(0, 1fr)', gap: 12 }}>
+      {waiting.length > 0 ? (
+        <div style={{ background: '#4f46e5', color: '#fff', borderRadius: 18, padding: isMobile ? 14 : '16px 20px', display: 'flex', gap: 14, alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+          <span style={{ display: 'flex', flexShrink: 0 }}>
+            {waiting.slice(0, 3).map((p, i) => (
+              <span key={p.id} style={{ marginLeft: i ? -18 : 0, border: '3px solid #4f46e5', borderRadius: 12, display: 'block' }}>
+                <PostThumb media={p.media} w={isMobile ? 46 : 56} h={isMobile ? 58 : 70} radius={9} vi={vi} />
+              </span>
+            ))}
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 0.6, color: 'rgba(255,255,255,.75)' }}>{T('VIỆC CỦA CHỊ', 'YOUR TURN')}</div>
+            <div style={{ fontSize: isMobile ? 18 : 21, fontWeight: 800, lineHeight: 1.25 }}>{waiting.length} {T('bài chờ chị duyệt', waiting.length === 1 ? 'post to approve' : 'posts to approve')}</div>
+            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.85)', marginTop: 2 }}>
+              {T('Bài gần nhất đăng', 'The next one goes out')} {fmtDay(waiting[0].scheduledAt)} {T('lúc', 'at')} {fmtTime(waiting[0].scheduledAt)} · {T(`mất khoảng ${Math.max(1, Math.ceil(waiting.length / 3))} phút`, `about ${Math.max(1, Math.ceil(waiting.length / 3))} min`)}
+            </div>
           </div>
-        ))}
-        {shopTodo.length > 3 && <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>+{shopTodo.length - 3} {T('việc nữa', 'more')}</span>}
-        <button onClick={() => { setSendOpen(true); setTimeout(() => sendRef.current?.(), 150); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ ...navBtn, alignSelf: 'flex-start', marginTop: 'auto', background: '#6366f1', borderColor: '#6366f1', color: '#fff' }}>
-          📷 {T('Gửi ảnh/clip đã quay', 'Send what you shot')}
-        </button>
-      </div>
+          <button onClick={() => startReview()} style={{ ...startBtn, width: isMobile ? '100%' : undefined }}>{T('Bắt đầu duyệt →', 'Start reviewing →')}</button>
+        </div>
+      ) : (
+        <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
+          <span style={{ width: 40, height: 40, borderRadius: 999, background: 'var(--c14532d)', color: 'var(--c86efac)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800, flexShrink: 0 }}>✓</span>
+          <span style={{ fontSize: 13.5, lineHeight: 1.45 }}>
+            <b style={{ display: 'block', color: 'var(--ce2e8f0)' }}>{T('Không có bài nào chờ chị duyệt', 'Nothing waiting for your OK')}</b>
+            <span style={{ color: 'var(--c94a3b8)' }}>{T('Lumio sẽ báo chị khi có bài mới.', 'Lumio will let you know when there is a new post.')}</span>
+          </span>
+        </div>
+      )}
+      {shopTodo.length > 0 && (
+        <div style={{ ...cardStyle, borderColor: '#f59e0b', display: 'flex', flexDirection: 'column', gap: 6, padding: '14px 16px' }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 0.6, color: 'var(--ink-warn)' }}>{T('CẦN TIỆM QUAY', 'FOR YOU TO SHOOT')} · {shopTodo.length}</div>
+          <div style={{ fontSize: 14.5, fontWeight: 700, lineHeight: 1.4, color: 'var(--ce2e8f0)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{shopTodo[0].icon} {shopTodo[0].text}</div>
+          {shopTodo.length > 1 && <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>+{shopTodo.length - 1} {T('việc nữa', 'more')}</span>}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 'auto', flexWrap: 'wrap' }}>
+            <button onClick={openSend} style={{ ...navBtn, minHeight: 40, background: '#c2410c', borderColor: '#c2410c', color: '#fff' }}>📷 {T('Gửi ảnh/clip', 'Send photos/clips')}</button>
+            <button onClick={() => setPanel('work')} style={linkBtn}>{T('Chi tiết ›', 'Details ›')}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
+  const below = (
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
       {/* 2. what the shop got */}
       <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {cardHead('📈', T('Tuần trước tiệm nhận được', 'Last week you got'), T('Quảng cáo & ngân sách ›', 'Ads & budget ›'), () => setPanel('money'))}
@@ -490,7 +757,10 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
         </div>
       )}
       {!loaded && <div style={{ padding: 40, textAlign: 'center', color: 'var(--c64748b)' }}>{T('Đang tải…', 'Loading…')}</div>}
-      {loaded && (isMobile ? agenda : grid)}
+      {loaded && band}
+      {loaded && isMobile && <div style={{ display: 'flex', justifyContent: 'center' }}>{viewToggle}</div>}
+      {loaded && toolbar}
+      {loaded && (shownView === 'cal' ? grid : shownView === 'grid' ? photoGrid : isMobile ? agenda : listView)}
       {loaded && legend}
       {loaded && below}
 
@@ -524,7 +794,7 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
       {isMobile && loaded && (
         <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 50, padding: '10px 14px calc(12px + env(safe-area-inset-bottom, 0px))', background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', display: 'flex', gap: 8 }}>
           {waiting.length > 0 ? (
-            <button onClick={() => setOpenId(waiting[0].id)} style={{ flex: 1, minHeight: 48, borderRadius: 12, border: 'none', background: '#22c55e', color: '#052e16', fontSize: 14.5, fontWeight: 700, cursor: 'pointer' }}>✓ {T(`Duyệt ${waiting.length} bài chờ`, `Review ${waiting.length} waiting`)}</button>
+            <button onClick={() => startReview()} style={{ flex: 1, minHeight: 48, borderRadius: 12, border: 'none', background: '#22c55e', color: '#052e16', fontSize: 14.5, fontWeight: 700, cursor: 'pointer' }}>✓ {T(`Duyệt ${waiting.length} bài chờ`, `Review ${waiting.length} waiting`)}</button>
           ) : (
             <span style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 13, color: 'var(--c94a3b8)' }}>{T('Không có bài nào chờ duyệt.', 'Nothing waiting for your OK.')}</span>
           )}
@@ -535,7 +805,7 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
       {/* one post, beside the calendar (a drawer) or over it (the phone) */}
       {openPost && feed && (
         <>
-          {!isMobile && <div onClick={() => setOpenId(null)} style={{ position: 'fixed', inset: 0, zIndex: 199, background: 'rgba(2,6,23,.45)' }} />}
+          {!isMobile && <div onClick={closeDetail} style={{ position: 'fixed', inset: 0, zIndex: 199, background: 'rgba(2,6,23,.45)' }} />}
           <PostReviewDetail
             key={openPost.id}
             p={openPost}
@@ -545,15 +815,17 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
             fmtDay={fmtDay}
             fmtTime={fmtTime}
             variant={isMobile ? 'sheet' : 'drawer'}
-            onClose={() => setOpenId(null)}
+            queue={queue}
+            onClose={closeDetail}
             onChanged={load}
           />
-          {!isMobile && nextWaiting(openPost.id) && (
-            <button onClick={() => setOpenId(nextWaiting(openPost.id)!.id)} style={{ position: 'fixed', right: 536, bottom: 24, zIndex: 201, ...navBtn, minHeight: 42, background: 'var(--c111827)', boxShadow: '0 10px 30px rgba(0,0,0,.4)' }}>
-              {T('Bài chờ tiếp theo ›', 'Next waiting ›')}
-            </button>
-          )}
         </>
+      )}
+
+      {/* the end of a round: what she approved, what she sent back, what is left */}
+      {roundDone && (
+        <RoundDone vi={vi} mobile={isMobile} rows={roundRows(roundDone)} todo={shopTodo[0]?.text ?? null}
+          onSend={() => { setRoundDone(null); openSend(); }} onClose={() => setRoundDone(null)} />
       )}
 
       {/* a planned day with no post yet: the team's words for it */}
@@ -588,3 +860,17 @@ const navBtn: React.CSSProperties = {
 };
 const linkBtn: React.CSSProperties = { background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: 12.5, fontWeight: 600, color: 'var(--ca5b4fc)', cursor: 'pointer' };
 const cardStyle: React.CSSProperties = { background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 14, padding: '12px 14px' };
+
+/* Each state of a control is its own literal object, white label on the same
+   line as the accent it sits on, so the theme lint can see the pair. */
+const CHIP: React.CSSProperties = { minHeight: 38, padding: '0 14px', borderRadius: 999, fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 };
+const chipOff: React.CSSProperties = { ...CHIP, border: '1px solid var(--c475569)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)' };
+const chipWait: React.CSSProperties = { ...CHIP, border: '1px solid #7c3aed', background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)' };
+const chipOn: React.CSSProperties = { ...CHIP, border: '1px solid #4f46e5', background: '#4f46e5', color: '#fff' };
+const SEG: React.CSSProperties = { minHeight: 34, padding: '0 12px', borderRadius: 9, border: 'none', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' };
+const segOff: React.CSSProperties = { ...SEG, background: 'transparent', color: 'var(--ce2e8f0)' };
+const segOn: React.CSSProperties = { ...SEG, background: '#4f46e5', color: '#fff' };
+const reviewCta: React.CSSProperties = { marginTop: 'auto', minHeight: 34, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800, padding: '0 10px', whiteSpace: 'nowrap', background: '#7c3aed', color: '#fff' };
+const startBtn: React.CSSProperties = { flexShrink: 0, minHeight: 48, padding: '0 20px', borderRadius: 14, border: 'none', background: '#fff', color: '#3730a3', fontFamily: 'inherit', fontSize: 15, fontWeight: 800, cursor: 'pointer' };
+const listRow: React.CSSProperties = { display: 'flex', gap: 14, alignItems: 'center', padding: 10, borderRadius: 14, cursor: 'pointer', background: 'var(--c1e293b)', border: '1px solid var(--c334155)' };
+const listRowAsk: React.CSSProperties = { ...listRow, background: 'var(--c1e1b4b)', border: '2px solid #7c3aed' };

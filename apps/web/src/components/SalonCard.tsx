@@ -120,6 +120,9 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
   const [copied, setCopied] = useState(false);
   /** The share sheet of last resort: the link to copy by hand, by text, by email. */
   const [sheet, setSheet] = useState(false);
+  /** On a computer, Call opens this small box (the number, copy it) — there is no phone app behind tel: there. */
+  const [callBox, setCallBox] = useState(false);
+  const [numCopied, setNumCopied] = useState(false);
   // Where the page is open decides how the buttons behave (lib/salon-card.ts):
   // inside a salon's website (a frame), in an in-app browser, on a computer.
   const [env, setEnv] = useState({ framed: false, inApp: false, touch: true });
@@ -168,6 +171,7 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
       try { await navigator.share({ title: name, url }); return; }
       catch (e) { if ((e as { name?: string })?.name === 'AbortError') return; }
     }
+    setCallBox(false);
     if (await copyText(url)) { setCopied(true); window.setTimeout(() => setCopied(false), 2500); return; }
     setSheet(true);
   }
@@ -177,11 +181,16 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
     borderRadius: 12, border: `1.5px solid ${ring}`, background: '#ffffff', color: dark,
     fontSize: 13, fontWeight: 700, textDecoration: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
   };
-  // A computer has no phone app behind tel:, so the button shows the number itself.
+  // A computer has no phone app behind tel:, so Call opens a small number box there.
   const shown = prettyPhone(phone);
   const target = mapsTarget(env);
   const buttons = [
-    tel && <a key="call" href={tel} target={env.framed ? '_top' : undefined} style={btn} title={shown}><Icon name="phone" color={dark} />{env.touch ? bt('Call') : shown}</a>,
+    tel && (
+      <a key="call" href={tel} target={env.framed ? '_top' : undefined} style={callBox ? { ...btn, background: tint(accent, 0.08) } : btn} title={shown}
+        onClick={(e) => { if (!env.touch) { e.preventDefault(); setSheet(false); setCallBox((v) => !v); } }}>
+        <Icon name="phone" color={dark} />{bt('Call')}
+      </a>
+    ),
     maps && (
       <a key="map" href={maps} target={target} rel="noopener noreferrer" style={btn}
         onClick={(e) => {
@@ -205,22 +214,26 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
       )}
     </div>
   );
-  const where = addr || shown ? (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {addr && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: MUTED, lineHeight: 1.5 }}>
-          <span style={{ marginTop: 1 }}><Icon name="pin" color={MUTED} /></span>
-          <span style={{ minWidth: 0, overflowWrap: 'anywhere', userSelect: 'text' }}>{addr}</span>
-        </div>
-      )}
-      {/* The number in plain sight: where a tap on Call is blocked (some in-app
-          browsers), it can still be read, held to copy, and dialled. */}
-      {shown && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, color: MUTED, lineHeight: 1.5 }}>
-          <Icon name="phone" color={MUTED} />
-          <a href={tel || undefined} target={env.framed ? '_top' : undefined} style={{ color: MUTED, textDecoration: 'none', userSelect: 'text' }}>{shown}</a>
-        </div>
-      )}
+  const where = addr ? (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: MUTED, lineHeight: 1.5 }}>
+      <span style={{ marginTop: 1 }}><Icon name="pin" color={MUTED} /></span>
+      <span style={{ minWidth: 0, overflowWrap: 'anywhere', userSelect: 'text' }}>{addr}</span>
+    </div>
+  ) : null;
+  const callPanel = callBox && tel ? (
+    <div style={{ border: `1.5px solid ${ring}`, borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, background: '#ffffff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: MUTED }}>{bt('Call the salon')}</span>
+        <button type="button" onClick={() => setCallBox(false)} aria-label={bt('Close')} style={{ border: 'none', background: 'transparent', color: MUTED, fontSize: 16, cursor: 'pointer', padding: 4 }}>✕</button>
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: INK, letterSpacing: 0.3, userSelect: 'text' }}>{shown}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <button type="button" style={{ ...btn, border: 'none', background: dark, color: '#ffffff' }}
+          onClick={async () => { if (await copyText(shown)) { setNumCopied(true); window.setTimeout(() => setNumCopied(false), 2000); } }}>
+          {numCopied ? `✓ ${bt('Copied')}` : bt('Copy number')}
+        </button>
+        <a href={tel} target={env.framed ? '_top' : undefined} style={btn}><Icon name="phone" color={dark} />{bt('Call with app')}</a>
+      </div>
     </div>
   ) : null;
   const shareSheet = sheet ? (
@@ -240,6 +253,7 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
   const row = buttons.length ? (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${buttons.length}, minmax(0, 1fr))`, gap: 8 }}>{buttons}</div>
+      {callPanel}
       {shareSheet}
     </>
   ) : null;

@@ -43,11 +43,25 @@ export class PrintService {
 
   // ---- Reception agent (tenantId resolved from the API key, not a JWT) ----
 
-  /** The reception agent polls for receipts to print. */
-  async pending(tenantId: string) {
+  /**
+   * The reception agent polls for receipts to print. A restaurant's agent may
+   * name the stations it serves (`COUNTER` = jobs with no station): an agent
+   * that names none takes every job, so a one-printer shop still gets its
+   * kitchen tickets.
+   */
+  async pending(tenantId: string, stations?: string) {
+    const wanted = String(stations ?? '').split(',').map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z0-9_]{2,20}$/.test(x));
+    const where: Record<string, unknown> = { tenantId, status: PrintJobStatus.PENDING };
+    if (wanted.length) {
+      const named = wanted.filter((x) => x !== 'COUNTER');
+      where.OR = [
+        ...(named.length ? [{ station: { in: named } }] : []),
+        ...(wanted.includes('COUNTER') ? [{ station: null }] : []),
+      ];
+    }
     return this.prisma.printJob.findMany({
-      where: { tenantId, status: PrintJobStatus.PENDING },
-      select: { id: true, title: true, text: true, copies: true, createdAt: true },
+      where: where as never,
+      select: { id: true, title: true, text: true, copies: true, station: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
       take: 20,
     });

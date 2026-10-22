@@ -22,7 +22,9 @@ import { FeedbackStatus } from '../../../components/feedback/FeedbackStatus';
 import { PartyPanel, type Composed } from './PartyPanel';
 import { uiLocale } from '../../../lib/datetime';
 import { buildReceiptHtml as buildBillHtml, buildReceiptText as buildBillText, withDefaults as receiptDesignOf, type ReceiptData, type ReceiptProfile } from '../../../lib/receipt';
-import { ind } from '../../../lib/ui-industry';
+import { ind, uiIndustry, onUiIndustryChange } from '../../../lib/ui-industry';
+import { isTableIndustry } from '../../../lib/restaurant-till';
+import { RestaurantTill } from '../../../components/RestaurantTill';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null; imageUrl?: string | null }
@@ -103,9 +105,35 @@ export default function PosPage() {
   return (
     <SalonShell>
       <Suspense fallback={<p style={{ color: 'var(--c94a3b8)' }}>{tr('po.loadingReg', lang)}</p>}>
-        <Register />
+        <TillSwitch />
       </Suspense>
     </SalonShell>
+  );
+}
+
+/**
+ * Restaurants, quán ăn and cafés open on their tables (components/RestaurantTill);
+ * "Mang về · Bán nhanh" drops into the ordinary register for a counter sale.
+ * Every other business keeps the register exactly as it was.
+ */
+function TillSwitch() {
+  const { lang } = useLang();
+  const [industry, setIndustry] = useState<string | null>(null);
+  const [quick, setQuick] = useState(false);
+  useEffect(() => {
+    setIndustry(uiIndustry());
+    return onUiIndustryChange(() => setIndustry(uiIndustry()));
+  }, []);
+  if (industry === null) return null;
+  if (!isTableIndustry(industry)) return <Register />;
+  if (!quick) return <RestaurantTill onQuickSale={() => setQuick(true)} />;
+  return (
+    <>
+      <button type="button" onClick={() => setQuick(false)} style={{ alignSelf: 'flex-start', minHeight: 44, padding: '0 14px', marginBottom: 10, borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+        ‹ {lang === 'vi' ? 'Sơ đồ bàn' : 'Tables'}
+      </button>
+      <Register />
+    </>
   );
 }
 

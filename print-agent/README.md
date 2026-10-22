@@ -52,3 +52,25 @@ Từ giờ mỗi lần bật máy lễ tân, cầu nối in tự chạy.
 > Lưu ý: bản này in theo dạng văn bản qua máy in Windows. Nếu cần định dạng nhiệt
 > đặc biệt (tự cắt giấy, in logo…), báo để nâng cấp dùng lệnh ESC/POS cho đúng
 > đời máy in của tiệm.
+
+---
+
+## Nhà hàng: in phiếu bếp / bar riêng
+
+Mỗi lần bấm **Báo bếp**, Lumio tạo một phiếu cho từng khu (Bếp, Bar…). Muốn mỗi
+khu ra đúng máy in của khu đó, thêm `printers` vào `config.json`:
+
+```json
+{
+  "apiBase": "https://YOUR-LUMIO-API.onrender.com/api",
+  "apiKey": "PASTE-YOUR-SALON-API-KEY-HERE",
+  "printer": "",
+  "printers": { "COUNTER": "EPSON TM-T82", "KITCHEN": "XP-80 Bep", "BAR": "XP-58 Bar" },
+  "pollMs": 3000
+}
+```
+
+- `COUNTER` = máy ở quầy (bill, phiếu tạm tính). `KITCHEN`, `BAR` = mã khu trong Cài đặt nhà hàng.
+- Tên bên phải là **tên máy in trong Windows** (Settings → Printers & scanners).
+- Không có `printers`: mọi phiếu ra một máy (`printer`) như trước.
+- Hai máy tính khác nhau có thể chạy hai bản agent, mỗi bản ghi những khu mình phụ trách.

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -37,8 +37,8 @@ export class PrintController {
   @Public()
   @UseGuards(ApiKeyGuard)
   @Get('agent/pending')
-  pending(@Req() req: ApiKeyRequest) {
-    return this.print.pending(req.apiTenantId);
+  pending(@Req() req: ApiKeyRequest, @Query('stations') stations?: string) {
+    return this.print.pending(req.apiTenantId, stations);
   }
 
   @Public()

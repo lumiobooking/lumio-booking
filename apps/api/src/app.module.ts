@@ -15,6 +15,7 @@ import { TenantsModule } from './tenants/tenants.module';
 import { ServicesModule } from './services/services.module';
 import { StaffModule } from './staff/staff.module';
 import { TablesModule } from './tables/tables.module';
+import { RestaurantModule } from './restaurant/restaurant.module';
 import { StationsModule } from './stations/stations.module';
 import { StatsModule } from './stats/stats.module';
 import { MarketingModule } from './marketing/marketing.module';
@@ -81,6 +82,7 @@ import { AiUsageModule } from './common/ai-usage.module';
     ServicesModule,
     StaffModule,
     TablesModule,
+    RestaurantModule,
     StationsModule,
     StatsModule,
     MarketingModule,

@@ -312,6 +312,8 @@ model Tenant {
   loyaltyTransactions LoyaltyTransaction[]
   branchMemberships BranchMembership[]
   printJobs         PrintJob[]
+  tableChecks       TableCheck[]
+  tableCheckLines   TableCheckLine[]
   giftCards            GiftCard[]
   giftCardTransactions GiftCardTransaction[]
   tipLogs              TipLog[]
@@ -2553,6 +2555,9 @@ model PrintJob {
   title       String?
   text        String // pre-rendered plain-text receipt the agent prints
   copies      Int            @default(1)
+  // Restaurant prep station this ticket is for (KITCHEN, BAR, …). Null = the
+  // counter printer (receipts, guest checks, shift sheets).
+  station     String?
   createdById String?
   createdAt   DateTime       @default(now())
   printedAt   DateTime?
@@ -2561,6 +2566,68 @@ model PrintJob {
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
   @@map("print_jobs")
+}
+
+/// A restaurant bill while the guests are still at the table. It becomes a sale
+/// (an Order) only when it is paid; until then the lines move UNSENT → SENT
+/// (the kitchen has the ticket, locked) → VOID (taken back, with a reason).
+/// Tenant-scoped like every other row; tableIds are this tenant's tables.
+model TableCheck {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  number              Int      // human-friendly, sequential per tenant
+  status              String   @default("OPEN") // OPEN | PAYING | PAID | VOID
+  tableIds            String[] @default([])
+  guests              Int      @default(1)
+  serverUserId        String?
+  serverName          String?
+  customerId          String?
+  note                String?
+  openedAt            DateTime @default(now())
+  sendCount           Int      @default(0)
+  preBilledAt         DateTime?
+  preBillCount        Int      @default(0)
+  changedAfterPrebill Boolean  @default(false)
+  orderId             String?  // the sale it became
+  closedAt            DateTime?
+  voidReason          String?
+  lines               TableCheckLine[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@map("table_checks")
+}
+
+/// One dish on a table's bill. Name and price are copied from the menu when
+/// it is added, so a later menu edit never changes a bill already running.
+model TableCheckLine {
+  id              String     @id @default(uuid())
+  tenantId        String
+  tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  checkId         String
+  check           TableCheck @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  menuItemId      String?
+  name            String
+  unitPriceCents  Int
+  quantity        Int        @default(1)
+  note            String?
+  station         String     @default("KITCHEN")
+  state           String     @default("UNSENT") // UNSENT | SENT | VOID
+  batch           Int?
+  sentAt          DateTime?
+  sentByName      String?
+  voidReason      String?
+  voidByUserId    String?
+  voidApprovedBy  String?
+  voidedAt        DateTime?
+  createdByUserId String?
+  createdAt       DateTime   @default(now())
+
+  @@index([tenantId, checkId])
+  @@map("table_check_lines")
 }
 
 model PushSubscription {

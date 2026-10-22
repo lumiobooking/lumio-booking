@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { PaymentsHubController } from './payments-hub.controller';
 import { PaymentsHubWebhookController } from './payments-hub-webhook.controller';
+import { TerminalRequestsAdminController, TerminalRequestsController } from './terminal-requests.controller';
+import { TerminalRequestsService } from './terminal-requests.service';
 import { PaymentOrchestrator } from './payment-orchestrator.service';
 import { ProviderRegistry } from './provider-registry.service';
 import { CredentialStore } from './credential-store.service';
@@ -12,6 +14,8 @@ import { MockConnector } from './connectors/mock.connector';
 import { StripeTerminalConnector } from './connectors/stripe-terminal.connector';
 import { SquareTerminalConnector } from './connectors/square-terminal.connector';
 import { SumUpConnector } from './connectors/sumup.connector';
+import { PaypalConnector } from './connectors/paypal.connector';
+import { CloverConnector } from './connectors/clover.connector';
 import { DejavooSpinCloudAdapter } from './adapters/dejavoo-spin-cloud.adapter';
 import { UsbTerminalAdapter, BluetoothTerminalAdapter } from './adapters/placeholder.adapters';
 import { StripeTerminalAdapter, SquareTerminalAdapter } from './adapters/existing-cloud.adapters';
@@ -21,9 +25,10 @@ import { StripeTerminalAdapter, SquareTerminalAdapter } from './adapters/existin
  * PAYMENTS_HUB_ENABLED flag is on, so it cannot affect existing flows.
  */
 @Module({
-  controllers: [PaymentsHubController, PaymentsHubWebhookController, AgentAdminController, AgentRuntimeController],
+  controllers: [PaymentsHubController, PaymentsHubWebhookController, AgentAdminController, AgentRuntimeController, TerminalRequestsController, TerminalRequestsAdminController],
   providers: [
     PaymentOrchestrator,
+    TerminalRequestsService,
     ProviderRegistry,
     CredentialStore,
     AgentService,
@@ -34,6 +39,8 @@ import { StripeTerminalAdapter, SquareTerminalAdapter } from './adapters/existin
     StripeTerminalConnector,
     SquareTerminalConnector,
     SumUpConnector,
+    PaypalConnector,
+    CloverConnector,
     // Terminal adapters — Dejavoo is the only one enabled in phase 1.
     DejavooSpinCloudAdapter,
     StripeTerminalAdapter,

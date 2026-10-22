@@ -221,6 +221,8 @@ const VI: Record<string, string> = {
   'Book {n} visits': 'Đặt {n} lượt',
   'Each visit has its own confirmation and its own cancel link, so you can change one without touching the others.': 'Mỗi lượt hẹn có xác nhận và link huỷ riêng, nên bạn đổi một lượt mà không ảnh hưởng các lượt còn lại.',
   'Deposit due today: ': 'Đặt cọc hôm nay: ',
+  'Cancel at least {hours} hours before and the deposit goes back to your card. Later, or if you don’t come, the deposit is not refunded.': 'Huỷ trước giờ hẹn ít nhất {hours} tiếng thì tiền cọc được hoàn về thẻ. Huỷ sau mốc đó hoặc không đến thì không hoàn cọc.',
+  'Cancel any time before your appointment and the deposit goes back to your card. If you don’t come, it is not refunded.': 'Huỷ bất cứ lúc nào trước giờ hẹn thì tiền cọc được hoàn về thẻ. Không đến thì không hoàn cọc.',
   'Paid online by card — includes {percent}% card fee ({amount}). Pay at the salon in cash to avoid it.': 'Trả online bằng thẻ — đã gồm {percent}% phí thẻ ({amount}). Trả tiền mặt tại tiệm thì không mất phí này.',
   'We’ll text you confirmations & reminders for this appointment from {salon}. Up to ~6 msgs/month. Msg & data rates may apply. Reply STOP to opt out, HELP for help.': 'Tiệm {salon} sẽ nhắn tin xác nhận và nhắc lịch cho lần hẹn này, khoảng 6 tin mỗi tháng. Có thể phát sinh cước tin nhắn. Nhắn STOP để ngừng nhận, HELP để được hỗ trợ.',
   '{n} bookings received': 'Đã nhận {n} lịch hẹn',

@@ -30,7 +30,7 @@ export interface PaymentConnector {
 
   // ---- Optional ONLINE (card-not-present) support, e.g. booking deposits ----
   /** Start a hosted checkout session; returns a token the customer-facing page renders. */
-  startOnlineCheckout?(secret: string, amountCents: number, currency: string, reference: string, opts?: { locationId?: string }): Promise<{ checkoutToken?: string; url?: string; externalRef?: string; [k: string]: unknown }>;
+  startOnlineCheckout?(secret: string, amountCents: number, currency: string, reference: string, opts?: OnlineCheckoutOpts): Promise<{ checkoutToken?: string; url?: string; externalRef?: string; [k: string]: unknown }>;
   /** Server-side verification of an online payment (never trust the client). */
   lookupOnlinePayment?(secret: string, reference: string): Promise<{ approved: boolean; amountCents?: number; transactionId?: string }>;
   /**
@@ -39,6 +39,23 @@ export interface PaymentConnector {
    * reference string.
    */
   lookupOnlinePaymentByOrder?(secret: string, orderId: string): Promise<{ approved: boolean; amountCents?: number; transactionId?: string }>;
+  /**
+   * Give back (all or part of) an ONLINE payment: a deposit on a booking that
+   * was cancelled in time. `transactionId` is what the lookup returned when the
+   * payment was confirmed; `reference` is our own (the booking id).
+   */
+  refundOnline?(secret: string, input: { transactionId?: string | null; reference: string; amountCents: number; currency: string }): Promise<RefundResult>;
   /** Health-check ONE terminal (pairing status), not just the account token. */
   checkReader?(secret: string, externalId: string): Promise<{ online: boolean; message?: string }>;
+}
+
+/** What the booking page's checkout needs from us besides the amount. */
+export interface OnlineCheckoutOpts {
+  locationId?: string;
+  /** Where the provider sends the customer back (our /pay/done page). */
+  returnUrl?: string;
+  cancelUrl?: string;
+  description?: string;
+  customerName?: string;
+  brandName?: string;
 }

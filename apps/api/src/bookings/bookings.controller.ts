@@ -277,8 +277,9 @@ export class BookingsController {
   @Caps('bookings')
   @Post(':id/cancel')
   @HttpCode(200)
-  cancel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.bookings.cancel(user, id);
+  cancel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body?: { money?: 'refund' | 'keep' }) {
+    // money: staff decide for this one booking what happens to a paid deposit (deposit-policy.ts).
+    return this.bookings.cancel(user, id, body?.money ?? null);
   }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)

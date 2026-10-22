@@ -169,7 +169,7 @@ export class SettingsController {
   @Patch('deposit')
   updateDeposit(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; type?: string; percent?: number; fixedCents?: number; scope?: string; noShowThreshold?: number },
+    @Body() dto: { enabled?: boolean; type?: string; percent?: number; fixedCents?: number; scope?: string; noShowThreshold?: number; refundHours?: number; provider?: string | null },
   ) {
     return this.settings.updateDepositSettings(user, dto as never);
   }

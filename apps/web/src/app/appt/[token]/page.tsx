@@ -9,7 +9,11 @@ interface Summary {
   salon: string; slug: string; service: string; customer: string;
   date: string; time: string; status: string; confirmed: boolean; canAct: boolean;
   referral?: { link: string; message: string; referrerPoints: number; refereePoints: number } | null;
+  /** Money paid on the visit, and the salon's refund rule (deposit-policy). */
+  deposit?: { paidCents: number; currency: string; refundHours: number; refundable: boolean; deadline: string } | null;
 }
+
+const money = (cents: number, cur: string) => { try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur || 'USD' }).format(cents / 100); } catch { return `$${(cents / 100).toFixed(2)}`; } };
 
 export default function ApptPage() {
   const params = useParams();
@@ -28,7 +32,14 @@ export default function ApptPage() {
   useEffect(() => { if (token) load(); }, [token, load]);
 
   async function act(kind: 'confirm' | 'cancel') {
-    if (kind === 'cancel' && !confirm('Cancel this appointment? This cannot be undone.')) return;
+    if (kind === 'cancel') {
+      const d = s?.deposit;
+      const lines = ['Cancel this appointment? This cannot be undone.'];
+      if (d) lines.push(d.refundable
+        ? `Your ${money(d.paidCents, d.currency)} payment will be refunded to your card.`
+        : `It is less than ${d.refundHours} hours before your appointment: your ${money(d.paidCents, d.currency)} deposit will NOT be refunded.`);
+      if (!confirm(lines.join('\n\n'))) return;
+    }
     setBusy(true); setErr(null);
     try {
       const r = await fetch(`${API_URL}/public/appt/${encodeURIComponent(token)}/${kind}`, { method: 'POST' });
@@ -64,7 +75,15 @@ export default function ApptPage() {
               <Row label="Date" value={s.date} />
               <Row label="Time" value={s.time} />
               <Row label="Status" value={s.confirmed ? 'Confirmed' : s.status} />
+              {s.deposit && <Row label="Paid" value={money(s.deposit.paidCents, s.deposit.currency)} />}
             </div>
+            {s.deposit && !done && s.canAct && (
+              <p style={{ fontSize: 12.5, lineHeight: 1.55, textAlign: 'center', margin: '-6px 0 16px', color: s.deposit.refundable ? '#166534' : '#9a3412' }}>
+                {s.deposit.refundable
+                  ? `Free cancellation until ${s.deposit.deadline} — your payment goes back to your card.`
+                  : `Cancelling now: the deposit is not refunded (the salon asks for ${s.deposit.refundHours} hours' notice).`}
+              </p>
+            )}
 
             {!done && s.canAct && (
               <>

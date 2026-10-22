@@ -128,7 +128,7 @@ interface PromoWindow { startDate?: string | null; endDate?: string | null }
 interface WeekdayDiscounts extends PromoWindow { enabled: boolean; message: string; rules: WdRule[] }
 interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
 interface DateDiscounts { enabled: boolean; rules: DateRule[] }
-interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number }
+interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number }
 interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
   branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string; cartArt?: string; cartTitle?: string; cartHint?: string }; booking?: BookingRules;
@@ -836,8 +836,9 @@ export default function PublicBookingPage() {
         });
       }
       setStep(5);
-      // Salon has a real online provider + a deposit is due -> collect it now.
-      if (body?.onlineProvider && (body?.depositCents ?? 0) > 0 && body?.booking?.id) {
+      // Salon has a real online provider + a deposit (or the whole visit, "pay
+      // now") is due -> collect it now, in the provider's own page.
+      if (body?.onlineProvider && ((body?.depositCents ?? 0) > 0 || (body?.payNowCents ?? 0) > 0) && body?.booking?.id) {
         void payDepositOnline(String(body.booking.id));
       }
     } catch { setError(bt('Network error. Please try again.')); }
@@ -2560,6 +2561,12 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
             <div style={{ marginTop: 8, fontSize: 13, color: accent, fontWeight: 600 }}>
               {bt('Deposit due today: ')}{fmt(depositCents + fee)}
               {fee > 0 && <span style={{ display: 'block', fontWeight: 500, color: 'var(--c64748b)', fontSize: 12, marginTop: 2 }}>{btf('Paid online by card — includes {percent}% card fee ({amount}). Pay at the salon in cash to avoid it.', { percent: feePct, amount: fmt(fee) })}</span>}
+              {/* The salon's cancellation rule, said before she pays — not discovered after. */}
+              <span style={{ display: 'block', fontWeight: 500, color: 'var(--c64748b)', fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+                {(salon?.deposit?.refundHours ?? 24) > 0
+                  ? btf('Cancel at least {hours} hours before and the deposit goes back to your card. Later, or if you don’t come, the deposit is not refunded.', { hours: salon?.deposit?.refundHours ?? 24 })
+                  : bt('Cancel any time before your appointment and the deposit goes back to your card. If you don’t come, it is not refunded.')}
+              </span>
             </div>
           );
         })()}

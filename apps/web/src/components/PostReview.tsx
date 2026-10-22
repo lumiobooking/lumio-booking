@@ -581,11 +581,12 @@ function Detail(props: {
   };
 
   // ---- a photo with the note: "use this one instead" ----
-  const pickShots = async (list: FileList | null) => {
-    if (!list?.length || !api.upload) return;
+  // A copied array, never the live FileList: clearing the input below would empty it (file-list.spec).
+  const pickShots = async (list: File[]) => {
+    if (!list.length || !api.upload) return;
     setUploading(true); setShotErr(null);
     try {
-      for (const f of Array.from(list).slice(0, 4)) {
+      for (const f of list.slice(0, 4)) {
         const url = await api.upload(f);
         if (url) setShots((x) => [...x, { url, name: f.name || T('ảnh', 'photo') }]);
       }
@@ -769,7 +770,7 @@ function Detail(props: {
           )}
         </span>
       </label>
-      {api.upload && <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => pickShots(e.target.files)} />}
+      {api.upload && <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => pickShots(Array.from(e.target.files ?? []))} />}
       {listening && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-bad)' }}>● {T('Đang nghe — chị cứ nói, bấm 🎤 lần nữa để dừng.', 'Listening — tap 🎤 again to stop.')}</span>}
       {uploading && <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('Đang gửi ảnh…', 'Sending the photo…')}</span>}
       {shotErr && <span style={{ fontSize: 12, color: 'var(--ink-bad)' }}>{shotErr}</span>}

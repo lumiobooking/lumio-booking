@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { packPair } from './connectors/pair-secret';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptSecret, encryptSecret, maskHint } from './crypto.util';
 import { ConnectResult, ProviderId } from './connectors/connector.types';
@@ -19,6 +20,8 @@ export interface Credential {
   environment?: 'sandbox' | 'production';
   /** Dejavoo: does the terminal expect Amount to already include the tip? */
   amountIncludesTip?: boolean;
+  /** PayPal: Client ID. Clover: Merchant ID. Packed into `secret` on the way out (pair-secret.ts). */
+  publicId?: string;
 }
 
 /**
@@ -65,6 +68,10 @@ export class CredentialStore {
         environment: cred.environment,
         amountIncludesTip: cred.amountIncludesTip,
       });
+    }
+    // PayPal and Clover: the id + the secret + sandbox/live travel as one string.
+    if (provider === 'paypal' || provider === 'clover') {
+      cred.secret = packPair({ id: cred.publicId, secret: cred.secret, env: cred.environment });
     }
     return cred;
   }

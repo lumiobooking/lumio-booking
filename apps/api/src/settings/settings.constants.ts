@@ -159,6 +159,13 @@ export interface DepositSettings {
   //  'repeat_noshow' = customers at/above the no-show threshold
   scope: 'all' | 'new' | 'repeat_noshow';
   noShowThreshold: number; // used when scope = repeat_noshow
+  // Cancel at least this many hours before the appointment and the deposit is
+  // refunded to the card (for real, by the provider that took it); later — or
+  // not showing up — and the salon keeps it. bookings/deposit-policy.ts.
+  refundHours: number;
+  // Which connected online provider takes deposits when the salon has several
+  // (payment hub). null = the first one connected.
+  provider: string | null;
 }
 
 export const DEFAULT_DEPOSIT_SETTINGS: DepositSettings = {
@@ -168,6 +175,8 @@ export const DEFAULT_DEPOSIT_SETTINGS: DepositSettings = {
   fixedCents: 1000,
   scope: 'all',
   noShowThreshold: 2,
+  refundHours: 24,
+  provider: null,
 };
 
 // Automated appointment reminders (no-show reduction). OFF by default so a salon
@@ -176,8 +185,8 @@ export const REMINDER_SETTINGS_KEY = 'reminder_settings';
 
 export interface ReminderSettings {
   enabled: boolean;
-  hoursBefore1: number; // earlier reminder, e.g. 24 (0 = off)
-  hoursBefore2: number; // later reminder, e.g. 3 (0 = off)
+  hoursBefore1: number; // earlier reminder, in hours: 72 = 3 days, 24 (0 = off)
+  hoursBefore2: number; // later reminder, in hours: 3, 0.5 = 30 minutes (0 = off)
   channelEmail: boolean;
   channelSms: boolean;
 }
@@ -639,6 +648,12 @@ export interface BookingRules {
    */
   selfCancelEnabled: boolean;
   selfCancelNoticeHours: number;
+  /**
+   * Rest / clean-up time between a technician's appointments, in minutes
+   * (0–60). What customers and bots are offered keeps this gap; the desk can
+   * still book by hand. bookings/buffer.ts.
+   */
+  bufferMinutes: number;
 }
 
 const open9to6: DayHours = { closed: false, openMinutes: 9 * 60, closeMinutes: 18 * 60 };
@@ -652,6 +667,7 @@ export const DEFAULT_BOOKING_RULES: BookingRules = {
   selfRescheduleMaxMoves: 2,
   selfCancelEnabled: true,
   selfCancelNoticeHours: 24,
+  bufferMinutes: 0,
   allowCustomerChooseStaff: true,
   assignmentMode: 'auto',
   currency: 'USD',

@@ -183,6 +183,11 @@ export class HelcimConnector implements PaymentConnector {
     };
   }
 
+  /** Refund an ONLINE (HelcimPay) payment — found by the invoice number we set. */
+  async refundOnline(secret: string, input: { transactionId?: string | null; reference: string; amountCents: number; currency: string }): Promise<RefundResult> {
+    return this.refund(secret, this.invoiceNo(input.reference), input.amountCents > 0 ? input.amountCents : undefined);
+  }
+
   verifyWebhook(): WebhookResult {
     throw new Error('Helcim webhook verification is not enabled yet (status resolved via polling)');
   }

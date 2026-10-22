@@ -1,6 +1,6 @@
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
 
-export const PROVIDERS = ['stripe', 'dejavoo', 'helcim', 'mock', 'square', 'sumup', 'adyen'] as const;
+export const PROVIDERS = ['stripe', 'dejavoo', 'helcim', 'mock', 'square', 'sumup', 'adyen', 'paypal', 'clover'] as const;
 
 export const SPIN_ENVIRONMENTS = ['sandbox', 'production'] as const;
 
@@ -11,6 +11,8 @@ export class ConnectDto {
   @IsOptional() @IsString() locationId?: string;
   @IsOptional() @IsString() currency?: string;
   @IsOptional() @IsString() region?: string;
+  /** PayPal: REST app Client ID. Clover: Merchant ID. */
+  @IsOptional() @IsString() @Length(2, 200) publicId?: string;
   @IsOptional() @IsString() label?: string;
 
   // ---- Dejavoo / iPOSpays (SPIn) ----

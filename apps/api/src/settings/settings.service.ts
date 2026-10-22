@@ -85,6 +85,7 @@ import {
   BUSINESS_PROFILE_KEY, DEFAULT_BUSINESS_PROFILE, BusinessProfileSettings,
   AI_NOTES_KEY, DEFAULT_AI_NOTES, AiNotes,
 } from './settings.constants';
+import { ONLINE_PROVIDERS, hubEnabled, isOnlineProvider } from '../payments-hub/online-providers';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
 import { GmailOAuthProvider } from '../notifications/providers/gmail-oauth.provider';
@@ -552,10 +553,12 @@ export class SettingsService {
     // Online payment is only truly available when a gateway is enabled AND has a
     // secret saved. Derive it live so a stale stored flag can never offer "Pay
     // online" to customers when no gateway is actually connected.
-    const gateways = await this.getGateways(tenantId);
-    const onlinePaymentEnabled = (Object.values(gateways) as GatewayConfig[]).some(
-      (g) => g.enabled && g.secret.length > 0,
-    );
+    // The keys typed into Settings → Payments never took a card (they were
+    // stored, nothing read them), so "Pay online" offered on those alone was
+    // a promise nobody kept — recorded as paid while no money moved. The only
+    // thing that can take a customer's card online is a LIVE connection on the
+    // payment hub to a provider with a hosted checkout.
+    const onlinePaymentEnabled = await this.hasOnlineProvider(tenantId);
     return { ...merged, onlinePaymentEnabled, businessHours: normalizeHours(merged.businessHours), daysOff: merged.daysOff ?? [] };
   }
 
@@ -1373,6 +1376,15 @@ export class SettingsService {
     return this.get(user);
   }
 
+  /** A live payment-hub connection that can take (and refund) a card online. */
+  async hasOnlineProvider(tenantId: string): Promise<boolean> {
+    if (!hubEnabled()) return false;
+    const n = await (this.prisma as unknown as { paymentConnection?: { count: (a: unknown) => Promise<number> } }).paymentConnection
+      ?.count({ where: { tenantId, status: 'ACTIVE', provider: { in: [...ONLINE_PROVIDERS] } } })
+      .catch(() => 0) ?? 0;
+    return n > 0;
+  }
+
   async getDepositSettings(tenantId: string): Promise<DepositSettings> {
     return this.readKey<DepositSettings>(tenantId, DEPOSIT_SETTINGS_KEY, DEFAULT_DEPOSIT_SETTINGS);
   }
@@ -1388,6 +1400,9 @@ export class SettingsService {
       fixedCents: num(dto.fixedCents, cur.fixedCents ?? 1000),
       scope: dto.scope === 'new' || dto.scope === 'repeat_noshow' || dto.scope === 'all' ? dto.scope : (cur.scope ?? 'all'),
       noShowThreshold: Math.max(1, num(dto.noShowThreshold, cur.noShowThreshold ?? 2)),
+      refundHours: Math.min(168, num(dto.refundHours, cur.refundHours ?? 24)),
+      provider: dto.provider === null || dto.provider === '' ? null
+        : isOnlineProvider(dto.provider) ? dto.provider : (cur.provider ?? null),
     };
     await this.writeKey(tenantId, DEPOSIT_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.deposit_updated', resourceType: 'tenant', resourceId: tenantId });
@@ -1421,7 +1436,8 @@ export class SettingsService {
   async updateReminderSettings(user: AuthenticatedUser, dto: { enabled?: boolean; hoursBefore1?: number; hoursBefore2?: number; channelEmail?: boolean; channelSms?: boolean }) {
     const tenantId = this.tenantId(user);
     const cur = await this.getReminderSettings(tenantId);
-    const clampH = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 && v <= 168 ? Math.round(v) : d);
+    // Quarter hours: 72 = 3 days before, 0.5 = 30 minutes before.
+    const clampH = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 && v <= 168 ? Math.round(v * 4) / 4 : d);
     const next: ReminderSettings = {
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
       hoursBefore1: clampH(dto.hoursBefore1, cur.hoursBefore1 ?? 24),

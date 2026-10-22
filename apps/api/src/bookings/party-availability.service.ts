@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { bufferOf, padSpan } from './buffer';
 import { matchTech } from './tech-match';
 import { AppointmentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -61,10 +62,12 @@ export class PartyAvailabilityService {
       }),
     ]);
     const leave = await loadApprovedTimeOff(this.prisma, tenantId, dateStr, dateStr, staff.map((s) => s.id));
+    // The salon's rest gap between a technician's appointments (bookings/buffer.ts).
+    const gap = bufferOf(await this.settings.getBookingRules(tenantId).catch(() => null));
     const techs: Tech[] = staff.map((st) => {
       const busy: { start: Date; end: Date }[] = appts
         .filter((a) => a.assignedStaffId === st.id)
-        .map((a) => ({ start: a.startTime, end: a.endTime }));
+        .map((a) => padSpan({ start: a.startTime, end: a.endTime }, gap));
       // Approved time off (nghỉ phép) takes the day, or the part of it.
       busy.push(...busySpansFor(leave, st.id, dateStr, tz));
       const hours = st.workingHours ?? [];

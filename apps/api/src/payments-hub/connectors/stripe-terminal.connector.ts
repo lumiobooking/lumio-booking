@@ -39,9 +39,15 @@ export class StripeTerminalConnector implements PaymentConnector {
     try {
       // Creating a connection token validates the key AND that it has Terminal
       // permission — the exact capability we need — and moves no money.
-      await this.client(secret).terminal.connectionTokens.create();
+      // A key with Terminal permission does both; one without (an online-only
+      // salon) is still a valid key for deposits — checked against the balance.
+      let terminal = true;
+      try { await this.client(secret).terminal.connectionTokens.create(); }
+      catch { terminal = false; await this.client(secret).balance.retrieve(); }
       const currency = (opts?.currency || 'USD').toUpperCase();
       const caps = this.capabilities();
+      caps.terminal = terminal;
+      caps.tapToPay = terminal;
       caps.currencies = currency === 'CAD' ? ['CAD'] : ['USD'];
       caps.interac = currency === 'CAD';
       return { ok: true, currency, capabilities: caps };
@@ -123,6 +129,48 @@ export class StripeTerminalConnector implements PaymentConnector {
       status = this.mapStatus(pi.status);
     }
     return { id: event.id, type: event.type, intentExternalId, status, raw: { type: event.type } };
+  }
+
+  // ---- ONLINE: Stripe Checkout (booking deposits / pay online) ----
+
+  /** A Stripe-hosted payment page for a server-computed amount; card data never touches Lumio. */
+  async startOnlineCheckout(secret: string, amountCents: number, currency: string, reference: string, opts?: { returnUrl?: string; cancelUrl?: string; description?: string }) {
+    if (!opts?.returnUrl) throw new Error('Stripe Checkout needs a return address');
+    const session = await this.client(secret).checkout.sessions.create({
+      mode: 'payment',
+      client_reference_id: reference.slice(0, 200),
+      metadata: { lumio_ref: reference },
+      line_items: [{
+        quantity: 1,
+        price_data: { currency: currency.toLowerCase(), unit_amount: Math.round(amountCents), product_data: { name: (opts.description || 'Booking deposit').slice(0, 200) } },
+      }],
+      payment_intent_data: { metadata: { lumio_ref: reference }, description: (opts.description || 'Booking deposit').slice(0, 200) },
+      success_url: opts.returnUrl,
+      cancel_url: opts.cancelUrl || opts.returnUrl,
+    });
+    if (!session.url) throw new Error('Stripe did not return a checkout page');
+    return { url: session.url, externalRef: session.id };
+  }
+
+  /** Read the Checkout Session back from Stripe: paid means paid. */
+  async lookupOnlinePaymentByOrder(secret: string, sessionId: string): Promise<{ approved: boolean; amountCents?: number; transactionId?: string }> {
+    try {
+      const s = await this.client(secret).checkout.sessions.retrieve(sessionId);
+      const pi = typeof s.payment_intent === 'string' ? s.payment_intent : s.payment_intent?.id;
+      return { approved: s.payment_status === 'paid', amountCents: s.amount_total ?? undefined, transactionId: pi ?? undefined };
+    } catch {
+      return { approved: false };
+    }
+  }
+
+  async refundOnline(secret: string, input: { transactionId?: string | null; reference: string; amountCents: number; currency: string }): Promise<RefundResult> {
+    if (!input.transactionId) return { status: 'FAILED', error: 'No Stripe payment to refund' };
+    try {
+      const r = await this.client(secret).refunds.create({ payment_intent: input.transactionId, ...(input.amountCents > 0 ? { amount: Math.round(input.amountCents) } : {}) });
+      return { externalId: r.id, status: r.status === 'succeeded' ? 'SUCCEEDED' : r.status === 'failed' || r.status === 'canceled' ? 'FAILED' : 'PENDING', raw: { status: r.status } };
+    } catch (e: any) {
+      return { status: 'FAILED', error: this.msg(e) };
+    }
   }
 
   private reader(r: Stripe.Terminal.Reader): ReaderInfo {

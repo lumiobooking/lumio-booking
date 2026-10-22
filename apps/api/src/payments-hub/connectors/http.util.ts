@@ -1,6 +1,7 @@
 // Dependency-free JSON HTTP for BYO REST connectors (Square, SumUp). Uses the
 // Node 18+ global fetch; typed loosely so it compiles regardless of TS lib.
-const doFetch: any = (globalThis as any).fetch;
+// Read at call time (not at load), so a test can stand in for the network.
+const doFetch: any = (...a: unknown[]) => (globalThis as any).fetch(...a);
 
 export interface HttpResult {
   ok: boolean;

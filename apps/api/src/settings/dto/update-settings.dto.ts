@@ -72,6 +72,8 @@ export class UpdateBookingRulesDto {
   // every customer without saying so.
   @IsOptional() @IsBoolean() selfCancelEnabled?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(168) selfCancelNoticeHours?: number;
+  /** Minutes kept free between a technician's appointments (0–60). */
+  @IsOptional() @IsInt() @Min(0) @Max(60) bufferMinutes?: number;
 }
 
 export class UpdateBrandingDto {

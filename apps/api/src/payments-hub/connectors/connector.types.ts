@@ -6,6 +6,9 @@ export type ProviderId =
   | 'sumup'
   | 'adyen'
   | 'dejavoo'
+  // Online-only (deposits / pay online): no card terminal driven from Lumio.
+  | 'paypal'
+  | 'clover'
   // Placeholder ids for the USB / Bluetooth adapters (phases 2 and 3).
   | 'usb'
   | 'bluetooth';

@@ -194,6 +194,20 @@ export class SquareTerminalConnector implements PaymentConnector {
     return { externalId: r.json?.refund?.id, status: st === 'COMPLETED' ? 'SUCCEEDED' : st === 'PENDING' ? 'PENDING' : 'PENDING', raw: { status: st } };
   }
 
+  /** Refund an ONLINE (payment link) payment by its payment id. */
+  async refundOnline(secret: string, input: { transactionId?: string | null; reference: string; amountCents: number; currency: string }): Promise<RefundResult> {
+    if (!input.transactionId) return { status: 'FAILED', error: 'No Square payment to refund' };
+    const r = await httpJson('POST', `${BASE}/v2/refunds`, this.headers(secret), {
+      idempotency_key: randomUUID(),
+      payment_id: input.transactionId,
+      amount_money: { amount: Math.round(input.amountCents), currency: input.currency.toUpperCase() },
+      reason: `Lumio booking ${input.reference}`.slice(0, 192),
+    });
+    if (!r.ok) return { status: 'FAILED', error: this.err(r) };
+    const st = r.json?.refund?.status;
+    return { externalId: r.json?.refund?.id, status: st === 'COMPLETED' ? 'SUCCEEDED' : st === 'FAILED' || st === 'REJECTED' ? 'FAILED' : 'PENDING', raw: { status: st } };
+  }
+
   verifyWebhook(): WebhookResult {
     // Phase 2 resolves status via polling; no per-tenant webhook secret needed.
     throw new Error('Square webhook verification is not enabled in Phase 2 (status via polling)');

@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { bufferOf } from '../bookings/buffer';
+import { BOOKING_RULES_KEY } from '../settings/settings.constants';
 import { AppointmentStatus, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BLOCKING_STATUSES, lineStaffIds } from '../bookings/booking.util';
@@ -110,6 +112,8 @@ export class AssignmentService {
     const noRespSince = new Date(now.getTime() - noRespWindow * 86_400_000);
 
     const candidates: CandidateInput[] = [];
+    const rulesRow = await (this.prisma.setting?.findUnique({ where: { tenantId_key: { tenantId, key: BOOKING_RULES_KEY } } }) ?? Promise.resolve(null)).catch(() => null);
+    const gapMs = bufferOf((rulesRow?.value ?? null) as { bufferMinutes?: unknown } | null) * 60_000;
     // Technicians on another overlapping visit's extra lines (group bookings).
     const lineBusy = new Set<string>();
     try {
@@ -126,14 +130,15 @@ export class AssignmentService {
       if (!isWithinWorkingHours(slot, s.workingHours)) continue;
       if (leave.some((o) => o.staffId === s.id && blocksSlot(o, dayKey, slot.startMinutes, slot.endMinutes))) continue;
 
-      // Hard filter 2: must not already have a blocking overlapping booking.
+      // Hard filter 2: must not already have a blocking overlapping booking —
+      // nor one inside the salon's rest gap (bookings/buffer.ts).
       const conflict = await this.prisma.appointment.findFirst({
         where: {
           tenantId,
           assignedStaffId: s.id,
           status: { in: BLOCKING_STATUSES },
-          startTime: { lt: appt.endTime },
-          endTime: { gt: appt.startTime },
+          startTime: { lt: new Date(appt.endTime.getTime() + gapMs) },
+          endTime: { gt: new Date(appt.startTime.getTime() - gapMs) },
           id: { not: appt.id },
         },
         select: { id: true },

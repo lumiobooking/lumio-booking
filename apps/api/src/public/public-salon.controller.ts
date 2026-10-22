@@ -9,6 +9,7 @@ import { PaymentOrchestrator } from '../payments-hub/payment-orchestrator.servic
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { deviceSource } from '../bookings/booking.util';
 import { randomUUID } from 'crypto';
+import { publicWebBase } from '../common/public-url.util';
 import { Public } from '../auth/decorators/public.decorator';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { verifyCaptcha } from '../common/security/turnstile';
@@ -203,7 +204,10 @@ export class PublicSalonController {
       // online gets: walk-in-only promotions stay off it.
       weekdayDiscounts: programFor(weekdayDiscounts, 'online') ?? weekdayDiscounts,
       dateDiscounts: dateRulesFor(dateDiscounts, 'online') ?? dateDiscounts,
-      deposit,
+      // Asked only when a real online provider can take it (see createBooking):
+      // a deposit the page shows but nobody can charge is a promise to the
+      // salon that breaks on the first no-show. Which provider is internal.
+      deposit: (() => { const { provider: _pv, ...pub } = deposit; return booking.onlinePaymentEnabled ? pub : { ...pub, enabled: false }; })(),
       // Shown only when a real online provider can take it (see createBooking).
       ...(partyDep.enabled && (await this.hub.onlineProviderFor(tenant.id).catch(() => null)) ? { partyDeposit: partyDep } : {}),
       // Program promos (public-safe): shown as banners; the % is applied
@@ -410,26 +414,33 @@ export class PublicSalonController {
     // If the salon has connected a REAL online provider, don't settle the deposit
     // here — the customer pays in the provider's hosted modal and we only mark it
     // paid after verifying server-side. Salons with no provider keep the old flow.
-    const onlineProvider = await this.hub.onlineProviderFor(tenantId).catch(() => null);
-    // The per-guest party deposit (payments/party-deposit.ts) is only ever asked
-    // through a real provider: without one there is nobody to take the money,
-    // and nothing may be recorded as paid that was not.
+    const onlineProvider = await this.hub.onlineProviderFor(tenantId, deposit.provider).catch(() => null);
+    // A deposit — the salon's rule or the per-guest party deposit — is only
+    // ever asked through a real provider: without one there is nobody to take
+    // the money, and nothing may be recorded as paid that was not. (It used to
+    // be "paid" by the mock provider here, which moved no money at all.)
     const partyDep = onlineProvider ? await this.settings.getPartyDeposit(tenantId) : { enabled: false, fromParty: 0, perPersonCents: 0 };
-    const depositCents = await this.payments.depositFor(tenantId, { customerId: booking.customerId, priceCents: booking.priceCents, partySize: (booking as { partySize?: number }).partySize }, deposit, partyDep);
+    const depositCents = onlineProvider
+      ? await this.payments.depositFor(tenantId, { customerId: booking.customerId, priceCents: booking.priceCents, partySize: (booking as { partySize?: number }).partySize }, deposit, partyDep)
+      : 0;
 
     let payment = null;
+    let payNowCents = 0;
     if (depositCents > 0) {
-      if (!onlineProvider) {
-        payment = await this.payments.createDepositForBookingTenant(tenantId, booking.id, depositCents, null);
-      }
+      // Taken in the provider's own page right after this (online-checkout).
+    } else if (dto.paymentType === 'PAY_ONLINE' && onlineProvider && booking.priceCents > 0) {
+      // "Pay now" for the whole visit: same hosted page, the price instead of a deposit.
+      payment = await this.payments.markPayOnlinePending(tenantId, booking.id, onlineProvider);
+      payNowCents = booking.priceCents;
     } else if (dto.paymentType) {
-      payment = await this.payments.createForBookingTenant(tenantId, booking.id, dto.paymentType, null);
+      // No real provider: "pay online" cannot be honoured — it is paid at the salon.
+      payment = await this.payments.createForBookingTenant(tenantId, booking.id, (dto.paymentType === 'PAY_ONLINE' ? 'PAY_LATER' : dto.paymentType) as never, null);
     }
 
     // The page needs the booking, not the customer record it matched by phone
     // (that could be someone else's name and email).
     const { customer: _c, ...publicBooking } = booking as typeof booking & { customer?: unknown };
-    return { booking: publicBooking, payment, depositCents, onlineProvider, ...(guests.length ? { guests: guestResults } : {}) };
+    return { booking: publicBooking, payment, depositCents, payNowCents, onlineProvider, ...(guests.length ? { guests: guestResults } : {}) };
   }
 
   /**
@@ -443,18 +454,42 @@ export class PublicSalonController {
     const tenantId = await this.resolveTenantId(slug);
     const appt = await this.prisma.appointment.findFirst({
       where: { id, tenantId },
-      select: { id: true, priceCents: true, currency: true, customerId: true, partySize: true },
+      select: { id: true, priceCents: true, currency: true, customerId: true, partySize: true, customer: { select: { firstName: true } }, tenant: { select: { name: true } } },
     });
     if (!appt) throw new NotFoundException('Booking not found');
 
     const deposit = await this.settings.getDepositSettings(tenantId);
-    const baseDeposit = await this.payments.depositFor(tenantId, appt, deposit, await this.settings.getPartyDeposit(tenantId));
-    if (baseDeposit <= 0) throw new BadRequestException('No deposit is required for this booking');
+    const { base, kind } = await this.onlineDue(tenantId, appt, deposit);
+    if (base <= 0) throw new BadRequestException('Nothing is due online for this booking');
     // Online payment is card-not-present, so the salon's card surcharge (dual
     // pricing) applies to it exactly like an in-salon card charge.
-    const amountCents = await this.withCardSurcharge(tenantId, baseDeposit);
+    const amountCents = await this.withCardSurcharge(tenantId, base);
 
-    return this.hub.onlineStart(tenantId, amountCents, appt.currency, appt.id);
+    return this.hub.onlineStart(tenantId, amountCents, appt.currency, appt.id, {
+      preferred: deposit.provider,
+      // The provider sends the customer back to a small page of ours that says
+      // "paid — go back to the booking"; the booking tab confirms with us.
+      returnUrl: `${publicWebBase()}/pay/done?s=${encodeURIComponent(slug)}&b=${encodeURIComponent(appt.id)}`,
+      description: kind === 'deposit' ? 'Booking deposit' : 'Booking payment',
+      customerName: appt.customer?.firstName ?? undefined,
+      brandName: appt.tenant?.name ?? undefined,
+    });
+  }
+
+  /**
+   * What a booking owes online, decided on the SERVER only: the deposit the
+   * salon's rule asks, or — when the customer chose "pay now" (a PENDING
+   * online row) — the whole price.
+   */
+  private async onlineDue(
+    tenantId: string,
+    appt: { id: string; priceCents: number; customerId: string | null; partySize?: number | null },
+    deposit: Awaited<ReturnType<SettingsService['getDepositSettings']>>,
+  ): Promise<{ base: number; kind: 'deposit' | 'full' }> {
+    const dep = await this.payments.depositFor(tenantId, appt, deposit, await this.settings.getPartyDeposit(tenantId));
+    if (dep > 0) return { base: dep, kind: 'deposit' };
+    const pending = await this.prisma.payment.findFirst({ where: { tenantId, appointmentId: appt.id, type: 'PAY_ONLINE', status: 'PENDING' }, select: { id: true } });
+    return pending ? { base: appt.priceCents, kind: 'full' } : { base: 0, kind: 'deposit' };
   }
 
   /**
@@ -478,19 +513,23 @@ export class PublicSalonController {
     if (!res.approved) return { ok: false, reason: 'not_approved' };
 
     const deposit = await this.settings.getDepositSettings(tenantId);
-    const baseDeposit = await this.payments.depositFor(tenantId, appt, deposit, await this.settings.getPartyDeposit(tenantId));
-    const expected = await this.withCardSurcharge(tenantId, baseDeposit);
+    const { base } = await this.onlineDue(tenantId, appt, deposit);
+    const expected = await this.withCardSurcharge(tenantId, base);
     if (res.amountCents !== undefined && res.amountCents + 1 < expected) {
       return { ok: false, reason: 'amount_mismatch' };
     }
 
-    const payment = await this.prisma.payment.create({
-      data: {
-        tenantId, appointmentId: appt.id, amountCents: expected, currency: appt.currency,
-        type: 'PAY_ONLINE', status: 'PAID', provider: res.provider,
-        providerReference: res.transactionId ?? null, paidAt: new Date(),
-      },
-    });
+    // What the provider actually took is what is recorded (never more than it
+    // reported); "pay now" fills the PENDING row the booking left for it.
+    const amount = res.amountCents ?? expected;
+    const pending = await this.prisma.payment.findFirst({ where: { tenantId, appointmentId: appt.id, type: 'PAY_ONLINE', status: 'PENDING' }, select: { id: true } });
+    const data = {
+      amountCents: amount, currency: appt.currency, type: 'PAY_ONLINE' as const, status: 'PAID' as const, provider: res.provider,
+      providerReference: res.transactionId ?? null, paidAt: new Date(),
+    };
+    const payment = pending
+      ? await this.prisma.payment.update({ where: { id: pending.id }, data })
+      : await this.prisma.payment.create({ data: { tenantId, appointmentId: appt.id, ...data } });
     return { ok: true, payment };
   }
 

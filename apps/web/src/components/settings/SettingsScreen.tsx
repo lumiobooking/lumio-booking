@@ -23,6 +23,8 @@ interface Booking {
   /** Customer self-service from the AI bots — see BookingRules on the API. */
   selfRescheduleEnabled?: boolean; selfRescheduleNoticeHours?: number;
   selfCancelEnabled?: boolean; selfCancelNoticeHours?: number;
+  /** Rest / clean-up minutes kept free between a technician's appointments. */
+  bufferMinutes?: number;
   allowCustomerChooseStaff: boolean; assignmentMode: 'none' | 'auto'; groupPolicy?: 'strict' | 'flexible'; staffMustAccept?: boolean; currency: string;
   currencySymbol: string; symbolPosition: 'before' | 'after'; priceDecimals: number; defaultPaymentMethod: 'online' | 'onsite';
   onlinePaymentEnabled: boolean; payLaterEnabled: boolean;
@@ -65,7 +67,7 @@ interface SettingsData {
   pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; requireShift?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
-  deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number };
+  deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; provider?: string | null };
   gmailRedirectUri?: string;
   /** Settings → Hoá đơn in (footer included — it lives with the till settings). */
   receipt?: Partial<ReceiptDesign>;
@@ -438,7 +440,13 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
         <Field label={t('se.ru.minLead')}>
           <input style={ui.input} type="number" min={0} max={168} value={f.minLeadHours} onChange={(e) => setF({ ...f, minLeadHours: Number(e.target.value) })} />
         </Field>
+        <Field label={t('se.ru.buffer')}>
+          <select style={ui.input} value={f.bufferMinutes ?? 0} onChange={(e) => setF({ ...f, bufferMinutes: Number(e.target.value) })}>
+            {[0, 5, 10, 15, 20, 30, 45, 60].map((m) => <option key={m} value={m}>{m === 0 ? t('se.ru.bufferNone') : `${m} ${t('se.ru.min')}`}</option>)}
+          </select>
+        </Field>
       </div>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6, lineHeight: 1.5 }}>{t('se.ru.bufferHint')}</div>
       <div style={{ marginTop: 10 }}>
         <Toggle on={f.allowCustomerChooseStaff} onChange={(v) => setF({ ...f, allowCustomerChooseStaff: v })} label={t('se.ru.chooseStaff')} />
       </div>
@@ -675,6 +683,12 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 10px' }}>
           {t('se.pay.gwIntro')}
         </p>
+        {/* These keys name the salon's card channel for the till; they never
+            took a customer's card online. Deposits and "pay now" run only
+            through a live connection on the Card terminals page. */}
+        <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, color: 'var(--ccbd5e1)', margin: '0 0 10px', lineHeight: 1.5 }}>
+          {t('se.pay.onlineWhere')} <a href="/salon/payment-terminals" style={{ color: 'var(--ink-link)', fontWeight: 700 }}>{t('se.dep.connect')} →</a>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {shownGw.map((g) => {
             const e = gw[g.id];
@@ -1027,14 +1041,26 @@ function LoyaltyConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn })
 function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const d = data.deposit ?? { enabled: false, type: 'percent' as const, percent: 30, fixedCents: 1000, scope: 'all' as const, noShowThreshold: 2 };
-  const [f, setF] = useState({ ...d, fixed: ((d.fixedCents ?? 0) / 100).toFixed(2), percentStr: String(d.percent ?? 30), thr: String(d.noShowThreshold ?? 2) });
+  const { token } = useAuth();
+  const d = data.deposit ?? { enabled: false, type: 'percent' as const, percent: 30, fixedCents: 1000, scope: 'all' as const, noShowThreshold: 2, refundHours: 24, provider: null };
+  const [f, setF] = useState({ ...d, fixed: ((d.fixedCents ?? 0) / 100).toFixed(2), percentStr: String(d.percent ?? 30), thr: String(d.noShowThreshold ?? 2), hours: d.refundHours ?? 24, prov: d.provider ?? '' });
+  // The online providers this salon has live on the payment hub: the only
+  // thing that can actually take (and give back) a deposit.
+  const [online, setOnline] = useState<string[]>([]);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ provider: string; status: string; capabilities?: { online?: boolean } }[]>('/payments-hub/connections', { token })
+      .then((cs) => setOnline(cs.filter((c) => c.status === 'ACTIVE' && ['stripe', 'square', 'helcim', 'paypal', 'clover'].includes(c.provider) && c.capabilities?.online !== false).map((c) => c.provider)))
+      .catch(() => setOnline([]));
+  }, [token]);
+  const PNAME: Record<string, string> = { stripe: 'Stripe', square: 'Square', helcim: 'Helcim', paypal: 'PayPal', clover: 'Clover' };
   function save() {
     onSave('deposit', {
       enabled: f.enabled, type: f.type,
       percent: Math.min(100, Math.max(1, parseInt(f.percentStr, 10) || 30)),
       fixedCents: Math.max(0, Math.round((parseFloat(f.fixed) || 0) * 100)),
       scope: f.scope, noShowThreshold: Math.max(1, parseInt(f.thr, 10) || 2),
+      refundHours: f.hours, provider: f.prov || null,
     }, 'Deposits');
   }
   return (
@@ -1060,13 +1086,43 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
         {f.scope === 'repeat_noshow' && (
           <Field label={t('se.dep.threshold')}><input style={ui.input} type="number" min={1} value={f.thr} onChange={(e) => setF({ ...f, thr: e.target.value })} /></Field>
         )}
+        <Field label={t('se.dep.refundHours')}>
+          <select style={ui.input} value={f.hours} onChange={(e) => setF({ ...f, hours: Number(e.target.value) })}>
+            {[0, 2, 4, 12, 24, 48, 72].map((h) => <option key={h} value={h}>{h === 0 ? t('se.dep.refundAny') : `${h} ${t('se.dep.hoursBefore')}`}</option>)}
+          </select>
+        </Field>
+        {online.length > 1 && (
+          <Field label={t('se.dep.provider')}>
+            <select style={ui.input} value={f.prov} onChange={(e) => setF({ ...f, prov: e.target.value })}>
+              <option value="">{t('se.dep.providerAuto')}</option>
+              {online.map((p) => <option key={p} value={p}>{PNAME[p] ?? p}</option>)}
+            </select>
+          </Field>
+        )}
       </div>
-      <div style={{ background: 'var(--wash-amber-3)', color: 'var(--cfde68a)', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, marginTop: 12 }}>
-        {t('se.dep.warn')}
+      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 8, lineHeight: 1.55 }}>
+        {f.hours > 0 ? t('se.dep.ruleText').replace('{h}', String(f.hours)) : t('se.dep.ruleAny')}
       </div>
+      {online.length === 0 ? (
+        <div style={{ background: 'var(--wash-amber-3)', color: 'var(--cfde68a)', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, marginTop: 12, lineHeight: 1.55 }}>
+          {t('se.dep.warn')} <a href="/salon/payment-terminals" style={{ color: 'var(--ink-link)', fontWeight: 700 }}>{t('se.dep.connect')} →</a>
+        </div>
+      ) : (
+        <div style={{ fontSize: 12.5, color: 'var(--ink-good)', marginTop: 12, fontWeight: 600 }}>
+          ✓ {t('se.dep.via')} {(f.prov ? [f.prov] : online.slice(0, 1)).map((p) => PNAME[p] ?? p).join(', ')}
+        </div>
+      )}
       <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={save}>{t('se.dep.save')}</button>
     </Card>
   );
+}
+
+/** 72 → "3 days before", 0.5 → "30 minutes before", 0 → "off". */
+function remLabel(h: number, t: (k: string) => string): string {
+  if (!h) return t('se.rem.off');
+  if (h >= 24 && h % 24 === 0) return `${h / 24} ${t('se.rem.daysBefore')}`;
+  if (h < 1) return `${Math.round(h * 60)} ${t('se.rem.minsBefore')}`;
+  return `${h} ${t('se.rem.hoursBefore')}`;
 }
 
 function RemindersSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
@@ -1078,8 +1134,16 @@ function RemindersSection({ data, onSave }: { data: SettingsData; onSave: SaveFn
     <Card title={t('se.rem.title')} desc={t('se.rem.desc')}>
       <Toggle on={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label={t('se.rem.send')} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12, opacity: f.enabled ? 1 : 0.5 }}>
-        <Field label={t('se.rem.first')}><input style={ui.input} type="number" min={1} max={168} value={f.hoursBefore1} onChange={(e) => setF({ ...f, hoursBefore1: parseInt(e.target.value, 10) || 0 })} /></Field>
-        <Field label={t('se.rem.second')}><input style={ui.input} type="number" min={0} max={48} value={f.hoursBefore2} onChange={(e) => setF({ ...f, hoursBefore2: parseInt(e.target.value, 10) || 0 })} /></Field>
+        <Field label={t('se.rem.first')}>
+          <select style={ui.input} value={f.hoursBefore1} onChange={(e) => setF({ ...f, hoursBefore1: Number(e.target.value) })}>
+            {Array.from(new Set([0, 168, 72, 48, 24, 12, 6, f.hoursBefore1])).sort((a, b) => b - a).map((h) => <option key={h} value={h}>{remLabel(h, t)}</option>)}
+          </select>
+        </Field>
+        <Field label={t('se.rem.second')}>
+          <select style={ui.input} value={f.hoursBefore2} onChange={(e) => setF({ ...f, hoursBefore2: Number(e.target.value) })}>
+            {Array.from(new Set([0, 12, 6, 3, 2, 1, 0.5, 0.25, f.hoursBefore2])).sort((a, b) => b - a).map((h) => <option key={h} value={h}>{remLabel(h, t)}</option>)}
+          </select>
+        </Field>
       </div>
       <div style={{ display: 'flex', gap: 20, marginTop: 12 }}>
         <Toggle on={f.channelEmail} onChange={(v) => setF({ ...f, channelEmail: v })} label={t('se.rem.byEmail')} />

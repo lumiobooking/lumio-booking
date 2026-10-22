@@ -18,8 +18,8 @@ export class PaymentsHubController {
   constructor(private readonly hub: PaymentOrchestrator) {}
 
   @Get('status')
-  status() {
-    return this.hub.status();
+  status(@CurrentUser() user: AuthenticatedUser) {
+    return this.hub.status(user);
   }
 
   @Get('connections')

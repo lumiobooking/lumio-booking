@@ -25,6 +25,8 @@ import { buildClientCard, CardVisit } from './client-card';
 import { capabilitiesFor } from '../auth/capabilities';
 import { canSelfReschedule } from './self-reschedule';
 import { canSelfCancel } from './self-cancel';
+import { cancelMoney, DEFAULT_REFUND_HOURS, refundable, refundDeadline, type MoneyChoice } from './deposit-policy';
+import { bufferOf, padSpan } from './buffer';
 import { changeNoticeTargets, changePushText, ownerNoticeText } from './change-notices';
 import { AppointmentStatus, NotificationChannel, OrderStatus, PaymentStatus, Prisma, RejectionType, UserRole, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -173,21 +175,31 @@ export class BookingsService {
     start: Date,
     end: Date,
     ignoreAppointmentId?: string,
+    /** The salon's rest gap (bookings/buffer.ts); 0 = back to back allowed. */
+    bufferMin = 0,
   ): Promise<void> {
+    const pad = Math.max(0, bufferMin) * 60_000;
     const conflict = await tx.appointment.findFirst({
       where: {
         tenantId,
         assignedStaffId: staffId,
         status: { in: BLOCKING_STATUSES },
-        startTime: { lt: end },
-        endTime: { gt: start },
+        startTime: { lt: new Date(end.getTime() + pad) },
+        endTime: { gt: new Date(start.getTime() - pad) },
         ...(ignoreAppointmentId ? { id: { not: ignoreAppointmentId } } : {}),
       },
       select: { id: true },
     });
     if (conflict) {
-      throw new ConflictException('Staff member is already booked for this time slot');
+      throw new ConflictException(bufferMin > 0
+        ? `Staff member is already booked for this time slot (the salon keeps ${bufferMin} minutes between appointments)`
+        : 'Staff member is already booked for this time slot');
     }
+  }
+
+  /** The salon's rest gap between a technician's appointments, in minutes. */
+  private async bufferMinutes(tenantId: string): Promise<number> {
+    return bufferOf(await this.settings.getBookingRules(tenantId).catch(() => null));
   }
 
   /**
@@ -782,7 +794,8 @@ export class BookingsService {
 
       if (dto.staffId) {
         await this.lockStaffSlot(tx, tenantId, dto.staffId);
-        await this.assertNoOverlap(tx, tenantId, dto.staffId, start, end);
+        // The salon's rest gap binds what customers and bots book; the desk may squeeze.
+        await this.assertNoOverlap(tx, tenantId, dto.staffId, start, end, undefined, actorUserId ? 0 : await this.bufferMinutes(tenantId));
       }
 
       // Restaurant tenants: auto-assign the smallest free table that fits the party.
@@ -1595,7 +1608,9 @@ export class BookingsService {
    */
   async processDueReminders(): Promise<{ sent: number }> {
     const now = new Date();
-    const maxAhead = new Date(now.getTime() + 26 * 3600 * 1000);
+    // As far ahead as any salon may ask (168h); each salon's own windows are
+    // checked below. It was 26h, so a "3 days before" reminder never went out.
+    const maxAhead = new Date(now.getTime() + 170 * 3600 * 1000);
     const appts = await this.prisma.appointment.findMany({
       where: {
         status: { in: [AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING] },
@@ -1607,7 +1622,9 @@ export class BookingsService {
         service: { select: { name: true } },
         assignedStaff: { select: { firstName: true, lastName: true } },
       },
-      take: 300,
+      // Soonest first: when there are more than fit, the ones about to happen go out.
+      orderBy: { startTime: 'asc' },
+      take: 2000,
     });
     if (appts.length === 0) return { sent: 0 };
 
@@ -2441,9 +2458,13 @@ export class BookingsService {
 
     const staffBusy: Record<string, { start: string; end: string }[]> = {};
     for (const id of ids) staffBusy[id] = [];
+    // Each booking blocks its technician for its own time plus the salon's
+    // rest gap on either side (bookings/buffer.ts), so what is offered keeps it.
+    const gap = await this.bufferMinutes(tenantId);
+    const busyOf = (s: Date, e: Date) => { const p = padSpan({ start: s, end: e }, gap); return { start: p.start.toISOString(), end: p.end.toISOString() }; };
     for (const a of appts) {
       if (a.assignedStaffId) {
-        staffBusy[a.assignedStaffId].push({ start: a.startTime.toISOString(), end: a.endTime.toISOString() });
+        staffBusy[a.assignedStaffId].push(busyOf(a.startTime, a.endTime));
       }
     }
     // A technician on another visit's extra service line (a group) is busy then too.
@@ -2453,7 +2474,7 @@ export class BookingsService {
     }).catch(() => [] as { assignedStaffId: string | null; startTime: Date; endTime: Date; addons: unknown }[]);
     for (const a of withLines) {
       for (const sid of lineStaffIds(a.addons, a.assignedStaffId)) {
-        if (staffBusy[sid]) staffBusy[sid].push({ start: a.startTime.toISOString(), end: a.endTime.toISOString() });
+        if (staffBusy[sid]) staffBusy[sid].push(busyOf(a.startTime, a.endTime));
       }
     }
 
@@ -2900,35 +2921,62 @@ export class BookingsService {
     return [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email || null;
   }
 
-  async cancel(user: AuthenticatedUser, id: string) {
+  async cancel(user: AuthenticatedUser, id: string, money?: MoneyChoice | null) {
     const tenantId = this.tenantId(user);
     await this.getById(user, id); // enforces tenant ownership / 404
-    return this.cancelForTenant(tenantId, id, user.userId, 'staff', await this.actorName(user.userId));
+    return this.cancelForTenant(tenantId, id, user.userId, 'staff', await this.actorName(user.userId), money === 'refund' || money === 'keep' ? money : null);
   }
 
   /** Cancel + settle money, scoped to a tenant (admin or token-based customer cancel). */
-  async cancelForTenant(tenantId: string, id: string, actorUserId: string | null, by: 'staff' | 'customer' | 'ai' = 'customer', byName: string | null = null) {
-    // Cancelling twice must not tell everyone twice.
-    const before = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { status: true } }).catch(() => null);
+  async cancelForTenant(tenantId: string, id: string, actorUserId: string | null, by: 'staff' | 'customer' | 'ai' = 'customer', byName: string | null = null, money: MoneyChoice | null = null) {
+    // Cancelling twice must not tell everyone twice — nor refund twice.
+    const before = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { status: true, startTime: true, priceCents: true, customerId: true, partySize: true } as never }).catch(() => null) as
+      { status: AppointmentStatus; startTime: Date; priceCents: number; customerId: string | null; partySize?: number | null } | null;
     await this.prisma.$transaction(async (tx) => {
       await tx.appointment.updateMany({
         where: { id, tenantId },
         data: { status: AppointmentStatus.CANCELLED, cancelledAt: new Date(), cancelledBy: by, cancelledByName: byName } as never,
       });
-      await tx.payment.updateMany({
-        where: { tenantId, appointmentId: id, status: PaymentStatus.PAID },
-        data: { status: PaymentStatus.REFUNDED },
-      });
+      // Nothing taken yet: the open "pay at the salon" / "pay now" rows close.
       await tx.payment.updateMany({
         where: { tenantId, appointmentId: id, status: PaymentStatus.PENDING },
         data: { status: PaymentStatus.FAILED },
       });
     });
     await this.audit.log({ tenantId, userId: actorUserId, action: 'booking.cancelled', resourceType: 'appointment', resourceId: id });
+    // Money already taken follows the salon's rule (deposit-policy.ts): in
+    // time → back to the card for real; late → the deposit stays with the salon.
+    let moneyOut: { keptCents: number; refundedCents: number; failed: { provider: string; amountCents: number; error: string }[] } | null = null;
     if (before && before.status !== AppointmentStatus.CANCELLED) {
+      moneyOut = await this.settleCancelledMoney(tenantId, id, before, by === 'staff' ? money : null).catch((e) => {
+        this.logger.warn(`cancel money ${id}: ${String((e as Error)?.message ?? e).slice(0, 200)}`);
+        return null;
+      });
       this.sendChangeNotice(tenantId, id, 'cancelled', { by, byName }).catch(() => undefined);
     }
-    return this.prisma.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
+    const row = await this.prisma.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
+    return row && moneyOut ? Object.assign(row, { cancelMoney: moneyOut }) : row;
+  }
+
+  /** The money side of a cancellation: refund in time, keep the deposit when late (or when staff say so). */
+  private async settleCancelledMoney(
+    tenantId: string, id: string,
+    appt: { startTime: Date; priceCents: number; customerId: string | null; partySize?: number | null },
+    override: MoneyChoice | null,
+  ) {
+    const paid = await this.prisma.payment.findMany({ where: { tenantId, appointmentId: id, status: PaymentStatus.PAID }, select: { amountCents: true } });
+    const paidCents = paid.reduce((s, p) => s + p.amountCents, 0);
+    if (paidCents <= 0) return { keptCents: 0, refundedCents: 0, failed: [] };
+    const dep = await this.settings.getDepositSettings(tenantId);
+    const depositCents = dep.enabled
+      ? await this.payments.depositFor(tenantId, { customerId: appt.customerId, priceCents: appt.priceCents, partySize: appt.partySize ?? null }, dep, await this.settings.getPartyDeposit(tenantId))
+      : 0;
+    const plan = cancelMoney({ startMs: appt.startTime.getTime(), nowMs: Date.now(), refundHours: dep.refundHours ?? DEFAULT_REFUND_HOURS, paidCents, depositCents, override });
+    const res = plan.refundCents > 0 ? await this.payments.refundPaid(tenantId, id, plan.refundCents) : { refundedCents: 0, failed: [] };
+    if (plan.keepCents > 0) {
+      await this.audit.log({ tenantId, userId: null, action: 'payment.deposit_kept', resourceType: 'appointment', resourceId: id, metadata: { keptCents: plan.keepCents, reason: plan.reason } });
+    }
+    return { keptCents: plan.keepCents, refundedCents: res.refundedCents, failed: res.failed };
   }
 
   /**
@@ -3163,7 +3211,27 @@ export class BookingsService {
       confirmed: !!a.customerConfirmedAt,
       canAct: BookingsService.ACTIONABLE.includes(a.status),
       referral,
+      deposit: await this.depositNotice(a.tenantId, a.id, a.startTime, loc, tz),
     };
+  }
+
+  /** For the customer page: what is paid, and until when cancelling gets it back. */
+  private async depositNotice(tenantId: string, id: string, startTime: Date, loc: string, tz: string) {
+    try {
+      const paid = await this.prisma.payment.findMany({ where: { tenantId, appointmentId: id, status: PaymentStatus.PAID }, select: { amountCents: true, currency: true } });
+      const paidCents = paid.reduce((s, p) => s + p.amountCents, 0);
+      if (paidCents <= 0) return null;
+      const dep = await this.settings.getDepositSettings(tenantId);
+      const hours = dep.refundHours ?? DEFAULT_REFUND_HOURS;
+      const deadline = new Date(refundDeadline(startTime.getTime(), hours));
+      return {
+        paidCents, currency: paid[0]?.currency ?? 'USD', refundHours: hours,
+        refundable: refundable(startTime.getTime(), Date.now(), hours),
+        deadline: `${deadline.toLocaleDateString(loc, { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz })} ${deadline.toLocaleTimeString(loc, { hour: 'numeric', minute: '2-digit', timeZone: tz })}`,
+      };
+    } catch {
+      return null;
+    }
   }
 
   /** Customer taps "Confirm" in a reminder. */

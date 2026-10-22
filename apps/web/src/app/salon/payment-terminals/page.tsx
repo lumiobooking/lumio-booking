@@ -6,9 +6,10 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
+import { TerminalRequestCard } from '../../../components/TerminalRequestCard';
 
 // ---- Types (mirror the payments-hub API) ----
-interface HubStatus { enabled: boolean; encryption: boolean; providers: string[]; }
+interface HubStatus { enabled: boolean; encryption: boolean; providers: string[]; webhookBase?: string | null }
 interface Capabilities { terminal?: boolean; online?: boolean; tapToPay?: boolean; interac?: boolean; partialRefund?: boolean; currencies?: string[]; }
 interface Connection { provider: string; status: string; label?: string | null; keyHint?: string | null; currency?: string; capabilities?: Capabilities; lastCheckedAt?: string | null; }
 interface Device { id: string; externalReaderId: string; label?: string | null; status: string; locationId?: string | null; hasOwnKey?: boolean; keyHint?: string | null; }
@@ -26,10 +27,10 @@ const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help:
     fields: ['secret', 'currency'],
   },
   stripe: {
-    name: 'Stripe Terminal',
+    name: 'Stripe (Terminal + cọc online)',
     help: {
-      en: 'Stripe Dashboard → Developers → API keys → Create restricted key (allow Terminal, PaymentIntents, Charges/Refunds). Paste the rk_live_… key. Lumio registers nothing.',
-      vi: 'Stripe Dashboard → Developers → API keys → Create restricted key (cấp quyền Terminal, PaymentIntents, Charges/Refunds). Dán key rk_live_…. Lumio không đăng ký gì.',
+      en: 'Stripe Dashboard → Developers → API keys → Create restricted key (allow Terminal, PaymentIntents, Checkout Sessions, Charges/Refunds). Paste the rk_live_… key. The same key takes card terminals AND customers\' online deposits (Stripe Checkout). Lumio registers nothing.',
+      vi: 'Stripe Dashboard → Developers → API keys → Create restricted key (cấp quyền Terminal, PaymentIntents, Checkout Sessions, Charges/Refunds). Dán key rk_live_…. Cùng key này dùng cho máy quẹt VÀ thu cọc online của khách (Stripe Checkout). Lumio không đăng ký gì.',
     },
     fields: ['secret', 'currency', 'locationId', 'webhookSecret'],
   },
@@ -40,6 +41,22 @@ const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help:
       vi: 'Trong cổng iPOSpays CỦA TIỆM: Settings → Generate Ecom/TOP Merchant Keys → chọn TPN → Generate Token. Dán TPN và token đó vào đây. Nhờ ISO bật chế độ SPIn (semi-integrated) cho máy. Lumio không đăng ký gì và không giữ tiền của tiệm.',
     },
     fields: ['tpn', 'registerId', 'secret', 'currency', 'environment'],
+  },
+  paypal: {
+    name: 'PayPal (cọc online)',
+    help: {
+      en: 'developer.paypal.com with the SALON\'S PayPal Business account → Apps & Credentials → Live → create an app → copy the Client ID and the Secret. Customers pay deposits with PayPal or a card as a guest; Lumio captures only after reading the order from PayPal. No card terminal.',
+      vi: 'developer.paypal.com bằng tài khoản PayPal Business CỦA TIỆM → Apps & Credentials → Live → tạo app → copy Client ID và Secret. Khách trả cọc bằng PayPal hoặc thẻ (không cần tài khoản); Lumio chỉ thu khi đã đọc lệnh từ PayPal. Không dùng cho máy quẹt.',
+    },
+    fields: ['publicId', 'secret', 'currency', 'environment'],
+  },
+  clover: {
+    name: 'Clover (cọc online)',
+    help: {
+      en: 'Clover Dashboard → Account & Setup → Ecommerce API Tokens → create a Hosted Checkout (private) token; Merchant ID is under Account & Setup → Merchants. Then Settings → Ecommerce → Hosted Checkout → Webhook: paste the webhook address below, generate the signing secret and paste it here (required — it is how Clover proves a deposit was paid). The Clover device at the counter is not driven from Lumio yet: ring card sales on it and pick CARD in Lumio.',
+      vi: 'Clover Dashboard → Account & Setup → Ecommerce API Tokens → tạo token Hosted Checkout (private); Merchant ID ở Account & Setup → Merchants. Sau đó Settings → Ecommerce → Hosted Checkout → Webhook: dán địa chỉ webhook bên dưới, tạo signing secret rồi dán vào đây (bắt buộc — Clover dùng nó để xác nhận khách đã trả cọc). Máy Clover tại quầy chưa điều khiển từ Lumio: bán trên máy rồi chọn CARD trong Lumio.',
+    },
+    fields: ['publicId', 'secret', 'currency', 'environment', 'webhookSecret'],
   },
   mock: {
     name: 'Mock (sandbox test)',
@@ -120,6 +137,7 @@ function Inner() {
   const [region, setRegion] = useState('test');
   const [tpn, setTpn] = useState('');
   const [registerId, setRegisterId] = useState('');
+  const [publicId, setPublicId] = useState('');
   const [environment, setEnvironment] = useState<'sandbox' | 'production'>('production');
   const [amountIncludesTip, setAmountIncludesTip] = useState(true);
   const [connType, setConnType] = useState<'cloud' | 'usb' | 'bluetooth'>('cloud');
@@ -154,6 +172,7 @@ function Inner() {
         region,
         tpn: tpn.trim() || undefined,
         registerId: registerId.trim() || undefined,
+        publicId: PROVIDER_META[provider]?.fields.includes('publicId') ? publicId.trim() || undefined : undefined,
         environment: PROVIDER_META[provider]?.fields.includes('environment') ? environment : undefined,
         amountIncludesTip: provider === 'dejavoo' ? amountIncludesTip : undefined,
       } });
@@ -202,7 +221,7 @@ function Inner() {
               <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--ink-good)', fontWeight: 600 }}>● {L.connected}</span>
               <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 4 }}>
                 {L.secret}: {c.keyHint ?? '—'} · {c.currency}
-                {c.capabilities?.interac ? ' · Interac' : ''}{c.capabilities?.tapToPay ? ' · Tap to Pay' : ''}
+                {c.capabilities?.interac ? ' · Interac' : ''}{c.capabilities?.tapToPay ? ' · Tap to Pay' : ''}{c.capabilities?.online ? (vi ? ' · Thu cọc online' : ' · Online deposits') : ''}{c.capabilities?.terminal === false ? (vi ? ' · Không dùng máy quẹt' : ' · No terminal') : ''}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -210,8 +229,8 @@ function Inner() {
               <button onClick={() => doDisconnect(c.provider)} style={ui.dangerBtn}>{L.disconnect}</button>
             </div>
           </div>
-          <Readers provider={c.provider} token={token} L={L} />
-          <TestCharge provider={c.provider} token={token} L={L} vi={vi} />
+          {c.capabilities?.terminal !== false && <Readers provider={c.provider} token={token} L={L} />}
+          {c.capabilities?.terminal !== false && <TestCharge provider={c.provider} token={token} L={L} vi={vi} />}
         </div>
       ))}
 
@@ -268,7 +287,18 @@ function Inner() {
                     <input style={input} value={registerId} onChange={(e) => setRegisterId(e.target.value)} placeholder={vi ? 'Bỏ trống nếu đã có TPN' : 'Leave blank if you have a TPN'} autoComplete="off" />
                   </>
                 )}
-                <label style={label}>{provider === 'dejavoo' ? L.authKey : L.secret}</label>
+                {meta.fields.includes('publicId') && (
+                  <>
+                    <label style={label}>{provider === 'clover' ? 'Merchant ID' : 'Client ID'}</label>
+                    <input style={input} value={publicId} onChange={(e) => setPublicId(e.target.value)} placeholder={provider === 'clover' ? 'e.g. 8PMHXXXXXXXX' : 'A…'} autoComplete="off" />
+                  </>
+                )}
+                {(provider === 'clover' || provider === 'stripe') && status?.webhookBase && (
+                  <p style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '10px 0 0', lineHeight: 1.5, wordBreak: 'break-all' }}>
+                    Webhook: <code style={{ color: 'var(--ce2e8f0)' }}>{status.webhookBase.replace('{provider}', provider)}</code>
+                  </p>
+                )}
+                <label style={label}>{provider === 'dejavoo' ? L.authKey : provider === 'clover' ? (vi ? 'Ecommerce private token' : 'Ecommerce private token') : provider === 'paypal' ? 'Secret' : L.secret}</label>
                 <input style={input} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={provider === 'stripe' ? 'rk_live_…' : provider === 'mock' ? 'mock_test' : provider === 'helcim' ? 'Helcim API token' : provider === 'dejavoo' ? (vi ? 'Token 10 ký tự từ iPOSpays' : '10-character token from iPOSpays') : ''} autoComplete="off" />
                 {meta.fields.includes('currency') && (
                   <>
@@ -321,6 +351,7 @@ function Inner() {
           </>
         )}
       </div>
+      <TerminalRequestCard token={token} vi={vi} />
       {status?.enabled && <AgentsSection token={token} vi={vi} />}
     </section>
   );

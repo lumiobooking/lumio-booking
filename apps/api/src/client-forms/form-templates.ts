@@ -23,8 +23,11 @@
 export type FormKind = 'intake' | 'cupping' | 'hot_stone' | 'soap';
 export type ConsentKind = 'cupping' | 'hot_stone';
 export type FormLang = 'vi' | 'en';
-/** What a "yes" is a caution for: any massage, or one of the consent treatments. */
+/** What a "yes" is a caution for: any session ('massage' — the name predates nails), or one of the consent treatments. */
 export type FlagTarget = 'massage' | ConsentKind;
+/** Which intake the salon hands out: the massage one, the nail one, or a general one for any other service. */
+export type IntakeStyle = 'massage' | 'nail' | 'general';
+export const INTAKE_STYLES: IntakeStyle[] = ['massage', 'nail', 'general'];
 
 export const FORM_KINDS: FormKind[] = ['intake', 'cupping', 'hot_stone', 'soap'];
 export const CONSENT_KINDS: ConsentKind[] = ['cupping', 'hot_stone'];
@@ -183,6 +186,85 @@ const INTAKE: FormTemplate = {
   ],
 };
 
+const NAIL_INTAKE: FormTemplate = {
+  kind: 'intake',
+  version: 1,
+  title: t('Phiếu sức khoẻ & cam kết làm móng', 'Nail service health form & release'),
+  intro: t(
+    'Giúp thợ làm móng an toàn cho bạn. Chỉ cần chạm để chọn — khoảng 1 phút.',
+    'Helps your technician work safely. Just tap to answer — about a minute.',
+  ),
+  signer: 'client',
+  fields: [
+    section('s_contact', 'Thông tin liên hệ', 'Contact'),
+    { id: 'name', type: 'text', label: t('Họ tên', 'Full name'), required: true, prefill: 'name', short: true },
+    { id: 'phone', type: 'text', label: t('Số điện thoại', 'Phone'), prefill: 'phone', short: true },
+    { id: 'email', type: 'text', label: t('Email', 'Email'), prefill: 'email', short: true },
+
+    section('s_health', 'Bạn có tình trạng nào sau đây không?', 'Does any of this apply to you?'),
+    yn('n_diabetes', 'Tiểu đường', 'Diabetes', ['massage']),
+    yn('n_circulation', 'Rối loạn tuần hoàn, dễ bầm, đang dùng thuốc chống đông', 'Poor circulation, bruise easily, or taking blood thinners', ['massage'], true),
+    yn('n_neuropathy', 'Tê bì tay chân, giảm cảm giác', 'Numbness or reduced feeling in hands or feet', ['massage']),
+    yn('n_fungus', 'Nấm móng, móng nhiễm trùng, sưng đỏ quanh móng', 'Nail fungus, infected nails, or redness/swelling around a nail', ['massage'], true),
+    yn('n_wounds', 'Vết thương hở, trầy xước, mụn nước ở tay hoặc chân', 'Open cuts, scrapes or blisters on hands or feet', ['massage'], true),
+    yn('n_skin', 'Bệnh da ở tay chân (chàm, vảy nến, viêm da)', 'Skin condition on hands or feet (eczema, psoriasis, dermatitis)', ['massage'], true),
+    yn('n_allergy_products', 'Dị ứng gel, acrylic, keo dán móng, latex hoặc nước tẩy (acetone)', 'Allergic to gel, acrylic, nail glue, latex or remover (acetone)', ['massage'], true),
+    yn('n_allergy_other', 'Dị ứng khác (kem, tinh dầu, hạt, mùi hương…)', 'Other allergies (lotions, oils, nuts, scents…)', ['massage'], true),
+    yn('n_pregnant', 'Đang mang thai', 'Pregnant', ['massage']),
+    yn('n_shaved', 'Mới cạo lông chân trong 24 giờ (khi làm chân)', 'Shaved your legs in the last 24 hours (for pedicures)', []),
+    yn('n_medications', 'Đang dùng thuốc (kháng sinh, thuốc bôi da…)', 'Taking any medication (antibiotics, skin creams…)', [], true),
+    yn('n_contagious', 'Đang sốt, cảm cúm hoặc bệnh truyền nhiễm', 'Fever, cold, flu or anything contagious', ['massage']),
+
+    section('s_visit', 'Tuỳ chọn của bạn', 'Your preferences'),
+    {
+      id: 'cuticle', type: 'choice', label: t('Da quanh móng (biểu bì)', 'Cuticles'),
+      options: [opt('cut', 'Cắt da', 'Trim them'), opt('push', 'Chỉ đẩy da', 'Push back only'), opt('none', 'Không đụng tới', 'Leave them')],
+    },
+
+    section('s_ack', 'Tôi hiểu và đồng ý', 'I understand and agree'),
+    ack('ack_true', 'Thông tin trên là đúng và đầy đủ.', 'The information above is true and complete.'),
+    ack('ack_update', 'Tôi sẽ báo cho tiệm khi sức khoẻ của tôi thay đổi.', 'I will tell the salon if my health changes.'),
+    ack('ack_risk', 'Làm móng có thể gây đỏ, rát, dị ứng hoặc nhiễm trùng nhẹ, nhất là khi da hoặc móng đang có vấn đề.', 'Nail services can cause redness, stinging, allergic reactions or minor infection, especially on skin or nails that already have a problem.'),
+    ack('ack_enhance', 'Móng gel / acrylic cần tháo đúng cách; tự cạy gỡ có thể làm hỏng móng thật.', 'Gel or acrylic must be removed properly; picking it off can damage the natural nail.'),
+    ack('ack_stop', 'Tôi có thể yêu cầu dừng hoặc đổi cách làm bất cứ lúc nào.', 'I can ask to stop or change anything at any time.'),
+    ack('ack_release', 'Tôi tự nguyện sử dụng dịch vụ và miễn trách nhiệm cho tiệm với phản ứng do tình trạng tôi không khai.', 'I choose to receive the service and release the salon from liability for reactions caused by conditions I did not disclose.'),
+  ],
+};
+
+const GENERAL_INTAKE: FormTemplate = {
+  kind: 'intake',
+  version: 1,
+  title: t('Phiếu sức khoẻ & cam kết sử dụng dịch vụ', 'Health form & service release'),
+  intro: t(
+    'Giúp tiệm phục vụ bạn an toàn. Chỉ cần chạm để chọn — khoảng 1 phút.',
+    'Helps us serve you safely. Just tap to answer — about a minute.',
+  ),
+  signer: 'client',
+  fields: [
+    section('s_contact', 'Thông tin liên hệ', 'Contact'),
+    { id: 'name', type: 'text', label: t('Họ tên', 'Full name'), required: true, prefill: 'name', short: true },
+    { id: 'phone', type: 'text', label: t('Số điện thoại', 'Phone'), prefill: 'phone', short: true },
+    { id: 'email', type: 'text', label: t('Email', 'Email'), prefill: 'email', short: true },
+    { id: 'birth_date', type: 'text', label: t('Ngày sinh', 'Date of birth'), prefill: 'birthDate', short: true },
+
+    section('s_health', 'Bạn có tình trạng nào sau đây không?', 'Does any of this apply to you?'),
+    yn('g_allergies', 'Dị ứng (thuốc, hoá chất, mỹ phẩm, latex, hạt…)', 'Allergies (medicine, chemicals, cosmetics, latex, nuts…)', ['massage'], true),
+    yn('g_skin', 'Da nhạy cảm, vết thương hở, phát ban hoặc bệnh da', 'Sensitive skin, open wounds, rash or a skin condition', ['massage'], true),
+    yn('g_recent_procedure', 'Mới điều trị / thẩm mỹ trong 4 tuần (laser, peel, tiêm, phẫu thuật)', 'A treatment or procedure in the last 4 weeks (laser, peel, injections, surgery)', ['massage'], true),
+    yn('g_pregnant', 'Đang mang thai', 'Pregnant', ['massage']),
+    yn('g_conditions', 'Bệnh mãn tính (tim mạch, tiểu đường, huyết áp, động kinh…)', 'A long-term condition (heart, diabetes, blood pressure, epilepsy…)', ['massage'], true),
+    yn('g_medications', 'Đang dùng thuốc', 'Taking any medication', [], true),
+    yn('g_contagious', 'Đang sốt, cảm cúm hoặc bệnh truyền nhiễm', 'Fever, cold, flu or anything contagious', ['massage']),
+
+    section('s_ack', 'Tôi hiểu và đồng ý', 'I understand and agree'),
+    ack('ack_true', 'Thông tin trên là đúng và đầy đủ.', 'The information above is true and complete.'),
+    ack('ack_update', 'Tôi sẽ báo cho tiệm khi sức khoẻ của tôi thay đổi.', 'I will tell the business if my health changes.'),
+    ack('ack_risk', 'Tôi đã được giải thích dịch vụ và các rủi ro có thể có.', 'The service and its possible risks were explained to me.'),
+    ack('ack_stop', 'Tôi có thể yêu cầu dừng bất cứ lúc nào.', 'I can ask to stop at any time.'),
+    ack('ack_release', 'Tôi tự nguyện sử dụng dịch vụ và miễn trách nhiệm cho tiệm với phản ứng do tình trạng tôi không khai.', 'I choose to receive the service and release the business from liability for reactions caused by conditions I did not disclose.'),
+  ],
+};
+
 const CUPPING: FormTemplate = {
   kind: 'cupping',
   version: 1,
@@ -314,15 +396,17 @@ const SOAP: FormTemplate = {
 };
 
 export const TEMPLATES: Record<FormKind, FormTemplate> = { intake: INTAKE, cupping: CUPPING, hot_stone: HOT_STONE, soap: SOAP };
+/** The intake in each style; a signed entry keeps the snapshot of the one it was. */
+export const INTAKES: Record<IntakeStyle, FormTemplate> = { massage: INTAKE, nail: NAIL_INTAKE, general: GENERAL_INTAKE };
 
 /** A salon's own extra yes/no question on the intake. */
 export interface ExtraQuestion { id: string; vi: string; en: string; flag: boolean }
 
 /** The built-in form, plus the salon's own intake questions at the end of the health list. */
-export function templateFor(kind: FormKind, extra: ExtraQuestion[] = []): FormTemplate {
-  const base = TEMPLATES[kind];
+export function templateFor(kind: FormKind, extra: ExtraQuestion[] = [], style: IntakeStyle = 'massage'): FormTemplate {
+  const base = kind === 'intake' ? INTAKES[style] ?? INTAKE : TEMPLATES[kind];
   if (kind !== 'intake' || !extra.length) return base;
-  const at = base.fields.findIndex((f) => f.id === 's_visit');
+  const at = base.fields.findIndex((f) => f.id === 's_visit' || f.id === 's_ack');
   const mine: FormField[] = extra.map((q) => ({
     id: `x_${q.id}`, type: 'yesno', required: true, detail: true,
     label: t(q.vi || q.en, q.en || q.vi), flags: q.flag ? ['massage'] : [],

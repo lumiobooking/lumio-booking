@@ -22,9 +22,10 @@ export class PaymentsHubWebhookController {
     @Param('tenantId') tenantId: string,
     @Req() req: RawBodyRequest<Request>,
     @Headers('stripe-signature') stripeSig?: string,
+    @Headers('clover-signature') cloverSig?: string,
   ) {
     if (!req.rawBody) throw new BadRequestException('Missing raw body');
-    const signature = stripeSig ?? (req.headers['x-signature'] as string) ?? '';
+    const signature = stripeSig ?? cloverSig ?? (req.headers['x-signature'] as string) ?? '';
     return this.hub.handleWebhook(provider, tenantId, req.rawBody, signature);
   }
 }

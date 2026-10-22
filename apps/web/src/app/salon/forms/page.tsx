@@ -18,7 +18,7 @@ import { EntryViewer, FormModal } from '../../../components/forms/FormModal';
 type Consent = 'cupping' | 'hot_stone';
 interface Rule { enabled: boolean; serviceIds: string[]; categoryIds: string[] }
 interface Settings {
-  enabled: boolean; intakeRequired: boolean; intakeValidMonths: number;
+  enabled: boolean; intakeStyle?: 'massage' | 'nail' | 'general'; intakeRequired: boolean; intakeValidMonths: number;
   consents: Record<Consent, Rule>; consentValidMonths: number; soapRequired: boolean;
   autoSend: { enabled: boolean; hoursBefore: number };
   extraQuestions: { id: string; vi: string; en: string; flag: boolean }[];
@@ -94,8 +94,8 @@ export default function FormsPage() {
       <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--ce2e8f0)', margin: 0 }}>{vi ? 'Phiếu khách hàng' : 'Client forms'}</h1>
       <p style={{ fontSize: 14, color: 'var(--c94a3b8)', margin: '6px 0 16px', lineHeight: 1.5 }}>
         {vi
-          ? 'Phiếu thông tin & cam kết khách ký trước khi làm (giác hơi, đá nóng), ghi chú SOAP kỹ thuật viên ký sau khi làm. Chỉ cần chạm để chọn — lưu theo từng khách, từng thợ, từng lần đến.'
-          : 'Intake and consent the client signs before the session (cupping, hot stone), and the SOAP note the therapist signs after. All tap-to-answer — kept per client, per therapist, per visit.'}
+          ? 'Phiếu khai báo sức khoẻ & cam kết miễn trách nhiệm khách ký online trước khi làm (qua link SMS, ở quầy hoặc máy check-in). Chỉ cần chạm để chọn — lưu chữ ký, thời gian, theo từng khách và từng lần đến.'
+          : 'The health form and release clients sign online before the service (by text link, at the desk or the check-in kiosk). All tap-to-answer — signature and time kept per client, per visit.'}
       </p>
       {!canEdit && <div style={{ ...ui.banner, marginBottom: 12 }}>{vi ? 'Chỉ chủ tiệm hoặc quản lý đổi được cài đặt này.' : 'Only the owner or a manager can change these settings.'}</div>}
 
@@ -108,6 +108,14 @@ export default function FormsPage() {
         <>
           <div style={{ ...ui.card, marginBottom: 14 }}>
             {h2(`1 · ${kindLabel('intake', vi)}`)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 14, color: 'var(--ccbd5e1)', margin: '4px 0 6px' }}>
+              {vi ? 'Mẫu phiếu' : 'Form'}
+              <select value={s.intakeStyle ?? 'massage'} disabled={!canEdit} onChange={(e) => patch({ intakeStyle: e.target.value as Settings['intakeStyle'] })} style={{ ...ui.input, width: 'auto', minWidth: 220 }}>
+                <option value="nail">{vi ? 'Làm móng (nail) — sức khoẻ & miễn trách nhiệm' : 'Nails — health & release'}</option>
+                <option value="massage">{vi ? 'Massage / spa — phiếu thông tin' : 'Massage / spa intake'}</option>
+                <option value="general">{vi ? 'Dịch vụ khác — sức khoẻ & miễn trách nhiệm' : 'Any service — health & release'}</option>
+              </select>
+            </div>
             {toggle(s.intakeRequired, (v) => patch({ intakeRequired: v }), vi ? 'Khách cần ký phiếu thông tin trước buổi làm' : 'Clients sign the intake before their session')}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 14, color: 'var(--ccbd5e1)' }}>
               {vi ? 'Ký lại sau' : 'Sign again after'} {months(s.intakeValidMonths, (n) => patch({ intakeValidMonths: n }))}
@@ -135,6 +143,7 @@ export default function FormsPage() {
             </div>
           </div>
 
+          {(s.intakeStyle ?? 'massage') === 'massage' && (<>
           <div style={{ ...ui.card, marginBottom: 14 }}>
             {h2(`2 · ${vi ? 'Cam kết đồng ý' : 'Consent'}`)}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 14, color: 'var(--ccbd5e1)', margin: '4px 0 8px' }}>
@@ -184,6 +193,7 @@ export default function FormsPage() {
               vi ? 'Hiện nút “Ghi SOAP” trên app thợ và trên phiếu khách ở quầy.' : 'Shows “Write SOAP” in the staff app and on the desk ticket.')}
             <button type="button" onClick={() => { setPreviewAnswers({}); setPreview('soap'); }} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--line-strong)', color: 'var(--ce2e8f0)' }}>{vi ? 'Xem mẫu' : 'Preview'}</button>
           </div>
+          </>)}
 
           <div style={{ ...ui.card, marginBottom: 14 }}>
             {h2(`4 · ${vi ? 'Gửi link trước buổi hẹn' : 'Send the link before the visit'}`)}

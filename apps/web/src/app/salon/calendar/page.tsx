@@ -390,9 +390,17 @@ function Inner() {
       const lines = [
         vi ? `Huỷ lịch của ${b ? name(b.customer) : 'khách'}?` : `Cancel ${b ? name(b.customer) : 'this customer'}'s booking?`,
         vi ? 'Khách và thợ sẽ được báo theo mẫu thông báo của tiệm.' : 'The customer and the technician are notified with the salon\'s templates.',
-        ...(paid > 0 ? [vi ? `Lịch này đã thanh toán ${formatPrice(paid, b?.currency)}. Tiền KHÔNG tự hoàn — hoàn ở mục Thanh toán sau khi huỷ.` : `${formatPrice(paid, b?.currency)} was paid on it. It is NOT refunded by itself — refund it under Payments after cancelling.`] : []),
       ];
       if (!window.confirm(lines.join('\n'))) return;
+      // Money already taken: the owner decides for THIS booking. OK sends it
+      // back to the customer's card through the provider that took it; Cancel
+      // keeps it (a late cancellation, a no-show deposit).
+      if (paid > 0) {
+        const refund = window.confirm(vi
+          ? `Khách đã trả ${formatPrice(paid, b?.currency)}.\n\nOK = HOÀN tiền về thẻ của khách\nHuỷ = TIỆM GIỮ tiền cọc`
+          : `${formatPrice(paid, b?.currency)} was paid.\n\nOK = REFUND it to the customer's card\nCancel = the salon KEEPS the deposit`);
+        body = { money: refund ? 'refund' : 'keep' };
+      }
     }
     try {
       // A move outside opening hours: the owner is asked once and may go ahead.
@@ -403,6 +411,12 @@ function Inner() {
       );
       // Status changes and visit edits keep the drawer open showing the new
       // state; the one-shot actions (arrive/complete/cancel) close it as before.
+      const failed = (updated as { cancelMoney?: { failed?: { provider: string; error: string }[] } } | null)?.cancelMoney?.failed ?? [];
+      if (path === 'cancel' && failed.length) {
+        setError(lang === 'vi'
+          ? `Đã huỷ lịch nhưng hoàn tiền KHÔNG thành công (${failed.map((f) => `${f.provider}: ${f.error}`).join('; ')}). Hãy hoàn tay trong tài khoản thanh toán của tiệm.`
+          : `Cancelled, but the refund FAILED (${failed.map((f) => `${f.provider}: ${f.error}`).join('; ')}). Refund it by hand in the salon's payment account.`);
+      }
       if ((path === 'status' || path === 'lines' || path === 'line-staff' || path === 'assign') && updated && typeof updated === 'object') setSelected(updated);
       else setSelected(null);
       await load();

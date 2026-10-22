@@ -18,6 +18,8 @@ import { ProviderRegistry } from './provider-registry.service';
 import { Credential, CredentialStore } from './credential-store.service';
 import { encConfigured } from './crypto.util';
 import { ProviderId } from './connectors/connector.types';
+import { OnlineCheckoutOpts } from './connectors/payment-connector.interface';
+import { oauthBase } from '../common/public-url.util';
 import { ChargeDto, ConnectDto, RefundDto, RegisterReaderDto } from './dto/payments-hub.dto';
 
 /**
@@ -48,8 +50,12 @@ export class PaymentOrchestrator {
     return user.tenantId;
   }
 
-  status() {
-    return { enabled: this.enabled(), encryption: encConfigured(), providers: this.registry.supported() };
+  status(user?: AuthenticatedUser) {
+    // Clover (deposits) and Stripe (terminal events) sign webhooks to a per-salon
+    // address; the settings screen shows it so the owner can paste it there.
+    const tid = user?.tenantId ?? null;
+    const webhookBase = tid ? `${oauthBase()}/api/payments-hub/webhook/{provider}/${tid}` : null;
+    return { enabled: this.enabled(), encryption: encConfigured(), providers: this.registry.supported(), webhookBase };
   }
 
   async listConnections(user: AuthenticatedUser) {
@@ -71,6 +77,7 @@ export class PaymentOrchestrator {
       registerId: (dto as any).registerId?.trim() || undefined,
       environment: ((dto as any).environment?.trim() as 'sandbox' | 'production') || undefined,
       amountIncludesTip: (dto as any).amountIncludesTip,
+      publicId: dto.publicId?.trim() || undefined,
     };
     const result = await connector.verifyCredential(cred.secret, {
       currency: dto.currency,
@@ -79,6 +86,7 @@ export class PaymentOrchestrator {
       tpn: cred.tpn,
       registerId: cred.registerId,
       environment: cred.environment,
+      publicId: cred.publicId,
     });
     if (!result.ok) throw new BadRequestException(result.error ?? 'Could not verify the API key with the provider');
     const conn = await this.creds.save(tenantId, dto.provider as ProviderId, cred, result, dto.label);
@@ -96,6 +104,7 @@ export class PaymentOrchestrator {
       tpn: cred.tpn,
       registerId: cred.registerId,
       environment: cred.environment,
+      publicId: cred.publicId,
     });
     await this.prisma.paymentConnection.updateMany({
       where: { tenantId, provider },
@@ -608,7 +617,7 @@ export class PaymentOrchestrator {
     if (evt.intentExternalId && evt.status) {
       await this.prisma.paymentIntentRecord.updateMany({
         where: { tenantId, externalIntentId: evt.intentExternalId },
-        data: { status: evt.status, succeededAt: evt.status === 'SUCCEEDED' ? new Date() : undefined },
+        data: { status: evt.status, succeededAt: evt.status === 'SUCCEEDED' ? new Date() : undefined, ...(provider === 'clover' && evt.raw ? { providerRaw: evt.raw as any } : {}) },
       });
     }
     await this.prisma.paymentWebhookEvent.update({ where: key, data: { processedAt: new Date() } });
@@ -617,70 +626,116 @@ export class PaymentOrchestrator {
 
   // ---- ONLINE (card-not-present) — booking deposits ----
 
-  /** The tenant's active connection whose connector supports online checkout. */
-  async onlineProviderFor(tenantId: string): Promise<string | null> {
+  /**
+   * The tenant's active connection whose connector supports online checkout.
+   * `preferred` is the salon's pick (deposit settings) when it has several.
+   */
+  async onlineProviderFor(tenantId: string, preferred?: string | null): Promise<string | null> {
     if (!this.enabled()) return null;
     const conns = await this.creds.listConnections(tenantId);
+    const ok: string[] = [];
     for (const c of conns as any[]) {
       if (c.status !== 'ACTIVE') continue;
       try {
         const connector: any = this.registry.get(c.provider);
-        if (typeof connector.startOnlineCheckout === 'function') return c.provider;
+        if (typeof connector.startOnlineCheckout !== 'function') continue;
+        // A Stripe key without Terminal permission is still an online key; a
+        // connection that told us it cannot take online payments is skipped.
+        if (c.capabilities && (c.capabilities as any).online === false) continue;
+        ok.push(c.provider);
       } catch {
         /* provider not registered */
       }
     }
-    return null;
+    if (preferred && ok.includes(preferred)) return preferred;
+    return ok[0] ?? null;
   }
 
   /** Start a hosted online checkout for a server-computed amount. */
-  async onlineStart(tenantId: string, amountCents: number, currency: string, reference: string) {
-    const provider = await this.onlineProviderFor(tenantId);
+  async onlineStart(tenantId: string, amountCents: number, currency: string, reference: string, opts: OnlineCheckoutOpts & { preferred?: string | null } = {}) {
+    const provider = await this.onlineProviderFor(tenantId, opts.preferred);
     if (!provider) throw new BadRequestException('No online payment provider connected');
     const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
     const connector: any = this.registry.get(provider);
-    const session = await connector.startOnlineCheckout(cred.secret, amountCents, currency, reference, { locationId: (cred as any).locationId });
-    // Providers that cannot search by our reference (Square) hand back their
-    // own id (order_id). Persist the mapping so onlineLookup can verify later.
+    const { preferred: _p, ...pass } = opts;
+    const session = await connector.startOnlineCheckout(cred.secret, amountCents, currency, reference, { locationId: (cred as any).locationId, ...pass });
+    // Providers that cannot search by our reference (Square, Stripe, PayPal,
+    // Clover) hand back their own id. Persist the mapping so onlineLookup can
+    // verify later — UPSERT, because a customer who closes the page and tries
+    // again gets a new session, and the old id would never show it paid.
     if (session?.externalRef) {
       const conn = await this.creds.findConnection(tenantId, provider as ProviderId).catch(() => null);
-      await this.prisma.paymentIntentRecord.create({
-        data: {
+      const clientRef = `online:${reference}`;
+      await this.prisma.paymentIntentRecord.upsert({
+        where: { tenantId_clientRef: { tenantId, clientRef } },
+        create: {
           tenantId, provider, connectionId: conn?.id ?? null,
-          externalIntentId: String(session.externalRef), clientRef: `online:${reference}`,
+          externalIntentId: String(session.externalRef), clientRef,
           amountCents, currency, status: 'REQUIRES_PAYMENT', connectionType: 'CLOUD',
+        },
+        update: {
+          provider, connectionId: conn?.id ?? null, externalIntentId: String(session.externalRef),
+          amountCents, currency, status: 'REQUIRES_PAYMENT', succeededAt: null, providerRaw: { paymentId: null } as any,
         },
       }).catch(() => undefined);
     }
     const pub = { ...(session ?? {}) } as Record<string, unknown>;
     delete pub.externalRef; // internal mapping only — the browser never needs it
+    delete pub.secretToken; // Helcim's response-hash key stays on the server
     return { provider, amountCents, currency, ...pub };
   }
 
   /** Verify an online payment directly with the provider (never trust the client). */
   async onlineLookup(tenantId: string, reference: string) {
-    const provider = await this.onlineProviderFor(tenantId);
+    const row = await this.prisma.paymentIntentRecord.findFirst({
+      where: { tenantId, clientRef: `online:${reference}` },
+      orderBy: { createdAt: 'desc' },
+    }).catch(() => null);
+    // The provider the checkout was STARTED with — the salon may have changed
+    // its pick since, and the money is where the customer paid it.
+    const provider = row?.provider ?? (await this.onlineProviderFor(tenantId));
     if (!provider) throw new BadRequestException('No online payment provider connected');
+    // A provider that answered by signed webhook (Clover) has already settled the row.
+    const raw = (row?.providerRaw ?? null) as { paymentId?: string } | null;
+    if (row?.status === 'SUCCEEDED' && raw?.paymentId) {
+      return { provider, approved: true, amountCents: row.amountCents, transactionId: raw.paymentId };
+    }
     const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
     const connector: any = this.registry.get(provider);
     let res: { approved: boolean; amountCents?: number; transactionId?: string };
     if (typeof connector.lookupOnlinePaymentByOrder === 'function') {
-      const row = await this.prisma.paymentIntentRecord.findFirst({
-        where: { tenantId, provider, clientRef: `online:${reference}` },
-        orderBy: { createdAt: 'desc' },
-      });
       if (!row?.externalIntentId) return { provider, approved: false };
       res = await connector.lookupOnlinePaymentByOrder(cred.secret, row.externalIntentId);
       if (res.approved && row.status !== 'SUCCEEDED') {
         await this.prisma.paymentIntentRecord.update({
           where: { id: row.id },
-          data: { status: 'SUCCEEDED', succeededAt: new Date() },
+          data: { status: 'SUCCEEDED', succeededAt: new Date(), providerRaw: { paymentId: res.transactionId ?? null } as any },
         }).catch(() => undefined);
       }
     } else {
       res = await connector.lookupOnlinePayment(cred.secret, reference);
     }
     return { provider, ...res };
+  }
+
+  /**
+   * Give money taken ONLINE back through the provider that took it (a booking
+   * cancelled in time). Never throws: the caller records what happened.
+   */
+  async onlineRefund(tenantId: string, provider: string, input: { transactionId?: string | null; reference: string; amountCents: number; currency: string }): Promise<{ ok: boolean; pending?: boolean; error?: string }> {
+    if (!this.enabled()) return { ok: false, error: 'Payment hub is disabled' };
+    let connector: any;
+    try { connector = this.registry.get(provider); } catch { return { ok: false, error: `Unknown provider ${provider}` }; }
+    if (typeof connector.refundOnline !== 'function') return { ok: false, error: `${provider} cannot refund online payments from Lumio` };
+    const cred = await this.creds.loadCred(tenantId, provider as ProviderId).catch(() => null);
+    if (!cred) return { ok: false, error: 'The payment connection is no longer active' };
+    try {
+      const r = await connector.refundOnline(cred.secret, input);
+      await this.audit(tenantId, null, 'payment.online_refund', { provider, reference: input.reference, amountCents: input.amountCents, status: r.status, error: r.error ?? null });
+      return r.status === 'FAILED' ? { ok: false, error: r.error ?? 'Refund failed' } : { ok: true, pending: r.status === 'PENDING' };
+    } catch (e) {
+      return { ok: false, error: String((e as Error)?.message ?? e) };
+    }
   }
 
   private intentView(r: any) {

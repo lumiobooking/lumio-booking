@@ -138,7 +138,7 @@ export class ClientFormsService {
 
   private resolvedAll(s: ClientFormSettings, kinds: FormKind[]) {
     return kinds.map((k) => {
-      const tpl = templateFor(k, s.extraQuestions);
+      const tpl = templateFor(k, s.extraQuestions, s.intakeStyle);
       return { kind: k, vi: resolveTemplate(tpl, 'vi'), en: resolveTemplate(tpl, 'en') };
     });
   }
@@ -575,7 +575,7 @@ export class ClientFormsService {
     if (!s.enabled) throw new NotFoundException('This link is not valid');
     const already = await this.db.clientFormEntry.findFirst({ where: { tenantId, linkId: l.id, kind }, select: { id: true } });
     if (already) return { ok: true, id: already.id, already: true };
-    const tpl = templateFor(kind, s.extraQuestions);
+    const tpl = templateFor(kind, s.extraQuestions, s.intakeStyle);
     const { answers, missing } = validateAnswers(tpl, dto.answers);
     if (missing.length) throw new BadRequestException({ message: 'Please answer every question', missing });
     const signatureData = cleanSignature(dto.signatureData);

@@ -216,6 +216,9 @@ export default function TenantsPage() {
           <a href="/agency/google-book" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             📍 Nút Google
           </a>
+          <a href="/super-admin/terminal-requests" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
+            💳 Yêu cầu máy POS
+          </a>
           <a href="/agency" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             🗂 Bàn Agency
           </a>

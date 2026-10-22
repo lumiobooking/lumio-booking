@@ -6,6 +6,8 @@ import { MockConnector } from './connectors/mock.connector';
 import { StripeTerminalConnector } from './connectors/stripe-terminal.connector';
 import { SquareTerminalConnector } from './connectors/square-terminal.connector';
 import { SumUpConnector } from './connectors/sumup.connector';
+import { PaypalConnector } from './connectors/paypal.connector';
+import { CloverConnector } from './connectors/clover.connector';
 import { ProviderId } from './connectors/connector.types';
 import { DejavooSpinCloudAdapter } from './adapters/dejavoo-spin-cloud.adapter';
 import { TerminalAdapter } from './adapters/terminal-adapter.interface';
@@ -36,9 +38,11 @@ export class ProviderRegistry {
     btAdapter: BluetoothTerminalAdapter,
     stripeAdapter: StripeTerminalAdapter,
     squareAdapter: SquareTerminalAdapter,
+    paypal: PaypalConnector,
+    clover: CloverConnector,
   ) {
     // Order matters: the first entry is the default shown in Payment settings.
-    for (const c of [stripe, dejavoo, helcim, square, sumup, adyen, mock]) this.map.set(c.id, c);
+    for (const c of [stripe, dejavoo, helcim, square, sumup, adyen, paypal, clover, mock]) this.map.set(c.id, c);
     for (const a of [dejavoo, stripeAdapter, squareAdapter, usbAdapter, btAdapter]) this.adapters.set(a.id, a);
   }
 

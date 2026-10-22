@@ -12,7 +12,7 @@
  *
  * Pure: no database, no clock (tested in form-settings.spec.ts).
  */
-import { CONSENT_KINDS, type ConsentKind, type ExtraQuestion, type FormKind } from './form-templates';
+import { CONSENT_KINDS, INTAKE_STYLES, type ConsentKind, type ExtraQuestion, type FormKind, type IntakeStyle } from './form-templates';
 
 export const CLIENT_FORMS_KEY = 'client_forms';
 
@@ -20,6 +20,8 @@ export interface ConsentRule { enabled: boolean; serviceIds: string[]; categoryI
 
 export interface ClientFormSettings {
   enabled: boolean;
+  /** Which intake clients sign: massage, nail or general (any other service). */
+  intakeStyle: IntakeStyle;
   /** Ask a new client for the intake before the first session. */
   intakeRequired: boolean;
   /** How long a signed intake stays good; 0 = every visit. */
@@ -36,17 +38,34 @@ export interface ClientFormSettings {
 
 export const FORM_INDUSTRIES = ['MASSAGE', 'SPA'];
 
+/** The intake a kind of business starts with. */
+export function intakeStyleFor(industry: string | null | undefined): IntakeStyle {
+  const k = String(industry ?? '').toUpperCase();
+  if (FORM_INDUSTRIES.includes(k)) return 'massage';
+  if (k === 'NAIL') return 'nail';
+  return 'general';
+}
+
+/**
+ * Every business can switch the forms on (a nail salon's health & release
+ * form, a clinic's intake…); massage and spa start with them on. The
+ * massage-only parts — cupping / hot stone consents and the SOAP note —
+ * start on only where the intake is the massage one.
+ */
 export function defaultFormSettings(industry: string | null | undefined): ClientFormSettings {
+  const style = intakeStyleFor(industry);
+  const massage = style === 'massage';
   return {
     enabled: FORM_INDUSTRIES.includes(String(industry ?? '').toUpperCase()),
+    intakeStyle: style,
     intakeRequired: true,
     intakeValidMonths: 12,
     consents: {
-      cupping: { enabled: true, serviceIds: [], categoryIds: [] },
-      hot_stone: { enabled: true, serviceIds: [], categoryIds: [] },
+      cupping: { enabled: massage, serviceIds: [], categoryIds: [] },
+      hot_stone: { enabled: massage, serviceIds: [], categoryIds: [] },
     },
     consentValidMonths: 12,
-    soapRequired: true,
+    soapRequired: massage,
     autoSend: { enabled: false, hoursBefore: 24 },
     extraQuestions: [],
   };
@@ -88,6 +107,7 @@ export function sanitizeFormSettings(raw: unknown, base: ClientFormSettings): Cl
   }
   return {
     enabled: bool(r.enabled, base.enabled),
+    intakeStyle: (INTAKE_STYLES as string[]).includes(String(r.intakeStyle)) ? (r.intakeStyle as IntakeStyle) : base.intakeStyle,
     intakeRequired: bool(r.intakeRequired, base.intakeRequired),
     intakeValidMonths: int(r.intakeValidMonths, base.intakeValidMonths, 0, 60),
     consents,

@@ -259,8 +259,9 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     && (!item.team || isTeam)
     && (item.biz !== 'restaurant' || isRestaurant)
     && !hiddenHrefsFor(industry).includes(basePath(item.href))
-    // Intake / consent / SOAP paperwork is a massage and spa thing; a nail salon never sees it.
-    && (item.href !== '/salon/forms' || industry === 'MASSAGE' || industry === 'SPA')
+    // Client forms (health & release, intake, consent): every business that
+    // serves a person in a chair — a nail salon's waiver too. Not food or real estate.
+    && (item.href !== '/salon/forms' || !['RESTAURANT', 'FAST_FOOD', 'CAFE', 'REAL_ESTATE'].includes(industry))
     // An unknown market counts as North America: every salon here before
     // Vietnam is in it, and a request still in flight must never blank out a
     // screen someone uses every day.

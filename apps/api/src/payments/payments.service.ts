@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PartyDeposit, partyDepositCents } from './party-deposit';
 import { PaymentStatus, PaymentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -8,6 +8,9 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { PaymentProvider } from './providers/payment-provider.interface';
 import { createPaymentProvider } from './providers/payment-provider.factory';
+import { PaymentOrchestrator } from '../payments-hub/payment-orchestrator.service';
+import { isOnlineProvider } from '../payments-hub/online-providers';
+import { allocateRefund } from '../bookings/deposit-policy';
 
 @Injectable()
 export class PaymentsService {
@@ -17,7 +20,20 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly loyalty: LoyaltyService,
+    // Real refunds of money taken online. Optional so the unit tests build it bare.
+    @Optional() private readonly hub?: PaymentOrchestrator,
   ) {}
+
+  private readonly log = new Logger('PaymentsService');
+
+  /**
+   * The mock provider "charges" anything. On a real deploy that is a payment
+   * recorded as made that never was — so in production a mock charge is never
+   * PAID: it stays PENDING (payable at the salon).
+   */
+  private mockForbidden(): boolean {
+    return this.provider.name === 'mock' && process.env.NODE_ENV === 'production';
+  }
 
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -65,7 +81,7 @@ export class PaymentsService {
     let providerReference: string | null = null;
     let paidAt: Date | null = null;
 
-    if (type === PaymentType.PAY_ONLINE) {
+    if (type === PaymentType.PAY_ONLINE && !this.mockForbidden()) {
       const result = await this.provider.charge({
         amountCents: appointment.priceCents,
         currency: appointment.currency,
@@ -244,7 +260,10 @@ export class PaymentsService {
   async createDepositForBookingTenant(tenantId: string, appointmentId: string, amountCents: number, actorUserId: string | null) {
     const appt = await this.prisma.appointment.findFirst({ where: { id: appointmentId, tenantId }, select: { id: true, currency: true, customerId: true } });
     if (!appt) throw new NotFoundException('Booking not found');
-    const result = await this.provider.charge({ amountCents, currency: appt.currency, reference: appt.id, description: `Deposit ${appt.id}` });
+    // Production never records a mock deposit as paid (see mockForbidden).
+    const result = this.mockForbidden()
+      ? { success: false, providerReference: null as string | null }
+      : await this.provider.charge({ amountCents, currency: appt.currency, reference: appt.id, description: `Deposit ${appt.id}` });
     const payment = await this.prisma.payment.create({
       data: {
         tenantId, appointmentId: appt.id, amountCents, currency: appt.currency,
@@ -255,6 +274,60 @@ export class PaymentsService {
     await this.audit.log({ tenantId, userId: actorUserId, action: 'payment.deposit', resourceType: 'payment', resourceId: payment.id, metadata: { appointmentId: appt.id, amountCents, status: payment.status } });
     if (result.success && appt.customerId) await this.loyalty.award(this.prisma, tenantId, appt.customerId, amountCents, 'appointment', payment.id);
     return payment;
+  }
+
+  /**
+   * The customer chose to pay the whole visit online, on a salon with a real
+   * online provider: a PENDING row says so, the hosted checkout charges the
+   * price, and the confirm turns this very row PAID. Nothing is charged here.
+   */
+  async markPayOnlinePending(tenantId: string, appointmentId: string, provider: string) {
+    const appt = await this.prisma.appointment.findFirst({ where: { id: appointmentId, tenantId }, select: { id: true, priceCents: true, currency: true } });
+    if (!appt) throw new NotFoundException('Booking not found');
+    return this.prisma.payment.create({
+      data: { tenantId, appointmentId: appt.id, amountCents: appt.priceCents, currency: appt.currency, type: PaymentType.PAY_ONLINE, status: PaymentStatus.PENDING, provider },
+    });
+  }
+
+  /**
+   * Give `refundCents` of what was PAID on a booking back. Money taken online
+   * goes back through the provider that took it — for real; a row is marked
+   * REFUNDED only when the provider accepted the refund. A row refunded in
+   * part is split: what stays (PAID) and what went back (REFUNDED). Anything
+   * that was not taken online (old mock rows) is only re-labelled, as before.
+   */
+  async refundPaid(tenantId: string, appointmentId: string, refundCents: number): Promise<{ refundedCents: number; failed: { provider: string; amountCents: number; error: string }[] }> {
+    const rows = await this.prisma.payment.findMany({ where: { tenantId, appointmentId, status: PaymentStatus.PAID } });
+    const plan = allocateRefund(rows.map((r) => ({ id: r.id, amountCents: r.amountCents })), refundCents);
+    let refundedCents = 0;
+    const failed: { provider: string; amountCents: number; error: string }[] = [];
+    for (const step of plan) {
+      const row = rows.find((r) => r.id === step.id);
+      if (!row) continue;
+      const online = row.type === PaymentType.PAY_ONLINE && isOnlineProvider(row.provider);
+      if (online) {
+        const res = this.hub
+          ? await this.hub.onlineRefund(tenantId, row.provider, { transactionId: row.providerReference, reference: appointmentId, amountCents: step.refundCents, currency: row.currency })
+          : { ok: false, error: 'Payment hub not available' };
+        if (!res.ok) {
+          failed.push({ provider: row.provider, amountCents: step.refundCents, error: res.error ?? 'Refund failed' });
+          await this.audit.log({ tenantId, userId: null, action: 'payment.refund_failed', resourceType: 'payment', resourceId: row.id, metadata: { appointmentId, amountCents: step.refundCents, provider: row.provider, error: res.error ?? null } });
+          continue;
+        }
+      }
+      if (step.whole) {
+        await this.prisma.payment.updateMany({ where: { id: row.id, tenantId }, data: { status: PaymentStatus.REFUNDED } });
+      } else {
+        await this.prisma.payment.updateMany({ where: { id: row.id, tenantId }, data: { amountCents: row.amountCents - step.refundCents } });
+        await this.prisma.payment.create({
+          data: { tenantId, appointmentId, amountCents: step.refundCents, currency: row.currency, type: row.type, status: PaymentStatus.REFUNDED, provider: row.provider, providerReference: row.providerReference, paidAt: row.paidAt },
+        });
+      }
+      refundedCents += step.refundCents;
+      await this.audit.log({ tenantId, userId: null, action: 'payment.refunded', resourceType: 'payment', resourceId: row.id, metadata: { appointmentId, amountCents: step.refundCents, provider: row.provider, online } });
+    }
+    if (failed.length) this.log.warn(`refund failed for ${appointmentId}: ${failed.map((f) => `${f.provider} ${f.error}`).join('; ').slice(0, 300)}`);
+    return { refundedCents, failed };
   }
 
   /** Permanently delete a payment record (admin cleanup of stray/orphaned rows). */

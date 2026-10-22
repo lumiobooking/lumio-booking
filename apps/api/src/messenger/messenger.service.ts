@@ -58,7 +58,8 @@ import { classifyPageError, pageHealthText, shouldAlert as shouldAlertPage, type
 import { AiUsageService } from '../common/ai-usage.service';
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
 import { carouselTitles, packageFromPayload, packagePayload, tapAsCustomerLine } from './package-cards';
-import { oauthBase } from '../common/public-url.util';
+import { oauthBase, bookingUrl } from '../common/public-url.util';
+import { staffLabel } from './staff-name';
 import { BOOKED_HERE_KEY, PRIVACY_REFUSAL, isAnonymousChannel, mayChangeBooking, rememberIds, visibleBookings } from './booking-privacy';
 
 // A blank/masked secret must never overwrite a stored Page token.
@@ -93,6 +94,9 @@ function wallToUtcISO(local: string, tz: string): string {
 
 type Turn = {
   role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean;
+  /** First name of the teammate who typed a manual reply. Inbox only - the
+   *  public web-chat view and the model's prompt never read it. */
+  by?: string | null;
   /** 'page': sent from the Page outside Lumio (Business Suite, Meta's agent, another tool) and mirrored in by the sync. */
   source?: 'page';
   /** A follow-up the bot sent after the customer went quiet (see ./followup). */
@@ -1721,6 +1725,7 @@ export class MessengerService implements OnModuleInit {
       notes,
       canned,
       pageName: pg?.pageName ?? null,
+      bookingUrl: await this.bookingUrlOf(tenantId),
       // Never hand the page token or anything else secret to a browser.
       // Photos ride along so the inbox shows what the customer showed the bot.
       // Messages the salon took off its own screen. Filtered HERE, on the way
@@ -1731,7 +1736,7 @@ export class MessengerService implements OnModuleInit {
         .filter((t) => !isHidden(t as never, hiddenTurns))
         // messageId rides along so the screen can name a message back to us
         // when somebody hides it. See turnKeys - a position cannot do that job.
-        .map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual, messageId: (t as { messageId?: string | null }).messageId ?? null, ...(t.images?.length ? { images: t.images } : {}) })),
+        .map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual, messageId: (t as { messageId?: string | null }).messageId ?? null, ...(t.manual && t.by ? { by: t.by } : {}), ...(t.images?.length ? { images: t.images } : {}) })),
       state: view.state,
       stateReason: view.reason,
       waitingMinutes: waitingMinutes(row as never, now, botFirst),
@@ -2166,6 +2171,36 @@ export class MessengerService implements OnModuleInit {
   /** Manually send a message from the connected Page to a conversation. The
    *  salon (or a Meta reviewer) triggers a REAL Send API call from the app UI —
    *  this is the user-initiated "live send" the Messenger permission requires. */
+  /**
+   * The first name a manual reply is signed with in the inbox.
+   *
+   * Reads only the signed-in person's own row, so it can never name somebody
+   * from another salon. A support session answers as "Lumio" rather than as
+   * the support agent's private account.
+   */
+  private async staffNameOf(user: AuthenticatedUser): Promise<string | null> {
+    if ((user as { supportSession?: boolean }).supportSession === true) return 'Lumio';
+    try {
+      const u = await this.prisma.user.findUnique({
+        where: { id: user.userId },
+        select: { firstName: true, email: true, staffMember: { select: { firstName: true } } },
+      });
+      return staffLabel(u ? { firstName: u.firstName, staffFirstName: u.staffMember?.firstName ?? null, email: u.email } : null);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The salon's public booking link, for the inbox's "Link đặt lịch" chip. */
+  private async bookingUrlOf(tenantId: string): Promise<string | null> {
+    try {
+      const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
+      return t?.slug ? bookingUrl(t.slug) : null;
+    } catch {
+      return null;
+    }
+  }
+
   async sendManual(user: AuthenticatedUser, threadId: string | undefined, text: string) {
     const tenantId = this.tenantId(user);
     const body = (text || '').trim();
@@ -2176,6 +2211,8 @@ export class MessengerService implements OnModuleInit {
       : await this.prisma.messengerThread.findFirst({ where: { tenantId }, orderBy: { updatedAt: 'desc' } });
     if (!thread) throw new NotFoundException('No conversation yet — the customer must message the Page first (24h messaging window).');
     this.noteStaffAnswer(tenantId, thread as unknown as { id: string; history?: unknown }, body);
+    const by = await this.staffNameOf(user);
+    const sig = by ? { by } : {};
 
     // A website thread needs no Page and no token: the reply is written into
     // the history the visitor's browser is polling. A person answering puts
@@ -2186,7 +2223,7 @@ export class MessengerService implements OnModuleInit {
       await this.prisma.messengerThread.update({
         where: { id: thread.id },
         data: {
-          history: this.windowOf(thread.id, [...hist0, { role: 'assistant', content: body, manual: true, at: wAt }], (thread as unknown as { summary?: string | null }).summary ?? null) as unknown as Prisma.InputJsonValue,
+          history: this.windowOf(thread.id, [...hist0, { role: 'assistant', content: body, manual: true, at: wAt, ...sig }], (thread as unknown as { summary?: string | null }).summary ?? null) as unknown as Prisma.InputJsonValue,
           lastText: body.slice(0, 300), lastMessageAt: new Date(), readAt: new Date(),
           handoff: true, handoffAt: new Date(),
         } as never,
@@ -2206,7 +2243,7 @@ export class MessengerService implements OnModuleInit {
       const zr = await sendZaloText(sendToken, thread.senderId, body.slice(0, 1900));
       const zAt = new Date().toISOString();
       const hist0 = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
-      const turn = { role: 'assistant', content: body, manual: true, at: zAt, ...(zr.ok ? {} : { failed: true }) };
+      const turn = { role: 'assistant', content: body, manual: true, at: zAt, ...sig, ...(zr.ok ? {} : { failed: true }) };
       await this.prisma.messengerThread.update({
         where: { id: thread.id },
         data: {
@@ -2264,7 +2301,7 @@ export class MessengerService implements OnModuleInit {
         await this.prisma.messengerThread.update({
           where: { id: thread.id },
           data: {
-            history: this.windowOf(thread.id, [...hist0, { role: 'assistant', content: body, manual: true, failed: true, at: sendNow.toISOString() }], (thread as unknown as { summary?: string | null }).summary ?? null) as unknown as Prisma.InputJsonValue,
+            history: this.windowOf(thread.id, [...hist0, { role: 'assistant', content: body, manual: true, failed: true, at: sendNow.toISOString(), ...sig }], (thread as unknown as { summary?: string | null }).summary ?? null) as unknown as Prisma.InputJsonValue,
           },
         }).catch(() => undefined);
       }
@@ -2296,7 +2333,7 @@ export class MessengerService implements OnModuleInit {
     if (!res.ok || out.error) {
       // Keep an auditable "Failed" row in the activity log, then surface the error.
       const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
-      const failed = this.windowOf(thread.id, [...hist, { role: 'assistant', content: body, manual: true, failed: true, at: new Date().toISOString() }], (thread as unknown as { summary?: string | null }).summary ?? null);
+      const failed = this.windowOf(thread.id, [...hist, { role: 'assistant', content: body, manual: true, failed: true, at: new Date().toISOString(), ...sig }], (thread as unknown as { summary?: string | null }).summary ?? null);
       await this.prisma.messengerThread.update({
         where: { id: thread.id },
         data: { history: failed as unknown as Prisma.InputJsonValue },
@@ -2305,7 +2342,7 @@ export class MessengerService implements OnModuleInit {
     }
     const sentAtIso = new Date().toISOString(); // single timestamp: history row === API response
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
-    const next = this.windowOf(thread.id, [...history, { role: 'assistant', content: body, manual: true, at: sentAtIso, messageId: out.message_id || null }], (thread as unknown as { summary?: string | null }).summary ?? null);
+    const next = this.windowOf(thread.id, [...history, { role: 'assistant', content: body, manual: true, at: sentAtIso, messageId: out.message_id || null, ...sig }], (thread as unknown as { summary?: string | null }).summary ?? null);
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
       // lastMessageAt is stamped HERE TOO, not only when the customer writes.

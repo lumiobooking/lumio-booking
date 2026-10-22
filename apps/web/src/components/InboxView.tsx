@@ -39,7 +39,7 @@ import {
   InboxRow, InboxFilter, channelBrand, channelLabel, channelMark, stateLabel, stateOf,
   sortRows, filterRows, sourcesFrom, waitingCount, composerNotice, displayName, pageColor, initialsOf,
   InboxLabel, followUpState, followUpLabel, followUpCount, channelCounts, channelOf, humanAgentNotice,
-  windowNotice, type WindowInfo, spamCount, isSpamRow,
+  windowNotice, type WindowInfo, spamCount, isSpamRow, systemEventOf, systemEventLabel,
 } from '../lib/inbox-view';
 import { ind } from '../lib/ui-industry';
 
@@ -266,7 +266,7 @@ const Avatar = memo(function Avatar(
   );
 });
 
-interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite / Meta's agent), mirrored in. */ source?: 'page' }
+interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite / Meta's agent), mirrored in. */ source?: 'page'; /** First name of the teammate who typed it. */ by?: string | null }
 interface ApptCtx {
   id: string;
   startTime: string;
@@ -297,6 +297,8 @@ interface ThreadDetail extends InboxRow {
   /** Taken from the facts the salon already wrote for the bot — one source, two
    *  readers, so a receptionist can never quote a different price than the bot. */
   canned?: { label: string; text: string }[];
+  /** The salon's public booking link — the "Link đặt lịch" chip drops it into the reply. */
+  bookingUrl?: string | null;
   /** Which Page this arrived on. A salon with two Pages needs to know which one
    *  it is about to answer as — the customer sees the Page's name, not theirs. */
   pageName?: string | null;
@@ -484,6 +486,7 @@ export function InboxView() {
   const [narrow, setNarrow] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const draftRef = useRef<HTMLTextAreaElement | null>(null);
   /** The scrolling message pane itself, so we can ask where the reader is. */
   const paneRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -1024,11 +1027,14 @@ export function InboxView() {
     }
     const fu = followUpState(r.followUpAt);
     if (fu !== 'none') {
-      return <span style={{ height: 20, padding: '0 7px', borderRadius: 999, fontSize: 11.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', background: fu === 'overdue' ? 'var(--wash-red)' : 'var(--c1e1b4b)', color: fu === 'overdue' ? 'var(--ink-bad)' : 'var(--ca5b4fc)' }}>⏰ {followUpLabel(r.followUpAt, new Date())}</span>;
+      return <span style={{ height: 20, padding: '0 7px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', background: fu === 'overdue' ? 'var(--wash-red)' : 'var(--c1e1b4b)', color: fu === 'overdue' ? 'var(--ink-bad)' : 'var(--ca5b4fc)' }}>{vi ? 'Theo dõi' : 'Follow up'} · {followUpLabel(r.followUpAt, new Date())}</span>;
     }
-    if (st === 'human') return <span style={{ height: 20, padding: '0 7px', borderRadius: 999, fontSize: 11.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', background: 'var(--c14532d)', color: 'var(--c86efac)' }}>{r.assignedName ? (vi ? `${r.assignedName} giữ` : `${r.assignedName} holding`) : (vi ? 'người thật giữ' : 'a person holds it')}</span>;
+    if (st === 'human') return <span style={{ height: 20, padding: '0 7px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', background: 'var(--c312e81)', color: 'var(--cc7d2fe)' }}>{r.assignedName ? (vi ? `${r.assignedName} giữ` : `${r.assignedName} holding`) : (vi ? 'người thật giữ' : 'a person holds it')}</span>;
     if (st === 'done') return <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>✓ {vi ? 'đã xong' : 'done'}</span>;
-    return <span style={{ height: 20, padding: '0 7px', borderRadius: 999, fontSize: 11.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', background: 'var(--c14532d)', color: 'var(--c86efac)' }}>{vi ? 'bot đang xử lý' : 'bot handling'}</span>;
+    // The bot has it: nothing for a person to do, so the row says nothing.
+    // Stamping "bot đang xử lý" on every row was the loudest thing in the list
+    // and the least useful.
+    return null;
   };
 
   const rowView = (r: InboxRow) => {
@@ -1039,24 +1045,46 @@ export function InboxView() {
         aria-current={on ? 'true' : undefined}
         style={{ boxSizing: 'border-box', width: narrow ? '100%' : 'calc(100% - 12px)', margin: narrow ? '0 0 6px' : '0 6px 2px', textAlign: 'left', display: 'flex', gap: 10, cursor: 'pointer', flexShrink: 0,
           background: on ? 'var(--row-on)' : (narrow ? 'var(--c0f172a)' : 'transparent'),
-          boxShadow: on ? 'inset 0 0 0 1.5px #6366f1' : (narrow ? 'inset 0 0 0 1px var(--line)' : 'none'),
+          boxShadow: on ? 'none' : (narrow ? 'inset 0 0 0 1px var(--line)' : 'none'),
           border: 'none', borderRadius: narrow ? 14 : 12, padding: narrow ? '12px' : '10px 12px 10px 10px', fontFamily: 'inherit', color: 'var(--cf1f5f9)' }}>
         <Avatar row={r} size={44} token={token} vi={vi} />
         <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <span style={{ fontSize: 14.5, fontWeight: r.unread ? 700 : 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '-0.01em' }}>{displayName(r, vi)}</span>
-            <span title={fmtInTz(r.lastMessageAt || r.updatedAt, { dateStyle: 'full', timeStyle: 'short' })} style={{ fontSize: 11.5, color: 'var(--c64748b)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{listStampLabel(r.lastMessageAt || r.updatedAt, vi)}</span>
+            <span style={{ fontSize: 14.5, fontWeight: r.unread ? 800 : 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '-0.01em' }}>{displayName(r, vi)}</span>
+            <span title={fmtInTz(r.lastMessageAt || r.updatedAt, { dateStyle: 'full', timeStyle: 'short' })} style={{ fontSize: 11.5, color: r.unread ? 'var(--ca5b4fc)' : 'var(--c64748b)', fontWeight: r.unread ? 700 : 500, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{listStampLabel(r.lastMessageAt || r.updatedAt, vi)}</span>
           </span>
-          <span style={{ fontSize: 13, lineHeight: 1.4, color: r.unread ? 'var(--ccbd5e1)' : 'var(--c94a3b8)', fontWeight: r.unread ? 500 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.lastText || (vi ? '(chưa có tin nhắn)' : '(no message yet)')}</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, minWidth: 0 }}>
-            <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-              {pageNames.size > 1 && r.pageName ? r.pageName : channelBrand(r.channel).name}
-              {(r.labels ?? []).slice(0, 2).map((l) => <span key={l.id} style={{ marginLeft: 6, color: l.color, fontWeight: 600 }}>● {l.name}</span>)}
-            </span>
-            <span style={{ flex: 1 }} />
-            {rowChip(r)}
-            {r.unread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#4f46e5', flexShrink: 0 }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
-          </span>
+          {(() => {
+            const ev = systemEventOf(r.lastText);
+            return (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 1.4, color: ev ? 'var(--c64748b)' : r.unread ? 'var(--ce2e8f0)' : 'var(--c94a3b8)', fontWeight: r.unread && !ev ? 500 : 400, fontStyle: ev ? 'italic' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {ev ? systemEventLabel(ev, vi) : (r.lastText || (vi ? '(chưa có tin nhắn)' : '(no message yet)'))}
+                </span>
+                {r.unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#4f46e5', flexShrink: 0 }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
+              </span>
+            );
+          })()}
+          {(() => {
+            // ONE line of status, and only when it says something: what needs
+            // doing (waiting / follow-up / who holds it), the salon's own
+            // labels, and which Page — only when there is more than one.
+            // The channel is already on the avatar's badge.
+            const chip = rowChip(r);
+            const lab = (r.labels ?? []).slice(0, 2);
+            const page = pageNames.size > 1 && r.pageName ? r.pageName : null;
+            if (!chip && !lab.length && !page) return null;
+            return (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, minWidth: 0, marginTop: 2, overflow: 'hidden' }}>
+                {chip}
+                {lab.map((l) => (
+                  <span key={l.id} style={{ height: 20, padding: '0 7px', borderRadius: 999, border: `1px solid ${l.color}`, color: l.color, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: l.color }} />{l.name}
+                  </span>
+                ))}
+                {page && <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{page}</span>}
+              </span>
+            );
+          })()}
         </span>
       </button>
     );
@@ -1142,10 +1170,54 @@ export function InboxView() {
     </div>
   );
 
+  // ─── The views as icons (tablet) ─────────────────────────────────────────
+  // An iPad has room for the list and the conversation, not for a 232px rail
+  // as well. The same five views and the channels, as 56px buttons: nothing
+  // moves into a dropdown, and the counts that matter (waiting, due) stay on
+  // the icon.
+  const slimItem = (key: InboxFilter, label: string, icon: React.ReactNode, badge?: { n: number; bg: string }) => {
+    const on = filter === key;
+    return (
+      <button key={key} onClick={() => setFilter(key)} aria-pressed={on} aria-label={`${filterName(key)}${badge && badge.n ? ` · ${badge.n}` : ''}`} title={filterName(key)}
+        style={{ position: 'relative', width: 58, minHeight: 52, boxSizing: 'border-box', padding: '6px 2px', borderRadius: 14, border: 'none', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+          background: on ? 'var(--c1e1b4b)' : 'transparent', color: on ? 'var(--ca5b4fc)' : 'var(--c94a3b8)', fontSize: 10.5, fontWeight: 700, lineHeight: 1.1 }}>
+        <span style={{ display: 'flex' }}>{icon}</span>
+        <span style={{ maxWidth: 56, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        {badge && badge.n > 0 && <span style={{ position: 'absolute', top: 3, right: 5, minWidth: 18, height: 18, boxSizing: 'border-box', padding: '0 5px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', ...onHue(badge.bg) }}>{badge.n}</span>}
+      </button>
+    );
+  };
+  const railSlim = (
+    <div style={{ boxSizing: 'border-box', padding: '12px 0', borderRight: '1px solid var(--line)', background: 'var(--c0b1220)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, overflowY: 'auto', minHeight: 0 }}>
+      {slimItem('all', vi ? 'Tất cả' : 'All', svg(<><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.5 5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-7A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1z" /></>))}
+      {slimItem('waiting', vi ? 'Chờ' : 'Waiting', svg(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>, 2.2), { n: waiting, bg: '#d97706' })}
+      {slimItem('unread', vi ? 'Chưa đọc' : 'Unread', svg(<circle cx="12" cy="12" r="4" />))}
+      {slimItem('mine', vi ? 'Của tôi' : 'Mine', svg(<><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 12 0v1" /></>))}
+      {slimItem('followup', vi ? 'Theo dõi' : 'Follow-up', svg(<><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></>), { n: dueCount, bg: '#dc2626' })}
+      {(junkCount > 0 || filter === 'spam') && slimItem('spam', 'Spam', svg(<><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></>))}
+      {sources.length > 0 && <span style={{ width: 32, height: 1, background: 'var(--line)', margin: '6px 0', flexShrink: 0 }} />}
+      {sources.map((src) => {
+        const on = source === src.key;
+        return (
+          <button key={src.key} onClick={() => setSource(on ? 'any' : src.key)} aria-pressed={on} title={`${channelBrand(src.channel).name} · ${src.label}`} aria-label={`${channelBrand(src.channel).name} · ${src.label}`}
+            style={{ position: 'relative', width: 44, height: 44, borderRadius: '50%', border: 'none', background: on ? 'var(--c1e1b4b)' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, boxShadow: on ? '0 0 0 2px #6366f1' : 'none', ...onHue(channelBrand(src.channel).bg) }}>{channelLetter(src.channel)}</span>
+            {src.waiting > 0 && <span style={{ position: 'absolute', top: 0, right: 0, minWidth: 16, height: 16, padding: '0 4px', boxSizing: 'border-box', borderRadius: 999, background: '#d97706', color: '#fff', fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{src.waiting}</span>}
+          </button>
+        );
+      })}
+      <span style={{ flex: 1 }} />
+      {inSalonPortal() && (
+        <a href="/salon/channels" aria-label={vi ? 'Kết nối kênh mới' : 'Connect a channel'} title={vi ? 'Kết nối kênh mới' : 'Connect a channel'}
+          style={{ width: 44, height: 44, borderRadius: 12, border: '1px dashed var(--c334155)', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', color: 'var(--ca5b4fc)', fontSize: 20, fontWeight: 600, flexShrink: 0 }}>＋</a>
+      )}
+    </div>
+  );
+
   // ─── The queue ─────────────────────────────────────────────────────────────
   const list = (
     <div style={{ borderRight: narrow ? 'none' : '1px solid var(--line)', flexDirection: 'column', minWidth: 0, minHeight: 0, background: narrow ? 'var(--c0b1120)' : 'var(--c0f172a)',
-      display: (narrow && openId) ? 'none' : 'flex', ...(narrow ? { flex: '1 1 0%' } : {}) }}>
+      display: ((narrow && openId) || (compact && !narrow && showInfo)) ? 'none' : 'flex', ...(narrow ? { flex: '1 1 0%' } : {}) }}>
       <div style={{ boxSizing: 'border-box', padding: narrow ? '12px 16px 10px' : '12px 12px 8px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
         {narrow && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1169,7 +1241,7 @@ export function InboxView() {
               style={{ width: 38, height: 38, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>✓✓</button>
           )}
         </div>
-        {(narrow || compact) ? (
+        {narrow ? (
           <div className="no-bar" style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             {(['waiting', 'all', 'unread', 'mine', 'followup', ...((junkCount > 0 || filter === 'spam') ? ['spam'] : [])] as InboxFilter[]).map((f) => {
               const on = filter === f;
@@ -1258,7 +1330,7 @@ export function InboxView() {
   const suggestions = (detail?.canned ?? []).slice(0, 3);
   const thread = (
     <div style={{ flexDirection: 'column', minWidth: 0, minHeight: 0, background: 'var(--c0b1120)',
-      display: (narrow && (!openId || showInfo)) ? 'none' : 'flex', ...(narrow ? { flex: '1 1 0%' } : {}) }}>
+      display: (narrow && !openId) ? 'none' : 'flex', ...(narrow ? { flex: '1 1 0%' } : {}) }}>
       {!detail && !openId && !loaded && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c64748b)', fontSize: 13 }}>{vi ? 'Đang tải hộp thư…' : 'Loading the inbox…'}</div>
       )}
@@ -1299,23 +1371,39 @@ export function InboxView() {
 
       {detail && (() => {
         const since = detail.lastCustomerAt ? sinceLabel(detail.lastCustomerAt as string, vi) : null;
-        const stateText = state === 'unclaimed' ? (vi ? 'đang chờ người thật' : 'waiting for a person') : state === 'human' ? (detail.assignedName ? (vi ? `${detail.assignedName} đang giữ` : `${detail.assignedName} is holding`) : (vi ? 'người thật giữ' : 'a person holds it')) : state === 'done' ? (vi ? 'đã xong' : 'done') : (vi ? 'bot đang trả lời' : 'bot is replying');
         const mineTurn = detail.assignedUserId === turns?.me?.userId;
         const mayAssign = !!turns && (turns.canEdit || !detail.assignedUserId || mineTurn);
         const assigned = turns?.agents.find((a) => a.userId === detail.assignedUserId)?.name ?? detail.assignedName ?? null;
+        // WHO IS ANSWERING, AND THE ONE BUTTON THAT CHANGES IT, AS ONE PILL.
+        //
+        // The old button carried both in its label - "Bot: đang bật · tôi nhận"
+        // - and in a four-column window the header cut it to "Bot: đar". Status
+        // on the left, the action as a small white button inside, and neither
+        // ever needs more than two words.
+        const held = state === 'human' || state === 'unclaimed';
+        const takeover = !held && wnotice?.kind === 'needs-takeover';
+        const statusText = state === 'unclaimed'
+          ? (vi ? 'Chờ người thật' : 'Waiting for a person')
+          : held
+            ? (assigned ? (vi ? `${assigned} đang trả lời` : `${assigned} is replying`) : (vi ? 'Người thật đang trả lời' : 'A person is replying'))
+            : (vi ? 'Bot đang trả lời' : 'Bot is replying');
+        const statusTone = state === 'unclaimed'
+          ? { bg: 'var(--wash-amber-3)', fg: 'var(--ink-warn)', dot: '#d97706' }
+          : held
+            ? { bg: 'var(--c1e293b)', fg: 'var(--ccbd5e1)', dot: 'var(--c64748b)' }
+            : { bg: 'var(--c064e3b)', fg: 'var(--c6ee7b7)', dot: '#16a34a' };
+        const pillH = narrow ? 34 : 38;
         const botButton = (
-          (state === 'human' || state === 'unclaimed')
-              ? <button disabled={busy} onClick={() => void act('handoff', { handoff: false })} title={vi ? 'Để bot trả lời lại' : 'Let the bot reply again'}
-                  style={{ height: narrow ? 30 : 36, padding: narrow ? '0 10px' : '0 12px', borderRadius: narrow ? 999 : 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: narrow ? 12 : 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--c64748b)' }} />{(narrow || !wide) ? (vi ? 'Trả bot' : 'To bot') : (vi ? 'Bot: tắt · trả bot' : 'Bot: off · hand back')}
-                </button>
-              : <button disabled={busy} onClick={() => void act('handoff', { handoff: true })} title={vi ? 'Tôi nhận — bot ngừng trả lời' : 'Take over — the bot stops replying'}
-                  style={wnotice?.kind === 'needs-takeover'
-                    ? { height: narrow ? 30 : 36, padding: '0 12px', borderRadius: narrow ? 999 : 10, border: 'none', fontSize: narrow ? 12 : 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', flexShrink: 0, background: '#4f46e5', color: '#fff' }
-                    : { height: narrow ? 30 : 36, padding: narrow ? '0 10px' : '0 12px', borderRadius: narrow ? 999 : 10, border: '1px solid #16a34a', background: 'var(--c14532d)', color: 'var(--c86efac)', fontSize: narrow ? 12 : 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  {wnotice?.kind !== 'needs-takeover' && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a' }} />}
-                  {wnotice?.kind === 'needs-takeover' ? (vi ? 'Tôi nhận' : 'Take over') : (narrow || !wide) ? (vi ? 'Bot: bật' : 'Bot: on') : (vi ? 'Bot: đang bật · tôi nhận' : 'Bot: on · take over')}
-                </button>
+          <span title={statusText} style={{ height: pillH, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 3px 0 11px', borderRadius: 999, background: statusTone.bg, flexShrink: 0 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusTone.dot, flexShrink: 0 }} />
+            {(narrow || wide) && <span style={{ fontSize: 12.5, fontWeight: 700, color: statusTone.fg, whiteSpace: 'nowrap', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusText}</span>}
+            {takeover
+              ? <button disabled={busy} onClick={() => void act('handoff', { handoff: true })} title={vi ? 'Tôi nhận — bot ngừng trả lời' : 'Take over — the bot stops replying'} style={{ height: pillH - 6, padding: '0 12px', borderRadius: 999, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{vi ? 'Tôi nhận' : 'Take over'}</button>
+              : <button disabled={busy} onClick={() => void act('handoff', { handoff: !held })} title={held ? (vi ? 'Để bot trả lời lại' : 'Let the bot reply again') : (vi ? 'Tôi nhận — bot ngừng trả lời' : 'Take over — the bot stops replying')}
+                  style={{ height: pillH - 6, padding: '0 12px', borderRadius: 999, border: 'none', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(15,42,82,.18)' }}>
+                  {held ? (vi ? 'Trả bot' : 'To bot') : (vi ? 'Tôi nhận' : 'Take over')}
+                </button>}
+          </span>
         );
         return (<>
           <div style={{ flexShrink: 0, boxSizing: 'border-box', padding: narrow ? '10px 12px 10px 6px' : '0 18px', minHeight: narrow ? 60 : 64, display: 'flex', alignItems: 'center', gap: narrow ? 8 : 12, background: 'var(--c0f172a)', borderBottom: '1px solid var(--line)' }}>
@@ -1334,7 +1422,6 @@ export function InboxView() {
               <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {channelBrand(detail.channel).name}{detail.pageName ? <> · <strong style={{ color: 'var(--ccbd5e1)', fontWeight: 600 }}>{detail.pageName}</strong></> : null}
                 {since && <> · {ind(vi ? 'khách nhắn' : 'wrote')} <strong style={{ color: state === 'unclaimed' ? 'var(--ink-warn)' : 'var(--ccbd5e1)', fontWeight: 600 }}>{since}</strong></>}
-                {!narrow && <> · {stateText}</>}
               </span>
             </div>
             {!narrow && wide && turns && turns.agents.length > 0 && (
@@ -1388,6 +1475,17 @@ export function InboxView() {
             </div>
           )}
 
+          {state === 'unclaimed' && !isSpamRow(detail) && (
+            <div style={{ flexShrink: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 10, padding: narrow ? '8px 12px' : '9px 18px', background: 'var(--wash-amber-3)', borderBottom: '1px solid var(--line)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-warn)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.4, color: 'var(--ink-warn)' }}>
+                <strong>{ind(vi ? 'Khách đang chờ người thật' : 'The customer is waiting for a person')}{typeof detail.waitingMinutes === 'number' ? ` · ${detail.waitingMinutes} ${vi ? 'phút' : 'min'}` : ''}</strong>
+                {!narrow && <> · {vi ? 'bot đã bàn giao' : 'the bot handed over'}</>}
+              </span>
+              <button onClick={() => { setComposerMode('reply'); window.setTimeout(() => draftRef.current?.focus(), 0); }} style={{ height: 34, padding: '0 14px', borderRadius: 10, border: 'none', background: '#b45309', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>{vi ? 'Trả lời ngay' : 'Reply now'}</button>
+            </div>
+          )}
+
           {!narrow && notice.text && (
             <div style={{ flexShrink: 0, boxSizing: 'border-box', margin: '10px 18px 0', padding: '8px 12px', borderRadius: 10, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8, lineHeight: 1.4,
               background: notice.blocked || noticeTone === 'red' ? 'var(--wash-red)' : 'var(--wash-amber-3)', color: notice.blocked || noticeTone === 'red' ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>
@@ -1417,12 +1515,19 @@ export function InboxView() {
               const mine = t.role === 'assistant';
               const prev = i > 0 ? detail.history[i - 1] : null;
               const newDay = Boolean(t.at) && (!prev?.at || dayKeyInTz(t.at as string) !== dayKeyInTz(prev.at as string));
-              const who = mine ? (t.source === 'page' ? (vi ? 'Từ Page (ngoài Lumio)' : 'From the Page (outside Lumio)') : t.manual ? (vi ? 'Nhân viên' : 'Staff') : 'Bot') : (vi ? 'Khách' : 'Customer');
+              const ev = t.images?.length ? null : systemEventOf(t.content);
+              const who = mine ? (t.source === 'page' ? (vi ? 'Từ Page (ngoài Lumio)' : 'From the Page (outside Lumio)') : t.manual ? (t.by || (vi ? 'Nhân viên' : 'Staff')) : 'Bot') : (vi ? 'Khách' : 'Customer');
               return (
                 <Fragment key={i}>
                   {newDay && (
                     <span style={{ alignSelf: 'center', fontSize: 11.5, fontWeight: 600, color: 'var(--c64748b)', padding: '2px 10px', borderRadius: 999, background: 'var(--raised)', border: '1px solid var(--line)', whiteSpace: 'nowrap', margin: '4px 0' }}>{dayDividerLabel(t.at as string, vi)}</span>
                   )}
+                  {ev ? (
+                    <span style={{ alignSelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 12px', borderRadius: 12, background: 'var(--c1e293b)', color: 'var(--c94a3b8)', fontSize: 12, lineHeight: 1.4, maxWidth: '90%', textAlign: 'center' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M3 10v4h3l7 4V6l-7 4z" /><path d="M17 9a4 4 0 0 1 0 6" /></svg>
+                      <span>{systemEventLabel(ev, vi)}{t.at ? <span title={fmtInTz(t.at, { dateStyle: 'full', timeStyle: 'short' })}> · {bubbleStampLabel(t.at, vi)}</span> : null}</span>
+                    </span>
+                  ) : (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: narrow ? '84%' : '72%', flexDirection: mine ? 'row-reverse' : 'row' }}>
                     {!mine && <Avatar row={detail} size={24} token={token} vi={vi} mark={false} />}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: mine ? 'flex-end' : 'flex-start', minWidth: 0 }}>
@@ -1440,12 +1545,12 @@ export function InboxView() {
                         <div style={{
                           padding: narrow ? '10px 13px' : '10px 14px',
                           borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                          background: mine ? (t.manual ? '#1d4ed8' : 'var(--bubble-bot)') : 'var(--raised)',
+                          background: mine ? (t.manual ? '#4f46e5' : 'var(--c1e1b4b)') : 'var(--raised)',
                           // The salon's replies sit on a saturated indigo/blue in both
                           // themes, so their text stays white; the customer's bubble
                           // follows the surface.
-                          color: mine ? '#f8fafc' : 'var(--ce2e8f0)',
-                          border: mine ? '1px solid transparent' : '1px solid var(--line)',
+                          color: mine && t.manual ? '#f8fafc' : 'var(--ce2e8f0)',
+                          border: mine ? (t.manual ? '1px solid transparent' : '1px solid var(--c3730a3)') : '1px solid var(--line)',
                           fontSize: narrow ? 14.5 : 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
                         }}><Linkified text={t.content} /></div>
                       )}
@@ -1455,15 +1560,10 @@ export function InboxView() {
                       </span>
                     </div>
                   </div>
+                  )}
                 </Fragment>
               );
             })}
-            {state === 'unclaimed' && !isSpamRow(detail) && (
-              <div style={{ alignSelf: 'center', textAlign: 'center', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 999, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)', fontSize: 12.5, fontWeight: 600, lineHeight: 1.4 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 9v4M12 17h.01" /><circle cx="12" cy="12" r="9" /></svg>
-                {ind(vi ? 'Bot đã bàn giao — khách đang chờ người thật' : 'The bot handed over — the customer is waiting for a person')}{typeof detail.waitingMinutes === 'number' ? ` · ${detail.waitingMinutes} ${vi ? 'phút' : 'min'}` : ''}
-              </div>
-            )}
             {(detail.notes ?? []).slice(-1).map((n) => (
               <div key={n.id} style={{ alignSelf: 'flex-start', display: 'flex', gap: 8, alignItems: 'flex-start', maxWidth: narrow ? '88%' : '72%' }}>
                 <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--wash-amber-2)', border: '1px solid var(--c78350f)', color: 'var(--cfde68a)', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{initialsOf(n.authorName).slice(0, 1)}</span>
@@ -1477,7 +1577,7 @@ export function InboxView() {
           </div>
 
           {/* COMPOSER — reply and internal note are two tabs of one box. */}
-          <div style={{ flexShrink: 0, boxSizing: 'border-box', margin: narrow ? 0 : '0 18px 14px', borderRadius: narrow ? 0 : 14, background: 'var(--c0f172a)', border: narrow ? 'none' : '1px solid var(--c334155)', borderTop: '1px solid var(--c334155)', boxShadow: narrow ? 'none' : '0 6px 18px -12px rgba(15,42,82,.35)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          <div style={{ flexShrink: 0, boxSizing: 'border-box', margin: narrow ? 0 : '0 18px 14px', borderRadius: narrow ? 0 : 14, background: composerMode === 'note' ? 'var(--wash-amber)' : 'var(--c0f172a)', border: narrow ? 'none' : `1px solid ${composerMode === 'note' ? 'var(--c7c5c22)' : 'var(--c334155)'}`, borderTop: `1px solid ${composerMode === 'note' ? 'var(--c7c5c22)' : 'var(--c334155)'}`, boxShadow: narrow ? 'none' : '0 6px 18px -12px rgba(15,42,82,.35)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
             paddingBottom: narrow ? 'calc(8px + env(safe-area-inset-bottom))' : 0 }}>
             {narrow ? (
               <div style={{ display: 'flex', background: 'var(--c0b1220)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 3, margin: '8px 12px 0' }}>
@@ -1489,7 +1589,7 @@ export function InboxView() {
                 <button onClick={() => setComposerMode('reply')} style={{ height: 34, padding: '0 12px', border: 'none', borderBottom: `2px solid ${composerMode === 'reply' ? '#4f46e5' : 'transparent'}`, background: 'transparent', color: composerMode === 'reply' ? 'var(--ca5b4fc)' : 'var(--c94a3b8)', fontSize: 13, fontWeight: composerMode === 'reply' ? 700 : 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>{ind(vi ? 'Trả lời khách' : 'Reply to customer')}</button>
                 <button onClick={() => setComposerMode('note')} style={{ height: 34, padding: '0 12px', border: 'none', borderBottom: `2px solid ${composerMode === 'note' ? '#d97706' : 'transparent'}`, background: 'transparent', color: composerMode === 'note' ? 'var(--ink-warn)' : 'var(--c94a3b8)', fontSize: 13, fontWeight: composerMode === 'note' ? 700 : 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>{vi ? 'Ghi chú nội bộ' : 'Internal note'}</button>
                 <span style={{ flex: 1 }} />
-                {composerMode === 'reply' && detail.pageName && wide && <span style={{ fontSize: 12, color: 'var(--c64748b)', paddingRight: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{vi ? 'Gửi với tư cách' : 'Sending as'} <strong style={{ color: 'var(--ccbd5e1)' }}>{detail.pageName}</strong></span>}
+                {composerMode === 'reply' && detail.pageName && wide && <span style={{ fontSize: 12, color: 'var(--c64748b)', paddingRight: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{vi ? 'Gửi bằng:' : 'As:'} <strong style={{ color: 'var(--ccbd5e1)' }}>{detail.pageName}</strong></span>}
                 {composerMode === 'note' && <span style={{ fontSize: 12, color: 'var(--ink-warn)', paddingRight: 6, whiteSpace: 'nowrap' }}>{ind(vi ? 'Khách không thấy ghi chú này' : 'The customer never sees this')}</span>}
               </div>
             )}
@@ -1497,25 +1597,33 @@ export function InboxView() {
             {composerMode === 'reply' && !notice.blocked && (suggestions.length > 0 || ASKS.length > 0) && (
               <div className="no-bar" style={{ display: 'flex', gap: 6, alignItems: 'center', padding: narrow ? '8px 12px 0' : '8px 10px 0', fontSize: 12.5, ...(narrow ? { overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const, flexWrap: 'nowrap' as const } : { flexWrap: 'wrap' as const }) }}>
                 <span style={{ color: 'var(--c64748b)', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>⚡{!narrow && ` ${vi ? 'Gợi ý:' : 'Suggested:'}`}</span>
+                {detail.bookingUrl && (
+                  // Puts the link IN the box, never sends it: the person adds a
+                  // word or two, in the customer's language, and presses Gửi.
+                  <button title={detail.bookingUrl} onClick={() => { const url = String(detail.bookingUrl); setDraft((d) => (d.includes(url) ? d : d.trim() ? `${d.trim()} ${url}` : url)); window.setTimeout(() => draftRef.current?.focus(), 0); }}
+                    style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid #6366f1', background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>{vi ? 'Link đặt lịch' : 'Booking link'}
+                  </button>
+                )}
                 {(allCanned ? (detail.canned ?? []) : suggestions).map((q, qi) => (
                   <button key={q.label} title={q.text} onClick={() => setDraft((d) => (d.trim() ? `${d.trim()}\n${q.text}` : q.text))}
                     style={qi === 0 && !allCanned
                       ? { height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid #6366f1', background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }
                       : { height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.label}</button>
                 ))}
-                {allCanned && ASKS.map((a) => (
+                {ASKS.map((a) => (
                   <button key={a.k} title={vi ? a.vi : a.en} onClick={() => setDraft((d) => { const t = vi ? a.vi : a.en; return d.trim() ? `${d.trim()} ${t}` : t; })}
-                    style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>{a.icon} {vi ? a.viLabel : a.enLabel}</button>
+                    style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>{vi ? a.viLabel : a.enLabel}</button>
                 ))}
-                <button onClick={() => setAllCanned((v) => !v)} style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>
-                  {allCanned ? (vi ? 'Thu gọn ▴' : 'Fewer ▴') : `${vi ? 'Tất cả mẫu' : 'All templates'} (${(detail.canned?.length ?? 0) + ASKS.length}) ▾`}
-                </button>
+                {(detail.canned?.length ?? 0) > suggestions.length && <button onClick={() => setAllCanned((v) => !v)} style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>
+                  {allCanned ? (vi ? 'Thu gọn ▴' : 'Fewer ▴') : `${vi ? 'Mẫu của tiệm' : 'Salon replies'} (${detail.canned?.length ?? 0}) ▾`}
+                </button>}
               </div>
             )}
 
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: narrow ? '8px 12px 0' : '8px 10px 8px' }}>
               {composerMode === 'reply' ? (
-                <textarea value={draft} onChange={(e) => setDraft(e.target.value)}
+                <textarea ref={draftRef} value={draft} onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
                   placeholder={composerPlaceholder} disabled={notice.blocked || busy} rows={narrow ? 1 : 2} aria-label={vi ? 'Nội dung trả lời' : 'Reply'}
                   style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', minHeight: narrow ? 40 : 52, padding: narrow ? '10px 12px' : '8px 6px', borderRadius: narrow ? 12 : 8, border: narrow ? '1px solid var(--c334155)' : 'none', background: narrow ? 'var(--c0b1220)' : 'transparent', resize: 'none', fontSize: narrow ? 16 : 14, lineHeight: 1.5, color: 'var(--ce2e8f0)', outline: 'none', fontFamily: 'inherit' }} />
@@ -1559,11 +1667,24 @@ export function InboxView() {
   );
   const softBtn: React.CSSProperties = { height: narrow ? 40 : 32, padding: '0 10px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: narrow ? 13 : 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' };
   const info = (
-    <div style={{ borderLeft: narrow ? 'none' : '1px solid var(--line)', flexDirection: 'column', minWidth: 0, minHeight: 0, background: 'var(--c0f172a)', overflowY: 'auto', WebkitOverflowScrolling: 'touch',
-      display: narrow ? (showInfo && !!openId ? 'flex' : 'none') : compact ? (showInfo ? 'flex' : 'none') : 'flex', ...(narrow ? { flex: '1 1 0%' } : {}), boxSizing: 'border-box', padding: narrow ? '8px 16px 24px' : 14, gap: 14 }}>
-      {(narrow || compact) && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => setShowInfo(false)} style={{ ...softBtn, height: 36, display: 'flex', alignItems: 'center', gap: 6 }}>‹ {vi ? 'Về hội thoại' : 'Back to chat'}</button>
+    <>
+    {narrow && showInfo && !!openId && <div onClick={() => setShowInfo(false)} aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 59, background: 'rgba(15,23,42,.45)' }} />}
+    <div role={narrow ? 'dialog' : undefined} aria-label={narrow ? ind(vi ? 'Thông tin khách' : 'Customer info') : undefined}
+      style={{ borderLeft: narrow ? 'none' : '1px solid var(--line)', flexDirection: 'column', minWidth: 0, minHeight: 0, background: 'var(--c0f172a)', overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+      display: narrow ? (showInfo && !!openId ? 'flex' : 'none') : compact ? (showInfo ? 'flex' : 'none') : 'flex',
+      // On a phone the panel is a sheet that slides over the conversation
+      // instead of replacing it: the customer's last message stays visible
+      // above it, and a tap on the dimmed part closes it.
+      ...(narrow ? { position: 'fixed' as const, left: 0, right: 0, bottom: 0, maxHeight: '88dvh', zIndex: 60, borderRadius: '22px 22px 0 0', boxShadow: '0 -12px 40px rgba(15,42,82,.35)' } : {}),
+      boxSizing: 'border-box', padding: narrow ? '8px 18px calc(24px + env(safe-area-inset-bottom))' : 16, gap: 0 }}>
+      {narrow ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', height: 28, flexShrink: 0 }}>
+          <span style={{ width: 40, height: 5, borderRadius: 999, background: 'var(--c334155)' }} />
+          <button onClick={() => setShowInfo(false)} aria-label={vi ? 'Đóng' : 'Close'} style={{ position: 'absolute', right: -6, top: 0, width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--c1e293b)', color: 'var(--c94a3b8)', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+      ) : compact && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <button onClick={() => setShowInfo(false)} style={{ ...softBtn, height: 36, display: 'flex', alignItems: 'center', gap: 6 }}>‹ {vi ? 'Về danh sách' : 'Back to the list'}</button>
         </div>
       )}
       {!detail ? (
@@ -1581,19 +1702,23 @@ export function InboxView() {
         const mayAssign = !!turns && (turns.canEdit || !detail.assignedUserId || mineTurn);
         const assigned = turns?.agents.find((a) => a.userId === detail.assignedUserId)?.name ?? detail.assignedName ?? null;
         return (<>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {infoHead(vi ? 'Khách hàng' : 'Customer')}
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <Avatar row={detail} size={44} token={token} vi={vi} />
-              <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3, minWidth: 0 }}>
-                <span onClick={() => void renameThread()} title={vi ? 'Bấm để đặt tên' : 'Click to set the name'} style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', cursor: 'text', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fullName || displayName(detail, vi)}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <Avatar row={detail} size={52} token={token} vi={vi} />
+              <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3, minWidth: 0, gap: 2 }}>
+                <span onClick={() => void renameThread()} title={vi ? 'Bấm để đặt tên' : 'Click to set the name'} style={{ fontSize: 16.5, fontWeight: 800, color: 'var(--cf1f5f9)', cursor: 'text', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fullName || displayName(detail, vi)}</span>
                 <span style={{ fontSize: 12.5, color: cust ? 'var(--ink-good)' : 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cust ? (vi ? `Đã nối hồ sơ Lumio · đến ${cust.visits ?? 0} lần` : `Linked in Lumio · ${cust.visits ?? 0} visits`) : (vi ? 'Chưa nối với hồ sơ khách ở Lumio' : 'Not linked to a customer record yet')}</span>
               </span>
             </div>
+            {inSalonPortal() && (
+              <button onClick={() => { void bookFor(detail); }} style={{ height: narrow ? 48 : 44, borderRadius: 12, border: 'none', fontSize: narrow ? 15 : 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>{ind(vi ? 'Đặt lịch cho khách' : 'Book for this customer')}
+              </button>
+            )}
             <div style={{ display: 'flex', gap: 8 }}>
-              {inSalonPortal() && <button onClick={() => { void bookFor(detail); }} style={{ flex: 1, height: narrow ? 44 : 38, borderRadius: 10, border: 'none', fontSize: narrow ? 14 : 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: '#4f46e5', color: '#fff' }}>📅 {ind(vi ? 'Đặt lịch cho khách' : 'Book for this customer')}</button>}
-              {cust?.phone && <a href={`tel:${String(cust.phone).replace(/[^+\d]/g, '')}`} style={{ ...softBtn, height: narrow ? 44 : 38, display: 'flex', alignItems: 'center', textDecoration: 'none' }}>☎ {vi ? 'Gọi' : 'Call'}</a>}
-              {cust?.phone && <button onClick={() => { void copyContact(detail); }} style={{ ...softBtn, height: narrow ? 44 : 38 }}>{copied ? `✓ ${vi ? 'Đã chép' : 'Copied'}` : `⧉ ${vi ? 'Chép' : 'Copy'}`}</button>}
+              {!cust && !detail.senderName && <button onClick={() => void renameThread()} style={{ ...softBtn, flex: 1, height: narrow ? 44 : 36 }}>{ind(vi ? 'Đặt tên khách' : 'Set customer name')}</button>}
+              {cust?.phone && <a href={`tel:${String(cust.phone).replace(/[^+\d]/g, '')}`} style={{ ...softBtn, flex: 1, height: narrow ? 44 : 36, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>{vi ? 'Gọi' : 'Call'}</a>}
+              {cust?.phone && <button onClick={() => { void copyContact(detail); }} style={{ ...softBtn, flex: 1, height: narrow ? 44 : 36 }}>{copied ? `✓ ${vi ? 'Đã chép' : 'Copied'}` : (vi ? 'Chép số' : 'Copy number')}</button>}
             </div>
             {cust && (cust.phone || cust.usualTech || cust.email) && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 10px' }}>
@@ -1628,7 +1753,7 @@ export function InboxView() {
             {!cust && <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5 }}>{ind(vi ? 'Sẽ tự nối khi khách đặt lịch từ hội thoại này.' : 'It links itself when they book from this conversation.')}</p>}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--line)', padding: '14px 0 16px' }}>
             {infoHead(vi ? 'Nhãn' : 'Labels', (
               <button onClick={() => setShowLabelForm((v) => !v)} style={{ height: 24, padding: '0 8px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ca5b4fc)', fontSize: 11.5, fontWeight: 600, letterSpacing: 0, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'none' }}>{showLabelForm ? (vi ? 'Đóng' : 'Close') : `＋ ${vi ? 'Nhãn' : 'Label'}`}</button>
             ))}
@@ -1655,9 +1780,9 @@ export function InboxView() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--line)', padding: '14px 0 16px' }}>
             {infoHead(vi ? 'Hẹn theo dõi' : 'Follow-up', followUpState(detail.followUpAt) !== 'none' ? (
-              <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: 0, textTransform: 'none', color: followUpState(detail.followUpAt) === 'overdue' ? 'var(--ink-bad)' : 'var(--ca5b4fc)' }}>⏰ {followUpLabel(detail.followUpAt, new Date())}</span>
+              <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: 0, textTransform: 'none', color: followUpState(detail.followUpAt) === 'overdue' ? 'var(--ink-bad)' : 'var(--ca5b4fc)' }}>{followUpLabel(detail.followUpAt, new Date())}</span>
             ) : undefined)}
             <div style={{ display: 'flex', gap: 6 }}>
               {([[1, vi ? 'Mai 10:00' : 'Tomorrow'], [3, vi ? '3 ngày' : '3 days'], [7, vi ? '1 tuần' : '1 week']] as [number, string][]).map(([days, label]) => (
@@ -1668,7 +1793,7 @@ export function InboxView() {
             <DateTimeField value={toLocalInput(detail.followUpAt)} onChange={(v) => void setFollowUp(v)} disabled={busy} ariaLabel={vi ? 'Ngày giờ theo dõi' : 'Follow-up date and time'} style={{ fontSize: 12.5, padding: '6px 10px' }} />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--line)', padding: '14px 0 16px' }}>
             {infoHead(vi ? 'Ghi chú nội bộ' : 'Internal notes', <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--ink-warn)' }}>{ind(vi ? 'khách không thấy' : 'customer never sees')}</span>)}
             <textarea value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void addNote(); } }}
               placeholder={vi ? 'Nhập ghi chú (Enter để lưu)' : 'Add a note (Enter to save)'} rows={2} aria-label={vi ? 'Ghi chú nội bộ' : 'Internal note'}
@@ -1687,7 +1812,7 @@ export function InboxView() {
           </div>
 
           {turns && turns.agents.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--line)', padding: '14px 0 4px' }}>
               {infoHead(vi ? 'Giao cho' : 'Assigned to')}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {turns.agents.map((a) => {
@@ -1706,6 +1831,7 @@ export function InboxView() {
         </>);
       })()}
     </div>
+    </>
   );
 
   return (
@@ -1738,10 +1864,11 @@ export function InboxView() {
       <div ref={cardRef} onClick={() => { if (moreOpen) setMoreOpen(false); }} style={{ ...ui.card, padding: 0, overflow: 'hidden', display: narrow ? 'flex' : 'grid',
         ...(narrow ? {} : { height: cardH ?? undefined }),
         gridTemplateColumns: narrow ? undefined
-          : compact ? (showInfo ? 'minmax(0,280px) minmax(0,1fr) minmax(0,272px)' : 'minmax(0,300px) minmax(0,1fr)')
+          : compact ? (showInfo ? '76px minmax(0,1fr) minmax(0,300px)' : '76px minmax(0,300px) minmax(0,1fr)')
           : wide ? '232px minmax(0,344px) minmax(0,1fr) minmax(0,312px)' : '196px minmax(0,272px) minmax(0,1fr) minmax(0,256px)',
         ...(narrow ? { width: '100vw', marginLeft: 'calc(50% - 50vw)', border: 'none', borderRadius: 0, height: cardH ?? undefined, flexDirection: 'column' as const } : {}) }}>
         {!narrow && !compact && rail}
+        {!narrow && compact && railSlim}
         {list}
         {thread}
         {info}

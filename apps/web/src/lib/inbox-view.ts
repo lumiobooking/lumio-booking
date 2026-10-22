@@ -636,3 +636,32 @@ export function composerNotice(
   }
   return { blocked: false, text: null };
 }
+
+/**
+ * Lines Meta writes into a transcript that nobody actually typed.
+ *
+ * When a customer answers an ad, Meta's conversation history carries a line
+ * like "Roxanna Parvin replied to an ad." (or "Customer replied to an ad.")
+ * that comes back as if the PAGE had sent it. Drawn as a reply it showed up as
+ * a blue "Nhân viên" bubble - the shop looked like it had messaged the
+ * customer, twice, when nobody had. "(opened chat)" is our own placeholder for
+ * a Get Started tap. Both are events, not messages, and are drawn as a small
+ * grey line in the middle of the conversation.
+ */
+export type SystemEvent = 'ad-reply' | 'opened-chat';
+
+const AD_REPLY = /^(?:[^\n]{1,80}\s)?replied to (?:an|your) ad\.?$/i;
+const OPENED_CHAT = /^(?:\u{1F44B}\s*)?\(opened chat\)$/iu;
+
+export function systemEventOf(text: unknown): SystemEvent | null {
+  const t = String(text ?? '').trim();
+  if (!t || t.length > 120) return null;
+  if (AD_REPLY.test(t)) return 'ad-reply';
+  if (OPENED_CHAT.test(t)) return 'opened-chat';
+  return null;
+}
+
+export function systemEventLabel(kind: SystemEvent, vi: boolean): string {
+  if (kind === 'ad-reply') return vi ? 'Khách trả lời quảng cáo của tiệm' : 'Replied to your ad';
+  return vi ? 'Khách mở cuộc trò chuyện' : 'Opened the chat';
+}

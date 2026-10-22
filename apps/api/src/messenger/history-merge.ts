@@ -33,6 +33,9 @@ export interface HistoryTurn {
   /** Meta's message id (mid) for anything we sent. The ONLY reliable way to
    *  say which of the Page's messages a person typed — see markManual. */
   messageId?: string | null;
+  /** First name of the teammate who typed it (see ./staff-name). Ours only:
+   *  Meta's copy never has it, so markManual carries it across. */
+  by?: string | null;
 }
 
 /**
@@ -164,17 +167,24 @@ export function sortByTime(turns: HistoryTurn[]): HistoryTurn[] {
  */
 function markManual(meta: HistoryTurn[], ours: HistoryTurn[]): HistoryTurn[] {
   const mine = ours.filter((t) => t.role === 'assistant' && t.manual);
-  const byMid = new Set(mine.map((t) => t.messageId).filter((x): x is string => Boolean(x)));
-  const byText = new Map<string, number>();
+  // id -> who typed it ('' when we do not know).
+  const byMid = new Map<string, string>();
+  for (const t of mine) if (t.messageId) byMid.set(t.messageId, t.by ?? '');
+  // text -> the names still unclaimed, oldest first. One manual turn marks at
+  // most ONE of Meta's messages, and hands its name to that one.
+  const byText = new Map<string, string[]>();
   for (const t of mine) {
     if (t.messageId) continue; // already covered by the id path
-    byText.set(txt(t), (byText.get(txt(t)) ?? 0) + 1);
+    const q = byText.get(txt(t)) ?? [];
+    q.push(t.by ?? '');
+    byText.set(txt(t), q);
   }
+  const named = (t: HistoryTurn, who: string | undefined): HistoryTurn => (who ? { ...t, manual: true, by: who } : { ...t, manual: true });
   return meta.map((t) => {
     if (t.role !== 'assistant') return t;
-    if (t.messageId && byMid.has(t.messageId)) return { ...t, manual: true };
-    const left = byText.get(txt(t)) ?? 0;
-    if (left > 0) { byText.set(txt(t), left - 1); return { ...t, manual: true }; }
+    if (t.messageId && byMid.has(t.messageId)) return named(t, byMid.get(t.messageId));
+    const q = byText.get(txt(t));
+    if (q && q.length) return named(t, q.shift());
     return t;
   });
 }

@@ -522,3 +522,36 @@ describe('labels on a conversation', () => {
     expect(filterRows(rows, { filter: 'unread', labelId: 'quote' }, noon).map((r) => r.id)).toEqual(['a']);
   });
 });
+
+import { systemEventOf, systemEventLabel } from './inbox-view';
+
+describe('Meta events that look like messages', () => {
+  it.each([
+    'Roxanna Parvin replied to an ad.',
+    'Customer replied to an ad.',
+    'Customer replied to an ad',
+    'Jane replied to your ad',
+  ])('"%s" is an ad reply, not a staff message', (t) => {
+    expect(systemEventOf(t)).toBe('ad-reply');
+  });
+
+  it('the opened-chat placeholder is an event', () => {
+    expect(systemEventOf('\u{1F44B} (opened chat)')).toBe('opened-chat');
+    expect(systemEventOf('(opened chat)')).toBe('opened-chat');
+  });
+
+  it.each([
+    'Unsubscribe',
+    'I replied to an ad yesterday, do you still have the $49 pedi?',
+    'replied to an ad. Can I book Saturday?',
+    '',
+    null,
+  ])('real words stay messages: %p', (t) => {
+    expect(systemEventOf(t)).toBeNull();
+  });
+
+  it('labels in both languages', () => {
+    expect(systemEventLabel('ad-reply', true)).toBe('Khách trả lời quảng cáo của tiệm');
+    expect(systemEventLabel('opened-chat', false)).toBe('Opened the chat');
+  });
+});

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { apiFetch } from '../lib/api';
+import { useLang } from '../lib/i18n';
 import { ui } from '../lib/ui';
 
 // Minimal CSV parser (handles quoted fields and escaped quotes).
@@ -41,6 +42,7 @@ export function ImportCsv({ token, endpoint, header, sample, existing, buildBody
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const vi = useLang().lang === 'vi';
 
   async function run() {
     setBusy(true); setMsg(null);
@@ -58,9 +60,9 @@ export function ImportCsv({ token, endpoint, header, sample, existing, buildBody
         try { await apiFetch(endpoint, { method: 'POST', token, body: body as Record<string, unknown> }); made++; have.add(nm.toLowerCase()); }
         catch { failed++; }
       }
-      setMsg(`Imported ${made} · skipped ${skipped}${failed ? ` · failed ${failed}` : ''}`);
+      setMsg(vi ? `Đã thêm ${made} · bỏ qua ${skipped} (trùng tên)${failed ? ` · lỗi ${failed}` : ''}` : `Imported ${made} · skipped ${skipped}${failed ? ` · failed ${failed}` : ''}`);
       onDone();
-    } catch (e) { setMsg(e instanceof Error ? e.message : 'Import failed'); }
+    } catch (e) { setMsg(e instanceof Error ? e.message : (vi ? 'Nhập file lỗi' : 'Import failed')); }
     finally { setBusy(false); }
   }
 
@@ -69,15 +71,15 @@ export function ImportCsv({ token, endpoint, header, sample, existing, buildBody
 
   return (
     <div style={{ marginBottom: 14 }}>
-      <button onClick={() => setOpen(!open)} style={ghost}>{open ? '✕ Close import' : '⭳ Import CSV'}</button>
+      <button onClick={() => setOpen(!open)} style={ghost}>{open ? (vi ? '✕ Đóng' : '✕ Close import') : (vi ? '⭳ Nhập từ file CSV' : '⭳ Import CSV')}</button>
       {open && (
         <div style={{ ...ui.card, marginTop: 8 }}>
-          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 8 }}>Columns: <code style={{ color: 'var(--ccbd5e1)' }}>{header}</code> — choose a .csv file, or paste rows, or Load sample.</div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 8 }}>{vi ? 'Các cột' : 'Columns'}: <code style={{ color: 'var(--ccbd5e1)' }}>{header}</code> — {vi ? 'chọn file .csv, dán các dòng vào ô dưới, hoặc bấm Mẫu.' : 'choose a .csv file, or paste rows, or Load sample.'}</div>
           <input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) f.text().then(setText); }} style={{ fontSize: 13, marginBottom: 8, color: 'var(--ccbd5e1)' }} />
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} placeholder={header + '\n…'} style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: 12, padding: 8, borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)' }} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-            <button onClick={run} disabled={busy || !text.trim()} style={ui.primaryBtn}>{busy ? 'Importing…' : `Import ${rowCount} row${rowCount === 1 ? '' : 's'}`}</button>
-            <button onClick={() => setText(sample)} style={ghost}>Load sample</button>
+            <button onClick={run} disabled={busy || !text.trim()} style={ui.primaryBtn}>{busy ? (vi ? 'Đang nhập…' : 'Importing…') : vi ? `Nhập ${rowCount} dòng` : `Import ${rowCount} row${rowCount === 1 ? '' : 's'}`}</button>
+            <button onClick={() => setText(sample)} style={ghost}>{vi ? 'Mẫu' : 'Load sample'}</button>
             {msg && <span style={{ fontSize: 13, color: 'var(--ca7f3d0)' }}>{msg}</span>}
           </div>
         </div>

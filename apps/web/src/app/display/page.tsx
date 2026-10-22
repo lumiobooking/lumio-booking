@@ -322,7 +322,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
             // ORDER — fits the glass: the ticket scrolls inside its card, totals stay put.
             <OrderScreen
               lines={s.lines} rows={totalRows} due={money(s.dueCents, cur)} accent={accent}
-              money={(c) => money(c, cur)} tall={tall}
+              money={(c) => money(c, cur)} tall={tall} vi={uiLocale().startsWith('vi')}
               reviewUrl={s.reviewUrl}
             />
           )}

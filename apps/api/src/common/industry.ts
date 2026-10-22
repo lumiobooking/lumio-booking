@@ -112,10 +112,14 @@ export async function writeIndustry(db: Tx, tenantId: string, key: string): Prom
   if (db.service && (def.businessType === 'RESTAURANT' || def.businessType === 'REAL_ESTATE')) {
     const n = await db.service.count({ where: { tenantId } }).catch(() => 1);
     if (n === 0) {
+      // A Vietnamese business reads its first service in Vietnamese, in đồng.
+      const t = await (db.tenant as unknown as { findUnique?: (a: unknown) => Promise<{ market?: string | null } | null> }).findUnique?.({ where: { id: tenantId }, select: { market: true } }).catch(() => null);
+      const vn = String(t?.market ?? '').toUpperCase() === 'VN';
+      const currency = vn ? 'VND' : 'USD';
       await db.service.create({
         data: def.businessType === 'RESTAURANT'
-          ? { tenantId, name: 'Table reservation', durationMinutes: 90, priceCents: 0, currency: 'USD', isActive: true }
-          : { tenantId, name: 'Consultation call', durationMinutes: 30, priceCents: 0, currency: 'USD', isActive: true },
+          ? { tenantId, name: vn ? 'Đặt bàn' : 'Table reservation', durationMinutes: 90, priceCents: 0, currency, isActive: true }
+          : { tenantId, name: vn ? 'Hẹn tư vấn' : 'Consultation call', durationMinutes: 30, priceCents: 0, currency, isActive: true },
       }).catch(() => undefined);
     }
   }

@@ -28,6 +28,10 @@ export interface RestaurantSettings {
   /** The floor turns a table yellow / red after this many minutes. */
   warnMinutes: number;
   lateMinutes: number;
+  /** A dish marked sold out comes back by itself the next morning. */
+  soldOutReset: boolean;
+  /** When set, only these staff logins (and the owner) may take payment; the rest send "ready to pay". */
+  cashierUserIds: string[];
 }
 
 export const SETTINGS_KEY = 'restaurant_service';
@@ -41,6 +45,8 @@ export const DEFAULT_SETTINGS: RestaurantSettings = {
   voidNeedsApproval: true,
   warnMinutes: 60,
   lateMinutes: 90,
+  soldOutReset: true,
+  cashierUserIds: [],
 };
 
 const KEY_RE = /^[A-Z0-9_]{2,20}$/;
@@ -84,6 +90,10 @@ export function cleanSettings(raw: unknown): RestaurantSettings {
     voidNeedsApproval: bool(r.voidNeedsApproval, DEFAULT_SETTINGS.voidNeedsApproval),
     warnMinutes: warn,
     lateMinutes: late,
+    soldOutReset: bool(r.soldOutReset, DEFAULT_SETTINGS.soldOutReset),
+    cashierUserIds: Array.isArray(r.cashierUserIds)
+      ? [...new Set(r.cashierUserIds.map((x) => String(x ?? '').trim()).filter((x) => /^[A-Za-z0-9-]{8,64}$/.test(x)))].slice(0, 50)
+      : [],
   };
 }
 
@@ -200,12 +210,14 @@ export interface TicketInput {
   lang: Lang;
   stationName: string;
   tables: string;
+  /** A to-go bill: print its label without "TABLE". */
+  takeaway?: boolean;
   checkNumber: number;
   batch?: number | null;
   guests?: number | null;
   server?: string | null;
   at: string;
-  lines: { quantity: number; name: string; note?: string | null; sentAt?: string | null }[];
+  lines: { quantity: number; name: string; note?: string | null; options?: string[] | null; sentAt?: string | null }[];
   reason?: string | null;
   by?: string | null;
   approver?: string | null;
@@ -218,7 +230,7 @@ export function ticketText(t: TicketInput): string {
   const out: string[] = [];
   out.push(center(`${t.stationName.toUpperCase()} · ${w[t.kind]}`));
   if (t.kind === 'MOVE') out.push(center(`${t.fromTables ?? ''} -> ${t.tables}`));
-  else out.push(center(`${w.table} ${t.tables}`));
+  else out.push(center(t.takeaway ? t.tables.toUpperCase() : `${w.table} ${t.tables}`));
   out.push(`${w.check} #${t.checkNumber}${t.kind === 'NEW' && t.batch ? ` · ${w.send} ${t.batch}` : ''}`);
   const who = [t.guests ? `${t.guests} ${w.guests}` : '', t.server ? `${w.server}: ${t.server}` : ''].filter(Boolean).join(' · ');
   if (who) out.push(who);
@@ -227,6 +239,7 @@ export function ticketText(t: TicketInput): string {
   if (t.kind === 'MOVE') out.push(...wrap(w.still));
   for (const l of t.lines) {
     out.push(...wrap(`${l.quantity} x ${l.name}`));
+    for (const o of l.options ?? []) out.push(...wrap(`+ ${o}`, '    '));
     if (l.note) out.push(...wrap(`- ${l.note}`, '    '));
     if (t.kind === 'VOID' && l.sentAt) out.push(`    (${w.sentAt} ${l.sentAt})`);
   }
@@ -247,11 +260,12 @@ export interface PrebillInput {
   address?: string | null;
   phone?: string | null;
   tables: string;
+  takeaway?: boolean;
   checkNumber: number;
   count: number;
   at: string;
   cashier?: string | null;
-  lines: { quantity: number; name: string; amountCents: number }[];
+  lines: { quantity: number; name: string; amountCents: number; options?: string[] | null }[];
   totalCents: number;
   money: (cents: number) => string;
   footer?: string | null;
@@ -266,10 +280,13 @@ export function prebillText(p: PrebillInput): string {
   if (p.phone) out.push(center(p.phone));
   out.push('');
   out.push(center(w.prebill));
-  out.push(`${w.table} ${p.tables} · ${w.check} #${p.checkNumber} · ${w.printed} ${p.count}`);
+  out.push(`${p.takeaway ? p.tables : `${w.table} ${p.tables}`} · ${w.check} #${p.checkNumber} · ${w.printed} ${p.count}`);
   out.push(`${p.at}${p.cashier ? ` · ${w.cashier}: ${p.cashier}` : ''}`);
   out.push(rule());
-  for (const l of p.lines) out.push(twoCol(`${l.quantity} ${l.name}`, p.money(l.amountCents)));
+  for (const l of p.lines) {
+    out.push(twoCol(`${l.quantity} ${l.name}`, p.money(l.amountCents)));
+    for (const o of l.options ?? []) out.push(...wrap(`+ ${o}`, '  '));
+  }
   out.push(rule());
   out.push(twoCol(w.total, p.money(p.totalCents)));
   out.push('');
@@ -303,4 +320,105 @@ export function clockText(d: Date, tz: string | null | undefined, lang: Lang): s
 /** Table names for a bill on one or more tables: "A7 + A8". */
 export function tablesLabel(ids: string[], names: Map<string, string>): string {
   return ids.map((id) => names.get(id) ?? '?').join(' + ');
+}
+
+// ------------------------------------------------------------ dish options --
+
+export interface OptionChoice { id: string; name: string; priceCents: number }
+export interface OptionGroup { id: string; name: string; required: boolean; max: number; choices: OptionChoice[] }
+export interface ChosenOption { group: string; name: string; priceCents: number }
+
+const OID = /^[A-Za-z0-9_-]{1,40}$/;
+
+/**
+ * The owner's option groups for a dish ("Cỡ tô: thường / lớn +15k", "Thêm:
+ * trứng +10k, quẩy +5k"), made safe: named groups with named choices, no
+ * negative prices, at most 8 groups of 20 choices, ids kept or made up.
+ */
+export function cleanOptionGroups(raw: unknown): OptionGroup[] {
+  if (!Array.isArray(raw)) return [];
+  const out: OptionGroup[] = [];
+  raw.slice(0, 8).forEach((g, gi) => {
+    const o = (g && typeof g === 'object' ? g : {}) as Record<string, unknown>;
+    const name = String(o.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    if (!name) return;
+    const choices: OptionChoice[] = [];
+    (Array.isArray(o.choices) ? o.choices : []).slice(0, 20).forEach((c, ci) => {
+      const x = (c && typeof c === 'object' ? c : {}) as Record<string, unknown>;
+      const cn = String(x.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      if (!cn) return;
+      const price = Math.round(Number(x.priceCents ?? 0));
+      const id = OID.test(String(x.id ?? '')) ? String(x.id) : `c${gi}_${ci}`;
+      if (choices.some((y) => y.id === id)) return;
+      choices.push({ id, name: cn, priceCents: Number.isFinite(price) && price > 0 ? Math.min(price, 100_000_000) : 0 });
+    });
+    if (!choices.length) return;
+    const id = OID.test(String(o.id ?? '')) ? String(o.id) : `g${gi}`;
+    if (out.some((y) => y.id === id)) return;
+    const max = Math.round(Number(o.max ?? 1));
+    out.push({ id, name, required: o.required === true, max: Number.isFinite(max) && max >= 1 ? Math.min(max, choices.length) : 1, choices });
+  });
+  return out;
+}
+
+/**
+ * What the server picked, checked against the dish's groups: every required
+ * group answered, no group over its maximum, nothing invented. Throws a code
+ * the till turns into words.
+ */
+export function pickOptions(groups: OptionGroup[], picks: unknown): { chosen: ChosenOption[]; extraCents: number } {
+  const list = Array.isArray(picks) ? picks : [];
+  const byGroup = new Map<string, string[]>();
+  for (const p of list) {
+    const o = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+    const gid = String(o.groupId ?? '');
+    const ids = Array.isArray(o.choiceIds) ? o.choiceIds.map((x) => String(x)) : [];
+    byGroup.set(gid, [...new Set([...(byGroup.get(gid) ?? []), ...ids])]);
+  }
+  for (const gid of byGroup.keys()) if (!groups.some((g) => g.id === gid)) throw new Error('OPTION_UNKNOWN');
+  const chosen: ChosenOption[] = [];
+  for (const g of groups) {
+    const ids = byGroup.get(g.id) ?? [];
+    if (g.required && ids.length === 0) throw new Error(`OPTION_REQUIRED:${g.name}`);
+    if (ids.length > g.max) throw new Error(`OPTION_TOO_MANY:${g.name}`);
+    for (const id of ids) {
+      const c = g.choices.find((x) => x.id === id);
+      if (!c) throw new Error('OPTION_UNKNOWN');
+      chosen.push({ group: g.name, name: c.name, priceCents: c.priceCents });
+    }
+  }
+  return { chosen, extraCents: chosen.reduce((s, c) => s + c.priceCents, 0) };
+}
+
+/** Chosen options as stored on a line, read back safely. */
+export function chosenOf(raw: unknown): ChosenOption[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((x) => (x && typeof x === 'object' ? x : {}) as Record<string, unknown>)
+    .filter((x) => typeof x.name === 'string' && x.name)
+    .map((x) => ({ group: String(x.group ?? ''), name: String(x.name), priceCents: Math.max(0, Math.round(Number(x.priceCents) || 0)) }));
+}
+
+export const optionsKey = (c: ChosenOption[]) => c.map((x) => `${x.group}:${x.name}`).join('|');
+
+// ---------------------------------------------------------------- sold out --
+
+/** YYYY-MM-DD of an instant in the restaurant's own time zone. */
+export function dayIn(d: Date, tz: string | null | undefined): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
+/** Sold out now? With the daily reset a dish marked yesterday is back today. */
+export function soldOutNow(soldOutAt: Date | null | undefined, reset: boolean, tz: string | null | undefined, now: Date = new Date()): boolean {
+  if (!soldOutAt) return false;
+  if (!reset) return true;
+  return dayIn(soldOutAt, tz) === dayIn(now, tz);
+}
+
+/** What a bill is called on screens and tickets: its tables, or "Mang về #12". */
+export function checkLabel(tableIds: string[], names: Map<string, string>, number: number, lang: Lang): string {
+  return tableIds.length ? tablesLabel(tableIds, names) : `${lang === 'vi' ? 'Mang về' : 'To go'} #${number}`;
 }

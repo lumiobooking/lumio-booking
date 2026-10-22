@@ -9,9 +9,27 @@ import { useLang, tr } from '../../../lib/i18n';
 import { ImportCsv } from '../../../components/ImportCsv';
 import { compressImageToFit } from '../../../lib/image';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
+import { MenuOptionsEditor, type OptionGroupDraft } from '../../../components/MenuOptionsEditor';
+import { currencySymbolFor } from '../../../lib/money';
 
-interface Item { id: string; name: string; category: string | null; priceCents: number; currency: string; description: string | null; imageUrl: string | null; isActive: boolean; sortOrder: number }
+interface Item { id: string; name: string; category: string | null; priceCents: number; currency: string; description: string | null; imageUrl: string | null; isActive: boolean; sortOrder: number; options?: unknown[] }
 
+const SAMPLE_MENU_VI = `name,category,price,description,image,sort
+Phở bò tái,Phở,65000,,,
+Phở bò tái nạm,Phở,75000,,,
+Phở đặc biệt,Phở,95000,,,
+Phở gà,Phở,65000,,,
+Bún bò Huế,Bún,70000,,,
+Bún chả Hà Nội,Bún,65000,,,
+Cơm tấm sườn bì chả,Cơm,70000,,,
+Cơm gà xối mỡ,Cơm,65000,,,
+Gỏi cuốn tôm thịt (2 cuốn),Khai vị,45000,,,
+Chả giò (4 cuốn),Khai vị,50000,,,
+Trà đá,Đồ uống,5000,,,
+Cà phê sữa đá,Đồ uống,30000,,,
+Nước cam ép,Đồ uống,40000,,,
+Bia Saigon,Đồ uống,25000,,,
+Chè ba màu,Tráng miệng,30000,,,`;
 const SAMPLE_MENU = `name,category,price,description,image,sort
 Crispy Egg Rolls,Appetizers,8,
 Fresh Spring Rolls,Appetizers,7,
@@ -79,9 +97,12 @@ function Inner() {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [items, setItems] = useState<Item[]>([]);
-  // The dishes carry their own currency; a new dish follows the ones already
-  // on the menu. An empty menu falls back to USD, which is what it did before.
-  const pageCurrency = items[0]?.currency ?? 'USD';
+  // Prices are in the restaurant's own currency (Settings), never a label
+  // copied from the first dish: a đồng restaurant typing 85000 means 85.000 đ.
+  const [pageCurrency, setPageCurrency] = useState('USD');
+  const [optionsFor, setOptionsFor] = useState<Item | null>(null);
+  const vi = lang === 'vi';
+  const sym = currencySymbolFor(pageCurrency);
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', category: '', price: '', description: '' });
   const [busy, setBusy] = useState(false);
@@ -89,8 +110,15 @@ function Inner() {
 
   const load = useCallback(async () => {
     if (!token) return;
-    try { setItems(await apiFetch<Item[]>('/menu-items', { token })); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Failed to load'); }
+    try {
+      const [list, settings] = await Promise.all([
+        apiFetch<Item[]>('/menu-items', { token }),
+        apiFetch<{ booking?: { currency?: string } }>('/settings', { token }).catch(() => null),
+      ]);
+      setItems(list);
+      setPageCurrency(settings?.booking?.currency || list[0]?.currency || 'USD');
+    }
+    catch (e) { setErr(e instanceof Error ? e.message : (vi ? 'Không tải được thực đơn' : 'Failed to load')); }
   }, [token]);
   useEffect(() => { load(); }, [load]);
 
@@ -110,16 +138,16 @@ function Inner() {
       });
       setForm({ name: '', category: '', price: '', description: '' });
       await load();
-    } catch (e2) { setErr(e2 instanceof Error ? e2.message : 'Failed'); }
+    } catch (e2) { setErr(e2 instanceof Error ? e2.message : (vi ? 'Không lưu được' : 'Failed')); }
     finally { setBusy(false); }
   }
   async function patch(id: string, data: Record<string, unknown>) {
     try { await apiFetch(`/menu-items/${id}`, { method: 'PATCH', token, body: data }); await load(); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    catch (e) { setErr(e instanceof Error ? e.message : (vi ? 'Không lưu được' : 'Failed')); }
   }
   async function remove(id: string) {
     try { await apiFetch(`/menu-items/${id}`, { method: 'DELETE', token }); await load(); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    catch (e) { setErr(e instanceof Error ? e.message : (vi ? 'Không lưu được' : 'Failed')); }
   }
   async function clearAll() {
     const n = items.length;
@@ -129,7 +157,7 @@ function Inner() {
     if (!ok) return;
     setBusy(true); setErr(null);
     try { await apiFetch('/menu-items', { method: 'DELETE', token }); await load(); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    catch (e) { setErr(e instanceof Error ? e.message : (vi ? 'Không lưu được' : 'Failed')); }
     finally { setBusy(false); }
   }
 
@@ -151,7 +179,7 @@ function Inner() {
       <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>{t('mn.subtitle')}</p>
       {err && <div style={ui.banner}>{err}</div>}
 
-      <ImportCsv token={token} endpoint="/menu-items" header="name,category,price,description,image,sort" sample={SAMPLE_MENU} existing={() => new Set(items.map((i) => i.name.toLowerCase()))} buildBody={(c) => { const price = parseFloat(c[2]); if (!c[0] || !c[0].trim() || !Number.isFinite(price)) return null; return { name: c[0].trim(), category: c[1] || undefined, priceCents: toMinorUnits(price, pageCurrency), description: c[3] || undefined, imageUrl: c[4] || undefined, sortOrder: c[5] ? parseInt(c[5], 10) : undefined }; }} onDone={load} />
+      <ImportCsv token={token} endpoint="/menu-items" header="name,category,price,description,image,sort" sample={pageCurrency === 'VND' ? SAMPLE_MENU_VI : SAMPLE_MENU} existing={() => new Set(items.map((i) => i.name.toLowerCase()))} buildBody={(c) => { const price = parseFloat(c[2]); if (!c[0] || !c[0].trim() || !Number.isFinite(price)) return null; return { name: c[0].trim(), category: c[1] || undefined, priceCents: toMinorUnits(price, pageCurrency), description: c[3] || undefined, imageUrl: c[4] || undefined, sortOrder: c[5] ? parseInt(c[5], 10) : undefined }; }} onDone={load} />
 
       {items.length > 0 && (
         <div style={{ marginTop: -6, marginBottom: 12 }}>
@@ -168,10 +196,10 @@ function Inner() {
         <label style={{ flex: '1 1 120px' }}><span style={ui.label}>{t('mn.category')}</span>
           <input style={ui.input} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Phở" list="mn-cats" />
           <datalist id="mn-cats">{Array.from(new Set(items.map((i) => i.category).filter(Boolean))).map((c) => <option key={c} value={c as string} />)}</datalist></label>
-        <label style={{ flex: '0 1 90px' }}><span style={ui.label}>{t('mn.price')} ($)</span>
-          <input style={ui.input} type="number" min={0} step={priceInputStep(pageCurrency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="14" /></label>
+        <label style={{ flex: '0 1 90px' }}><span style={ui.label}>{t('mn.price')} ({sym})</span>
+          <input style={ui.input} type="number" min={0} step={priceInputStep(pageCurrency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder={pageCurrency === 'VND' ? '85000' : '14'} /></label>
         <label style={{ flex: '3 1 200px' }}><span style={ui.label}>{t('mn.desc')}</span>
-          <input style={ui.input} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Rare beef pho" /></label>
+          <input style={ui.input} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={vi ? 'Phở bò tái, nước dùng hầm xương' : 'Rare beef pho'} /></label>
         <button type="submit" disabled={busy} style={ui.primaryBtn}>{t('mn.add')}</button>
       </form>
 
@@ -182,7 +210,7 @@ function Inner() {
           {grouped.map(([cat, list]) => (
             <button key={cat} onClick={() => setActiveCat(cat)} style={catTab(activeCat === cat)}>{cat} <span style={{ opacity: 0.6 }}>{list.length}</span></button>
           ))}
-          {grouped.length > 1 && <button onClick={() => setActiveCat('__all')} style={catTab(activeCat === '__all')}>All <span style={{ opacity: 0.6 }}>{items.length}</span></button>}
+          {grouped.length > 1 && <button onClick={() => setActiveCat('__all')} style={catTab(activeCat === '__all')}>{vi ? 'Tất cả' : 'All'} <span style={{ opacity: 0.6 }}>{items.length}</span></button>}
         </div>
       )}
 
@@ -211,11 +239,14 @@ function Inner() {
                   onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, category: e.target.value } : x)))}
                   onBlur={(e) => patch(it.id, { category: e.target.value })} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <span style={{ color: 'var(--c94a3b8)' }}>$</span>
-                  <input style={{ ...ui.input, width: 78 }} type="number" min={0} step={priceInputStep(it.currency)} value={fromMinorUnits(it.priceCents, it.currency)}
-                    onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, priceCents: toMinorUnits(e.target.value, it.currency) } : x)))}
-                    onBlur={(e) => patch(it.id, { priceCents: toMinorUnits(e.target.value, it.currency) })} />
+                  <span style={{ color: 'var(--c94a3b8)' }}>{sym}</span>
+                  <input style={{ ...ui.input, width: pageCurrency === 'VND' ? 100 : 78 }} type="number" min={0} step={priceInputStep(pageCurrency)} value={fromMinorUnits(it.priceCents, pageCurrency)}
+                    onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, priceCents: toMinorUnits(e.target.value, pageCurrency) } : x)))}
+                    onBlur={(e) => patch(it.id, { priceCents: toMinorUnits(e.target.value, pageCurrency) })} />
                 </div>
+                <button type="button" onClick={() => setOptionsFor(it)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer' }}>
+                  {vi ? 'Tuỳ chọn' : 'Options'}{(it.options?.length ?? 0) ? ` (${it.options!.length})` : ''}
+                </button>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--ccbd5e1)' }}>
                   <input type="checkbox" checked={it.isActive} onChange={(e) => patch(it.id, { isActive: e.target.checked })} />{t('mn.active')}
                 </label>
@@ -225,6 +256,11 @@ function Inner() {
           </div>
         </div>
       ))}
+      {optionsFor && (
+        <MenuOptionsEditor vi={vi} currency={pageCurrency} dishName={optionsFor.name} initial={(optionsFor.options ?? []) as OptionGroupDraft[]}
+          onClose={() => setOptionsFor(null)}
+          onSave={async (options) => { await patch(optionsFor.id, { options }); setOptionsFor(null); }} />
+      )}
     </section>
   );
 }

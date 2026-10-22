@@ -1,4 +1,5 @@
 import {
+  checkLabel, chosenOf, cleanOptionGroups, dayIn, optionsKey, pickOptions, soldOutNow,
   DEFAULT_SETTINGS, checkTotals, cleanNote, cleanSettings, groupForSend, langFor, moneyText, prebillText, qty, stationFor,
   stationsCooking, tablesLabel, ticketText, LineLike,
 } from './check-logic';
@@ -133,5 +134,62 @@ describe('formats', () => {
   });
   it('tables label for a bill on joined tables', () => {
     expect(tablesLabel(['a', 'b'], new Map([['a', 'A7'], ['b', 'A8']]))).toBe('A7 + A8');
+  });
+});
+
+describe('dish options', () => {
+  const groups = cleanOptionGroups([
+    { id: 'size', name: 'Cỡ tô', required: true, max: 1, choices: [{ id: 'n', name: 'Thường' }, { id: 'l', name: 'Lớn', priceCents: 15000 }] },
+    { id: 'add', name: 'Thêm', max: 3, choices: [{ id: 'egg', name: 'Trứng', priceCents: 10000 }, { id: 'q', name: 'Quẩy', priceCents: -5 }] },
+    { name: '', choices: [{ name: 'x' }] },
+    { name: 'Empty', choices: [] },
+  ]);
+  it('keeps named groups with named choices, never a negative price', () => {
+    expect(groups.map((g) => g.id)).toEqual(['size', 'add']);
+    expect(groups[1].choices[1].priceCents).toBe(0);
+    expect(groups[1].max).toBe(2);
+  });
+  it('prices the picks and refuses a missing required group, too many, or an invented choice', () => {
+    const p = pickOptions(groups, [{ groupId: 'size', choiceIds: ['l'] }, { groupId: 'add', choiceIds: ['egg'] }]);
+    expect(p.extraCents).toBe(25000);
+    expect(p.chosen.map((c) => c.name)).toEqual(['Lớn', 'Trứng']);
+    expect(() => pickOptions(groups, [])).toThrow('OPTION_REQUIRED:Cỡ tô');
+    expect(() => pickOptions(groups, [{ groupId: 'size', choiceIds: ['n', 'l'] }])).toThrow('OPTION_TOO_MANY');
+    expect(() => pickOptions(groups, [{ groupId: 'size', choiceIds: ['zz'] }])).toThrow('OPTION_UNKNOWN');
+    expect(() => pickOptions(groups, [{ groupId: 'other', choiceIds: ['n'] }])).toThrow('OPTION_UNKNOWN');
+    expect(pickOptions([], undefined)).toEqual({ chosen: [], extraCents: 0 });
+  });
+  it('reads stored options back safely and keys them for merging lines', () => {
+    expect(chosenOf([{ group: 'A', name: 'B', priceCents: '5' }, null, { name: '' }])).toEqual([{ group: 'A', name: 'B', priceCents: 5 }]);
+    expect(optionsKey([{ group: 'A', name: 'B', priceCents: 0 }])).toBe('A:B');
+  });
+  it('prints options on the kitchen ticket', () => {
+    const t = ticketText({ kind: 'NEW', lang: 'vi', stationName: 'Bếp', tables: 'A1', checkNumber: 1, at: 'x', lines: [{ quantity: 1, name: 'Phở', options: ['Lớn', 'Trứng'] }] });
+    expect(t).toContain('+ Lớn');
+    expect(t).toContain('+ Trứng');
+  });
+});
+
+describe('sold out, to-go bills, cashiers', () => {
+  it('a dish sold out yesterday is back today when the daily reset is on', () => {
+    const tz = 'Asia/Ho_Chi_Minh';
+    const now = new Date('2026-10-22T05:00:00Z'); // 12:00 in Saigon
+    expect(soldOutNow(new Date('2026-10-22T01:00:00Z'), true, tz, now)).toBe(true);
+    expect(soldOutNow(new Date('2026-10-21T17:30:00Z'), true, tz, now)).toBe(true); // 00:30 on the 22nd in Saigon
+    expect(soldOutNow(new Date('2026-10-21T10:00:00Z'), true, tz, now)).toBe(false);
+    expect(soldOutNow(new Date('2026-10-01T10:00:00Z'), false, tz, now)).toBe(true);
+    expect(soldOutNow(null, true, tz, now)).toBe(false);
+    expect(dayIn(now, tz)).toBe('2026-10-22');
+  });
+  it('a to-go bill is named by its number', () => {
+    expect(checkLabel([], new Map(), 12, 'vi')).toBe('Mang về #12');
+    expect(checkLabel([], new Map(), 12, 'en')).toBe('To go #12');
+    expect(checkLabel(['a'], new Map([['a', 'A1']]), 12, 'vi')).toBe('A1');
+    expect(ticketText({ kind: 'NEW', lang: 'vi', stationName: 'Bếp', tables: 'Mang về #12', takeaway: true, checkNumber: 12, at: 'x', lines: [] })).toContain('MANG VỀ #12');
+  });
+  it('cashier list keeps only plausible user ids', () => {
+    const s = cleanSettings({ cashierUserIds: ['3f2a9c1e-1111-2222-3333-444455556666', 'x', 42, '3f2a9c1e-1111-2222-3333-444455556666'] });
+    expect(s.cashierUserIds).toEqual(['3f2a9c1e-1111-2222-3333-444455556666']);
+    expect(s.soldOutReset).toBe(true);
   });
 });

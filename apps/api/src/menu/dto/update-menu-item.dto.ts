@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
 export class UpdateMenuItemDto {
   @IsOptional()
@@ -34,4 +34,10 @@ export class UpdateMenuItemDto {
   @IsOptional()
   @IsInt()
   sortOrder?: number;
+
+  /** Option groups (size, extras) — cleaned by restaurant/check-logic cleanOptionGroups. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  options?: unknown[];
 }

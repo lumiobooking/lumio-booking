@@ -6,7 +6,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { RestaurantService } from './restaurant.service';
 import {
-  AddLineDto, MoveCheckDto, OpenCheckDto, PayCheckDto, PrebillDto, SaveRestaurantSettingsDto, UpdateCheckDto, UpdateLineDto, VoidCheckDto, VoidLineDto,
+  AddLineDto, MergeCheckDto, MoveCheckDto, OpenCheckDto, PayCheckDto, PrebillDto, SaveRestaurantSettingsDto, SoldOutDto, SplitCheckDto,
+  UpdateCheckDto, UpdateLineDto, VoidCheckDto, VoidLineDto,
 } from './dto/restaurant.dto';
 
 /**
@@ -26,6 +27,13 @@ export class RestaurantController {
 
   @Get('menu')
   menu(@CurrentUser() user: AuthenticatedUser) { return this.svc.menu(user); }
+
+  @Post('menu/:itemId/sold-out')
+  soldOut(@CurrentUser() user: AuthenticatedUser, @Param('itemId') itemId: string, @Body() dto: SoldOutDto) { return this.svc.setSoldOut(user, itemId, dto.soldOut); }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('people')
+  people(@CurrentUser() user: AuthenticatedUser) { return this.svc.people(user); }
 
   @Get('settings')
   settings(@CurrentUser() user: AuthenticatedUser) { return this.svc.readSettings(user); }
@@ -78,6 +86,15 @@ export class RestaurantController {
 
   @Post('checks/:id/void')
   voidCheck(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: VoidCheckDto) { return this.svc.voidCheck(user, id, dto); }
+
+  @Post('checks/:id/merge')
+  merge(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: MergeCheckDto) { return this.svc.merge(user, id, dto); }
+
+  @Post('checks/:id/split')
+  split(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: SplitCheckDto) { return this.svc.split(user, id, dto); }
+
+  @Post('checks/:id/request-pay')
+  requestPay(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.svc.requestPay(user, id); }
 
   @Post('checks/:id/pay')
   pay(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: PayCheckDto) { return this.svc.pay(user, id, dto); }

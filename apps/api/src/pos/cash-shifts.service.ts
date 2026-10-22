@@ -38,6 +38,10 @@ export interface ShiftSummary {
   cashOutCents: number;
   expectedCashCents: number;
   movements: { id: string; kind: MovementKind; amountCents: number; reason: string | null; byName: string | null; at: string; categoryId?: string | null }[];
+  /** Restaurants: bills still open on tables (their money is not in this shift yet). */
+  openChecks?: { count: number; totalCents: number; labels: string[] };
+  /** Restaurants: dishes taken back after the kitchen had them, during this shift. */
+  voidedItems?: { count: number; totalCents: number; list: { name: string; quantity: number; amountCents: number; reason: string | null; at: string }[] };
 }
 
 type ShiftRow = {
@@ -120,7 +124,9 @@ export class CashShiftsService {
     let cashIn = 0, cashOut = 0;
     for (const m of moves) { if (m.kind === 'IN') cashIn += m.amountCents; else cashOut += m.amountCents; }
     const expected = shift.openingCents + byMethod.cashCents - change + cashIn - cashOut;
+    const restaurant = await this.restaurantPart(tenantId, shift as { id: string; openedAt?: Date; closedAt?: Date | null });
     return {
+      ...restaurant,
       orders: orders.length,
       revenueCents: revenue,
       tipsCents: tips,
@@ -132,6 +138,51 @@ export class CashShiftsService {
       expectedCashCents: expected,
       movements: moves.map((m: MoveRow) => ({ id: m.id, kind: m.kind, amountCents: m.amountCents, reason: m.reason, byName: m.byName, at: m.createdAt.toISOString(), categoryId: m.categoryId ?? null })),
     };
+  }
+
+  /**
+   * What a restaurant's shift close must also say: tables still running (not
+   * in this drawer yet) and dishes cancelled after the kitchen had them. A
+   * salon has neither and gets nothing extra; any failure reads as nothing.
+   */
+  private async restaurantPart(tenantId: string, shift: { id: string; openedAt?: Date; closedAt?: Date | null }) {
+    try {
+      if (!shift.openedAt) {
+        const row = await this.db.cashShift.findFirst({ where: { id: shift.id, tenantId }, select: { openedAt: true, closedAt: true } }) as { openedAt: Date; closedAt: Date | null } | null;
+        if (!row) return {};
+        shift = { ...shift, openedAt: row.openedAt, closedAt: row.closedAt };
+      }
+      const openedAt = shift.openedAt as Date;
+      const db = this.db as unknown as {
+        tableCheck: { findMany: (a: unknown) => Promise<{ number: number; tableIds: string[]; lines: { quantity: number; unitPriceCents: number; state: string }[] }[]> };
+        tableCheckLine: { findMany: (a: unknown) => Promise<{ name: string; quantity: number; unitPriceCents: number; voidReason: string | null; voidedAt: Date | null }[]> };
+        restaurantTable: { findMany: (a: unknown) => Promise<{ id: string; name: string }[]> };
+      };
+      if (!db.tableCheck || !db.tableCheckLine) return {};
+      const [open, voided] = await Promise.all([
+        db.tableCheck.findMany({ where: { tenantId, status: { in: ['OPEN', 'PAYING'] } }, select: { number: true, tableIds: true, lines: { where: { tenantId }, select: { quantity: true, unitPriceCents: true, state: true } } } }),
+        db.tableCheckLine.findMany({
+          where: { tenantId, state: 'VOID', voidedAt: { gte: openedAt, ...(shift.closedAt ? { lte: shift.closedAt } : {}) }, NOT: { voidReason: 'MERGED' } },
+          select: { name: true, quantity: true, unitPriceCents: true, voidReason: true, voidedAt: true }, orderBy: { voidedAt: 'asc' }, take: 200,
+        }),
+      ]);
+      if (!open.length && !voided.length) return {};
+      const names = open.length && db.restaurantTable ? new Map((await db.restaurantTable.findMany({ where: { tenantId }, select: { id: true, name: true } })).map((t) => [t.id, t.name])) : new Map<string, string>();
+      return {
+        openChecks: {
+          count: open.length,
+          totalCents: open.reduce((s, c) => s + c.lines.filter((l) => l.state !== 'VOID').reduce((a, l) => a + l.quantity * l.unitPriceCents, 0), 0),
+          labels: open.slice(0, 20).map((c) => (c.tableIds.length ? c.tableIds.map((id) => names.get(id) ?? '?').join('+') : `#${c.number}`)),
+        },
+        voidedItems: {
+          count: voided.reduce((s, l) => s + l.quantity, 0),
+          totalCents: voided.reduce((s, l) => s + l.quantity * l.unitPriceCents, 0),
+          list: voided.slice(0, 50).map((l) => ({ name: l.name, quantity: l.quantity, amountCents: l.quantity * l.unitPriceCents, reason: l.voidReason, at: (l.voidedAt ?? new Date()).toISOString() })),
+        },
+      };
+    } catch {
+      return {};
+    }
   }
 
   private view(s: ShiftRow) {

@@ -467,7 +467,7 @@ export function ListView(p: ListViewProps) {
             <span style={{ fontSize: 12, color: C.muted }}>{fmtT(b.startTime)}{b.assignedStaff ? ` · ${b.assignedStaff.firstName}` : ''}</span>
           </button>
           {a === 'late'
-            ? <button type="button" style={linkBtn} onClick={() => onAction(b.id, 'arrive')}>Check in</button>
+            ? <button type="button" style={linkBtn} onClick={() => onAction(b.id, 'arrive')}>{L('Khách đã đến', 'Check in')}</button>
             : <button type="button" style={linkBtn} onClick={() => onAction(b.id, 'status', { status: 'CONFIRMED' })}>{L('Xác nhận', 'Confirm')}</button>}
         </div>
       ))}

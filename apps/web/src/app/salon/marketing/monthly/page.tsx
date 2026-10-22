@@ -496,7 +496,7 @@ function Inner() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: showMetrics ? 520 : 260 }}>
             <thead><tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
               <th style={th}>{T('Kênh', 'Channel')}</th><th style={th}>{T('Chi phí', 'Spend')}</th>
-              {showMetrics && <><th style={th}>Reach</th><th style={th}>Clicks</th><th style={th}>Leads</th></>}
+              {showMetrics && <><th style={th}>{vi ? 'Tiếp cận' : 'Reach'}</th><th style={th}>{vi ? 'Lượt nhấp' : 'Clicks'}</th><th style={th}>{vi ? 'Liên hệ' : 'Leads'}</th></>}
             </tr></thead>
             <tbody>
               {CHANNELS.map((ch) => {

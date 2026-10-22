@@ -12,6 +12,17 @@ import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '.
 
 interface Table { id: string; name: string; seats: number; area: string | null; isActive: boolean; sortOrder: number }
 
+const SAMPLE_TABLES_VI = `name,seats,area
+T1,2,Trong nhà
+T2,2,Trong nhà
+T3,4,Trong nhà
+T4,4,Trong nhà
+T5,6,Trong nhà
+S1,4,Sân vườn
+S2,4,Sân vườn
+V1,10,Phòng VIP
+Q1,2,Quầy bar
+Q2,2,Quầy bar`;
 const SAMPLE_TABLES = `name,seats,area
 M1,2,Main Dining
 M2,2,Main Dining
@@ -59,7 +70,7 @@ function Inner() {
   const load = useCallback(async () => {
     if (!token || !owner) return;
     try { setTables(await apiFetch<Table[]>('/tables', { token })); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Failed to load'); }
+    catch (e) { setErr(e instanceof Error ? e.message : (vi ? 'Không tải được danh sách bàn' : 'Failed to load')); }
   }, [token, owner]);
   useEffect(() => { load(); }, [load]);
 
@@ -77,11 +88,11 @@ function Inner() {
 
   async function patch(id: string, data: Partial<Table>) {
     try { await apiFetch(`/tables/${id}`, { method: 'PATCH', token, body: data }); await load(); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    catch (e) { setErr(e instanceof Error ? e.message : (vi ? 'Không lưu được' : 'Failed')); }
   }
   async function remove(id: string) {
     try { await apiFetch(`/tables/${id}`, { method: 'DELETE', token }); await load(); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    catch (e) { setErr(e instanceof Error ? e.message : (vi ? 'Không lưu được' : 'Failed')); }
   }
 
   async function loadSampleRes() {
@@ -109,8 +120,8 @@ function Inner() {
       for (const [fn, ln, ph, party, startTime] of RES) {
         try { await apiFetch('/bookings', { method: 'POST', token, body: { serviceId: svc.id, startTime, partySize: party, customerFirstName: fn, customerLastName: ln, customerPhone: ph } }); n++; } catch { /* skip */ }
       }
-      alert('Added ' + n + ' reservations for today. Open Calendar and switch to the Tables view.');
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+      alert(vi ? `Đã thêm ${n} lượt đặt bàn mẫu cho hôm nay. Mở Lịch và chuyển sang chế độ xem Bàn.` : 'Added ' + n + ' reservations for today. Open Calendar and switch to the Tables view.');
+    } catch (e) { setErr(e instanceof Error ? e.message : (vi ? 'Không lưu được' : 'Failed')); }
     finally { setBusy(false); }
   }
 
@@ -129,8 +140,8 @@ function Inner() {
       {view === 'map' || !owner ? <FloorMap token={token} vi={vi} canArrange={owner} /> : <>
       {err && <div style={ui.banner}>{err}</div>}
 
-      <ImportCsv token={token} endpoint="/tables" header="name,seats,area" sample={SAMPLE_TABLES} existing={() => new Set(tables.map((tb) => tb.name.toLowerCase()))} buildBody={(c) => ({ name: c[0], seats: parseInt(c[1], 10) || 2, area: c[2] || undefined })} onDone={load} />
-      <button onClick={loadSampleRes} disabled={busy} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', marginBottom: 14 }}>+ Sample reservations (today)</button>
+      <ImportCsv token={token} endpoint="/tables" header="name,seats,area" sample={vi ? SAMPLE_TABLES_VI : SAMPLE_TABLES} existing={() => new Set(tables.map((tb) => tb.name.toLowerCase()))} buildBody={(c) => ({ name: c[0], seats: parseInt(c[1], 10) || 2, area: c[2] || undefined })} onDone={load} />
+      <button onClick={loadSampleRes} disabled={busy} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', marginBottom: 14 }}>{vi ? '+ Đặt bàn mẫu (hôm nay)' : '+ Sample reservations (today)'}</button>
 
       <form onSubmit={add} style={{ ...ui.card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ flex: '2 1 150px' }}><span style={ui.label}>{t('tb.name')}</span>
@@ -138,7 +149,7 @@ function Inner() {
         <label style={{ flex: '1 1 80px' }}><span style={ui.label}>{t('tb.seats')}</span>
           <input style={ui.input} type="number" min={1} max={50} value={form.seats} onChange={(e) => setForm({ ...form, seats: e.target.value })} /></label>
         <label style={{ flex: '2 1 130px' }}><span style={ui.label}>{t('tb.area')}</span>
-          <input style={ui.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} placeholder="Indoor / Patio" /></label>
+          <input style={ui.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} placeholder={vi ? 'Trong nhà / Sân vườn' : 'Indoor / Patio'} /></label>
         <button type="submit" disabled={busy} style={ui.primaryBtn}>{t('tb.add')}</button>
       </form>
 
@@ -153,7 +164,7 @@ function Inner() {
       </div>
       <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {tables.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 14 }}>{t('tb.empty')}</p>}
-        {tables.map((tb) => (
+        {[...tables].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })).map((tb) => (
           <div key={tb.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 12, opacity: tb.isActive ? 1 : 0.55, borderColor: bulk.has(tb.id) ? '#4338ca' : undefined, background: bulk.has(tb.id) ? 'var(--c1e1b4b)' : undefined }}>
             <BulkRowBox on={bulk.has(tb.id)} onChange={() => bulk.toggle(tb.id)} />
             <input style={{ ...ui.input, width: 110 }} value={tb.name}

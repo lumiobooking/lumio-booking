@@ -1211,6 +1211,11 @@ model MenuItem {
   imageUrl    String?
   isActive    Boolean @default(true)
   sortOrder   Int     @default(0)
+  // Sold out (86) since this moment; null = available. With the restaurant's
+  // daily reset it counts only on the day it was set.
+  soldOutAt   DateTime?
+  // Option groups the server picks from (size, extras): see restaurant/check-logic.
+  options     Json    @default("[]")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2590,6 +2595,9 @@ model TableCheck {
   preBillCount        Int      @default(0)
   changedAfterPrebill Boolean  @default(false)
   orderId             String?  // the sale it became
+  payRequestedAt      DateTime? // a server said the table wants to pay
+  mergedInto          String?   // closed by merging into this bill
+  splitFrom           String?   // made by splitting dishes off this bill
   closedAt            DateTime?
   voidReason          String?
   lines               TableCheckLine[]
@@ -2614,6 +2622,7 @@ model TableCheckLine {
   unitPriceCents  Int
   quantity        Int        @default(1)
   note            String?
+  options         Json       @default("[]") // chosen options, priced into unitPriceCents
   station         String     @default("KITCHEN")
   state           String     @default("UNSENT") // UNSENT | SENT | VOID
   batch           Int?

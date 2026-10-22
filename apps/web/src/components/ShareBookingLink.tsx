@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
+import { useLang } from '../lib/i18n';
 
 /**
  * Compact "Booking link" control for the salon admin sidebar.
@@ -12,6 +13,7 @@ import { apiFetch } from '../lib/api';
  */
 export function ShareBookingLink() {
   const { token } = useAuth();
+  const vi = useLang().lang === 'vi';
   const [slug, setSlug] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -68,7 +70,7 @@ export function ShareBookingLink() {
             boxShadow: '0 10px 30px rgba(0,0,0,.5)',
           }}
         >
-          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>Your public booking page</div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>{vi ? 'Trang đặt lịch công khai của tiệm' : 'Your public booking page'}</div>
           <input
             readOnly
             value={url}

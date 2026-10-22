@@ -6,6 +6,7 @@ import { fmtInTz } from '../lib/datetime';
 import { fromMinorUnits, toMinorUnits, ui } from '../lib/ui';
 import { ind } from '../lib/ui-industry';
 import { DayCheckCard } from './DayCheckCard';
+import { CashCounter } from './CashCounter';
 
 /**
  * The cashier shift ("ca thu ngân") on the till.
@@ -29,6 +30,10 @@ export interface ShiftSummary {
   byTender: Record<string, number>;
   changeCents: number; cashInCents: number; cashOutCents: number; expectedCashCents: number;
   movements: { id: string; kind: 'IN' | 'OUT'; amountCents: number; reason: string | null; byName: string | null; at: string }[];
+  /** Restaurants: bills still running on tables (not in this drawer yet). */
+  openChecks?: { count: number; totalCents: number; labels: string[] };
+  /** Restaurants: dishes taken back after the kitchen had them, this shift. */
+  voidedItems?: { count: number; totalCents: number; list: { name: string; quantity: number; amountCents: number; reason: string | null; at: string }[] };
 }
 export interface ShiftState { requireShift: boolean; shift: ShiftView | null; summary: ShiftSummary | null }
 
@@ -211,6 +216,23 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
             its fix. Closing is never blocked; it is the moment somebody looks. */}
         <DayCheckCard token={token} vi={vi} currency={currency} />
 
+        {(s.openChecks?.count ?? 0) > 0 && (
+          <div role="alert" style={{ padding: 12, borderRadius: 12, border: '1px solid #ea580c', background: 'var(--c451a03)', color: 'var(--cfde68a)', fontWeight: 700, fontSize: 13.5 }}>
+            {L(`Còn ${s.openChecks!.count} bill chưa thanh toán (${s.openChecks!.labels.join(', ')}) · ${fmt(s.openChecks!.totalCents)}. Tiền các bill này chưa vào ca: thu xong rồi chốt, hoặc ghi chú bàn giao cho ca sau.`, `${s.openChecks!.count} bills still open (${s.openChecks!.labels.join(', ')}) · ${fmt(s.openChecks!.totalCents)}. Their money is not in this shift: take it first, or hand them over in the note.`)}
+          </div>
+        )}
+        {(s.voidedItems?.count ?? 0) > 0 && (
+          <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={secLabel}>{L(`MÓN HUỶ SAU KHI BÁO BẾP · ${s.voidedItems!.count} MÓN · ${fmt(s.voidedItems!.totalCents)}`, `DISHES CANCELLED AFTER SENDING · ${s.voidedItems!.count} · ${fmt(s.voidedItems!.totalCents)}`)}</div>
+            {s.voidedItems!.list.map((v, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
+                <span>{fmtInTz(v.at, { hour: 'numeric', minute: '2-digit' })} · {v.quantity}× {v.name}{v.reason ? ` · ${v.reason}` : ''}</span>
+                <span style={{ color: 'var(--ink-bad)' }}>−{fmt(v.amountCents)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={secLabel}>{L('CHỐT CA & BÀN GIAO', 'CLOSE & HAND OVER')}</div>
           <Row k={L('Tiền đầu ca', 'Opening float')} v={fmt(shift.openingCents)} />
@@ -224,6 +246,7 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
               <button type="button" onClick={() => setCounted(fromMinorUnits(s.expectedCashCents, currency))} style={ghost}>{L('Khớp đúng', 'Matches')}</button>
             </div>
           </label>
+          <CashCounter vi={vi} currency={currency} fmt={fmt} onTotal={(c) => setCounted(fromMinorUnits(c, currency))} />
           {variance !== null && (
             <div style={{ fontSize: 14, fontWeight: 700, color: variance === 0 ? 'var(--ink-good)' : variance < 0 ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>
               {variance === 0 ? L('Khớp — không chênh lệch.', 'Balanced — no variance.') : `${L('Chênh lệch', 'Variance')}: ${signed(variance, fmt)} ${variance < 0 ? L('(thiếu)', '(short)') : L('(dư)', '(over)')}`}
@@ -308,6 +331,8 @@ export function printSheet(shift: ShiftView, summary: ShiftSummary, vi: boolean,
 <h2>${esc(L('DOANH THU', 'SALES'))}</h2><table>${row(L('Đơn đã thu', 'Sales'), String(summary.orders))}${row(L('Doanh thu', 'Revenue'), fmt(summary.revenueCents))}${row(L('Tip', 'Tips'), fmt(summary.tipsCents))}${tenders}${summary.byMethod.giftCardCents > 0 ? row('  Gift card', fmt(summary.byMethod.giftCardCents)) : ''}</table><hr>
 <h2>${esc(L('TIỀN MẶT TRONG KÉT', 'CASH DRAWER'))}</h2><table>${row(L('Tiền đầu ca', 'Opening float'), fmt(shift.openingCents))}${row(L('+ Tiền mặt thu (đã trừ thối)', '+ Cash taken (net of change)'), fmt(summary.byMethod.cashCents - summary.changeCents))}${summary.cashInCents ? row(L('+ Thu thêm', '+ Cash in'), fmt(summary.cashInCents)) : ''}${summary.cashOutCents ? row(L('− Chi ra', '− Cash out'), `−${fmt(summary.cashOutCents)}`) : ''}${row(L('= Két phải có', '= Should hold'), fmt(summary.expectedCashCents), true)}${shift.countedCents != null ? row(L('Đếm được', 'Counted'), fmt(shift.countedCents), true) : ''}${shift.varianceCents != null ? row(L('Chênh lệch', 'Variance'), variance === 0 ? L('Khớp', 'Balanced') : `${signed(variance, fmt)} ${variance < 0 ? L('(thiếu)', '(short)') : L('(dư)', '(over)')}`, true) : ''}</table>
 ${moves ? `<hr><h2>${esc(L('THU / CHI', 'CASH IN / OUT'))}</h2><table>${moves}</table>` : ''}
+${summary.voidedItems && summary.voidedItems.count ? `<hr><h2>${esc(L('MÓN HUỶ SAU KHI BÁO BẾP', 'CANCELLED AFTER SENDING'))}</h2><table>${summary.voidedItems.list.map((v) => row(`${v.quantity}x ${v.name}${v.reason ? ` (${v.reason})` : ''}`, `−${fmt(v.amountCents)}`)).join('')}</table>` : ''}
+${summary.openChecks && summary.openChecks.count ? `<hr><div>${esc(L(`Bill chưa thanh toán khi chốt: ${summary.openChecks.count} (${summary.openChecks.labels.join(', ')}) · ${fmt(summary.openChecks.totalCents)}`, `Bills open at close: ${summary.openChecks.count} (${summary.openChecks.labels.join(', ')}) · ${fmt(summary.openChecks.totalCents)}`))}</div>` : ''}
 ${shift.closeNote ? `<hr><div>${esc(L('Ghi chú', 'Note'))}: ${esc(shift.closeNote)}</div>` : ''}
 <div class="sig"><div>${esc(L('Người giao', 'Handed over by'))}</div><div>${esc(L('Người nhận', 'Received by'))}</div></div>
 </body></html>`;

@@ -5,7 +5,8 @@ import { Type } from 'class-transformer';
 import { TenderDto } from '../../pos/dto/pos.dto';
 
 export class OpenCheckDto {
-  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(6) @IsString({ each: true }) tableIds!: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(6) @IsString({ each: true }) tableIds?: string[];
+  @IsOptional() @IsBoolean() takeaway?: boolean;
   @IsOptional() @IsInt() @Min(1) @Max(99) guests?: number;
   @IsOptional() @IsString() @MaxLength(140) note?: string;
 }
@@ -18,6 +19,8 @@ export class UpdateCheckDto {
 
 export class AddLineDto {
   @IsString() menuItemId!: string;
+  /** [{ groupId, choiceIds: [] }] — checked against the dish's own groups by the service. */
+  @IsOptional() @IsArray() @ArrayMaxSize(8) options?: unknown[];
   @IsOptional() @IsInt() @Min(1) @Max(99) quantity?: number;
   @IsOptional() @IsString() @MaxLength(140) note?: string;
 }
@@ -57,4 +60,21 @@ export class PayCheckDto {
 
 export class SaveRestaurantSettingsDto {
   @IsObject() settings!: Record<string, unknown>;
+}
+
+export class SoldOutDto {
+  @IsBoolean() soldOut!: boolean;
+}
+
+export class MergeCheckDto {
+  @IsString() fromCheckId!: string;
+}
+
+export class SplitLineDto {
+  @IsString() lineId!: string;
+  @IsOptional() @IsInt() @Min(1) @Max(99) quantity?: number;
+}
+
+export class SplitCheckDto {
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(60) @ValidateNested({ each: true }) @Type(() => SplitLineDto) lines!: SplitLineDto[];
 }

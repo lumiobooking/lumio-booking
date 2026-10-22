@@ -1,4 +1,5 @@
-import { cashQuickAmounts, isTableIndustry, lineGroups, minutesOpen, tableState, tillError, timerTone, type CheckLine } from './restaurant-till';
+import { byTableName, cashQuickAmounts, combinedState, evenShares, isTableIndustry, lineGroups, minutesOpen, optionsReady, priceWith, tableState, tillError, timerTone, type CheckLine } from './restaurant-till';
+import { countTotal, denominationsFor } from './cash-count';
 
 const L = (id: string, over: Partial<CheckLine> = {}): CheckLine => ({ id, menuItemId: 'm', name: 'Phở', unitPriceCents: 85000, quantity: 1, note: null, station: 'KITCHEN', state: 'UNSENT', batch: null, sentAt: null, sentByName: null, voidReason: null, ...over });
 
@@ -53,5 +54,51 @@ describe('restaurant till', () => {
   it('suggests cash notes: exact first, then round notes up', () => {
     expect(cashQuickAmounts(415000, 'VND')).toEqual([415000, 420000, 450000, 500000, 600000]);
     expect(cashQuickAmounts(1250, 'USD')).toEqual([1250, 1300, 1500, 2000, 5000]);
+  });
+
+  it('a table that asked to pay stands out, and a split table shows its most urgent bill', () => {
+    expect(tableState({ status: 'OPEN', itemCount: 2, unsentCount: 0, preBilledAt: 'x', payRequestedAt: 'y' })).toBe('askpay');
+    expect(combinedState([
+      { status: 'OPEN', itemCount: 2, unsentCount: 0, preBilledAt: null },
+      { status: 'OPEN', itemCount: 1, unsentCount: 1, preBilledAt: null },
+    ])).toBe('unsent');
+    expect(combinedState([])).toBe('free');
+  });
+
+  it('lists tables the way people count them', () => {
+    const names = ['M10', 'M2', 'M1', 'B3', 'm9'].map((name) => ({ name })).sort(byTableName).map((t) => t.name);
+    expect(names).toEqual(['B3', 'M1', 'M2', 'm9', 'M10']);
+  });
+
+  it('dish options: required groups block, extras add up', () => {
+    const groups = [
+      { id: 's', name: 'Size', required: true, max: 1, choices: [{ id: 'n', name: 'N', priceCents: 0 }, { id: 'l', name: 'L', priceCents: 15000 }] },
+      { id: 'a', name: 'Add', required: false, max: 2, choices: [{ id: 'e', name: 'Egg', priceCents: 10000 }, { id: 'q', name: 'Q', priceCents: 5000 }] },
+    ];
+    expect(optionsReady(groups, {})).toBe(false);
+    expect(optionsReady(groups, { s: ['l'] })).toBe(true);
+    expect(optionsReady(groups, { s: ['l', 'n'] })).toBe(false);
+    expect(priceWith(85000, groups, { s: ['l'], a: ['e', 'q'] })).toBe(115000);
+  });
+
+  it('splits a total evenly to the last đồng', () => {
+    expect(evenShares(100000, 3)).toEqual([33334, 33333, 33333]);
+    expect(evenShares(100000, 3).reduce((a, b) => a + b, 0)).toBe(100000);
+    expect(evenShares(500, 0)).toEqual([500]);
+  });
+
+  it('server codes and English validation become Vietnamese', () => {
+    expect(tillError('SOLD_OUT', true)).toBe('Món này đã hết.');
+    expect(tillError('OPTION_REQUIRED:Cỡ tô', true)).toBe('Chọn “Cỡ tô” trước.');
+    expect(tillError('CHECK_NOT_FOUND', true)).toContain('Không tìm thấy bill');
+    expect(tillError('guests must not be greater than 99', true)).toBe('Dữ liệu không hợp lệ, thử lại.');
+    expect(tillError('Tendered amount is less than the amount due', true)).toBe('Số tiền khách đưa ít hơn số phải thu.');
+    expect(tillError('guests must not be greater than 99', false)).toBe('guests must not be greater than 99');
+  });
+
+  it('counts the drawer note by note in the restaurant currency', () => {
+    expect(denominationsFor('VND')[0]).toBe(500000);
+    expect(denominationsFor('xyz')).toEqual(denominationsFor('USD'));
+    expect(countTotal({ 500000: 12, 200000: 10, 100000: 15, 50000: 8, 20000: 5, 10000: 4, 5000: 2 })).toBe(10_050_000);
   });
 });

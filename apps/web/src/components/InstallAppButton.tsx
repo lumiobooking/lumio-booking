@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useLang } from '../lib/i18n';
 import { isNativeApp } from '../lib/native';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -15,6 +16,7 @@ interface BeforeInstallPromptEvent extends Event {
  * - Already installed (standalone display mode): renders nothing.
  */
 export function InstallAppButton({ label = 'Install app' }: { label?: string }) {
+  const vi = useLang().lang === 'vi';
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
   const [isIos, setIsIos] = useState(false);
@@ -74,15 +76,15 @@ export function InstallAppButton({ label = 'Install app' }: { label?: string }) 
             color: 'var(--ce2e8f0)', fontSize: 13, lineHeight: 1.5, boxShadow: '0 8px 24px rgba(0,0,0,.4)',
           }}
         >
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Install on iPhone / iPad</div>
-          <div>1. Tap the <strong>Share</strong> button <span aria-hidden>􀈂</span> in Safari.</div>
-          <div>2. Choose <strong>Add to Home Screen</strong>.</div>
-          <div>3. Tap <strong>Add</strong> — the app icon appears on your home screen.</div>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>{vi ? 'Cài lên iPhone / iPad' : 'Install on iPhone / iPad'}</div>
+          {vi ? <div>1. Trong Safari, bấm nút <strong>Chia sẻ</strong> <span aria-hidden>􀈂</span>.</div> : <div>1. Tap the <strong>Share</strong> button <span aria-hidden>􀈂</span> in Safari.</div>}
+          {vi ? <div>2. Chọn <strong>Thêm vào MH chính</strong>.</div> : <div>2. Choose <strong>Add to Home Screen</strong>.</div>}
+          {vi ? <div>3. Bấm <strong>Thêm</strong>: biểu tượng app hiện trên màn hình chính.</div> : <div>3. Tap <strong>Add</strong> — the app icon appears on your home screen.</div>}
           <button
             onClick={() => setShowIosHelp(false)}
             style={{ marginTop: 8, background: 'none', border: 'none', color: 'var(--c818cf8)', cursor: 'pointer', fontSize: 13, padding: 0 }}
           >
-            Got it
+            {vi ? 'Đã hiểu' : 'Got it'}
           </button>
         </div>
       )}

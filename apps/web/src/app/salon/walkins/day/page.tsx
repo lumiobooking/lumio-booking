@@ -141,7 +141,7 @@ function Inner() {
           <div style={{ ...ui.card, padding: 0, overflowX: 'auto' }}>
             <div style={head}>{L('Tua & doanh thu theo thợ', 'Turns & money by technician')}</div>
             <table style={table}>
-              <thead><tr><th style={th}>{L('Thợ', 'Tech')}</th><th style={thR}>{L('Tua', 'Turns')}</th><th style={thR}>Request</th><th style={thR}>{L('Bỏ lượt', 'Skips')}</th><th style={thR}>{L('Quầy đổi', 'Overrides')}</th><th style={thR}>{L('Dịch vụ', 'Services')}</th></tr></thead>
+              <thead><tr><th style={th}>{L('Thợ', 'Tech')}</th><th style={thR}>{L('Tua', 'Turns')}</th><th style={thR}>{L('Khách chọn thợ', 'Request')}</th><th style={thR}>{L('Bỏ lượt', 'Skips')}</th><th style={thR}>{L('Quầy đổi', 'Overrides')}</th><th style={thR}>{L('Dịch vụ', 'Services')}</th></tr></thead>
               <tbody>
                 {data.techs.map((t) => (
                   <tr key={t.staffId}>

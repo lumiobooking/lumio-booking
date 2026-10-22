@@ -31,12 +31,14 @@ const CSS = `
 @keyframes osIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 `;
 
-export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall }: {
+export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall, vi = false }: {
   lines: OrderLine[];
   rows: TotalRow[];
   due: string;
   accent: string;
   money: (cents: number) => string;
+  /** The salon reads Vietnamese: the customer's screen does too. */
+  vi?: boolean;
   reviewUrl?: string;      // landscape: its own column; portrait: a slim strip, so the ticket keeps the room
   tall: boolean;           // clearly portrait
 }) {
@@ -79,7 +81,7 @@ export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall }
   const items = (
     <div style={{ ...panel, flex: '0 1 auto', minHeight: 'min(190px, 34vh)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 'clamp(4px, 1vh, 10px)', flexShrink: 0 }}>
-        <div style={{ fontSize: 'clamp(19px, 2.4vw, 28px)', fontWeight: 700, color: '#0f172a' }}>Your services</div>
+        <div style={{ fontSize: 'clamp(19px, 2.4vw, 28px)', fontWeight: 700, color: '#0f172a' }}>{vi ? 'Đơn của bạn' : 'Your services'}</div>
         <span style={{ fontSize: 'clamp(12px, 1.4vw, 15px)', fontWeight: 700, color: accent, background: `${accent}14`, borderRadius: 999, padding: '4px 11px', whiteSpace: 'nowrap' }}>
           {count} {count === 1 ? 'item' : 'items'}
         </span>
@@ -119,7 +121,7 @@ export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall }
       ))}
       <div style={{ height: 1, background: 'rgba(255,255,255,0.25)', margin: side ? '16px 0' : 'clamp(8px, 1.4vh, 14px) 0' }} />
       <div style={{ display: 'flex', flexDirection: side ? 'column' : 'row', alignItems: side ? 'flex-start' : 'baseline', justifyContent: 'space-between', gap: side ? 4 : 12 }}>
-        <span style={{ fontSize: 'clamp(14px, 1.9vw, 21px)', fontWeight: 600, color: 'rgba(255,255,255,0.92)' }}>Amount due</span>
+        <span style={{ fontSize: 'clamp(14px, 1.9vw, 21px)', fontWeight: 600, color: 'rgba(255,255,255,0.92)' }}>{vi ? 'Cần thanh toán' : 'Amount due'}</span>
         <span style={{ fontSize: side ? 'clamp(32px, 5.5vw, 56px)' : 'clamp(28px, 4.6vw, 46px)', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', letterSpacing: '-0.01em', lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>{due}</span>
       </div>
     </div>
@@ -134,7 +136,7 @@ export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall }
         <style>{CSS}</style>
         {items}
         {totals(false)}
-        {reviewUrl && <ReviewStrip url={reviewUrl} accent={accent} />}
+        {reviewUrl && <ReviewStrip url={reviewUrl} accent={accent} vi={vi} />}
       </div>
     );
   }
@@ -143,7 +145,7 @@ export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall }
       <div style={{ ...shell, flexDirection: 'row', alignItems: 'center', gap: 'clamp(18px, 2.6vw, 36px)' }}>
         <style>{CSS}</style>
         <div style={{ flex: '1 1 0%', minWidth: 0, maxHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <ReviewColumn url={reviewUrl} accent={accent} />
+          <ReviewColumn url={reviewUrl} accent={accent} vi={vi} />
         </div>
         <div style={{ ...column, flex: '1 1 0%', height: '100%' }}>
           {items}
@@ -164,7 +166,7 @@ export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall }
 const qrSrc = (url: string, px: number) => `https://api.qrserver.com/v1/create-qr-code/?size=${px}x${px}&margin=1&data=${encodeURIComponent(url)}`;
 
 /** Landscape: the Google review card, sized by the screen's HEIGHT so it never runs off a short monitor. */
-function ReviewColumn({ url, accent }: { url: string; accent: string }) {
+function ReviewColumn({ url, accent, vi }: { url: string; accent: string; vi: boolean }) {
   return (
     <div style={{ width: '100%', maxWidth: 460, maxHeight: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 'clamp(6px, 1.4vh, 16px)', background: 'linear-gradient(160deg, #ffffff, #fffdf5)', border: `1px solid ${GOLD}33`, borderRadius: 26, padding: 'clamp(14px, 2.6vh, 30px) clamp(16px, 2vw, 28px)', boxShadow: `0 22px 60px rgba(15,23,42,0.14), inset 0 0 0 2px ${GOLD}44` }}>
       <div style={{ position: 'relative' }}>
@@ -175,19 +177,19 @@ function ReviewColumn({ url, accent }: { url: string; accent: string }) {
         </div>
       </div>
       <div style={{ color: '#f5a623', fontSize: 'clamp(22px, 4.4vh, 40px)', letterSpacing: 4, lineHeight: 1 }}>★★★★★</div>
-      <div style={{ fontFamily: 'Playfair Display, Georgia, serif', fontWeight: 600, fontSize: 'clamp(24px, 5.2vh, 46px)', color: '#0f172a', lineHeight: 1.1 }}>Loved your visit?</div>
+      <div style={{ fontFamily: 'Playfair Display, Georgia, serif', fontWeight: 600, fontSize: 'clamp(24px, 5.2vh, 46px)', color: '#0f172a', lineHeight: 1.1 }}>{vi ? 'Bạn hài lòng chứ?' : 'Loved your visit?'}</div>
       <div style={{ fontSize: 'clamp(14px, 2.2vh, 19px)', color: '#475569', lineHeight: 1.45, maxWidth: 380 }}>
-        Leave us a quick <strong>5-star Google review</strong> — it truly makes our day 💛
+        {vi ? <>Để lại giúp tiệm <strong>đánh giá 5 sao trên Google</strong> nhé, cảm ơn bạn rất nhiều 💛</> : <>Leave us a quick <strong>5-star Google review</strong> — it truly makes our day 💛</>}
       </div>
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', borderRadius: 999, padding: '7px 14px', border: '1px solid #eef2f7', boxShadow: '0 4px 14px rgba(15,23,42,0.06)', fontSize: 'clamp(12px, 1.8vh, 15px)', color: '#334155', fontWeight: 600, whiteSpace: 'nowrap' }}>
-        📱 Point your camera to review on <span style={{ fontWeight: 700 }}><span style={{ color: '#4285F4' }}>G</span><span style={{ color: '#EA4335' }}>o</span><span style={{ color: '#FBBC05' }}>o</span><span style={{ color: '#4285F4' }}>g</span><span style={{ color: '#34A853' }}>l</span><span style={{ color: '#EA4335' }}>e</span></span>
+        📱 {vi ? 'Đưa camera vào mã để đánh giá trên' : 'Point your camera to review on'} <span style={{ fontWeight: 700 }}><span style={{ color: '#4285F4' }}>G</span><span style={{ color: '#EA4335' }}>o</span><span style={{ color: '#FBBC05' }}>o</span><span style={{ color: '#4285F4' }}>g</span><span style={{ color: '#34A853' }}>l</span><span style={{ color: '#EA4335' }}>e</span></span>
       </div>
     </div>
   );
 }
 
 /** Portrait: the review QR as one slim strip under the totals. */
-function ReviewStrip({ url, accent }: { url: string; accent: string }) {
+function ReviewStrip({ url, accent, vi }: { url: string; accent: string; vi: boolean }) {
   return (
     <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 'clamp(12px, 3vw, 24px)', background: 'linear-gradient(160deg, #ffffff, #fffdf5)', border: `1px solid ${GOLD}33`, borderRadius: 22, padding: 'clamp(10px, 1.6vh, 16px) clamp(12px, 2.6vw, 22px)', boxShadow: '0 12px 36px rgba(15,23,42,0.08)', boxSizing: 'border-box' }}>
       <div style={{ background: '#fff', borderRadius: 14, padding: 8, boxShadow: `0 8px 22px rgba(15,23,42,0.10), 0 0 0 2px ${accent}33`, flexShrink: 0 }}>
@@ -197,7 +199,7 @@ function ReviewStrip({ url, accent }: { url: string; accent: string }) {
       <div style={{ minWidth: 0 }}>
         <div style={{ color: '#f5a623', fontSize: 'clamp(15px, 2.4vw, 22px)', letterSpacing: 2 }}>★★★★★</div>
         <div style={{ fontFamily: 'Playfair Display, Georgia, serif', fontWeight: 600, fontSize: 'clamp(18px, 3.4vw, 30px)', color: '#0f172a', lineHeight: 1.15, margin: '2px 0 4px' }}>Enjoying your visit?</div>
-        <div style={{ fontSize: 'clamp(12.5px, 2vw, 17px)', color: '#475569', lineHeight: 1.4 }}>Scan to leave a quick <strong>Google review</strong> 💛</div>
+        <div style={{ fontSize: 'clamp(12.5px, 2vw, 17px)', color: '#475569', lineHeight: 1.4 }}>{vi ? <>Quét mã để đánh giá nhanh trên <strong>Google</strong> 💛</> : <>Scan to leave a quick <strong>Google review</strong> 💛</>}</div>
       </div>
     </div>
   );

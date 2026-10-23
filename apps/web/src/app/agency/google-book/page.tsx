@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { C } from '../AgencyParts';
+import { buildProof, GOOGLE_MINIMUM, proofCsv, proofEmail } from '../../../lib/google-proof';
 
 interface Issue { code: string; level: 'error' | 'warn'; message: string; serviceId?: string; serviceName?: string }
 interface BookingLink { state: 'linked' | 'skipped' | 'error' | 'removed'; uri: string | null; at: string; reason?: string; others?: number }
@@ -100,6 +101,14 @@ export default function AgencyGoogleBookPage() {
     return { live: live.length, total: all.length, withMaps: withMaps.length, five, links: five.map((r) => r.mapsUrl as string).join(', ') };
   }, [board]);
 
+  // Google's reply (Actions Center): ≥ 25 merchants whose profile carries our booking link, and how many use Lumio.
+  const proof = useMemo(() => buildProof(board?.rows ?? []), [board]);
+  const downloadProof = () => {
+    const blob = new Blob([proofCsv(proof)], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'lumio-merchants-for-google.csv'; a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   const counts = useMemo(() => {
     const c = { all: 0, ready: 0, fix: 0, off: 0 };
     for (const r of board?.rows ?? []) { c.all++; c[r.status]++; }
@@ -160,6 +169,31 @@ export default function AgencyGoogleBookPage() {
           <Tile label="Upload SFTP" value={board.sftpConfigured ? 'đã cấu hình' : 'chưa cấu hình'} sub={board.sftpConfigured ? 'RWG_SFTP_HOST / USER / KEY' : 'lấy host, user, SSH key trong Partner Portal → Configuration → Feeds; đặt env RWG_SFTP_HOST, RWG_SFTP_USER, RWG_SFTP_KEY'} tone={board.sftpConfigured ? 'ok' : 'warn'} />
           <Tile label="Conversion partner id" value={board.partnerId ? board.partnerId : 'chưa có'} sub={board.partnerId ? 'NEXT_PUBLIC_RWG_PARTNER_ID — trang đặt lịch gửi rwg_token khi khách đặt xong' : 'Google cấp sau khi nhận đối tác; đặt NEXT_PUBLIC_RWG_PARTNER_ID rồi deploy'} tone={board.partnerId ? 'ok' : 'warn'} />
         </div>
+
+        <section style={{ background: C.panel, border: `2px solid ${proof.merchants.length >= GOOGLE_MINIMUM ? 'rgba(34,197,94,.6)' : 'rgba(245,158,11,.6)'}`, borderRadius: 14, padding: '14px 16px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: C.ink }}>Trả lời Google (Actions Center): danh sách ≥ {GOOGLE_MINIMUM} tiệm dùng link của Lumio</div>
+            <div style={{ fontSize: 13, color: C.sub }}>
+              <b style={{ color: proof.merchants.length >= GOOGLE_MINIMUM ? C.good : C.warn, fontSize: 18 }}>{proof.merchants.length}</b> / {GOOGLE_MINIMUM} tiệm đủ điều kiện · {proof.using} tiệm đang dùng Lumio
+            </div>
+          </div>
+          <div style={{ fontSize: 12.5, color: C.sub, marginTop: 6, lineHeight: 1.55 }}>
+            Chỉ tính tiệm thật (không Tắt) mà hồ sơ Google <b>đã gắn link đặt lịch của Lumio</b> và có link Maps. Google sẽ mở từng hồ sơ để kiểm tra nút “Đặt lịch” trỏ về <code>lumiobooking.com</code> — không đưa tiệm chưa gắn hay tiệm demo vào danh sách.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+            <button type="button" style={primary} disabled={!proof.merchants.length} onClick={() => copy('mail', proofEmail(proof))}>{copied === 'mail' ? '✓ đã chép thư' : '✉ Chép thư trả lời (tiếng Anh, có danh sách)'}</button>
+            <button type="button" style={ghost} disabled={!proof.merchants.length} onClick={downloadProof}>⬇ Tải danh sách (CSV)</button>
+            <button type="button" style={ghost} onClick={() => copy('using', String(proof.using))}>{copied === 'using' ? '✓ đã chép' : `Chép tổng số tiệm (${proof.using})`}</button>
+          </div>
+          {proof.merchants.length < GOOGLE_MINIMUM && (
+            <div style={{ marginTop: 10, fontSize: 12.5, color: C.sub }}>
+              <b style={{ color: C.warn }}>Còn thiếu {GOOGLE_MINIMUM - proof.merchants.length} tiệm.</b> Làm tiếp theo thứ tự (tiệm “Sẵn sàng” trước, chỉ cần bấm gắn link):
+              <ol style={{ margin: '6px 0 0', paddingLeft: 20, columns: 2, columnGap: 24 }}>
+                {proof.next.slice(0, 30).map((n) => <li key={n.name} style={{ breakInside: 'avoid' }}><b style={{ color: C.ink2 }}>{n.name}</b> — {n.why}</li>)}
+              </ol>
+            </div>
+          )}
+        </section>
 
         <section style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>

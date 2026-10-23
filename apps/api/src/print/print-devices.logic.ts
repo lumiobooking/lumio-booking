@@ -17,7 +17,8 @@ import { createHash, randomBytes } from 'crypto';
  */
 
 export const ROUTE_ANY = '*';
-export interface Route { printer?: string; host?: string; port?: number; beep?: boolean }
+/** `drawer`: a cash drawer is plugged into this printer (RJ11); a cash sale opens it. */
+export interface Route { printer?: string; host?: string; port?: number; beep?: boolean; drawer?: boolean }
 export type Routes = Record<string, Route>;
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -84,9 +85,9 @@ export function cleanRoutes(raw: unknown): Routes {
     if (host) {
       if (!hostOk(host)) continue;
       const port = Math.round(Number(r.port));
-      out[key] = { host, port: port >= 1 && port <= 65535 ? port : 9100, ...(r.beep === true ? { beep: true } : {}) };
+      out[key] = { host, port: port >= 1 && port <= 65535 ? port : 9100, ...(r.beep === true ? { beep: true } : {}), ...(r.drawer === true ? { drawer: true } : {}) };
     } else {
-      out[key] = { printer: text(r.printer, 120) };
+      out[key] = { printer: text(r.printer, 120), ...(r.drawer === true ? { drawer: true } : {}) };
     }
   }
   return out;
@@ -113,6 +114,32 @@ export function routeFor(job: { station: string | null; route?: string | null; d
   for (const d of live) { const r = cleanRoutes(d.routes)[ROUTE_ANY]; if (r) return { deviceId: d.id, key: ROUTE_ANY, route: r }; }
   return null;
 }
+
+/**
+ * Where "open the cash drawer" goes when no ticket prints with it (the till's
+ * "Mở két" button, a cash sale without a receipt): the printer the drawer is
+ * plugged into — the counter's first, then "everything else", then any.
+ */
+export function drawerRoute(devices: DeviceLike[], deviceId?: string | null, key?: string | null): { deviceId: string; key: string; route: Route } | null {
+  const live = devices.filter((d) => d.pairedAt).sort((a, b) => a.pairedAt!.getTime() - b.pairedAt!.getTime());
+  if (deviceId) {
+    const d = live.find((x) => x.id === deviceId);
+    const k = cleanKey(key);
+    const r = d && k ? cleanRoutes(d.routes)[k] : undefined;
+    return d && k && r ? { deviceId: d.id, key: k, route: r } : null;
+  }
+  for (const pick of ['COUNTER', ROUTE_ANY, '']) {
+    for (const d of live) {
+      const routes = cleanRoutes(d.routes);
+      const hit = pick ? (routes[pick]?.drawer ? pick : null) : Object.keys(routes).find((k) => routes[k].drawer) ?? null;
+      if (hit) return { deviceId: d.id, key: hit, route: routes[hit] };
+    }
+  }
+  return null;
+}
+
+/** ESC p — pulse both drawer pins (2 and 5); a pin with no drawer does nothing. */
+export const DRAWER_KICK = Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa, 0x1b, 0x70, 0x01, 0x19, 0xfa]);
 
 // ------------------------------------------------------------ the ticket --
 
@@ -152,9 +179,10 @@ export function plain(s: string): string {
     .replace(/[^\x0a\x20-\x7e]/g, '?');
 }
 
-/** Raw ESC/POS for a network printer: big table line, bold dishes, feed and cut. */
-export function escposBytes(rows: Row[], route: Route): Buffer {
+/** Raw ESC/POS for a network printer: big table line, bold dishes, feed and cut (and the drawer). */
+export function escposBytes(rows: Row[], route: Route, opts: { kick?: boolean; drawerOnly?: boolean } = {}): Buffer {
   const ESC = 0x1b; const GS = 0x1d;
+  if (opts.drawerOnly) return Buffer.concat([Buffer.from([ESC, 0x40]), DRAWER_KICK]);
   const parts: Buffer[] = [Buffer.from([ESC, 0x40])];
   if (route.beep) parts.push(Buffer.from([ESC, 0x42, 0x02, 0x02]));
   for (const x of rows) {
@@ -164,6 +192,7 @@ export function escposBytes(rows: Row[], route: Route): Buffer {
     else parts.push(Buffer.from(t, 'latin1'), Buffer.from([0x0a]));
   }
   parts.push(Buffer.from([0x0a, 0x0a, 0x0a, 0x0a, GS, 0x56, 0x42, 0x00]));
+  if (opts.kick) parts.push(DRAWER_KICK);
   return Buffer.concat(parts);
 }
 

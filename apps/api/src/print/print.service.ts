@@ -15,7 +15,7 @@ export class PrintService {
   }
 
   /** Phone enqueues a pre-rendered text receipt for the reception printer. */
-  async enqueue(user: AuthenticatedUser, dto: { title?: string; text: string; copies?: number }) {
+  async enqueue(user: AuthenticatedUser, dto: { title?: string; text: string; copies?: number; drawer?: boolean }) {
     const tenantId = this.tid(user);
     const text = (dto.text ?? '').slice(0, 20000);
     if (!text.trim()) throw new BadRequestException('Receipt text is empty');
@@ -25,6 +25,8 @@ export class PrintService {
         title: dto.title?.slice(0, 120) || null,
         text,
         copies: Math.max(1, Math.min(5, Math.round(dto.copies ?? 1))),
+        // A cash sale's receipt opens the drawer plugged into the counter printer.
+        drawer: dto.drawer === true,
         createdById: user.userId,
       },
       select: { id: true, status: true, createdAt: true },
@@ -54,7 +56,8 @@ export class PrintService {
     // A one-touch computer is online: it takes the tickets, the old agent stands down (no double printing).
     if (this.devices && await this.devices.liveDeviceFor(tenantId)) return [];
     const wanted = String(stations ?? '').split(',').map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z0-9_]{2,20}$/.test(x));
-    const where: Record<string, unknown> = { tenantId, status: PrintJobStatus.PENDING, claimedAt: null };
+    // Drawer-only jobs (no text) are for the one-touch computer; the old agent would print a blank page.
+    const where: Record<string, unknown> = { tenantId, status: PrintJobStatus.PENDING, claimedAt: null, text: { not: '' } };
     if (wanted.length) {
       const named = wanted.filter((x) => x !== 'COUNTER');
       where.OR = [

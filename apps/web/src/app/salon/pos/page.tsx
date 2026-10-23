@@ -350,7 +350,7 @@ function Register() {
   const paidLinesRef = useRef<Line[]>([]);
   const [nextVisit, setNextVisit] = useState<RebookResult | null>(null);
   /** The last receipt, kept whole so "In lại" prints the same paper after the bill is cleared. */
-  const lastReceiptRef = useRef<{ orderNumber: number | string; text: string; html: string } | null>(null);
+  const lastReceiptRef = useRef<{ orderNumber: number | string; text: string; html: string; drawer?: boolean } | null>(null);
   const toggleReception = (v: boolean) => {
     setPrintToReception(v);
     try { localStorage.setItem('lumio_print_to_reception', v ? '1' : '0'); } catch { /* ignore */ }
@@ -1342,18 +1342,21 @@ function Register() {
     const data = receiptData(orderNumber, feedbackLink);
     const { shop, design } = receiptLayout();
     const m = (c: number) => posMoney(c, currency);
-    const snap = { orderNumber, text: buildBillText(data, shop, design, m), html: buildBillHtml(data, shop, design, m) };
+    // A cash sale opens the drawer plugged into the counter printer (one-touch printing).
+    const drawer = (data.paid ?? []).some((p) => p.method === 'CASH' && p.cents > 0);
+    const snap = { orderNumber, text: buildBillText(data, shop, design, m), html: buildBillHtml(data, shop, design, m), drawer };
     lastReceiptRef.current = snap;
-    if (printOn) printSnapshot(snap);
+    if (printOn) printSnapshot(snap, true);
+    else if (drawer && printToReception) apiFetch('/print-jobs/drawer', { method: 'POST', token, body: { reason: 'cash' } }).catch(() => undefined);
   }
   /** Send a built receipt to the printer this device uses. */
-  function printSnapshot(snap: { orderNumber: number | string; text: string; html: string }) {
+  function printSnapshot(snap: { orderNumber: number | string; text: string; html: string; drawer?: boolean }, kick = false) {
     // Route to the reception-desk printer (via the print agent) when enabled on
     // this device; otherwise print locally on the phone. If sending to reception
     // fails (offline / agent down), fall back to local print so the receipt is
     // never lost.
     if (printToReception) {
-      apiFetch('/print-jobs', { method: 'POST', token, body: { title: `Receipt #${snap.orderNumber}`, text: snap.text } })
+      apiFetch('/print-jobs', { method: 'POST', token, body: { title: `Receipt #${snap.orderNumber}`, text: snap.text, drawer: kick && !!snap.drawer } })
         .then(() => setOkMsg(t('po.sentToReception').replace('{n}', String(snap.orderNumber))))
         .catch(() => printHtml(snap.html));
       return;

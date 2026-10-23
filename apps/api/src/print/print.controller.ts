@@ -7,6 +7,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
 import { PrintService } from './print.service';
+import { PrintDevicesService } from './print-devices.service';
 
 interface ApiKeyRequest { apiTenantId: string }
 
@@ -16,14 +17,22 @@ interface ApiKeyRequest { apiTenantId: string }
  */
 @Controller('print-jobs')
 export class PrintController {
-  constructor(private readonly print: PrintService) {}
+  constructor(private readonly print: PrintService, private readonly devices: PrintDevicesService) {}
 
   // ---- Salon side (JWT) ----
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
   @Caps('pos')
   @Post()
-  enqueue(@CurrentUser() user: AuthenticatedUser, @Body() dto: { title?: string; text: string; copies?: number }) {
+  enqueue(@CurrentUser() user: AuthenticatedUser, @Body() dto: { title?: string; text: string; copies?: number; drawer?: boolean }) {
     return this.print.enqueue(user, dto);
+  }
+
+  /** "Mở két": open the cash drawer with no ticket. Logged with who pressed it. */
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('pos')
+  @Post('drawer')
+  drawer(@CurrentUser() user: AuthenticatedUser, @Body() dto: { reason?: string }) {
+    return this.devices.openDrawer(user, dto?.reason);
   }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)

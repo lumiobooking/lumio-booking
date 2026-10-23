@@ -9,7 +9,7 @@ import { PrintDevicesService } from './print-devices.service';
 import { PrintService } from './print.service';
 import { AGENT_VERSION, agentScript, installScript } from './agent-scripts';
 import {
-  asciiJson, cleanCode, cleanRoutes, columnsOf, escposBytes, plain, publicApiBase, routeFor, runLine, styleRows,
+  asciiJson, DRAWER_KICK, drawerRoute, cleanCode, cleanRoutes, columnsOf, escposBytes, plain, publicApiBase, routeFor, runLine, styleRows,
 } from './print-devices.logic';
 
 /* In-memory Prisma for the calls these services make. Every where is applied
@@ -51,7 +51,7 @@ function table(rows: Row[], defaults: () => Row = () => ({})) {
 function world() {
   const prisma = {
     printDevice: table([], () => ({ revokedAt: null, pairedAt: null, tokenHash: null, lastSeenAt: null, agentVersion: null, defaultPrinter: null })),
-    printJob: table([], () => ({ status: 'PENDING', copies: 1, station: null, deviceId: null, claimedAt: null, route: null, title: null })),
+    printJob: table([], () => ({ status: 'PENDING', copies: 1, station: null, deviceId: null, claimedAt: null, route: null, title: null, drawer: false })),
     tenant: table([{ id: 'tA', status: 'ACTIVE' }, { id: 'tB', status: 'ACTIVE' }]),
     setting: table([]),
   };
@@ -275,5 +275,60 @@ describe('one-touch printing — the pure parts', () => {
     expect(/^[\x09\x0a\x0d\x20-\x7e]*$/.test(a)).toBe(true);
     expect(() => installScript("https://x/api'; Remove-Item C:\\ -Recurse; '", 'ABCD2345')).toThrow();
     expect(() => installScript('https://x/api', "AB'CD")).toThrow();
+  });
+});
+
+describe('one-touch printing — the cash drawer', () => {
+  it('opens on a cash sale, only on the printer the drawer is plugged into', async () => {
+    const w = world();
+    const a = await w.addComputer('tA');
+    await w.svc.update(w.owner('tA'), a.id, { routes: { COUNTER: { printer: 'XP-80C', drawer: true }, '*': { printer: '' } } });
+    await w.job('tA', { title: 'cash bill', text: 'LUMIO\nTONG 100', drawer: true });
+    await w.job('tA', { title: 'card bill', text: 'LUMIO\nTONG 100' });
+    await w.job('tA', { title: 'kitchen', text: 'BEP\nBAN M3', station: 'KITCHEN', drawer: true });
+    const got = await w.take(a.h);
+    expect(got.map((j) => [j.title, j.kick, j.drawerOnly, j.printer])).toEqual([
+      ['cash bill', true, false, 'XP-80C'], ['card bill', false, false, 'XP-80C'], ['kitchen', false, false, ''],
+    ]);
+  });
+
+  it('"Mở két" needs a drawer set up, goes to its printer, and is logged', async () => {
+    const w = world();
+    const a = await w.addComputer('tA');
+    await expect(w.svc.openDrawer(w.owner('tA'))).rejects.toMatchObject({ message: 'DRAWER_NOT_SET' });
+    await w.svc.update(w.owner('tA'), a.id, { routes: { '*': { host: '192.168.1.60', drawer: true } } });
+    await w.svc.openDrawer(w.owner('tA'), 'đổi tiền');
+    const [j] = await w.take(a.h);
+    expect(j.drawerOnly).toBe(true);
+    expect(Buffer.from(j.raw, 'base64').includes(DRAWER_KICK)).toBe(true);
+    expect(w.audit.log).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tA', userId: 'u-tA', action: 'print.drawer_opened', metadata: { reason: 'đổi tiền' } }));
+    // Another shop has no drawer of its own, whatever shop A set up.
+    await expect(w.svc.openDrawer(w.owner('tB'))).rejects.toMatchObject({ message: 'DRAWER_NOT_SET' });
+  });
+
+  it('tests the drawer of one computer, and refuses where none is set', async () => {
+    const w = world();
+    const a = await w.addComputer('tA');
+    await expect(w.svc.test(w.owner('tA'), a.id, 'COUNTER', true)).rejects.toMatchObject({ message: 'DRAWER_NOT_SET' });
+    await w.svc.update(w.owner('tA'), a.id, { routes: { COUNTER: { printer: 'XP-80C', drawer: true } } });
+    await w.svc.test(w.owner('tA'), a.id, 'COUNTER', true);
+    const [j] = await w.take(a.h);
+    expect([j.drawerOnly, j.printer]).toEqual([true, 'XP-80C']);
+  });
+
+  it('the old agent never gets a drawer-only job (it would print a blank page)', async () => {
+    const w = world();
+    await w.job('tB', { text: '', drawer: true });
+    const old = new PrintService(w.prisma as never, w.svc);
+    expect(await old.pending('tB')).toEqual([]);
+  });
+
+  it('picks the counter drawer first, and keeps drawer flags when cleaning routes', () => {
+    const d1 = { id: 'd1', pairedAt: new Date(1), routes: { '*': { printer: '', drawer: true } } };
+    const d2 = { id: 'd2', pairedAt: new Date(2), routes: { COUNTER: { printer: 'X', drawer: true } } };
+    expect(drawerRoute([d1, d2])?.deviceId).toBe('d2');
+    expect(drawerRoute([d1])?.key).toBe('*');
+    expect(drawerRoute([{ id: 'd3', pairedAt: new Date(3), routes: { COUNTER: { printer: 'X' } } }])).toBeNull();
+    expect(cleanRoutes({ COUNTER: { printer: 'X', drawer: true }, BAR: { host: '10.0.0.9', drawer: 'yes' } })).toEqual({ COUNTER: { printer: 'X', drawer: true }, BAR: { host: '10.0.0.9', port: 9100 } });
   });
 });

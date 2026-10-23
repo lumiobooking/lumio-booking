@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrintJobStatus, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -6,7 +6,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { cleanSettings, SETTINGS_KEY } from '../restaurant/check-logic';
 import { AGENT_VERSION, agentScript, goneScript, installScript } from './agent-scripts';
 import {
-  asciiJson, CODE_MINUTES, cleanCode, cleanKey, cleanName, cleanPrinters, cleanRoutes, columnsOf, escposBytes, makeCode, makeToken,
+  asciiJson, CODE_MINUTES, cleanCode, cleanKey, cleanName, cleanPrinters, cleanRoutes, columnsOf, drawerRoute, escposBytes, makeCode, makeToken,
   publicApiBase, ROUTE_ANY, routeFor, runLine, sha, styleRows, testTicket, tokenShapeOk,
 } from './print-devices.logic';
 
@@ -114,12 +114,20 @@ export class PrintDevicesService {
     return this.list(user);
   }
 
-  /** A test ticket on one computer, for one kind of ticket (its printer as set now). */
-  async test(user: AuthenticatedUser, id: string, route?: unknown) {
+  /** A test ticket on one computer, for one kind of ticket (its printer as set now) — or a test of its cash drawer. */
+  async test(user: AuthenticatedUser, id: string, route?: unknown, drawer = false) {
     const tenantId = this.tid(user);
     const d = await this.own(tenantId, id);
     if (!d.pairedAt) throw new NotFoundException('DEVICE_NOT_FOUND');
     const key = cleanKey(route) ?? Object.keys(cleanRoutes(d.routes))[0] ?? 'COUNTER';
+    if (drawer) {
+      if (!cleanRoutes(d.routes)[key]?.drawer) throw new ConflictException('DRAWER_NOT_SET');
+      const job = await this.prisma.printJob.create({
+        data: { tenantId, title: 'Thử mở két', text: '', drawer: true, deviceId: d.id, route: key, createdById: user.userId } as never,
+        select: { id: true },
+      });
+      return { ok: true, jobId: job.id };
+    }
     const at = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     const job = await this.prisma.printJob.create({
       data: {
@@ -140,6 +148,24 @@ export class PrintDevicesService {
     // Tickets it had taken but not printed go back to the queue for another computer.
     await this.prisma.printJob.updateMany({ where: { tenantId, deviceId: id, status: PrintJobStatus.PENDING }, data: { deviceId: null, claimedAt: null } as never });
     await this.audit.log({ tenantId, userId: user.userId, action: 'print.device_removed', resourceType: 'print_device', resourceId: id });
+    return { ok: true };
+  }
+
+  /**
+   * Open the cash drawer with no ticket (the till's "Mở két": change for a
+   * customer, a cash sale without a receipt). Anyone who takes payment may;
+   * every opening is logged with who did it.
+   */
+  async openDrawer(user: AuthenticatedUser, reason?: unknown) {
+    const tenantId = this.tid(user);
+    const devices = await this.prisma.printDevice.findMany({ where: { tenantId, revokedAt: null, pairedAt: { not: null } }, select: { id: true, routes: true, pairedAt: true } });
+    if (!drawerRoute(devices as never)) throw new ConflictException('DRAWER_NOT_SET');
+    const job = await this.prisma.printJob.create({
+      data: { tenantId, title: 'Mở két', text: '', drawer: true, createdById: user.userId } as never,
+      select: { id: true },
+    });
+    const why = String(reason ?? '').replace(/\s+/g, ' ').trim().slice(0, 40) || null;
+    await this.audit.log({ tenantId, userId: user.userId, action: 'print.drawer_opened', resourceType: 'print_job', resourceId: job.id, metadata: { reason: why } });
     return { ok: true };
   }
 
@@ -233,21 +259,24 @@ export class PrintDevicesService {
           OR: [{ claimedAt: null }, { claimedAt: { lt: new Date(now - RECLAIM_MS) } }],
         } as never,
         orderBy: { createdAt: 'asc' }, take: 30,
-      }) as Promise<{ id: string; title: string | null; text: string; copies: number; station: string | null; deviceId: string | null; route: string | null; claimedAt: Date | null }[]>,
+      }) as Promise<{ id: string; title: string | null; text: string; copies: number; station: string | null; deviceId: string | null; route: string | null; claimedAt: Date | null; drawer?: boolean }[]>,
     ]);
     const out: unknown[] = [];
     for (const j of pending) {
-      const to = routeFor(j, devices as never);
+      const drawerOnly = !!j.drawer && !String(j.text ?? '').trim();
+      const to = drawerOnly ? drawerRoute(devices as never, j.deviceId, j.route) : routeFor(j, devices as never);
       if (!to || to.deviceId !== d.id) continue;
       const took = await this.prisma.printJob.updateMany({
         where: { id: j.id, tenantId, status: PrintJobStatus.PENDING, claimedAt: j.claimedAt } as never,
         data: { claimedAt: new Date(), deviceId: d.id } as never,
       });
       if (took.count !== 1) continue;
-      const rows = styleRows(j.text, j.station);
-      const base = { id: j.id, title: j.title, copies: Math.max(1, Math.min(5, j.copies || 1)), text: j.text, rows, cols: columnsOf(rows) };
+      const rows = drawerOnly ? [] : styleRows(j.text, j.station);
+      // The drawer opens only on the printer it is plugged into, and only when the ticket asks (a cash sale).
+      const kick = !!j.drawer && !!to.route.drawer;
+      const base = { id: j.id, title: j.title, copies: Math.max(1, Math.min(5, j.copies || 1)), text: j.text, rows, cols: columnsOf(rows), kick, drawerOnly };
       out.push(to.route.host
-        ? { ...base, host: to.route.host, port: to.route.port ?? 9100, raw: escposBytes(rows, to.route).toString('base64') }
+        ? { ...base, host: to.route.host, port: to.route.port ?? 9100, raw: escposBytes(rows, to.route, { kick, drawerOnly }).toString('base64') }
         : { ...base, printer: to.route.printer ?? '' });
     }
     return asciiJson({ version: AGENT_VERSION, jobs: out });

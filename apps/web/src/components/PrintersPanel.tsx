@@ -16,7 +16,7 @@ import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
 
-interface Route { printer?: string; host?: string; port?: number; beep?: boolean }
+interface Route { printer?: string; host?: string; port?: number; beep?: boolean; drawer?: boolean }
 interface Device {
   id: string; name: string; paired: boolean; pairExpiresAt: string | null; online: boolean; lastSeenAt: string | null;
   printers: string[]; defaultPrinter: string | null; routes: Record<string, Route>; upToDate: boolean;
@@ -34,9 +34,10 @@ const card: CSSProperties = { background: C.panel, border: `1px solid ${C.line}`
 const valueOf = (r?: Route) => (!r ? '' : r.host ? 'net' : r.printer ? `p:${r.printer}` : 'default');
 function routeFrom(v: string, prev?: Route): Route | null {
   if (!v) return null;
-  if (v === 'default') return { printer: '' };
-  if (v === 'net') return { host: prev?.host ?? '', port: prev?.port ?? 9100, beep: prev?.beep ?? true };
-  return { printer: v.slice(2) };
+  const drawer = prev?.drawer ? { drawer: true } : {};
+  if (v === 'default') return { printer: '', ...drawer };
+  if (v === 'net') return { host: prev?.host ?? '', port: prev?.port ?? 9100, beep: prev?.beep ?? true, ...drawer };
+  return { printer: v.slice(2), ...drawer };
 }
 
 export function PrintersPanel() {
@@ -183,6 +184,13 @@ function DeviceCard({ d, stations, vi, token, onChanged }: { d: Device; stations
       setNote(L(`Đã gửi phiếu in thử (${label(k)}). Phiếu ra trong vài giây.`, `Test sent (${label(k)}). It prints in a few seconds.`));
     } catch (e) { setNote(e instanceof Error ? e.message : String(e)); }
   }
+  async function testDrawer(k: string) {
+    try {
+      if (dirty) await save();
+      await apiFetch(`/print-devices/${d.id}/test`, { method: 'POST', token, body: { route: k, drawer: true } });
+      setNote(L('Đã gửi lệnh mở két. Két phải bật ra trong vài giây.', 'Drawer command sent. It should open in a few seconds.'));
+    } catch (e) { setNote(e instanceof Error ? e.message : String(e)); }
+  }
   async function remove() {
     if (!sure) { setSure(true); return; }
     try { await apiFetch(`/print-devices/${d.id}`, { method: 'DELETE', token }); onChanged(); }
@@ -225,11 +233,20 @@ function DeviceCard({ d, stations, vi, token, onChanged }: { d: Device; stations
               </>
             )}
             <button type="button" disabled={!r || !d.online} onClick={() => void test(k)} style={{ ...btn, opacity: !r || !d.online ? 0.5 : 1 }}>{L('In thử', 'Test')}</button>
+            {r && (k === 'COUNTER' || k === '*') && (
+              <span style={{ flexBasis: '100%', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', paddingLeft: 2 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  <input type="checkbox" checked={!!r.drawer} onChange={(e) => set(k, { ...r, drawer: e.target.checked || undefined })} />
+                  💵 {L('Két tiền cắm vào máy in này (tự mở khi thu tiền mặt)', 'Cash drawer plugged into this printer (opens on cash sales)')}
+                </label>
+                {r.drawer && <button type="button" disabled={!d.online} onClick={() => void testDrawer(k)} style={{ ...btn, minHeight: 34, opacity: d.online ? 1 : 0.5 }}>{L('Thử mở két', 'Test drawer')}</button>}
+              </span>
+            )}
           </div>
         );
       })}
       <span style={{ fontSize: 12, color: C.muted }}>
-        {L('Máy in USB / cài driver: in có dấu, tên bàn chữ to. Máy in mạng (IP): không cần driver, tự cắt giấy, kêu bíp, nhưng in không dấu.', 'USB / driver printers: Vietnamese accents, large table name. Network (IP) printers: no driver, auto-cut, beep, but no accents.')}
+        {L('Máy in USB / cài driver: in có dấu, tên bàn chữ to. Máy in mạng (IP): không cần driver, tự cắt giấy, kêu bíp, nhưng in không dấu. Két tiền: cắm dây két vào cổng RJ11 (DK) sau máy in hoá đơn; két tự mở khi thu tiền mặt, hoặc khi bấm “Mở két” ở quầy.', 'USB / driver printers: Vietnamese accents, large table name. Network (IP) printers: no driver, auto-cut, beep, but no accents. Cash drawer: plug its cable into the RJ11 (DK) port of the receipt printer; it opens on cash sales or with “Open drawer” at the till.')}
       </span>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         {dirty && <button type="button" onClick={() => void save()} style={primary}>{L('Lưu', 'Save')}</button>}

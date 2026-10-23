@@ -14,6 +14,7 @@ export class UpdatePrintDeviceDto {
 }
 export class TestPrintDto {
   @IsOptional() @IsString() @MaxLength(20) route?: string;
+  @IsOptional() @IsBoolean() drawer?: boolean;
 }
 export class PairDto {
   @IsString() @MaxLength(20) code!: string;
@@ -48,7 +49,7 @@ export class PrintDevicesController {
   update(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdatePrintDeviceDto) { return this.svc.update(user, id, dto); }
 
   @Post(':id/test')
-  test(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: TestPrintDto) { return this.svc.test(user, id, dto?.route); }
+  test(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: TestPrintDto) { return this.svc.test(user, id, dto?.route, dto?.drawer === true); }
 
   @Delete(':id')
   revoke(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.svc.revoke(user, id); }

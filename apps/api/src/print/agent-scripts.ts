@@ -100,6 +100,60 @@ function Invoke-GdiPrint($rows, [string]$printer, [int]$cols) {
   try { $doc.Print() } finally { $doc.Dispose() }
 }
 
+# Raw bytes to a Windows printer (the cash drawer pulse goes through the
+# printer it is plugged into). Compiled once; without it only the drawer stays shut.
+$RawSrc = @'
+using System;
+using System.Runtime.InteropServices;
+public static class LumioRaw {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DocInfo {
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDataType;
+  }
+  [DllImport("winspool.drv", EntryPoint = "OpenPrinterW", SetLastError = true, CharSet = CharSet.Unicode)]
+  static extern bool OpenPrinter(string name, out IntPtr handle, IntPtr defaults);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool ClosePrinter(IntPtr handle);
+  [DllImport("winspool.drv", EntryPoint = "StartDocPrinterW", SetLastError = true, CharSet = CharSet.Unicode)]
+  static extern int StartDocPrinter(IntPtr handle, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DocInfo info);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool EndDocPrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool StartPagePrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool EndPagePrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool WritePrinter(IntPtr handle, byte[] data, int count, out int written);
+  public static void Send(string printer, byte[] data) {
+    IntPtr h;
+    if (!OpenPrinter(printer, out h, IntPtr.Zero)) throw new Exception("OpenPrinter " + Marshal.GetLastWin32Error());
+    try {
+      DocInfo di = new DocInfo();
+      di.pDocName = "Lumio";
+      di.pDataType = "RAW";
+      if (StartDocPrinter(h, 1, di) == 0) throw new Exception("StartDocPrinter " + Marshal.GetLastWin32Error());
+      try {
+        StartPagePrinter(h);
+        int written;
+        if (!WritePrinter(h, data, data.Length, out written)) throw new Exception("WritePrinter " + Marshal.GetLastWin32Error());
+        EndPagePrinter(h);
+      } finally { EndDocPrinter(h); }
+    } finally { ClosePrinter(h); }
+  }
+}
+'@
+$script:RawReady = $false
+try { Add-Type -TypeDefinition $RawSrc -Language CSharp; $script:RawReady = $true } catch { Write-Log ('raw printing unavailable: ' + $_) }
+
+function Send-Kick([string]$printer) {
+  if (-not $script:RawReady) { throw 'Khong mo duoc ket tien (thieu RAW)' }
+  $name = $printer
+  if (-not $name) { $name = (New-Object System.Drawing.Printing.PrinterSettings).PrinterName }
+  [LumioRaw]::Send($name, [byte[]](27, 112, 0, 25, 250, 27, 112, 1, 25, 250))
+}
+
 function Invoke-TextPrint([string]$text, [string]$printer) {
   if ($printer) { $text | Out-Printer -Name $printer } else { $text | Out-Printer }
 }
@@ -147,13 +201,18 @@ while ($true) {
       $ok = $true
       $err = ''
       try {
-        $n = [Math]::Max(1, [int]$j.copies)
-        for ($k = 0; $k -lt $n; $k++) {
-          if ($j.raw) { Send-Raw ([string]$j.host) ([int]$j.port) ([string]$j.raw) }
-          else {
-            try { Invoke-GdiPrint $j.rows ([string]$j.printer) ([int]$j.cols) }
-            catch { Write-Log ('gdi: ' + $_); Invoke-TextPrint ([string]$j.text) ([string]$j.printer) }
+        if ($j.drawerOnly) {
+          if ($j.raw) { Send-Raw ([string]$j.host) ([int]$j.port) ([string]$j.raw) } else { Send-Kick ([string]$j.printer) }
+        } else {
+          $n = [Math]::Max(1, [int]$j.copies)
+          for ($k = 0; $k -lt $n; $k++) {
+            if ($j.raw) { Send-Raw ([string]$j.host) ([int]$j.port) ([string]$j.raw) }
+            else {
+              try { Invoke-GdiPrint $j.rows ([string]$j.printer) ([int]$j.cols) }
+              catch { Write-Log ('gdi: ' + $_); Invoke-TextPrint ([string]$j.text) ([string]$j.printer) }
+            }
           }
+          if ($j.kick -and -not $j.raw) { try { Send-Kick ([string]$j.printer) } catch { Write-Log ('drawer: ' + $_) } }
         }
       } catch { $ok = $false; $err = [string]$_; Write-Log ('job ' + $j.id + ': ' + $err) }
       try { [void](Send-Json ('/print-agent/jobs/' + $j.id + '/result') @{ ok = $ok; error = $err }) } catch {}

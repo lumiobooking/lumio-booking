@@ -2579,6 +2579,8 @@ model PrintJob {
   deviceId    String?
   claimedAt   DateTime?
   route       String?
+  // Open the cash drawer with this ticket (a cash sale), or alone (text empty: the till's "Mở két").
+  drawer      Boolean   @default(false)
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])

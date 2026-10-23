@@ -301,6 +301,10 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     if (c && check?.id === id) setCheck(c);
     if (!check) void loadFloor();
   }
+  async function openDrawer() {
+    const r = await call<{ ok: boolean }>('/print-jobs/drawer', 'POST', { reason: 'manual' });
+    if (r) say(true, L('Đã mở két (được ghi lại người mở).', 'Drawer opened (logged).'));
+  }
   function startPay() {
     if (!check) return;
     if ((check.pendingCount ?? 0) > 0) { say(false, tillError('QR_PENDING', vi)); return; }
@@ -357,7 +361,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, color: C.text }}>
         <TillHeader vi={vi} cashier={user?.firstName ?? ''} shiftOpen={!!shiftCtl.state?.shift} failed={failed.length} canPay={canPay}
           onShift={() => setShowShift(true)} onPrints={() => setShowPrints(true)} onTakeaway={() => void openTable(null, 1)} onRetail={onQuickSale}
-          onSoldOut={() => setShowSoldOut(true)} onSettings={isOwner ? () => setShowSettings(true) : undefined} />
+          onSoldOut={() => setShowSoldOut(true)} onSettings={isOwner ? () => setShowSettings(true) : undefined} onDrawer={() => void openDrawer()} />
         {msg && <Toast {...msg} />}
         {calls.length > 0 && (
           <div role="alert" style={{ ...card, padding: 10, border: '2px solid #f59e0b', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -683,8 +687,8 @@ function Toast({ ok, text }: { ok: boolean; text: string }) {
   );
 }
 
-function TillHeader({ vi, cashier, shiftOpen, failed, canPay, onShift, onPrints, onTakeaway, onRetail, onSoldOut, onSettings }: {
-  vi: boolean; cashier: string; shiftOpen: boolean; failed: number; canPay: boolean; onShift: () => void; onPrints: () => void; onTakeaway: () => void; onRetail: () => void; onSoldOut: () => void; onSettings?: () => void;
+function TillHeader({ vi, cashier, shiftOpen, failed, canPay, onShift, onPrints, onTakeaway, onRetail, onSoldOut, onSettings, onDrawer }: {
+  vi: boolean; cashier: string; shiftOpen: boolean; failed: number; canPay: boolean; onDrawer: () => void; onShift: () => void; onPrints: () => void; onTakeaway: () => void; onRetail: () => void; onSoldOut: () => void; onSettings?: () => void;
 }) {
   const L = (v: string, e: string) => (vi ? v : e);
   return (
@@ -696,6 +700,7 @@ function TillHeader({ vi, cashier, shiftOpen, failed, canPay, onShift, onPrints,
       {canPay && <button type="button" onClick={onShift} style={{ ...btn, ...(shiftOpen ? { color: 'var(--ink-good)' } : { color: 'var(--ink-warn)' }) }}>{shiftOpen ? L('Ca đang mở', 'Shift open') : L('Chưa mở ca', 'No shift')}</button>}
       {failed > 0 && <button type="button" onClick={onPrints} style={{ ...btn, color: 'var(--ink-bad)' }}>⚠ {L(`${failed} phiếu in lỗi`, `${failed} print failed`)}</button>}
       <button type="button" onClick={onTakeaway} style={primary}>+ {L('Mang về', 'To go')}</button>
+      {canPay && <button type="button" onClick={onDrawer} style={btn}>💵 {L('Mở két', 'Open drawer')}</button>}
       <button type="button" onClick={onSoldOut} style={btn}>{L('Hết món', 'Sold out')}</button>
       {canPay && <button type="button" onClick={onRetail} style={btn}>{L('Bán lẻ', 'Retail')}</button>}
       <a href="/kitchen" style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>{L('Màn hình bếp', 'Kitchen screen')}</a>
@@ -1167,8 +1172,10 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
         }, profile.shop, profile.design, fmt);
         const vat = (check.vatCents ?? 0) > 0 ? `\n${L('Đã gồm VAT', 'Incl. VAT')} ${check.vatPercent ?? 0}%: ${fmt(check.vatCents ?? 0)}` : '';
         const invText = invoice ? `\n${L('Xuất hoá đơn VAT cho', 'VAT invoice for')}: ${invoice.company}${invoice.taxCode ? ` · MST ${invoice.taxCode}` : ''}` : '';
-        await apiFetch('/print-jobs', { method: 'POST', token, body: { title: `${L('Hoá đơn', 'Receipt')} #${r.order.orderNumber ?? ''} · ${check.tables}`, text: text + vat + invText } }).catch(() => undefined);
+        await apiFetch('/print-jobs', { method: 'POST', token, body: { title: `${L('Hoá đơn', 'Receipt')} #${r.order.orderNumber ?? ''} · ${check.tables}`, text: text + vat + invText, drawer: cashIn > 0 } }).catch(() => undefined);
       }
+      // Cash taken but no receipt printed: the drawer still has to open for the change.
+      if (cashIn > 0 && !(print && profile)) await apiFetch('/print-jobs/drawer', { method: 'POST', token, body: { reason: 'cash' } }).catch(() => undefined);
       onPaid();
     } catch (e) {
       setErr(tillError(e instanceof Error ? e.message : String(e), vi));

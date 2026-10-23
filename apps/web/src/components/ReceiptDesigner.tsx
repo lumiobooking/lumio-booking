@@ -96,6 +96,8 @@ export function ReceiptDesigner({ shop, design, currency, onSave, onOpenCompany 
       <Group title={L('Khổ giấy & chữ', 'Paper & type')}>
         <Seg label={L('Khổ giấy', 'Paper width')} value={d.paper} onChange={(v) => set('paper', v)}
           options={[{ v: '80', t: '80 mm' }, { v: '58', t: '58 mm' }]} />
+        <Seg label={L('Số liên in ở quầy', 'Copies at the counter')} value={d.copies ?? '1'} onChange={(v) => set('copies', v)}
+          options={[{ v: '1', t: L('1 liên', '1 copy') }, { v: '2', t: L('2 liên (khách + lưu)', '2 copies (customer + shop)') }]} />
         <Seg label={L('Cỡ chữ', 'Text size')} value={d.fontSize} onChange={(v) => set('fontSize', v)}
           options={[{ v: 'normal', t: L('Thường', 'Normal') }, { v: 'large', t: L('Lớn', 'Large') }]} />
         <Seg label={L('Ngôn ngữ trên bill', 'Bill language')} value={d.language} onChange={(v) => set('language', v)}

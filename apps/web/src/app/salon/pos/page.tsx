@@ -21,7 +21,7 @@ import { RebookSheet, type RebookResult } from '../../../components/RebookSheet'
 import { FeedbackStatus } from '../../../components/feedback/FeedbackStatus';
 import { PartyPanel, type Composed } from './PartyPanel';
 import { uiLocale } from '../../../lib/datetime';
-import { buildReceiptHtml as buildBillHtml, buildReceiptText as buildBillText, withDefaults as receiptDesignOf, type ReceiptData, type ReceiptProfile } from '../../../lib/receipt';
+import { buildReceiptHtml as buildBillHtml, buildReceiptText as buildBillText, receiptCopies, withDefaults as receiptDesignOf, type ReceiptData, type ReceiptProfile } from '../../../lib/receipt';
 import { ind, uiIndustry, onUiIndustryChange } from '../../../lib/ui-industry';
 import { isTableIndustry } from '../../../lib/restaurant-till';
 import { RestaurantTill } from '../../../components/RestaurantTill';
@@ -1356,7 +1356,13 @@ function Register() {
     // fails (offline / agent down), fall back to local print so the receipt is
     // never lost.
     if (printToReception) {
-      apiFetch('/print-jobs', { method: 'POST', token, body: { title: `Receipt #${snap.orderNumber}`, text: snap.text, drawer: kick && !!snap.drawer } })
+      // The sale's first print: 1 or 2 copies (liên 1 khách, liên 2 lưu); a reprint is the customer's copy only.
+      const copies = kick ? receiptCopies(snap.text, receiptLayout().design) : [snap.text];
+      (async () => {
+        for (let i = 0; i < copies.length; i++) {
+          await apiFetch('/print-jobs', { method: 'POST', token, body: { title: `Receipt #${snap.orderNumber}${copies.length > 1 ? ` · ${i + 1}/${copies.length}` : ''}`, text: copies[i], drawer: i === 0 && kick && !!snap.drawer } });
+        }
+      })()
         .then(() => setOkMsg(t('po.sentToReception').replace('{n}', String(snap.orderNumber))))
         .catch(() => printHtml(snap.html));
       return;

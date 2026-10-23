@@ -1,6 +1,6 @@
 import {
   buildReceiptHtml, buildReceiptText, DEFAULT_RECEIPT_DESIGN, missingHeader, receiptHeader, wrap,
-  type ReceiptData, type ReceiptShop,
+  type ReceiptData, type ReceiptShop, receiptCopies,
 } from './receipt';
 
 /**
@@ -143,5 +143,17 @@ describe("a party's bill reads person by person", () => {
     const txt = buildReceiptText(sale, shop, DEFAULT_RECEIPT_DESIGN, money);
     expect(txt).not.toContain('Subtotal for');
     expect(txt).not.toContain('* ');
+  });
+});
+
+describe('receiptCopies — 1 or 2 liên at the counter', () => {
+  it('prints once by default', () => {
+    expect(receiptCopies('BILL\n', {})).toEqual(['BILL\n']);
+  });
+  it('prints the customer copy and the shop copy, each saying which it is', () => {
+    const [a, b] = receiptCopies('LUMIO\nTỔNG CỘNG   100\n\n', { copies: '2', language: 'vi', paper: '58' });
+    expect(a).toBe('LUMIO\nTỔNG CỘNG   100\n    Liên 1 · Giao khách hàng\n');
+    expect(b.endsWith('Liên 2 · Lưu tại quầy\n')).toBe(true);
+    expect(receiptCopies('X', { copies: '2', language: 'en' })[1]).toContain('Copy 2 · Merchant');
   });
 });

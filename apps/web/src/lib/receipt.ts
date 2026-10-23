@@ -36,6 +36,8 @@ export interface ReceiptDesign {
   showPayments: boolean;
   showBookingQr: boolean;
   footer: string;
+  /** Copies printed at the counter: '2' = liên 1 for the customer, liên 2 kept by the shop. */
+  copies: '1' | '2';
 }
 
 export const DEFAULT_RECEIPT_DESIGN: ReceiptDesign = {
@@ -43,7 +45,7 @@ export const DEFAULT_RECEIPT_DESIGN: ReceiptDesign = {
   nameOverride: '', addressOverride: '', phoneOverride: '', headerNote: '',
   showWebsite: true, showOrderNumber: true, showDateTime: true, showCustomer: true,
   showTechnician: true, showLineTips: true, showSavings: true, showPayments: true,
-  showBookingQr: false, footer: '',
+  showBookingQr: false, footer: '', copies: '1',
 };
 
 export interface ReceiptShop { name: string; address: string; phone: string; website: string; logoUrl: string; bookingSlug?: string }
@@ -109,6 +111,22 @@ export function receiptLabels(lang: 'en' | 'vi') { return LABELS[lang] ?? LABELS
 /** A design from settings, completed with defaults (old salons have none). */
 export function withDefaults(d: Partial<ReceiptDesign> | null | undefined): ReceiptDesign {
   return { ...DEFAULT_RECEIPT_DESIGN, ...(d ?? {}) };
+}
+
+/**
+ * The bill as the counter printer prints it: once, or twice — liên 1 for the
+ * customer, liên 2 kept by the shop — each copy saying which it is at the
+ * bottom. Only the first copy opens the cash drawer (the caller decides).
+ */
+export function receiptCopies(text: string, design0: Partial<ReceiptDesign> | null | undefined): string[] {
+  const d = withDefaults(design0);
+  if (d.copies !== '2') return [text];
+  const W = d.paper === '58' ? 32 : 48;
+  const vi = d.language === 'vi';
+  const centre = (s: string) => ' '.repeat(Math.max(0, Math.floor((W - s.length) / 2))) + s;
+  const body = text.replace(/\n+$/, '');
+  const tags = vi ? ['Liên 1 · Giao khách hàng', 'Liên 2 · Lưu tại quầy'] : ['Copy 1 · Customer', 'Copy 2 · Merchant'];
+  return tags.map((t) => `${body}\n${centre(t)}\n`);
 }
 
 /** The three lines a bill must carry, as this salon prints them. */

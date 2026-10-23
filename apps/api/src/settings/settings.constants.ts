@@ -1158,6 +1158,8 @@ export interface ReceiptDesign {
   showPayments: boolean;
   /** QR to the salon's booking page — "book your next visit". */
   showBookingQr: boolean;
+  /** Copies printed at the counter: '2' = liên 1 for the customer, liên 2 kept by the shop. */
+  copies: '1' | '2';
 }
 
 export const DEFAULT_RECEIPT_DESIGN: ReceiptDesign = {
@@ -1179,6 +1181,7 @@ export const DEFAULT_RECEIPT_DESIGN: ReceiptDesign = {
   showSavings: true,
   showPayments: true,
   showBookingQr: false,
+  copies: '1',
 };
 
 const RD_BOOL_KEYS = ['showLogo', 'showWebsite', 'showOrderNumber', 'showDateTime', 'showCustomer', 'showTechnician', 'showLineTips', 'showSavings', 'showPayments', 'showBookingQr'] as const;
@@ -1194,6 +1197,7 @@ export function cleanReceiptDesign(input: unknown, base: ReceiptDesign = DEFAULT
     language: v.language === 'vi' || v.language === 'en' ? v.language : base.language,
     paper: v.paper === '58' || v.paper === '80' ? v.paper : base.paper,
     fontSize: v.fontSize === 'large' || v.fontSize === 'normal' ? v.fontSize : base.fontSize,
+    copies: v.copies === '1' || v.copies === '2' ? v.copies : base.copies,
     nameOverride: str('nameOverride', 80),
     addressOverride: str('addressOverride', 200),
     phoneOverride: str('phoneOverride', 40),

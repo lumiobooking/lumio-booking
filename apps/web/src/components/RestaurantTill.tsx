@@ -24,7 +24,7 @@ import { useAuth, useCan } from '../lib/auth';
 import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
 import { tillMethodsFrom, payLabel, type PayMethod } from '../lib/payment-methods';
-import { buildReceiptText, type ReceiptProfile } from '../lib/receipt';
+import { buildReceiptText, receiptCopies, type ReceiptProfile } from '../lib/receipt';
 import { CashShiftPanel, useShiftState } from './CashShiftPanel';
 import {
   bankName, byTableName, callText, cashQuickAmounts, combinedState, evenShares, lineGroups, minutesOpen, optionsReady, pendingLines, priceWith, tillError, timerTone, vietQr, VN_BANKS,
@@ -1182,7 +1182,11 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
         }, profile.shop, profile.design, fmt);
         const vat = (check.vatCents ?? 0) > 0 ? `\n${L('Đã gồm VAT', 'Incl. VAT')} ${check.vatPercent ?? 0}%: ${fmt(check.vatCents ?? 0)}` : '';
         const invText = invoice ? `\n${L('Xuất hoá đơn VAT cho', 'VAT invoice for')}: ${invoice.company}${invoice.taxCode ? ` · MST ${invoice.taxCode}` : ''}` : '';
-        await apiFetch('/print-jobs', { method: 'POST', token, body: { title: `${L('Hoá đơn', 'Receipt')} #${r.order.orderNumber ?? ''} · ${check.tables}`, text: text + vat + invText, drawer: cashIn > 0 } }).catch(() => undefined);
+        // 1 or 2 copies (liên 1 khách, liên 2 lưu) as set in Settings › Printed receipt; only the first opens the drawer.
+        const copies = receiptCopies(text + vat + invText, profile.design);
+        for (let i = 0; i < copies.length; i++) {
+          await apiFetch('/print-jobs', { method: 'POST', token, body: { title: `${L('Hoá đơn', 'Receipt')} #${r.order.orderNumber ?? ''} · ${check.tables}${copies.length > 1 ? ` · ${L('liên', 'copy')} ${i + 1}` : ''}`, text: copies[i], drawer: i === 0 && cashIn > 0 } }).catch(() => undefined);
+        }
       }
       // Cash taken but no receipt printed: the drawer still has to open for the change.
       if (cashIn > 0 && !(print && profile)) await apiFetch('/print-jobs/drawer', { method: 'POST', token, body: { reason: 'cash' } }).catch(() => undefined);
@@ -1298,7 +1302,7 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
       )}
       <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <input type="checkbox" checked={print} onChange={(e) => setPrint(e.target.checked)} style={{ width: 20, height: 20 }} />
-        <span>{L('In hoá đơn ra máy quầy', 'Print the receipt at the counter')}</span>
+        <span>{L('In hoá đơn ra máy quầy', 'Print the receipt at the counter')}{profile?.design.copies === '2' ? L(' · 2 liên', ' · 2 copies') : ''}</span>
       </label>
       {err && <span style={{ color: 'var(--ink-bad)', fontWeight: 700 }}>{err}</span>}
       <button type="button" disabled={busy || short || overNonCash} onClick={() => void pay()} style={{ ...primary, minHeight: 56, fontSize: 16, opacity: busy || short || overNonCash ? 0.6 : 1 }}>

@@ -44,6 +44,12 @@ describe('cleaning a design', () => {
     expect(d.headerNote).toHaveLength(300);
     expect((d as unknown as Record<string, unknown>).hacker).toBeUndefined();
   });
+  it('prints one copy unless the shop asks for two (liên 1 khách, liên 2 lưu)', () => {
+    expect(cleanReceiptDesign({}).copies).toBe('1');
+    expect(cleanReceiptDesign({ copies: '2' }).copies).toBe('2');
+    expect(cleanReceiptDesign({ copies: 3 }).copies).toBe('1');
+    expect(cleanReceiptDesign({ copies: '9' }, { ...DEFAULT_RECEIPT_DESIGN, copies: '2' }).copies).toBe('2');
+  });
   it('a salon that never opened the editor gets the full default bill', () => {
     expect(cleanReceiptDesign(undefined)).toEqual(DEFAULT_RECEIPT_DESIGN);
   });

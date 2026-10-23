@@ -314,6 +314,7 @@ model Tenant {
   loyaltyTransactions LoyaltyTransaction[]
   branchMemberships BranchMembership[]
   printJobs         PrintJob[]
+  printDevices      PrintDevice[]
   tableChecks       TableCheck[]
   tableCheckLines   TableCheckLine[]
   giftCards            GiftCard[]
@@ -2573,10 +2574,41 @@ model PrintJob {
   createdAt   DateTime       @default(now())
   printedAt   DateTime?
   error       String?
+  // One-touch printing: the shop computer that took the ticket (or the one a
+  // test print is for), when it took it, and a forced route for test prints.
+  deviceId    String?
+  claimedAt   DateTime?
+  route       String?
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
   @@map("print_jobs")
+}
+
+/// A shop computer that prints (one-touch setup: Windows + PowerShell, no
+/// install). Paired with a one-time code, then known by its own token (stored
+/// hashed, revocable). `routes` says which printer prints which tickets.
+model PrintDevice {
+  id             String    @id @default(uuid())
+  tenantId       String
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name           String    @default("")
+  tokenHash      String?   @unique
+  pairHash       String?   @unique
+  pairExpiresAt  DateTime?
+  pairedAt       DateTime?
+  printers       Json      @default("[]")
+  defaultPrinter String?
+  routes         Json      @default("{}")
+  agentVersion   String?
+  lastSeenAt     DateTime?
+  revokedAt      DateTime?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@map("print_devices")
 }
 
 /// A restaurant bill while the guests are still at the table. It becomes a sale

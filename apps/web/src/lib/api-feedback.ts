@@ -111,6 +111,7 @@ const NEVER_CACHE: RegExp[] = [
   /^\/notifications(\/|$)/,                              // the bell
   /^\/client-forms\/(visit|customers)(\/|$)/,             // signed / missing — must flip to ✓ the moment the client signs
   /^\/(tiktok|google-reviews|messenger)$/,               // connection status — must show a connect the moment it lands
+  /^\/print-devices(\/|\?|$)/,                          // printers: a computer that just paired must show up
   /^\/restaurant\/(floor|checks|kitchen)(\/|\?|$)/,      // the floor, an open bill (bank transfer landing), the kitchen screen
 ];
 

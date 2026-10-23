@@ -9,6 +9,7 @@ import { useLang, tr, DAY_LABEL } from '../../lib/i18n';
 import { useIsMobile } from '../../lib/responsive';
 import { TimezonePicker } from '../TimezonePicker';
 import { ReceiptDesigner } from '../ReceiptDesigner';
+import { PrintersPanel } from '../PrintersPanel';
 import { IndustryPicker } from '../IndustryPicker';
 import { uiIndustry } from '../../lib/ui-industry';
 import { NoShowPolicyCard } from '../NoShowPolicyCard';
@@ -122,6 +123,13 @@ export function SettingsScreen({ only, exclude, bare }: { only?: string[]; exclu
   // One section inside another page: no title, no side menu.
   const single = !!bare && sections.length === 1;
   const isMobile = useIsMobile();
+  // Other screens link straight to a section (/salon/settings?tab=receipt for the printers).
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search).get('tab');
+      if (q && sections.some((x) => x.id === q)) setTab(q as SectionId);
+    } catch { /* no window */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -193,6 +201,7 @@ export function SettingsScreen({ only, exclude, bare }: { only?: string[]; exclu
           {tab === 'daysoff' && <DaysOffSection data={data} onSave={save} />}
           {tab === 'rules' && <RulesSection data={data} onSave={save} />}
           {tab === 'payments' && <PaymentsSection data={data} onSave={save} />}
+          {tab === 'receipt' && <PrintersPanel />}
           {tab === 'receipt' && (
             <ReceiptDesigner
               shop={{

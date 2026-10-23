@@ -1,11 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { PrintJobStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { PrintDevicesService } from './print-devices.service';
 
 @Injectable()
 export class PrintService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, @Optional() private readonly devices?: PrintDevicesService) {}
 
   private tid(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -50,8 +51,10 @@ export class PrintService {
    * kitchen tickets.
    */
   async pending(tenantId: string, stations?: string) {
+    // A one-touch computer is online: it takes the tickets, the old agent stands down (no double printing).
+    if (this.devices && await this.devices.liveDeviceFor(tenantId)) return [];
     const wanted = String(stations ?? '').split(',').map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z0-9_]{2,20}$/.test(x));
-    const where: Record<string, unknown> = { tenantId, status: PrintJobStatus.PENDING };
+    const where: Record<string, unknown> = { tenantId, status: PrintJobStatus.PENDING, claimedAt: null };
     if (wanted.length) {
       const named = wanted.filter((x) => x !== 'COUNTER');
       where.OR = [

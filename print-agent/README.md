@@ -1,5 +1,10 @@
 # Lumio — Cầu nối in tại quầy (Print Agent)
 
+> **Cách mới, nên dùng: cài 1 chạm.** Vào Lumio › Cài đặt › Hoá đơn in › **Máy in** › "Kết nối máy in".
+> Trên máy tính có cắm máy in: nhấn Windows + R, dán dòng lệnh Lumio đưa, Enter. Xong.
+> Không cần cài Node.js, không sửa file, không copy API key; chọn máy in và in thử ngay trên web (làm từ xa được).
+> Thư mục này (bản Node.js) chỉ còn cho trường hợp đặc biệt. Khi máy tính cài 1 chạm đang chạy, bản này tự đứng yên để không in trùng.
+
 Chương trình nhỏ chạy trên **máy lễ tân** (máy đang cắm máy in). Khi nhân viên bấm
 **In** trên điện thoại (có bật "In tại quầy lễ tân" ở màn Bán hàng), hóa đơn sẽ
 **tự động in ra máy in ở quầy**.

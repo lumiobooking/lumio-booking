@@ -891,7 +891,7 @@ function PrintsModal({ vi, jobs, onClose, onRetry }: { vi: boolean; jobs: Failed
           <button type="button" onClick={() => onRetry(j.id)} style={btn}>{L('In lại', 'Retry')}</button>
         </div>
       ))}
-      <span style={{ fontSize: 12.5, color: C.muted }}>{L('Kiểm tra máy in còn giấy và máy tính chạy Lumio Print còn mở.', 'Check the printer has paper and the Lumio Print PC is running.')}</span>
+      <span style={{ fontSize: 12.5, color: C.muted }}>{L('Kiểm tra máy in còn giấy và máy tính in đang bật.', 'Check the printer has paper and the printing computer is on.')} <a href="/salon/settings?tab=receipt">{L('Xem máy in', 'Printers')}</a></span>
     </Modal>
   );
 }
@@ -1017,7 +1017,7 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
       <input value={acctName} maxLength={50} onChange={(e) => setAcctName(e.target.value)} onBlur={() => setAcctName(bankName(acctName))} placeholder={L('Tên chủ tài khoản (không dấu)', 'Account holder')} aria-label={L('Tên chủ tài khoản', 'Account holder')} style={field} />
       <BankFeedBox vi={vi} token={token} />
 
-      <div style={{ fontSize: 12.5, color: C.muted }}>{L('Máy in: cài Lumio Print trên máy tính ở quầy, ghi máy in cho từng mã khu (COUNTER, KITCHEN, BAR…) trong config.json.', 'Printers: run Lumio Print on the counter PC and map each station code (COUNTER, KITCHEN, BAR…) to a printer in config.json.')}</div>
+      <div style={{ fontSize: 12.5, color: C.muted }}>{L('Máy in: kết nối và chọn máy in cho Quầy / Bếp / Bar ở', 'Printers: connect them and pick one for the counter / kitchen / bar under')} <a href="/salon/settings?tab=receipt">{L('Cài đặt › Hoá đơn in › Máy in', 'Settings › Printed receipt › Printers')}</a>.</div>
       {err && <span style={{ color: 'var(--ink-bad)' }}>{err}</span>}
       <button type="button" onClick={() => void save()} style={{ ...primary, minHeight: 50 }}>{L('Lưu', 'Save')}</button>
     </Modal>

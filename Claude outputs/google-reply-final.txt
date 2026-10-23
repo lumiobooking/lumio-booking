@@ -1,0 +1,125 @@
+Subject: Re: Reserve with Google – Partner evaluation – Lumio Booking
+
+Hi Utkan,
+
+Thank you for getting back to us so quickly, and for the opportunity to be evaluated as a Reserve with Google partner. We are excited about bringing Google-native booking to the independent salons we serve. Please find the information you requested below.
+
+ABOUT LUMIO BOOKING
+Lumio Booking (lumiobooking.com) is an appointment scheduling platform built for independent beauty and wellness businesses: nail salons, lash studios, spas and massage centres in the United States, Canada and Australia. Each merchant gets its own booking page with its real service menu (names, durations and prices), its staff, its opening hours and live availability. Clients can book 24/7 and receive an instant confirmation.
+
+1) MERCHANTS USING LINKS PROVIDED BY OUR SYSTEM: 28
+
+How the links are provided:
+- Each merchant connects its own Google Business Profile to Lumio Booking with Google sign-in (OAuth) from inside our platform.
+- Our system then creates the booking link on that profile through the Google Business Profile Place Actions API, as an APPOINTMENT place action link marked as preferred. Nothing is added by hand.
+- Each link opens the merchant's own booking page on our platform at lumiobooking.com/<merchant>/gbp, where the client picks a service, a time and (optionally) a technician and completes the booking.
+- The links are re-checked by our system every night, so a profile that changes is corrected automatically.
+
+The 28 merchants below were all verified today: the booking link is active on each Google Business Profile, and every landing page loads with the merchant's live service menu.
+
+United States (15)
+1. 5 Points Nails & Spa | Twin Falls, ID
+   Google Business Profile: https://maps.google.com/maps?cid=17013741310132644008
+   Landing page: https://lumiobooking.com/5-points-nails-spa/gbp
+2. 501 Nails & Spa | Jerome, ID
+   Google Business Profile: https://maps.google.com/maps?cid=4072285020193923959
+   Landing page: https://lumiobooking.com/501-nails-spa/gbp
+3. Nail & Spa at Alamo Ranch - Nail Salon San Antonio Tx | San Antonio, TX
+   Google Business Profile: https://maps.google.com/maps?cid=8483253484587364917
+   Landing page: https://lumiobooking.com/alamo-ranch-nail-salon/gbp
+4. April's Nail & Spa | Chicago, IL
+   Google Business Profile: https://maps.google.com/maps?cid=9383312478580362998
+   Landing page: https://lumiobooking.com/aprils-nail-spa/gbp
+5. Fusion Nail Spa | Huntsville, AL
+   Google Business Profile: https://maps.google.com/maps?cid=6680338894696257440
+   Landing page: https://lumiobooking.com/fusion-nail-spa/gbp
+6. Lucky Nails | Humble, TX
+   Google Business Profile: https://maps.google.com/maps?cid=7642186528029877755
+   Landing page: https://lumiobooking.com/lucky-nails/gbp
+7. Lux Nail Spa | Kerrville, TX
+   Google Business Profile: https://maps.google.com/maps?cid=18154965355850714541
+   Landing page: https://lumiobooking.com/lux-nail-spa/gbp
+8. ReVive Nail Bar Lynnwood | Lynnwood, WA
+   Google Business Profile: https://maps.google.com/maps?cid=6317181279185353639
+   Landing page: https://lumiobooking.com/revive-nail-bar/gbp
+9. Scarlett's Salon Spa & Nails | Austin, TX
+   Google Business Profile: https://maps.google.com/maps?cid=13235045884222157502
+   Landing page: https://lumiobooking.com/scarlett-s-salon-spa-nailst/gbp
+10. T U Nails | Lafayette, IN
+   Google Business Profile: https://maps.google.com/maps?cid=12937706748803471816
+   Landing page: https://lumiobooking.com/t-u-nails/gbp
+11. Trendy Lash Styles | Clearwater, FL
+   Google Business Profile: https://maps.google.com/maps?cid=15012306380744621733
+   Landing page: https://lumiobooking.com/trendy-lash-styles/gbp
+12. Vina Nails & Spa at Tatum Phoenix | Phoenix, AZ
+   Google Business Profile: https://maps.google.com/maps?cid=1336193987623853713
+   Landing page: https://lumiobooking.com/vina-nails-spa/gbp
+13. Wonderland Nails & Lash Spa - Non Toxic Nail Salon | Encino, CA
+   Google Business Profile: https://maps.google.com/maps?cid=4972711413527904617
+   Landing page: https://lumiobooking.com/wonderland-nails-lash-spa-non-toxic-nail-salon/gbp
+14. Zb nails & spa | Enterprise, AL
+   Google Business Profile: https://maps.google.com/maps?cid=6189250501034083247
+   Landing page: https://lumiobooking.com/zb-nails-spa/gbp
+15. Zen Qi Japanese Shiatsu | Tustin, CA
+   Google Business Profile: https://maps.google.com/maps?cid=664701881740515013
+   Landing page: https://lumiobooking.com/zen-shiatsu-healing-center-llc/gbp
+
+Canada (12)
+16. A-L Wellness YYC | Calgary, AB
+   Google Business Profile: https://maps.google.com/maps?cid=17253575440430220462
+   Landing page: https://lumiobooking.com/a-l-wellness-yyc/gbp
+17. An Sen Massage & Wellness | Calgary, AB
+   Google Business Profile: https://maps.google.com/maps?cid=6562167346332882445
+   Landing page: https://lumiobooking.com/an-sen-massage-wellness/gbp
+18. Aura Nails & Spa | Amherstview, ON
+   Google Business Profile: https://maps.google.com/maps?cid=17814429136553377588
+   Landing page: https://lumiobooking.com/aura-nails-spa/gbp
+19. Friendly nails - Sylvan lake | Sylvan Lake, AB
+   Google Business Profile: https://maps.google.com/maps?cid=16560914048579847651
+   Landing page: https://lumiobooking.com/friendly-nails-sylvan-lake/gbp
+20. Happy Nails & Spa | Vaughan, ON
+   Google Business Profile: https://maps.google.com/maps?cid=9039724327056090855
+   Landing page: https://lumiobooking.com/happy-nails-spa/gbp
+21. Ivy Nails Salon | Mississauga, ON
+   Google Business Profile: https://maps.google.com/maps?cid=11845647362421762907
+   Landing page: https://lumiobooking.com/ivy-nails-salon/gbp
+22. Lavelle Beauty Boutique | Burlington, ON
+   Google Business Profile: https://maps.google.com/maps?cid=16221140012642527718
+   Landing page: https://lumiobooking.com/lavelle-beauty-boutique/gbp
+23. NT Nails & Spa | Bradford, ON
+   Google Business Profile: https://maps.google.com/maps?cid=17501045558276900982
+   Landing page: https://lumiobooking.com/nt-nails-spa/gbp
+24. Not Nails & Spa Mississauga | Mississauga, ON
+   Google Business Profile: https://maps.google.com/maps?cid=7177483479411843544
+   Landing page: https://lumiobooking.com/not-nails-spa-mississauga/gbp
+25. Ongles Saint-Eustache | Saint-Eustache, QC
+   Google Business Profile: https://maps.google.com/maps?cid=9865241977553932606
+   Landing page: https://lumiobooking.com/ongles-saint-eustache/gbp
+26. Pedi N Nails West | Barrie, ON
+   Google Business Profile: https://maps.google.com/maps?cid=987334309203621601
+   Landing page: https://lumiobooking.com/pedi-n-nails-west/gbp
+27. Q Nails Westgate Grande Prairie | Grande Prairie, AB
+   Google Business Profile: https://maps.google.com/maps?cid=15122241759689986653
+   Landing page: https://lumiobooking.com/q-nails-westgate-grande-prairie/gbp
+
+Australia (1)
+28. Nailstop & Beauty | St Kilda, VIC
+   Google Business Profile: https://maps.google.com/maps?cid=17302563214966194185
+   Landing page: https://lumiobooking.com/nailstop-beauty/gbp
+
+2) TOTAL MERCHANTS CURRENTLY USING OUR RESERVATION SYSTEM: 56
+
+These are 56 active appointment-based merchants (33 in the United States, 20 in Canada and 3 in Australia). The 28 listed above are those whose Google Business Profile already carries our booking link. We are connecting the remaining merchants as their profiles are verified.
+
+READINESS FOR INTEGRATION
+- Our platform already generates the Actions Center entity, action and service feeds every day for the merchants that pass our data checks.
+- Each merchant's data is checked before it goes into a feed: its name must match its Google listing, its address must be complete, and every service needs a real price and duration.
+- We can provide sample feeds, a test merchant or a walkthrough of the booking flow whenever it suits your team.
+
+Thank you again for your time and consideration. We look forward to working with Google to make booking with local salons even easier.
+
+Best regards,
+
+Lumio Agency LLC – Lumio Booking
+partners@lumiobooking.com | +1 (512) 886-8189
+https://lumiobooking.com

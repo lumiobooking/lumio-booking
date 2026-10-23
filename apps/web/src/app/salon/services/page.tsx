@@ -905,6 +905,31 @@ function TurnSelect({ value, onChange, t }: { value: number; onChange: (v: numbe
   );
 }
 
+/** Longest service note the API takes (SERVICE_DESCRIPTION_MAX on the server). */
+const SERVICE_DESC_MAX = 1000;
+
+/**
+ * The service note: several lines, with a live count, and the browser stops
+ * typing at the limit, so a long note can never fail on save without a word.
+ */
+function DescriptionBox({ value, onChange, vi }: { value: string; onChange: (v: string) => void; vi: boolean }) {
+  const n = value.length;
+  return (
+    <>
+      <textarea
+        style={{ ...ui.input, minHeight: 84, resize: 'vertical', lineHeight: 1.45, fontFamily: 'inherit' }}
+        value={value}
+        maxLength={SERVICE_DESC_MAX}
+        rows={3}
+        onChange={(e) => onChange(e.target.value.slice(0, SERVICE_DESC_MAX))}
+      />
+      <span style={{ display: 'block', textAlign: 'right', fontSize: 11, color: n >= SERVICE_DESC_MAX ? 'var(--ink-warn)' : 'var(--c94a3b8)' }}>
+        {n}/{SERVICE_DESC_MAX}{n >= SERVICE_DESC_MAX ? (vi ? ' · đã tới giới hạn' : ' · limit reached') : ''}
+      </span>
+    </>
+  );
+}
+
 function EditServicePanel({ service, token, categories, staff, onSaved }: { service: Service; token: string; categories: Category[]; staff: Staff[]; onSaved: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -936,7 +961,8 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
         token,
         body: {
           name: form.name,
-          description: form.description || undefined,
+          // Always sent, so emptying the box really clears the note.
+          description: form.description.trim(),
           durationMinutes: form.duration.trim() === '' ? 30 : Math.max(0, parseInt(form.duration, 10) || 0),
           priceCents: toMinorUnits(form.price, service.currency),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
@@ -1003,7 +1029,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
       </div>
       <label style={{ display: 'block', marginTop: 10 }}>
         <span style={ui.label}>{t('sv.fDescription')}</span>
-        <input style={ui.input} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        <DescriptionBox value={form.description} onChange={(v) => { setForm({ ...form, description: v }); setSaved(false); }} vi={lang === 'vi'} />
       </label>
 
       <ImageField value={form.imageUrl} onChange={(v) => { setForm({ ...form, imageUrl: v }); setSaved(false); }} token={token} />
@@ -1016,6 +1042,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
         <button type="submit" disabled={saving} style={ui.primaryBtn}>{saving ? t('sv.saving') : t('sv.saveChanges')}</button>
         {saved && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('sv.savedLive')}</span>}
+        {error && <span role="alert" style={{ color: 'var(--ink-bad)', fontSize: 13, fontWeight: 600 }}>{error}</span>}
       </div>
     </form>
   );
@@ -1224,11 +1251,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
       </div>
       <label style={{ display: 'block', marginTop: 12 }}>
         <span style={ui.label}>{t('sv.fDescription')}</span>
-        <input
-          style={ui.input}
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-        />
+        <DescriptionBox value={form.description} onChange={(v) => setForm({ ...form, description: v })} vi={lang === 'vi'} />
       </label>
 
       <ImageField value={form.imageUrl} onChange={(v) => setForm({ ...form, imageUrl: v })} token={token} />

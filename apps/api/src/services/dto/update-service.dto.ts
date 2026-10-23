@@ -10,6 +10,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { SERVICE_DESCRIPTION_MAX } from './create-service.dto';
 
 export class UpdateServiceDto {
   @IsOptional()
@@ -20,7 +21,7 @@ export class UpdateServiceDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(SERVICE_DESCRIPTION_MAX)
   description?: string;
 
   @IsOptional()

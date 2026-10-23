@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { CreateServiceDto } from './dto/create-service.dto';
+import { CreateServiceDto, SERVICE_DESCRIPTION_MAX } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { CreateServiceAddonDto, CreateSharedAddonDto } from './dto/create-addon.dto';
 
@@ -221,7 +221,7 @@ export class ServicesService {
         data: {
           tenantId,
           name: dto.name,
-          description: dto.description ?? null,
+          description: dto.description?.trim() || null,
           // Blank in the form = "use the standard slot" — 30 min keeps the
           // booking calendar computable without forcing data entry up front.
           durationMinutes: dto.durationMinutes ?? 30,
@@ -266,7 +266,8 @@ export class ServicesService {
 
     const data: Prisma.ServiceUncheckedUpdateInput = {
       name: dto.name,
-      description: dto.description,
+      // An emptied box clears the note (it used to be sent as "nothing changed").
+      description: dto.description === undefined ? undefined : (dto.description.trim() || null),
       durationMinutes: dto.durationMinutes,
       priceCents: dto.priceCents,
       discountPercent: dto.discountPercent,
@@ -442,7 +443,7 @@ export class ServicesService {
         data: {
           tenantId,
           name: name.slice(0, 120),
-          description: raw.description?.slice(0, 500) || null,
+          description: raw.description?.slice(0, SERVICE_DESCRIPTION_MAX) || null,
           durationMinutes: Math.min(600, Math.max(5, Math.round(Number(raw.durationMinutes) || 30))),
           priceCents: Math.max(0, Math.round(Number(raw.priceCents) || 0)),
           priceFrom: !!raw.priceFrom,

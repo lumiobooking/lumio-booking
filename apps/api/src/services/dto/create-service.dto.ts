@@ -11,6 +11,9 @@ import {
   MinLength,
 } from 'class-validator';
 
+/** Room for a real salon note (labour-only pricing, consultation rules…); the booking page shows it under the service. */
+export const SERVICE_DESCRIPTION_MAX = 1000;
+
 export class CreateServiceDto {
   @IsString()
   @MinLength(2)
@@ -19,7 +22,7 @@ export class CreateServiceDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(SERVICE_DESCRIPTION_MAX)
   description?: string;
 
   // Optional on purpose: salons often don't know exact timings when first

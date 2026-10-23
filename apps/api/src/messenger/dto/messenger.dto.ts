@@ -20,6 +20,11 @@ export class UpdateMessengerDto {
   // 'booking' (salon appointment bot) or 'sales' (agency sales/CS bot).
   @IsOptional() @IsIn(['booking', 'sales']) botMode?: 'booking' | 'sales';
   @IsOptional() @IsString() @MaxLength(200) leadEmail?: string;
+  // Sales bot: 'sales' = never states a price (a person quotes), 'facts' = may
+  // quote from the facts list. Sent by the Bot page on every save; missing
+  // here, every save (the AI on/off switch too) failed with
+  // "property quotePolicy should not exist".
+  @IsOptional() @IsIn(['sales', 'facts']) quotePolicy?: 'sales' | 'facts';
   // Staff distribution of chats. The screen sends its whole form on every
   // save, and the global pipe forbids any field this class does not name —
   // so when these three landed in the form without landing here, EVERY save

@@ -126,7 +126,7 @@ describe('one-touch printing — jobs', () => {
     const got = await w.take(a.h);
     expect(got.map((j) => j.title)).toEqual(['A1']);
     expect(got[0].printer).toBe('');
-    expect(got[0].rows[0]).toEqual({ r: 'b', t: 'BEP' });
+    expect(got[0].rows[0]).toEqual({ r: 't', t: 'BEP' }); // the first line of a bill: the shop name, large
     expect(await w.take(a.h)).toEqual([]); // taken already
     expect((await w.take(b.h)).map((j) => j.title)).toEqual(['B1']);
   });
@@ -247,7 +247,7 @@ describe('one-touch printing — the pure parts', () => {
     const rows = styleRows('      BẾP · MÓN MỚI\n        BÀN M3\nBill #57\n2 x Phở bò\n    - Không hành\n\n\n', 'KITCHEN');
     expect(rows.map((r) => r.r).join('')).toBe('bhnbb');
     expect(columnsOf(rows)).toBe(32);
-    expect(styleRows('NHÀ HÀNG LUMIO\nabc\nTỔNG CỘNG  100', null).map((r) => r.r).join('')).toBe('bnb');
+    expect(styleRows('NHÀ HÀNG LUMIO\nabc\nTỔNG CỘNG  100', null).map((r) => r.r).join('')).toBe('tnb');
   });
 
   it('makes ESC/POS without accents, with a cut', () => {
@@ -255,6 +255,9 @@ describe('one-touch printing — the pure parts', () => {
     const b = escposBytes(styleRows('BEP\nBAN M3\n1 x Pho', 'KITCHEN'), { host: 'x', beep: true });
     expect([...b.subarray(0, 2)]).toEqual([0x1b, 0x40]);
     expect([...b.subarray(b.length - 4)]).toEqual([0x1d, 0x56, 0x42, 0x00]);
+    // A cash sale: the drawer pulse comes right after init, before the bill prints.
+    const k = escposBytes(styleRows('LUMIO\nTONG  100', null), { host: 'x' }, { kick: true });
+    expect([...k.subarray(2, 12)]).toEqual([...DRAWER_KICK]);
     expect(b.includes(Buffer.from([0x1b, 0x42, 0x02, 0x02]))).toBe(true);
   });
 
@@ -365,5 +368,60 @@ describe('one-touch printing — bills that keep their amounts', () => {
     const got = await w.take(a.h);
     expect(got.map((j) => [j.title, j.printer ?? j.host])).toEqual([['k', '192.168.1.50'], ['b', 'XP-58'], ['bill', 'EPSON']]);
     expect(got[2].maxWidth).toBe(283);
+  });
+});
+
+describe('one-touch printing — a bill that looks like the designer', () => {
+  // The restaurant bill exactly as the till builds it (48 columns, centred with spaces).
+  const W = 48;
+  const centre = (x: string) => ' '.repeat(Math.floor((W - x.length) / 2)) + x;
+  const row = (l: string, r: string) => l + ' '.repeat(W - l.length - r.length) + r;
+  const bill = [
+    centre('LUMIO AGENCY'), centre('238/26 Đường Trường Chinh'), centre('ĐT: 037 586 6868'), '-'.repeat(W),
+    centre('HOÁ ĐƠN'), centre('Số #9'), centre('14:19:58 23/10/2026'), '-'.repeat(W),
+    row('1x Green Papaya Salad', '200.000 đ'), row('2x Shaking Beef', '44 đ'), '-'.repeat(W),
+    row('Tạm tính', '400.101 đ'), row('TỔNG CỘNG', '400.101 đ'), row('Đã trả · Tiền mặt', '500.000 đ'), row('Tiền thối', '99.899 đ'),
+    '-'.repeat(W), centre('Cảm ơn quý khách!'),
+  ].join('\n');
+
+  it('reads titles, centred lines, rules and amounts out of the plain text', () => {
+    const rows = styleRows(bill, null);
+    expect(rows.map((x) => x.r).join('')).toBe('tnnstnnsnnsnbnnsn');
+    expect(rows[0]).toMatchObject({ t: expect.stringContaining('LUMIO AGENCY'), c: true });
+    expect(rows[4]).toMatchObject({ r: 't', c: true });
+    expect(rows[8]).toMatchObject({ r: 'n', a: '200.000 đ' });
+    expect(rows[8].c).toBeUndefined();
+    expect(rows[12]).toMatchObject({ r: 'b', a: '400.101 đ' });
+    expect(rows[16]).toMatchObject({ c: true });
+  });
+
+  it('tells the computer which font and size to draw it in, by paper', async () => {
+    const w = world();
+    const a = await w.addComputer('tA');
+    await w.svc.update(w.owner('tA'), a.id, { routes: { COUNTER: { printer: 'EPSON', paper: 58 } } });
+    await w.job('tA', { text: bill });
+    const [j] = await w.take(a.h);
+    expect([j.font, j.size, j.maxWidth]).toEqual(['Arial', 8.5, 189]);
+  });
+
+  it('answers a waiting computer the moment a ticket is created', async () => {
+    const w = world();
+    const a = await w.addComputer('tA');
+    const t0 = Date.now();
+    const waiting = w.svc.jobs(a.h, 10);
+    setTimeout(() => { void w.job('tA', { title: 'now' }).then(() => w.svc.notify('tA')); }, 150);
+    const got = JSON.parse(await waiting).jobs;
+    expect(got.map((j: { title: string }) => j.title)).toEqual(['now']);
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+
+  it('does not wake for another shop’s ticket', async () => {
+    const w = world();
+    const a = await w.addComputer('tA');
+    const t0 = Date.now();
+    const waiting = w.svc.jobs(a.h, 1);
+    setTimeout(() => { void w.job('tB', { title: 'other' }).then(() => w.svc.notify('tB')); }, 100);
+    expect(JSON.parse(await waiting).jobs).toEqual([]);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(900);
   });
 });

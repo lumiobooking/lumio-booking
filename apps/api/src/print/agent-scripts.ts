@@ -48,11 +48,24 @@ function Get-PrinterInfo {
   return @{ name = $env:COMPUTERNAME; printers = $list; defaultPrinter = [string]$def; version = $Version }
 }
 
-function Invoke-GdiPrint($rows, [string]$printer, [int]$cols, [int]$maxWidth) {
+function Pick-Font([string]$name) {
+  try {
+    $fams = (New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }
+    foreach ($f in @($name, 'Arial', 'Segoe UI', 'Microsoft Sans Serif')) { if ($f -and ($fams -contains $f)) { return $f } }
+  } catch {}
+  return 'Arial'
+}
+
+# Draws one ticket like the bill designer's preview: a normal font, the shop
+# name and title large, rules as dashed lines, centred lines centred, amounts
+# pinned to the right edge, the total bold, the table huge on kitchen tickets.
+function Invoke-GdiPrint($rows, [string]$printer, [int]$maxWidth, [string]$fontName, [double]$baseSize) {
   $script:PsRows = @($rows)
   $script:PsIndex = 0
-  $script:PsCols = [Math]::Max(16, [Math]::Min(64, $cols))
   $script:PsMaxW = $maxWidth
+  $script:PsFamily = Pick-Font $fontName
+  $script:PsSize = $baseSize
+  if ($script:PsSize -lt 6) { $script:PsSize = 10 }
   $doc = New-Object System.Drawing.Printing.PrintDocument
   $doc.DocumentName = 'Lumio'
   if ($printer) { $doc.PrinterSettings.PrinterName = $printer }
@@ -62,6 +75,7 @@ function Invoke-GdiPrint($rows, [string]$printer, [int]$cols, [int]$maxWidth) {
   $doc.add_PrintPage({
     param($src, $e)
     $g = $e.Graphics
+    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
     $area = $e.PageSettings.PrintableArea
     $W = [single]$area.Width
     if ($W -lt 50) { $W = [single]$e.PageBounds.Width }
@@ -72,43 +86,53 @@ function Invoke-GdiPrint($rows, [string]$printer, [int]$cols, [int]$maxWidth) {
     $H = [single]$area.Height
     if ($H -lt 50) { $H = [single]$e.PageBounds.Height }
     $W = [single]($W - 6)
-    $typo = [System.Drawing.StringFormat]::GenericTypographic
-    $probe = New-Object System.Drawing.Font($script:FontName, [single]10)
-    $w10 = $g.MeasureString(('M' * $script:PsCols), $probe, [int]100000, $typo).Width
-    $size = [single][Math]::Max(6, [Math]::Min(18, 10 * $W / [Math]::Max(1, $w10)))
-    $normal = New-Object System.Drawing.Font($script:FontName, $size)
-    $bold = New-Object System.Drawing.Font($script:FontName, [single]($size * 1.2), [System.Drawing.FontStyle]::Bold)
-    $huge = New-Object System.Drawing.Font($script:FontName, [single]($size * 2), [System.Drawing.FontStyle]::Bold)
+    $fam = $script:PsFamily
+    $sz = [single]$script:PsSize
+    $fN = New-Object System.Drawing.Font($fam, $sz)
+    $fB = New-Object System.Drawing.Font($fam, [single]($sz * 1.15), [System.Drawing.FontStyle]::Bold)
+    $fT = New-Object System.Drawing.Font($fam, [single]($sz * 1.5), [System.Drawing.FontStyle]::Bold)
+    $fH = New-Object System.Drawing.Font($fam, [single]($sz * 2.1), [System.Drawing.FontStyle]::Bold)
+    $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::Black, [single]1)
+    $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+    $ink = [System.Drawing.Brushes]::Black
+    $gap = [single]($fN.GetHeight($g) * 0.15)
     $y = [single]0
     while ($script:PsIndex -lt $script:PsRows.Count) {
       $row = $script:PsRows[$script:PsIndex]
       $role = [string]$row.r
-      $text = [string]$row.t
-      $font = $normal
-      if ($role -ceq 'b') { $font = $bold }
-      if ($role -ceq 'h') { $font = $huge }
-      $sf = New-Object System.Drawing.StringFormat($typo)
-      $sf.FormatFlags = $sf.FormatFlags -bor [System.Drawing.StringFormatFlags]::MeasureTrailingSpaces
-      if ($role -ceq 'h') { $text = $text.Trim(); $sf.Alignment = [System.Drawing.StringAlignment]::Center }
-      # Two columns (dish ... amount): the amount is pinned to the right edge, never pushed off it.
+      $text = ([string]$row.t).TrimEnd()
+      if ($role -ceq 's') {
+        $h = [single]($fN.GetHeight($g) * 0.8)
+        if ($y -gt 0 -and ($y + $h) -gt $H) { $e.HasMorePages = $true; return }
+        $mid = [single]($y + $h / 2)
+        $g.DrawLine($pen, [single]0, $mid, $W, $mid)
+        $y = [single]($y + $h)
+        $script:PsIndex = $script:PsIndex + 1
+        continue
+      }
+      $font = $fN
+      if ($role -ceq 'b') { $font = $fB }
+      if ($role -ceq 't') { $font = $fT }
+      if ($role -ceq 'h') { $font = $fH }
+      $sf = New-Object System.Drawing.StringFormat
       $right = ''
-      if ($role -cne 'h' -and $row.a) {
+      if ($row.c) { $text = $text.Trim(); $sf.Alignment = [System.Drawing.StringAlignment]::Center }
+      elseif ($row.a) {
         $right = [string]$row.a
         if ($text.EndsWith($right)) { $text = $text.Substring(0, $text.Length - $right.Length).TrimEnd() }
       }
       $leftW = $W
-      if ($right) { $leftW = [single][Math]::Max(40, $W - $g.MeasureString($right, $font, [int]100000, $typo).Width - 8) }
+      if ($right) { $leftW = [single][Math]::Max(40, $W - $g.MeasureString($right, $font).Width - 4) }
       $measure = $text
       if ($measure.Length -eq 0) { $measure = ' ' }
       $box = New-Object System.Drawing.SizeF($leftW, [single]100000)
-      $h = [single][Math]::Max($g.MeasureString($measure, $font, $box, $sf).Height, $font.GetHeight($g))
+      $h = [single]([Math]::Max($g.MeasureString($measure, $font, $box, $sf).Height, $font.GetHeight($g)) + $gap)
       if ($y -gt 0 -and ($y + $h) -gt $H) { $e.HasMorePages = $true; return }
-      $rect = New-Object System.Drawing.RectangleF([single]0, $y, $leftW, $h)
-      $g.DrawString($text, $font, [System.Drawing.Brushes]::Black, $rect, $sf)
+      $g.DrawString($text, $font, $ink, (New-Object System.Drawing.RectangleF([single]0, $y, $leftW, $h)), $sf)
       if ($right) {
-        $sfr = New-Object System.Drawing.StringFormat($typo)
+        $sfr = New-Object System.Drawing.StringFormat
         $sfr.Alignment = [System.Drawing.StringAlignment]::Far
-        $g.DrawString($right, $font, [System.Drawing.Brushes]::Black, (New-Object System.Drawing.RectangleF([single]0, $y, $W, $h)), $sfr)
+        $g.DrawString($right, $font, $ink, (New-Object System.Drawing.RectangleF([single]0, $y, $W, $h)), $sfr)
       }
       $y = [single]($y + $h)
       $script:PsIndex = $script:PsIndex + 1
@@ -213,8 +237,11 @@ $lastHello = [DateTime]::MinValue
 while ($true) {
   try {
     if (((Get-Date) - $lastHello).TotalMinutes -ge 2) { [void](Send-Json '/print-agent/hello' (Get-PrinterInfo)); $lastHello = Get-Date }
-    $r = Invoke-RestMethod -Uri ($Api + '/print-agent/jobs') -Headers $Headers -TimeoutSec 20
-    foreach ($j in @($r.jobs)) {
+    $asked = Get-Date
+    # Long poll: the server answers the moment a ticket arrives (or after 25 s with nothing).
+    $r = Invoke-RestMethod -Uri ($Api + '/print-agent/jobs?wait=25') -Headers $Headers -TimeoutSec 45
+    $jobs = @($r.jobs)
+    foreach ($j in $jobs) {
       if (-not $j) { continue }
       $ok = $true
       $err = ''
@@ -222,28 +249,30 @@ while ($true) {
         if ($j.drawerOnly) {
           if ($j.raw) { Send-Raw ([string]$j.host) ([int]$j.port) ([string]$j.raw) } else { Send-Kick ([string]$j.printer) }
         } else {
+          # Cash sale: open the drawer first, the cashier counts the change while the bill prints.
+          if ($j.kick -and -not $j.raw) { try { Send-Kick ([string]$j.printer) } catch { Write-Log ('drawer: ' + $_) } }
           $n = [Math]::Max(1, [int]$j.copies)
           for ($k = 0; $k -lt $n; $k++) {
             if ($j.raw) { Send-Raw ([string]$j.host) ([int]$j.port) ([string]$j.raw) }
             else {
-              try { Invoke-GdiPrint $j.rows ([string]$j.printer) ([int]$j.cols) ([int]$j.maxWidth) }
+              try { Invoke-GdiPrint $j.rows ([string]$j.printer) ([int]$j.maxWidth) ([string]$j.font) ([double]$j.size) }
               catch { Write-Log ('gdi: ' + $_); Invoke-TextPrint ([string]$j.text) ([string]$j.printer) }
             }
           }
-          if ($j.kick -and -not $j.raw) { try { Send-Kick ([string]$j.printer) } catch { Write-Log ('drawer: ' + $_) } }
         }
       } catch { $ok = $false; $err = [string]$_; Write-Log ('job ' + $j.id + ': ' + $err) }
       try { [void](Send-Json ('/print-agent/jobs/' + $j.id + '/result') @{ ok = $ok; error = $err }) } catch {}
     }
     if ($r.version -and ($r.version -ne $Version)) { Update-Self }
+    # An old server answers at once: do not spin.
+    if ($jobs.Count -eq 0 -and ((Get-Date) - $asked).TotalSeconds -lt 2) { Start-Sleep -Seconds 2 }
   } catch {
     $code = 0
     try { $code = [int]$_.Exception.Response.StatusCode } catch {}
     if ($code -eq 401) { Write-Log 'this computer was removed in Lumio; stopping'; Remove-Autostart; exit }
     Write-Log ('poll: ' + $_)
-    Start-Sleep -Seconds 10
+    Start-Sleep -Seconds 5
   }
-  Start-Sleep -Seconds 3
 }
 `;
 

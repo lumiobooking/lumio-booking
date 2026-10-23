@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { IsArray, IsBoolean, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -90,7 +90,7 @@ export class PrintAgentController {
   @Get('jobs')
   @Header('Content-Type', 'application/json; charset=utf-8')
   @Header('Cache-Control', 'no-store')
-  jobs(@Headers() headers: Record<string, unknown>) { return this.svc.jobs(headers); }
+  jobs(@Headers() headers: Record<string, unknown>, @Query('wait') wait?: string) { return this.svc.jobs(headers, wait); }
 
   @RateLimit(240, 60_000)
   @Post('jobs/:id/result')

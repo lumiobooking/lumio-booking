@@ -1,4 +1,5 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { EventEmitter } from 'events';
 import { PrintJobStatus, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -6,7 +7,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { cleanSettings, SETTINGS_KEY } from '../restaurant/check-logic';
 import { AGENT_VERSION, agentScript, goneScript, installScript } from './agent-scripts';
 import {
-  asciiJson, CODE_MINUTES, cleanCode, cleanKey, cleanName, cleanPrinters, cleanRoutes, columnsOf, drawerRoute, escposBytes, makeCode, makeToken, printableWidth,
+  asciiJson, baseFontSize, CODE_MINUTES, cleanCode, cleanKey, cleanName, cleanPrinters, cleanRoutes, columnsOf, drawerRoute, escposBytes, makeCode, makeToken, printableWidth,
   publicApiBase, ROUTE_ANY, routeFor, runLine, sha, styleRows, testTicket, tokenShapeOk,
 } from './print-devices.logic';
 
@@ -29,8 +30,47 @@ type DeviceRow = {
  * owner's session belongs to.
  */
 @Injectable()
-export class PrintDevicesService {
+export class PrintDevicesService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+
+  /**
+   * Long polling. A computer asks "anything for me?" and the server holds the
+   * question up to 25 s, answering the moment a ticket for its business is
+   * created — so a bill and the cash drawer go out in well under a second
+   * instead of waiting for the next poll. Tickets are created all over the
+   * app (till, kitchen, receipts), so every PrintJob create rings the
+   * business's bell here. One API process: an in-memory bell is enough; if it
+   * ever misses, the computer still re-checks every 4 s.
+   */
+  private readonly bell = new EventEmitter().setMaxListeners(0);
+
+  onModuleInit() {
+    const p = this.prisma as unknown as { $use?: (fn: (params: Record<string, any>, next: (p: Record<string, any>) => Promise<unknown>) => Promise<unknown>) => void };
+    if (typeof p.$use !== 'function') return;
+    p.$use(async (params, next) => {
+      const result = await next(params);
+      if (params.model === 'PrintJob' && params.action === 'create') {
+        const tenantId = params.args?.data?.tenantId;
+        // Inside a transaction the row is visible only after the commit: ring a little later.
+        if (typeof tenantId === 'string') setTimeout(() => this.notify(tenantId), params.runInTransaction ? 700 : 30);
+      }
+      return result;
+    });
+  }
+
+  /** A ticket for this business was created: wake its waiting computers. */
+  notify(tenantId: string) {
+    this.bell.emit(`t:${tenantId}`);
+  }
+
+  private waitForBell(tenantId: string, ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const key = `t:${tenantId}`;
+      const done = () => { clearTimeout(timer); this.bell.off(key, done); resolve(); };
+      const timer = setTimeout(done, Math.max(0, ms));
+      this.bell.on(key, done);
+    });
+  }
 
   /**
    * Each computer asks every few seconds. Who it is (token → device, business
@@ -250,9 +290,20 @@ export class PrintDevicesService {
    * never print the same ticket). Returned as ASCII-only JSON, drawn line by
    * line (rows) — or as ready ESC/POS bytes for a network printer.
    */
-  async jobs(headers: Record<string, unknown>): Promise<string> {
+  async jobs(headers: Record<string, unknown>, wait?: unknown): Promise<string> {
     const d = await this.device(headers);
-    await this.seen(d);
+    const secs = Math.max(0, Math.min(25, Math.round(Number(wait) || 0)));
+    const deadline = Date.now() + secs * 1000;
+    for (;;) {
+      await this.seen(d);
+      const jobs = await this.take(d);
+      if (jobs.length || Date.now() >= deadline) return asciiJson({ version: AGENT_VERSION, jobs });
+      await this.waitForBell(d.tenantId, Math.min(4000, deadline - Date.now()));
+    }
+  }
+
+  /** The tickets this computer prints now, claimed. */
+  private async take(d: DeviceRow): Promise<unknown[]> {
     const tenantId = d.tenantId;
     const now = Date.now();
     const [devices, pending] = await Promise.all([
@@ -281,9 +332,9 @@ export class PrintDevicesService {
       const base = { id: j.id, title: j.title, copies: Math.max(1, Math.min(5, j.copies || 1)), text: j.text, rows, cols: columnsOf(rows), kick, drawerOnly };
       out.push(to.route.host
         ? { ...base, host: to.route.host, port: to.route.port ?? 9100, raw: escposBytes(rows, to.route, { kick, drawerOnly }).toString('base64') }
-        : { ...base, printer: to.route.printer ?? '', maxWidth: printableWidth(to.route) });
+        : { ...base, printer: to.route.printer ?? '', maxWidth: printableWidth(to.route), font: 'Arial', size: baseFontSize(to.route) });
     }
-    return asciiJson({ version: AGENT_VERSION, jobs: out });
+    return out;
   }
 
   /** A computer reports a ticket it took: printed, or why not. Only its own tickets. */

@@ -143,8 +143,13 @@ export const DRAWER_KICK = Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa, 0x1b, 0x70
 
 // ------------------------------------------------------------ the ticket --
 
-/** `a`: the amount at the right of a two-column line ("2x Phở ....... 170.000 đ"), drawn pinned to the right edge. */
-export type Row = { r: 'n' | 'b' | 'h'; t: string; a?: string };
+/**
+ * One printed line and how to draw it: 'n' normal, 'b' bold, 't' a title (the
+ * shop name, "HOÁ ĐƠN"), 'h' huge (the table on a kitchen ticket), 's' a
+ * dashed rule. `c` centred. `a` the amount of a two-column line ("2x Phở ...
+ * 170.000 đ"), drawn pinned to the right edge.
+ */
+export type Row = { r: 'n' | 'b' | 't' | 'h' | 's'; t: string; a?: string; c?: true };
 
 const TWO_COL = /^(.*?\S)\s{2,}(\S(?:.*\S)?)$/;
 
@@ -157,26 +162,43 @@ export function printableWidth(route: Route): number {
   return route.paper === 58 ? 189 : 283;
 }
 
+/** The base font size (points) of a ticket on this paper: readable, like the bill designer's preview. */
+export function baseFontSize(route: Route): number {
+  return route.paper === 58 ? 8.5 : 10;
+}
+
 /**
- * How each line is drawn: 'h' huge (the table on a kitchen ticket), 'b' bold
- * (dishes, kitchen notes, the shop name, the total), 'n' normal. Read from the
- * ticket text itself, so every ticket the app already makes looks right.
+ * How each line is drawn, read from the ticket text every screen already
+ * makes (monospace, centred with spaces): the shop name and the title large,
+ * rules as rules, centred lines centred, amounts pinned right, the total bold,
+ * the table huge on a kitchen ticket. The agent then draws it in a normal
+ * font, so the paper looks like the bill designer's preview.
  */
 export function styleRows(textIn: string, station: string | null): Row[] {
-  const lines = String(textIn ?? '').replace(/\r/g, '').split('\n');
+  const lines = String(textIn ?? '').replace(/\r/g, '').split('\n').map((x) => x.replace(/\s+$/, ''));
   while (lines.length > 1 && !lines[lines.length - 1].trim()) lines.pop();
+  const cols = Math.max(32, Math.min(48, lines.reduce((m, x) => Math.max(m, x.length), 0)));
   const kitchen = !!station && String(station).toUpperCase() !== 'COUNTER';
+  let seen = false;
   return lines.map((t, i) => {
+    if (/^\s*[-=_]{8,}\s*$/.test(t)) return { r: 's', t } as Row;
+    const body = t.trim();
+    const lead = t.length - t.trimStart().length;
+    const centred = !!body && lead >= 2 && Math.abs(lead - (cols - lead - body.length)) <= 2;
     let r: Row['r'] = 'n';
     if (kitchen) {
-      if (i === 0 && t.trim()) r = 'b';
-      else if (i === 1 && t.trim()) r = 'h';
-      else if (/^\s*\d+\s*x\s/i.test(t) || /^\s+[-+]\s/.test(t)) r = 'b';
-    } else if (i === 0 && t.trim()) r = 'b';
-    else if (/^\s*(TỔNG|TONG|TOTAL|PHẢI TRẢ|PHAI TRA|CHƯA PHẢI HOÁ ĐƠN|CHƯA PHẢI HÓA ĐƠN|NOT A RECEIPT)/i.test(t)) r = 'b';
-    const m = r === 'h' ? null : TWO_COL.exec(t);
-    const a = m && m[2].length <= 22 && /\d/.test(m[2]) && m[1].trim() ? m[2] : null;
-    return a ? { r, t, a } : { r, t };
+      if (i === 0 && body) r = 'b';
+      else if (i === 1 && body) r = 'h';
+      else if (/^\d+\s*x\s/i.test(body) || /^\s+[-+]\s/.test(t)) r = 'b';
+    } else if (!seen && body) r = 't';
+    else if (centred && /^(HOÁ ĐƠN|HÓA ĐƠN|PHIẾU TẠM TÍNH|TẠM TÍNH|PHIẾU THU|RECEIPT|GUEST CHECK)/i.test(body)) r = 't';
+    else if (/^(TỔNG|TONG|TOTAL|PHẢI TRẢ|PHAI TRA|CHƯA PHẢI HOÁ ĐƠN|CHƯA PHẢI HÓA ĐƠN|NOT A RECEIPT)/i.test(body)) r = 'b';
+    if (body) seen = true;
+    const row: Row = { r, t };
+    if (centred || r === 'h') { row.c = true; return row; }
+    const m = TWO_COL.exec(t);
+    if (m && m[2].length <= 22 && /\d/.test(m[2]) && m[1].trim()) row.a = m[2];
+    return row;
   });
 }
 
@@ -197,16 +219,19 @@ export function plain(s: string): string {
 export function escposBytes(rows: Row[], route: Route, opts: { kick?: boolean; drawerOnly?: boolean } = {}): Buffer {
   const ESC = 0x1b; const GS = 0x1d;
   if (opts.drawerOnly) return Buffer.concat([Buffer.from([ESC, 0x40]), DRAWER_KICK]);
-  const parts: Buffer[] = [Buffer.from([ESC, 0x40])];
+  // The drawer opens first: the cashier counts the change while the bill prints.
+  const parts: Buffer[] = [Buffer.from([ESC, 0x40]), ...(opts.kick ? [DRAWER_KICK] : [])];
   if (route.beep) parts.push(Buffer.from([ESC, 0x42, 0x02, 0x02]));
   for (const x of rows) {
     const t = plain(x.t);
+    const centre = x.c ? [ESC, 0x61, 0x01] : [];
+    const back = x.c ? [ESC, 0x61, 0x00] : [];
+    const body = x.c ? t.trim() : t;
     if (x.r === 'h') parts.push(Buffer.from([ESC, 0x61, 0x01, GS, 0x21, 0x11, ESC, 0x45, 0x01]), Buffer.from(t.trim(), 'latin1'), Buffer.from([0x0a, GS, 0x21, 0x00, ESC, 0x45, 0x00, ESC, 0x61, 0x00]));
-    else if (x.r === 'b') parts.push(Buffer.from([ESC, 0x45, 0x01, GS, 0x21, 0x01]), Buffer.from(t, 'latin1'), Buffer.from([0x0a, GS, 0x21, 0x00, ESC, 0x45, 0x00]));
-    else parts.push(Buffer.from(t, 'latin1'), Buffer.from([0x0a]));
+    else if (x.r === 't' || x.r === 'b') parts.push(Buffer.from([...centre, ESC, 0x45, 0x01, GS, 0x21, 0x01]), Buffer.from(body, 'latin1'), Buffer.from([0x0a, GS, 0x21, 0x00, ESC, 0x45, 0x00, ...back]));
+    else parts.push(Buffer.from(centre), Buffer.from(body, 'latin1'), Buffer.from([0x0a, ...back]));
   }
   parts.push(Buffer.from([0x0a, 0x0a, 0x0a, 0x0a, GS, 0x56, 0x42, 0x00]));
-  if (opts.kick) parts.push(DRAWER_KICK);
   return Buffer.concat(parts);
 }
 

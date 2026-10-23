@@ -1221,6 +1221,19 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  // The SMS / Zalo gateway keys are set up by Lumio unless Super Admin handed
+  // them to this salon (feature switch "messagingGateway"). Locked until the
+  // server answers, so the boxes never flash open; a support session is always
+  // answered "salon", so the team setting it up sees them.
+  const [gatewayLocked, setGatewayLocked] = useState(true);
+  useEffect(() => {
+    if (!token) return;
+    let live = true;
+    apiFetch<{ policy?: Record<string, string> }>('/feature-policy', { token })
+      .then((r) => { if (live) setGatewayLocked(r?.policy?.messagingGateway !== 'salon'); })
+      .catch(() => { /* stay locked: a failed request must never open the keys */ });
+    return () => { live = false; };
+  }, [token]);
   const [test, setTest] = useState<{ kind: 'idle' | 'sending' | 'ok' | 'err'; msg?: string }>({ kind: 'idle' });
 
   const sendTest = async () => {
@@ -1452,7 +1465,14 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
           that cannot reach its customers. Twilio to a Vietnamese number is a
           silent failure: accepted with a message id, dropped by the carrier.
           The panel that cannot work was the prominent one. */}
-      {!isVN && (<>
+      {gatewayLocked && (
+        <p style={{ marginTop: 16, padding: '10px 12px', borderRadius: 10, background: 'var(--wash-blue)', border: '1px solid var(--line)', color: 'var(--ccbd5e1)', fontSize: 13, lineHeight: 1.5 }}>
+          {lang === 'vi'
+            ? 'Kênh gửi SMS / Zalo của tiệm do Lumio cài đặt và quản lý. Cần thay đổi, nhắn Lumio là xong.'
+            : 'Your SMS / Zalo sending channel is set up and managed by Lumio. Message Lumio for any change.'}
+        </p>
+      )}
+      {!isVN && !gatewayLocked && (<>
         <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
           {t('se.no.smsGateway')}{' '}
           {n.twilio.connected && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('se.pay.connected')}</span>}
@@ -1486,7 +1506,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
           </p>
         </div>
       )}
-      {isVN && !(n.sharedVn?.active && !n.esms?.connected) && (
+      {isVN && !gatewayLocked && !(n.sharedVn?.active && !n.esms?.connected) && (
         <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
             SMS Việt Nam · eSMS.vn{' '}
@@ -1538,7 +1558,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       {smsTest.kind === 'ok' && <p style={{ color: 'var(--ink-good)', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
       {smsTest.kind === 'err' && <p style={{ color: 'var(--ink-bad)', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
 
-      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('notifications', { ...f, smtp, brevo, gmail, twilio: tw, esms: es }, 'Notifications')}>{t('se.no.save')}</button>
+      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('notifications', { ...f, smtp, brevo, gmail, ...(gatewayLocked ? {} : { twilio: tw, esms: es }) }, 'Notifications')}>{t('se.no.save')}</button>
     </Card>
   );
 }

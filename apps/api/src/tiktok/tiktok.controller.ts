@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { UserRole } from '@prisma/client';
 import { TikTokService } from './tiktok.service';
@@ -7,6 +7,8 @@ import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { OAuthGate, tenantOfState } from '../common/oauth-gate.service';
+import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
+import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 
 /**
  * The salon's side: see the connection, start it, end it, re-read what the
@@ -19,6 +21,8 @@ export class TikTokController {
   constructor(private readonly svc: TikTokService, private readonly gate: OAuthGate) {}
 
   /** /oauth/confirm on the web, signed in: apply the parked TikTok grant to THIS salon. */
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('channels')
   @Post('oauth/confirm')
   @HttpCode(200)
   async oauthConfirm(@CurrentUser() user: AuthenticatedUser, @Body() dto: { n?: string; c?: string }) {
@@ -31,17 +35,23 @@ export class TikTokController {
     return this.svc.status(user);
   }
 
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('channels')
   @Get('connect')
   connect(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.authUrl(user);
   }
 
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('channels')
   @Post('disconnect')
   disconnect(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.disconnect(user);
   }
 
   /** Re-ask TikTok what this account may post (privacy levels, max length). */
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('channels')
   @Post('creator')
   creator(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.creatorInfo(user);

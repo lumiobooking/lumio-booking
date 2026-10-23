@@ -71,6 +71,20 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: 'inbox', label: 'Inbox (customer messages)', hrefs: ['/salon/inbox'], default: 'platform' },
   { key: 'messengerAi', label: 'Messenger bot', hrefs: ['/salon/messenger'], default: 'platform' },
   { key: 'voiceAi', label: 'AI Hotline (phone bot)', hrefs: ['/salon/voice'], default: 'platform' },
+  // The knowledge both bots read (menu facts, tone, call-backs, customer
+  // memories). It was the one screen of the "AI assistant" group with no
+  // switch, so the whole group stayed in every salon's menu.
+  { key: 'aiBrain', label: 'AI brain (what the bots know)', hrefs: ['/salon/ai'], default: 'platform' },
+
+  // ---- connecting outside accounts ----------------------------------------
+  // The salon plugging in its own Facebook / Instagram / TikTok / Zalo / web
+  // chat. Lumio connects these during setup in a support session; a salon gets
+  // the screen only when Super Admin hands it over.
+  { key: 'channels', label: 'Social channels (connect Facebook, TikTok, Zalo…)', hrefs: ['/salon/channels'], default: 'platform' },
+  // The salon entering its own SMS / Zalo ZNS gateway keys (Twilio, eSMS) in
+  // Settings › Notifications. Not a menu route — the keys block inside that
+  // section is what hides, and the API ignores those keys from a salon account.
+  { key: 'messagingGateway', label: 'SMS / Zalo gateway keys (Twilio, eSMS)', hrefs: [], default: 'platform' },
 
   // ---- everything else -----------------------------------------------------
   // Nav-hide only (no API block): the basic Connections page shares this API

@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { FEATURE_DEFS, PolicyMode, resolvePolicy } from './feature-policy.constants';
@@ -80,6 +80,27 @@ export class FeaturePolicyService {
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { featurePolicy: clean as unknown as Prisma.InputJsonValue } });
     try { await this.prisma.auditLog.create({ data: { tenantId, action: 'feature_policy.updated', resourceType: 'tenant' } }); } catch { /* never break */ }
     return this.getForTenant(tenantId);
+  }
+
+  /** Throws 403 unless at least one of these features is handed to the salon. */
+  async assertAnySalonManaged(tenantId: string, keys: string[]): Promise<void> {
+    const policy = await this.resolve(tenantId);
+    if (keys.every((k) => policy[k] === 'platform')) {
+      throw new ForbiddenException('This setting is managed by Lumio and cannot be changed here.');
+    }
+  }
+
+  /**
+   * True when THIS caller must not touch the feature: a salon account (owner or
+   * staff) whose switch is off. Super Admin and Lumio support sessions are never
+   * locked — they are the ones who set it up. For writes that only partly belong
+   * to a feature (a settings form that also carries the SMS gateway keys).
+   */
+  async lockedFor(user: AuthenticatedUser, key: string): Promise<boolean> {
+    if (user.role === UserRole.SUPER_ADMIN || user.supportSession) return false;
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) return false;
+    return (await this.resolve(tenantId))[key] === 'platform';
   }
 
   /** Throws 403 if this feature is platform-managed for the tenant. */

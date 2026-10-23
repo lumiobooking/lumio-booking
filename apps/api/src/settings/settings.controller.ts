@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Optional, Patch, Post } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { SettingsService } from './settings.service';
 import {
@@ -12,11 +12,15 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { FeaturePolicyService } from '../feature-policy/feature-policy.service';
 
 @Roles(UserRole.SALON_ADMIN)
 @Controller('settings')
 export class SettingsController {
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    @Optional() private readonly policy?: FeaturePolicyService,
+  ) {}
 
   // The owner sees everything. A staff account at the desk (till, calendar,
   // walk-ins, bookings) gets the desk view: the keys those screens read, and
@@ -44,7 +48,15 @@ export class SettingsController {
   }
 
   @Patch('notifications')
-  updateNotifications(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateNotificationsDto) {
+  async updateNotifications(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateNotificationsDto) {
+    // The SMS / Zalo gateway keys are Lumio's to set unless Super Admin handed
+    // them to this salon. The rest of the form (email, who is told, wording)
+    // stays the salon's: the keys are dropped, not the whole save refused, so
+    // an owner editing an email subject is never told "forbidden".
+    if (this.policy && (await this.policy.lockedFor(user, 'messagingGateway'))) {
+      delete (dto as { twilio?: unknown }).twilio;
+      delete (dto as { esms?: unknown }).esms;
+    }
     return this.settings.updateNotifications(user, dto);
   }
 

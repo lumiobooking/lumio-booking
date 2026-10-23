@@ -58,6 +58,9 @@ export const DEFAULT_HIDDEN: string[] = [
   '/salon/inbox',
   '/salon/messenger',
   '/salon/voice',
+  '/salon/ai',                 // the AI brain both bots read
+  '/salon/channels',           // connecting Facebook / TikTok / Zalo / web chat
+  '/salon/integrations',       // website plugin & API keys
 ];
 
 /**

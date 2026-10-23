@@ -67,6 +67,8 @@ export class MessengerController {
     return this.svc.get(user);
   }
 
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('channels', 'messengerAi')
   @Get('connect')
   connect(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.oauthUrl(user);
@@ -80,7 +82,7 @@ export class MessengerController {
 
   @Post('oauth/choose')
   @UseGuards(FeaturePolicyGuard)
-  @RequiresFeature('messengerAi')
+  @RequiresFeature('channels', 'messengerAi')
   choose(@CurrentUser() user: AuthenticatedUser, @Body() dto: { pageId?: string; takeOver?: boolean }) {
     return this.svc.oauthChoose(user, String(dto?.pageId || ''), dto?.takeOver === true);
   }
@@ -100,6 +102,8 @@ export class MessengerController {
     return this.svc.updateSettings(user, dto);
   }
 
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('channels', 'messengerAi')
   @Post('disconnect')
   disconnect(@CurrentUser() user: AuthenticatedUser, @Body() dto: { pageId?: string }) {
     return this.svc.disconnect(user, dto?.pageId ? String(dto.pageId) : undefined);

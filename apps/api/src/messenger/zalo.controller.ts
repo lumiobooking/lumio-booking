@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { UserRole } from '@prisma/client';
@@ -9,6 +9,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { ZaloOaService } from './zalo-oa.service';
 import { OAuthGate, tenantOfState } from '../common/oauth-gate.service';
+import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
+import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 
 /** Salon-admin management of the Zalo OA mouth. Same trust boundary as
  *  connecting a Facebook Page: configuration is the owner's job. */
@@ -18,6 +20,8 @@ export class ZaloController {
   constructor(private readonly svc: ZaloOaService, private readonly gate: OAuthGate) {}
 
   /** /oauth/confirm on the web, signed in: apply the parked Zalo grant to THIS salon. */
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('channels', 'messengerAi')
   @Post('oauth/confirm')
   @HttpCode(200)
   async oauthConfirm(@CurrentUser() user: AuthenticatedUser, @Body() dto: { n?: string; c?: string }) {
@@ -31,17 +35,23 @@ export class ZaloController {
   }
 
   /** The one-click path: the link the "Kết nối Zalo OA" button opens. */
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('channels', 'messengerAi')
   @Get('oauth/url')
   oauthUrl(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.oauthUrl(user);
   }
 
   /** The console path, kept for an app that is not Lumio's. */
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('channels', 'messengerAi')
   @Post('connect')
   connect(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, string>) {
     return this.svc.connect(user, dto ?? {});
   }
 
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('channels', 'messengerAi')
   @Post('disconnect')
   disconnect(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.disconnect(user);

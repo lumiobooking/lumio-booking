@@ -15,8 +15,9 @@ export class FeaturePolicyGuard implements CanActivate {
   constructor(private readonly reflector: Reflector, private readonly svc: FeaturePolicyService) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
-    const key = this.reflector.getAllAndOverride<string>(FEATURE_KEY_META, [ctx.getHandler(), ctx.getClass()]);
-    if (!key) return true;
+    const meta = this.reflector.getAllAndOverride<string | string[]>(FEATURE_KEY_META, [ctx.getHandler(), ctx.getClass()]);
+    const keys = (Array.isArray(meta) ? meta : meta ? [meta] : []).filter(Boolean);
+    if (!keys.length) return true;
     const req = ctx.switchToHttp().getRequest();
     const user = req.user as AuthenticatedUser | undefined;
     if (!user) return true; // the auth guard handles unauthenticated access
@@ -27,7 +28,7 @@ export class FeaturePolicyGuard implements CanActivate {
     if (user.supportSession) return true;
     const tenantId = resolveTenantScope(user);
     if (!tenantId) return true;
-    await this.svc.assertSalonManaged(tenantId, key); // throws 403 when platform-managed
+    await this.svc.assertAnySalonManaged(tenantId, keys); // throws 403 when every key is platform-managed
     return true;
   }
 }

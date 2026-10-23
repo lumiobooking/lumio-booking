@@ -1,6 +1,6 @@
 import { isSupportOnly, isHidden, canSee, SUPPORT_ONLY, DEFAULT_HIDDEN, gateText } from './support-gate';
 
-/** The nine "Marketing & AI" routes, each of which now has its own switch. */
+/** The agency-run routes (Marketing & AI, plus the AI brain and self-connect screens), each with its own switch. */
 const AGENCY_ROUTES = [
   '/salon/content',
   '/salon/marketing',
@@ -11,6 +11,9 @@ const AGENCY_ROUTES = [
   '/salon/inbox',
   '/salon/messenger',
   '/salon/voice',
+  '/salon/ai',
+  '/salon/channels',
+  '/salon/integrations',
 ];
 
 describe('a salon nobody has decided about sees exactly what it saw before', () => {

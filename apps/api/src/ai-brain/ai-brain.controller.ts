@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { IsArray, IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -8,6 +8,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { AiBrainService } from './ai-brain.service';
+import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
+import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 
 class SandboxMsgDto {
   @IsIn(['user', 'assistant']) role!: 'user' | 'assistant';
@@ -38,6 +40,8 @@ export class AiBrainController {
   settings(@CurrentUser() user: AuthenticatedUser) { return this.brain.settingsView(user); }
 
   // The brain is one JSON document; the service validates every field (brain-settings.ts).
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('aiBrain')
   @Patch('settings')
   save(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.brain.updateBrain(user, dto); }
 
@@ -67,12 +71,18 @@ export class AiBrainController {
   @Get('memories/:customerId')
   memory(@CurrentUser() user: AuthenticatedUser, @Param('customerId') id: string) { return this.brain.memoryDetail(user, id); }
 
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('aiBrain')
   @Patch('memories/:customerId')
   note(@CurrentUser() user: AuthenticatedUser, @Param('customerId') id: string, @Body() dto: MemoryNoteDto) { return this.brain.noteMemory(user, id, dto); }
 
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('aiBrain')
   @Delete('memories/:customerId')
   erase(@CurrentUser() user: AuthenticatedUser, @Param('customerId') id: string) { return this.brain.deleteMemory(user, id); }
 
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('aiBrain')
   @RateLimit(30, 60_000)
   @Post('sandbox')
   sandbox(@CurrentUser() user: AuthenticatedUser, @Body() dto: SandboxDto) { return this.brain.sandbox(user, dto); }

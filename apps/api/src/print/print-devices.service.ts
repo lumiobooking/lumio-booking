@@ -6,7 +6,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { cleanSettings, SETTINGS_KEY } from '../restaurant/check-logic';
 import { AGENT_VERSION, agentScript, goneScript, installScript } from './agent-scripts';
 import {
-  asciiJson, CODE_MINUTES, cleanCode, cleanKey, cleanName, cleanPrinters, cleanRoutes, columnsOf, drawerRoute, escposBytes, makeCode, makeToken,
+  asciiJson, CODE_MINUTES, cleanCode, cleanKey, cleanName, cleanPrinters, cleanRoutes, columnsOf, drawerRoute, escposBytes, makeCode, makeToken, printableWidth,
   publicApiBase, ROUTE_ANY, routeFor, runLine, sha, styleRows, testTicket, tokenShapeOk,
 } from './print-devices.logic';
 
@@ -51,13 +51,17 @@ export class PrintDevicesService {
   async list(user: AuthenticatedUser) {
     const tenantId = this.tid(user);
     const now = Date.now();
-    const [rows, setting, pending] = await Promise.all([
+    const [rows, setting, pending, tenant] = await Promise.all([
       this.prisma.printDevice.findMany({ where: { tenantId, revokedAt: null }, orderBy: { createdAt: 'asc' } }) as Promise<DeviceRow[]>,
       this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: SETTINGS_KEY } } }).catch(() => null),
       this.prisma.printJob.count({ where: { tenantId, status: PrintJobStatus.PENDING, createdAt: { gte: new Date(now - FRESH_MS) } } }),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } }).catch(() => null),
     ]);
     const stations = [{ key: 'COUNTER', name: 'COUNTER' }];
-    if (setting) for (const s of cleanSettings(setting.value).stations) stations.push({ key: s.key, name: s.name });
+    // A restaurant's prep stations (Kitchen, Bar… — the defaults until the owner changes them): each can have its own printer.
+    if (setting || String((tenant as { businessType?: string } | null)?.businessType ?? '') === 'RESTAURANT') {
+      for (const s of cleanSettings(setting?.value ?? {}).stations) stations.push({ key: s.key, name: s.name });
+    }
     return {
       version: AGENT_VERSION,
       pendingJobs: pending,
@@ -277,7 +281,7 @@ export class PrintDevicesService {
       const base = { id: j.id, title: j.title, copies: Math.max(1, Math.min(5, j.copies || 1)), text: j.text, rows, cols: columnsOf(rows), kick, drawerOnly };
       out.push(to.route.host
         ? { ...base, host: to.route.host, port: to.route.port ?? 9100, raw: escposBytes(rows, to.route, { kick, drawerOnly }).toString('base64') }
-        : { ...base, printer: to.route.printer ?? '' });
+        : { ...base, printer: to.route.printer ?? '', maxWidth: printableWidth(to.route) });
     }
     return asciiJson({ version: AGENT_VERSION, jobs: out });
   }

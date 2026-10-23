@@ -16,7 +16,7 @@ import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
 
-interface Route { printer?: string; host?: string; port?: number; beep?: boolean; drawer?: boolean }
+interface Route { printer?: string; host?: string; port?: number; beep?: boolean; drawer?: boolean; paper?: 58 | 80 }
 interface Device {
   id: string; name: string; paired: boolean; pairExpiresAt: string | null; online: boolean; lastSeenAt: string | null;
   printers: string[]; defaultPrinter: string | null; routes: Record<string, Route>; upToDate: boolean;
@@ -35,9 +35,10 @@ const valueOf = (r?: Route) => (!r ? '' : r.host ? 'net' : r.printer ? `p:${r.pr
 function routeFrom(v: string, prev?: Route): Route | null {
   if (!v) return null;
   const drawer = prev?.drawer ? { drawer: true } : {};
-  if (v === 'default') return { printer: '', ...drawer };
+  const paper = prev?.paper === 58 ? { paper: 58 as const } : {};
+  if (v === 'default') return { printer: '', ...drawer, ...paper };
   if (v === 'net') return { host: prev?.host ?? '', port: prev?.port ?? 9100, beep: prev?.beep ?? true, ...drawer };
-  return { printer: v.slice(2), ...drawer };
+  return { printer: v.slice(2), ...drawer, ...paper };
 }
 
 export function PrintersPanel() {
@@ -231,6 +232,12 @@ function DeviceCard({ d, stations, vi, token, onChanged }: { d: Device; stations
                   <input type="checkbox" checked={!!r.beep} onChange={(e) => set(k, { ...r, beep: e.target.checked })} />{L('Kêu bíp', 'Beep')}
                 </label>
               </>
+            )}
+            {r && r.host === undefined && (
+              <select value={r.paper === 58 ? '58' : '80'} aria-label={L('Khổ giấy', 'Paper')} onChange={(e) => set(k, { ...r, paper: e.target.value === '58' ? 58 : undefined })} style={{ ...field, width: 92 }}>
+                <option value="80">80 mm</option>
+                <option value="58">58 mm</option>
+              </select>
             )}
             <button type="button" disabled={!r || !d.online} onClick={() => void test(k)} style={{ ...btn, opacity: !r || !d.online ? 0.5 : 1 }}>{L('In thử', 'Test')}</button>
             {r && (k === 'COUNTER' || k === '*') && (

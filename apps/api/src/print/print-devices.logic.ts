@@ -18,7 +18,7 @@ import { createHash, randomBytes } from 'crypto';
 
 export const ROUTE_ANY = '*';
 /** `drawer`: a cash drawer is plugged into this printer (RJ11); a cash sale opens it. */
-export interface Route { printer?: string; host?: string; port?: number; beep?: boolean; drawer?: boolean }
+export interface Route { printer?: string; host?: string; port?: number; beep?: boolean; drawer?: boolean; paper?: 58 | 80 }
 export type Routes = Record<string, Route>;
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -87,7 +87,7 @@ export function cleanRoutes(raw: unknown): Routes {
       const port = Math.round(Number(r.port));
       out[key] = { host, port: port >= 1 && port <= 65535 ? port : 9100, ...(r.beep === true ? { beep: true } : {}), ...(r.drawer === true ? { drawer: true } : {}) };
     } else {
-      out[key] = { printer: text(r.printer, 120), ...(r.drawer === true ? { drawer: true } : {}) };
+      out[key] = { printer: text(r.printer, 120), ...(r.drawer === true ? { drawer: true } : {}), ...(Number(r.paper) === 58 ? { paper: 58 as const } : {}) };
     }
   }
   return out;
@@ -143,7 +143,19 @@ export const DRAWER_KICK = Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa, 0x1b, 0x70
 
 // ------------------------------------------------------------ the ticket --
 
-export type Row = { r: 'n' | 'b' | 'h'; t: string };
+/** `a`: the amount at the right of a two-column line ("2x Phở ....... 170.000 đ"), drawn pinned to the right edge. */
+export type Row = { r: 'n' | 'b' | 'h'; t: string; a?: string };
+
+const TWO_COL = /^(.*?\S)\s{2,}(\S(?:.*\S)?)$/;
+
+/**
+ * The printable width the driver may draw on, in 1/100 inch: 72 mm of an
+ * 80 mm roll, 48 mm of a 58 mm one. Some drivers report the whole paper, and
+ * the amounts at the right edge of the bill fell off it.
+ */
+export function printableWidth(route: Route): number {
+  return route.paper === 58 ? 189 : 283;
+}
 
 /**
  * How each line is drawn: 'h' huge (the table on a kitchen ticket), 'b' bold
@@ -162,7 +174,9 @@ export function styleRows(textIn: string, station: string | null): Row[] {
       else if (/^\s*\d+\s*x\s/i.test(t) || /^\s+[-+]\s/.test(t)) r = 'b';
     } else if (i === 0 && t.trim()) r = 'b';
     else if (/^\s*(TỔNG|TONG|TOTAL|PHẢI TRẢ|PHAI TRA|CHƯA PHẢI HOÁ ĐƠN|CHƯA PHẢI HÓA ĐƠN|NOT A RECEIPT)/i.test(t)) r = 'b';
-    return { r, t };
+    const m = r === 'h' ? null : TWO_COL.exec(t);
+    const a = m && m[2].length <= 22 && /\d/.test(m[2]) && m[1].trim() ? m[2] : null;
+    return a ? { r, t, a } : { r, t };
   });
 }
 

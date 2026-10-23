@@ -479,13 +479,17 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   );
 
   const billPane = (
-    <aside aria-label="Bill" style={{ flex: '1 1 360px', minWidth: 0, maxWidth: mobile ? undefined : 460, ...card, display: 'flex', flexDirection: 'column' }}>
+    <aside aria-label="Bill" style={{
+      flex: '1 1 360px', minWidth: 0, maxWidth: mobile ? undefined : 460, ...card, display: 'flex', flexDirection: 'column',
+      // A long order scrolls inside the bill; the total and the buttons stay on screen.
+      ...(mobile ? {} : { position: 'sticky', top: 80, alignSelf: 'flex-start', maxHeight: 'calc(100dvh - 96px)' }),
+    }}>
       <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.line}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <b style={{ fontSize: 12.5, letterSpacing: '.06em', color: C.muted }}>BILL #{check.number} · {check.itemCount} {L('MÓN', 'ITEMS')}</b>
         {check.changedAfterPrebill && <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-warn)' }}>{L('Sửa sau tạm tính', 'Changed after check printed')}</span>}
         {check.payRequestedAt && <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-bad)' }}>{L('Khách gọi thanh toán', 'Wants to pay')}</span>}
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 200 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain', padding: 12, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 200 }}>
         {check.callReason && (
           <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 10, borderRadius: 14, border: '2px solid #f59e0b' }}>
             <b style={{ flex: 1, color: 'var(--ink-warn)' }}>{callText(check.callReason, vi)}{check.callAt ? ` · ${minutesOpen(check.callAt, now)}′` : ''}</b>
@@ -513,24 +517,30 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
         {groups.map((g) => g.key === 'unsent' ? (
           <section key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 14, border: '2px solid #ea580c', background: 'var(--c451a03)' }}>
             <b style={{ fontSize: 12, letterSpacing: '.04em', color: 'var(--cfde68a)' }}>{L('CHƯA BÁO BẾP · SỬA THOẢI MÁI', 'NOT SENT YET · EDIT FREELY')}</b>
-            {g.lines.map((l) => (
-              <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, ...(l.held ? { opacity: 0.72 } : {}) }}>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <b style={{ color: C.strong }}>{l.name}</b>
-                  {l.source === 'QR' && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, padding: '1px 6px', borderRadius: 6, border: `1px solid ${C.border}` }}>QR</span>}
-                  {(l.options ?? []).length > 0 && <><br /><span style={{ fontSize: 12.5, color: C.text }}>{(l.options ?? []).join(' · ')}</span></>}
-                  <br />
-                  <span style={{ display: 'inline-flex', gap: 12, flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => setNoteLine(l)} style={{ border: 0, background: 'none', padding: 0, color: 'var(--ink-link)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>{l.note ? `“${l.note}”` : L('+ Ghi chú cho bếp', '+ Note for the kitchen')}</button>
-                    <button type="button" aria-pressed={!!l.held} disabled={busy} onClick={() => void toggleHold(l)} style={{ border: 0, background: 'none', padding: 0, color: l.held ? 'var(--ink-warn)' : 'var(--ink-link)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l.held ? L('⏸ Đang giữ · bỏ giữ', '⏸ Held · release') : L('Giữ lại, gọi sau', 'Hold for later')}</button>
+            {g.lines.map((l, i) => (
+              // Two compact rows per dish: name + amount, then the links and the − n + stepper — the
+              // name gets the full width instead of wrapping word by word next to the stepper.
+              <div key={l.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: i ? 8 : 0, borderTop: i ? '1px dashed rgba(234,88,12,.35)' : 'none', ...(l.held ? { opacity: 0.72 } : {}) }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <b style={{ color: C.strong }}>{l.name}</b>
+                    {l.source === 'QR' && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, padding: '1px 6px', borderRadius: 6, border: `1px solid ${C.border}` }}>QR</span>}
+                    {(l.options ?? []).length > 0 && <span style={{ display: 'block', fontSize: 12.5, color: C.text }}>{(l.options ?? []).join(' · ')}</span>}
                   </span>
-                </span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 10, border: `1px solid ${C.border}`, background: C.panel }}>
-                  <button type="button" aria-label={L('Bớt', 'Less')} disabled={busy} onClick={() => void setQty(l, l.quantity - 1)} style={{ width: 40, height: 40, border: 0, background: 'none', color: C.text, fontSize: 18, fontWeight: 800, cursor: 'pointer' }}>−</button>
-                  <b style={{ minWidth: 20, textAlign: 'center' }}>{l.quantity}</b>
-                  <button type="button" aria-label={L('Thêm', 'More')} disabled={busy} onClick={() => void setQty(l, l.quantity + 1)} style={{ width: 40, height: 40, border: 0, background: 'none', color: C.text, fontSize: 18, fontWeight: 800, cursor: 'pointer' }}>+</button>
-                </span>
-                <b style={{ minWidth: 72, textAlign: 'right' }}>{fmt(l.quantity * l.unitPriceCents)}</b>
+                  <b style={{ whiteSpace: 'nowrap' }}>{fmt(l.quantity * l.unitPriceCents)}</b>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ flex: 1, minWidth: 0, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={() => setNoteLine(l)} style={{ border: 0, background: 'none', padding: 0, color: 'var(--ink-link)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>{l.note ? `“${l.note}”` : L('+ Ghi chú', '+ Note')}</button>
+                    <button type="button" aria-pressed={!!l.held} disabled={busy} onClick={() => void toggleHold(l)} style={{ border: 0, background: 'none', padding: 0, color: l.held ? 'var(--ink-warn)' : 'var(--ink-link)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l.held ? L('⏸ Đang giữ · bỏ giữ', '⏸ Held · release') : L('Giữ, gọi sau', 'Hold')}</button>
+                  </span>
+                  {l.quantity > 1 && <span style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap' }}>{fmt(l.unitPriceCents)}</span>}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 10, border: `1px solid ${C.border}`, background: C.panel }}>
+                    <button type="button" aria-label={L('Bớt', 'Less')} disabled={busy} onClick={() => void setQty(l, l.quantity - 1)} style={{ width: 38, height: 36, border: 0, background: 'none', color: C.text, fontSize: 18, fontWeight: 800, cursor: 'pointer' }}>−</button>
+                    <b style={{ minWidth: 20, textAlign: 'center' }}>{l.quantity}</b>
+                    <button type="button" aria-label={L('Thêm', 'More')} disabled={busy} onClick={() => void setQty(l, l.quantity + 1)} style={{ width: 38, height: 36, border: 0, background: 'none', color: C.text, fontSize: 18, fontWeight: 800, cursor: 'pointer' }}>+</button>
+                  </span>
+                </div>
               </div>
             ))}
           </section>

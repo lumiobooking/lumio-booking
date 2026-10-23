@@ -48,10 +48,11 @@ function Get-PrinterInfo {
   return @{ name = $env:COMPUTERNAME; printers = $list; defaultPrinter = [string]$def; version = $Version }
 }
 
-function Invoke-GdiPrint($rows, [string]$printer, [int]$cols) {
+function Invoke-GdiPrint($rows, [string]$printer, [int]$cols, [int]$maxWidth) {
   $script:PsRows = @($rows)
   $script:PsIndex = 0
   $script:PsCols = [Math]::Max(16, [Math]::Min(64, $cols))
+  $script:PsMaxW = $maxWidth
   $doc = New-Object System.Drawing.Printing.PrintDocument
   $doc.DocumentName = 'Lumio'
   if ($printer) { $doc.PrinterSettings.PrinterName = $printer }
@@ -64,9 +65,13 @@ function Invoke-GdiPrint($rows, [string]$printer, [int]$cols) {
     $area = $e.PageSettings.PrintableArea
     $W = [single]$area.Width
     if ($W -lt 50) { $W = [single]$e.PageBounds.Width }
+    $vis = [single]$g.VisibleClipBounds.Width
+    if ($vis -gt 50 -and $vis -lt $W) { $W = $vis }
+    # A thermal roll prints 72 of its 80 mm (48 of 58): some drivers claim the whole paper.
+    if ($script:PsMaxW -gt 50 -and $W -gt $script:PsMaxW) { $W = [single]$script:PsMaxW }
     $H = [single]$area.Height
     if ($H -lt 50) { $H = [single]$e.PageBounds.Height }
-    $W = [single]($W - 4)
+    $W = [single]($W - 6)
     $typo = [System.Drawing.StringFormat]::GenericTypographic
     $probe = New-Object System.Drawing.Font($script:FontName, [single]10)
     $w10 = $g.MeasureString(('M' * $script:PsCols), $probe, [int]100000, $typo).Width
@@ -85,13 +90,26 @@ function Invoke-GdiPrint($rows, [string]$printer, [int]$cols) {
       $sf = New-Object System.Drawing.StringFormat($typo)
       $sf.FormatFlags = $sf.FormatFlags -bor [System.Drawing.StringFormatFlags]::MeasureTrailingSpaces
       if ($role -ceq 'h') { $text = $text.Trim(); $sf.Alignment = [System.Drawing.StringAlignment]::Center }
+      # Two columns (dish ... amount): the amount is pinned to the right edge, never pushed off it.
+      $right = ''
+      if ($role -cne 'h' -and $row.a) {
+        $right = [string]$row.a
+        if ($text.EndsWith($right)) { $text = $text.Substring(0, $text.Length - $right.Length).TrimEnd() }
+      }
+      $leftW = $W
+      if ($right) { $leftW = [single][Math]::Max(40, $W - $g.MeasureString($right, $font, [int]100000, $typo).Width - 8) }
       $measure = $text
       if ($measure.Length -eq 0) { $measure = ' ' }
-      $box = New-Object System.Drawing.SizeF($W, [single]100000)
+      $box = New-Object System.Drawing.SizeF($leftW, [single]100000)
       $h = [single][Math]::Max($g.MeasureString($measure, $font, $box, $sf).Height, $font.GetHeight($g))
       if ($y -gt 0 -and ($y + $h) -gt $H) { $e.HasMorePages = $true; return }
-      $rect = New-Object System.Drawing.RectangleF([single]0, $y, $W, $h)
+      $rect = New-Object System.Drawing.RectangleF([single]0, $y, $leftW, $h)
       $g.DrawString($text, $font, [System.Drawing.Brushes]::Black, $rect, $sf)
+      if ($right) {
+        $sfr = New-Object System.Drawing.StringFormat($typo)
+        $sfr.Alignment = [System.Drawing.StringAlignment]::Far
+        $g.DrawString($right, $font, [System.Drawing.Brushes]::Black, (New-Object System.Drawing.RectangleF([single]0, $y, $W, $h)), $sfr)
+      }
       $y = [single]($y + $h)
       $script:PsIndex = $script:PsIndex + 1
     }
@@ -208,7 +226,7 @@ while ($true) {
           for ($k = 0; $k -lt $n; $k++) {
             if ($j.raw) { Send-Raw ([string]$j.host) ([int]$j.port) ([string]$j.raw) }
             else {
-              try { Invoke-GdiPrint $j.rows ([string]$j.printer) ([int]$j.cols) }
+              try { Invoke-GdiPrint $j.rows ([string]$j.printer) ([int]$j.cols) ([int]$j.maxWidth) }
               catch { Write-Log ('gdi: ' + $_); Invoke-TextPrint ([string]$j.text) ([string]$j.printer) }
             }
           }

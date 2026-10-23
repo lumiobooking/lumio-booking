@@ -9,7 +9,7 @@ import { PrintDevicesService } from './print-devices.service';
 import { PrintService } from './print.service';
 import { AGENT_VERSION, agentScript, installScript } from './agent-scripts';
 import {
-  asciiJson, DRAWER_KICK, drawerRoute, cleanCode, cleanRoutes, columnsOf, escposBytes, plain, publicApiBase, routeFor, runLine, styleRows,
+  asciiJson, DRAWER_KICK, drawerRoute, printableWidth, cleanCode, cleanRoutes, columnsOf, escposBytes, plain, publicApiBase, routeFor, runLine, styleRows,
 } from './print-devices.logic';
 
 /* In-memory Prisma for the calls these services make. Every where is applied
@@ -330,5 +330,40 @@ describe('one-touch printing — the cash drawer', () => {
     expect(drawerRoute([d1])?.key).toBe('*');
     expect(drawerRoute([{ id: 'd3', pairedAt: new Date(3), routes: { COUNTER: { printer: 'X' } } }])).toBeNull();
     expect(cleanRoutes({ COUNTER: { printer: 'X', drawer: true }, BAR: { host: '10.0.0.9', drawer: 'yes' } })).toEqual({ COUNTER: { printer: 'X', drawer: true }, BAR: { host: '10.0.0.9', port: 9100 } });
+  });
+});
+
+describe('one-touch printing — bills that keep their amounts', () => {
+  it('pins the amount of a two-column line to the right edge', () => {
+    const rows = styleRows('NHA HANG LUMIO\n2x Phở bò tái            170.000 đ\nTỔNG CỘNG                800.027 đ\nCam on quy khach', null);
+    expect(rows[1]).toEqual({ r: 'n', t: '2x Phở bò tái            170.000 đ', a: '170.000 đ' });
+    expect(rows[2]).toMatchObject({ r: 'b', a: '800.027 đ' });
+    expect(rows[3].a).toBeUndefined();
+    expect(styleRows('BEP · MON MOI\n        BAN M3\n2 x Pho', 'KITCHEN')[1].a).toBeUndefined();
+  });
+
+  it('caps the drawing width at the paper, and keeps the paper choice', () => {
+    expect(printableWidth({ printer: 'X' })).toBe(283);
+    expect(printableWidth({ printer: 'X', paper: 58 })).toBe(189);
+    expect(cleanRoutes({ COUNTER: { printer: 'X', paper: '58' }, BAR: { printer: 'Y', paper: 99 } })).toEqual({ COUNTER: { printer: 'X', paper: 58 }, BAR: { printer: 'Y' } });
+  });
+
+  it('lists a restaurant’s kitchen and bar even before its settings were saved', async () => {
+    const w = world();
+    w.prisma.tenant.rows.find((t) => t.id === 'tA')!.businessType = 'RESTAURANT';
+    expect((await w.svc.list(w.owner('tA'))).stations.map((s) => s.key)).toEqual(['COUNTER', 'KITCHEN', 'BAR']);
+    expect((await w.svc.list(w.owner('tB'))).stations.map((s) => s.key)).toEqual(['COUNTER']);
+  });
+
+  it('sends kitchen tickets only to the kitchen printer once it is set, never to the counter', async () => {
+    const w = world();
+    const a = await w.addComputer('tA');
+    await w.svc.update(w.owner('tA'), a.id, { routes: { COUNTER: { printer: 'EPSON' }, KITCHEN: { host: '192.168.1.50' }, BAR: { printer: 'XP-58' }, '*': { printer: '' } } });
+    await w.job('tA', { title: 'k', station: 'KITCHEN' });
+    await w.job('tA', { title: 'b', station: 'BAR' });
+    await w.job('tA', { title: 'bill' });
+    const got = await w.take(a.h);
+    expect(got.map((j) => [j.title, j.printer ?? j.host])).toEqual([['k', '192.168.1.50'], ['b', 'XP-58'], ['bill', 'EPSON']]);
+    expect(got[2].maxWidth).toBe(283);
   });
 });

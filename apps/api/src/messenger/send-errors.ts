@@ -29,6 +29,8 @@ export interface SendRefusal {
   threadControl: boolean;
   /** Worth one more try as it is. */
   transient: boolean;
+  /** Meta has restricted the whole Page from sending — every reply will fail until it lifts. */
+  pageRestricted: boolean;
 }
 
 export function readSendRefusal(status: number, err: GraphError | null | undefined): SendRefusal {
@@ -38,8 +40,13 @@ export function readSendRefusal(status: number, err: GraphError | null | undefin
   const tag = `${code || status}${sub ? `/${sub}` : ''}`;
   const threadControl = /thread[\s_-]*(control|owner)|handover|secondary receiver|not the owner/i.test(msg) || sub === 2018300;
   const transient = code === 1 || code === 2 || code === 4 || code === 613 || code === 32 || status >= 500;
+  // (#2022) "You're temporarily restricted from sending messages until …":
+  // Meta's penalty on the PAGE (spam reports, too many unanswered sends,
+  // a policy strike). Nothing on our side gets around it.
+  const pageRestricted = code === 2022 || sub === 1404078 || /restricted from sending|tạm thời bị hạn chế gửi tin/i.test(msg);
   let reason: string;
-  if (threadControl) reason = 'Một ứng dụng khác đang giữ cuộc trò chuyện (tin tự động của quảng cáo, Meta Business AI hoặc công cụ chat khác).';
+  if (pageRestricted) reason = `Meta đang hạn chế Page gửi tin nhắn${msg ? ` — ${msg.replace(/^\(#\d+\)\s*/, '')}` : ''}. Trả lời khách trực tiếp trong Meta Business Suite và xem mục Chất lượng Trang để biết lý do / kháng nghị.`;
+  else if (threadControl) reason = 'Một ứng dụng khác đang giữ cuộc trò chuyện (tin tự động của quảng cáo, Meta Business AI hoặc công cụ chat khác).';
   else if (code === 10 && (sub === 2018278 || sub === 2018065 || /outside of allowed window/i.test(msg))) reason = 'Đã quá 24 giờ kể từ tin cuối của khách — Meta không cho bot gửi.';
   else if (code === 190) reason = 'Mã truy cập Facebook Page đã hết hạn — cần kết nối lại Page.';
   else if (code === 200 || code === 230 || code === 10) reason = 'Page chưa cấp quyền nhắn tin cho Lumio (pages_messaging) — cần kết nối lại Page.';
@@ -47,5 +54,5 @@ export function readSendRefusal(status: number, err: GraphError | null | undefin
   else if (code === 100 && (sub === 2018001 || /no matching user/i.test(msg))) reason = 'Meta không tìm thấy khách này trên Page.';
   else if (transient) reason = 'Meta tạm thời không nhận tin — thử lại sau ít phút.';
   else reason = msg ? `Meta từ chối: ${msg.slice(0, 160)}` : `Meta từ chối tin nhắn (HTTP ${status}).`;
-  return { code: tag, reason, threadControl, transient };
+  return { code: tag, reason, threadControl, transient: transient && !pageRestricted, pageRestricted };
 }

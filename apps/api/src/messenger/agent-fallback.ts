@@ -84,3 +84,18 @@ export function escalationPush(name: string | null | undefined, vi: boolean): { 
     tag: 'lumio-inbox-escalation',
   };
 }
+
+/**
+ * The bot wrote a reply and Meta refused it: the customer got nothing. The
+ * phones are told at once, with Meta's reason, so a person answers in Meta
+ * Business Suite instead of believing the screen that shows a bot reply.
+ */
+export function sendFailedPush(name: string | null | undefined, reason: string, vi: boolean): { title: string; body: string; url: string; tag: string } {
+  const who = String(name ?? '').trim() || (vi ? 'Khách' : 'A customer');
+  return {
+    title: vi ? `⚠ Tin của bot không tới được ${who}` : `⚠ The bot's reply did not reach ${who}`,
+    body: (vi ? 'Meta từ chối: ' : 'Meta refused it: ') + String(reason ?? '').slice(0, 140),
+    url: '/staff/inbox',
+    tag: 'lumio-inbox-send-failed',
+  };
+}

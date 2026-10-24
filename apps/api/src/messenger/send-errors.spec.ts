@@ -22,6 +22,14 @@ describe('reading what Meta said when it refused our message', () => {
     expect(readSendRefusal(400, { code: 10, error_subcode: 2018278 }).transient).toBe(false);
   });
 
+  it('the Lumio Agency case: Meta restricted the whole Page until Oct 30', () => {
+    const r = readSendRefusal(400, { code: 2022, error_subcode: 1404078, message: '(#2022) Bạn tạm thời bị hạn chế gửi tin nhắn đến 30 tháng 10 lúc 15:49.' });
+    expect(r.pageRestricted).toBe(true);
+    expect(r.transient).toBe(false);
+    expect(r.reason).toMatch(/hạn chế Page gửi tin nhắn — Bạn tạm thời bị hạn chế gửi tin nhắn đến 30 tháng 10 lúc 15:49/);
+    expect(r.reason).toMatch(/Business Suite/);
+  });
+
   it('keeps Meta\'s code for the log and never invents a reason', () => {
     const r = readSendRefusal(400, { code: 9999, error_subcode: 1, message: 'Something new' });
     expect(r.code).toBe('9999/1');

@@ -25,7 +25,7 @@ import { isWebPage, webPageId } from './web-chat';
 import {
   metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, type InboundMedia,
 } from './inbound-media';
-import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
+import { escalationPush, fallbackText, isTransientStatus, sendFailedPush } from './agent-fallback';
 import { conversationLang, defaultLangForMarket, localeForLang, replyLangRule, sayIn, type ReplyLang } from '../common/reply-language';
 import {
   sharedAiHealth, recordAiSuccess, recordAiFailure, shouldAlert, markAlerted, aiAlertLine,
@@ -1813,7 +1813,12 @@ export class MessengerService implements OnModuleInit {
         .filter((t) => !isHidden(t as never, hiddenTurns))
         // messageId rides along so the screen can name a message back to us
         // when somebody hides it. See turnKeys - a position cannot do that job.
-        .map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual, messageId: (t as { messageId?: string | null }).messageId ?? null, ...(t.manual && t.by ? { by: t.by } : {}), ...(t.images?.length ? { images: t.images } : {}) })),
+        .map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual, messageId: (t as { messageId?: string | null }).messageId ?? null, ...(t.manual && t.by ? { by: t.by } : {}), ...(t.images?.length ? { images: t.images } : {}),
+          // Whether the customer actually got it. Dropped here before, so a reply
+          // Meta refused looked exactly like one it delivered.
+          ...(t.failed ? { failed: true, sendError: (t as { sendError?: string | null }).sendError ?? null } : {}),
+          ...((t as { undelivered?: boolean }).undelivered ? { undelivered: true } : {}),
+          ...((t as { source?: string }).source === 'page' ? { source: 'page' } : {}) })),
       state: view.state,
       stateReason: view.reason,
       waitingMinutes: waitingMinutes(row as never, now, botFirst),
@@ -3439,6 +3444,8 @@ export class MessengerService implements OnModuleInit {
   // Yield windows are per-tenant settings now (humanActiveMins / graceMins on
   // the connection); 15 and 5 minutes are just the defaults.
   private readonly graceTimers = new Map<string, NodeJS.Timeout>();
+  /** Thread → when staff were last told a bot reply did not reach Meta. */
+  private readonly sendFailAlerts = new Map<string, number>();
   /** Message ids WE sent. Instagram echoes drop the metadata tag, so the tag
    *  alone cannot tell our own message from a human's — the id can. Kept ~10
    *  minutes, which is far longer than an echo takes to arrive. */
@@ -3673,6 +3680,19 @@ export class MessengerService implements OnModuleInit {
     // is not the robot thinking, and a line a person typed is the salon's own
     // work — none of the three is charged. See messenger/chat-billing.ts.
     if (sent.ok) this.countBotReply(conn.tenantId);
+    // Refused by Meta: the customer got nothing. Wake the phones with Meta's
+    // reason (once per conversation per 10 minutes), so a person answers in
+    // Business Suite instead of trusting a screen that shows a bot reply.
+    if (!sent.ok && freshCh !== 'web') {
+      const lastAlert = this.sendFailAlerts.get(threadId) ?? 0;
+      if (Date.now() - lastAlert > 10 * 60_000) {
+        this.sendFailAlerts.set(threadId, Date.now());
+        const who = (fresh as unknown as { senderName?: string | null }).senderName ?? null;
+        const vi = conversationLang([...history.filter((h) => h.role === 'user').map((h) => String(h.content ?? '')), text]) !== 'en';
+        void this.push.sendToTenant(conn.tenantId, sendFailedPush(who, sent.error ?? '', vi)).catch(() => undefined);
+        this.events.publish(conn.tenantId, 'message');
+      }
+    }
     // The bot had to say "let me check with the salon": keep the question for
     // the owner to answer once (./knowledge-gaps). Never awaited, never fatal.
     if (this.gaps && asksQuestion(text) && isUnknownReply(reply)) {

@@ -100,6 +100,12 @@ export class AiBrainService {
       ]);
       brain = brainFromLegacy({ market: tenant?.market, messenger: conn, voice: line, aiNotes: notes?.text ?? '' });
     }
+    // ONE number for "how long staff keep the chat after they type": the
+    // Messenger connection's humanActiveMins is what the bot actually obeys
+    // (messenger.service yield rules). The brain screen used to keep its own
+    // copy that nothing read, so changing it there changed nothing.
+    const quiet = await Promise.resolve().then(() => this.db.messengerConnection.findUnique({ where: { tenantId }, select: { humanActiveMins: true } as never })).catch(() => null) as { humanActiveMins?: number } | null;
+    if (quiet && Number.isInteger(quiet.humanActiveMins)) brain.handoff.staffQuietMins = quiet.humanActiveMins as number;
     this.cache.set(tenantId, { at: Date.now(), brain, legacy });
     return { brain, legacy };
   }
@@ -137,6 +143,10 @@ export class AiBrainService {
       update: { value: next },
       create: { tenantId, key: AI_BRAIN_KEY, value: next },
     });
+    // Staff-quiet minutes live on the Messenger connection, where the bot reads them.
+    if (next.handoff.staffQuietMins !== current.handoff.staffQuietMins) {
+      await Promise.resolve().then(() => this.db.messengerConnection.updateMany({ where: { tenantId }, data: { humanActiveMins: next.handoff.staffQuietMins } as never })).catch(() => undefined);
+    }
     // The hotline's transfer number lives on the line (routing): keep the two in step.
     if (next.handoff.transferNumber !== current.handoff.transferNumber) {
       await this.db.voiceLine.updateMany({ where: { tenantId }, data: { transferNumber: next.handoff.transferNumber || null } }).catch(() => undefined);

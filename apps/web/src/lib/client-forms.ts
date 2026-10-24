@@ -6,7 +6,8 @@
  * Pure (tested in client-forms.spec.ts).
  */
 
-export type FormKind = 'intake' | 'cupping' | 'hot_stone' | 'soap';
+/** A built-in form, or one of the salon's own ("c_…", made on /salon/forms). */
+export type FormKind = 'intake' | 'cupping' | 'hot_stone' | 'soap' | `c_${string}`;
 export type FormLang = 'vi' | 'en';
 export type FieldType = 'section' | 'note' | 'yesno' | 'choice' | 'multi' | 'text' | 'bodymap' | 'scale' | 'ack';
 
@@ -23,7 +24,7 @@ export interface ResolvedTemplate {
 }
 export type Answers = Record<string, unknown>;
 
-export interface FormNeed { kind: FormKind; when: 'before' | 'after'; status: 'signed' | 'missing' | 'expired'; entryId: string | null; signedAt: string | null }
+export interface FormNeed { kind: FormKind; when: 'before' | 'after'; status: 'signed' | 'missing' | 'expired'; entryId: string | null; signedAt: string | null; title?: string }
 export interface RedFlag { kind: FormKind; fieldId: string; label: string; note?: string; for: string[] }
 
 export interface VisitForms {
@@ -38,6 +39,8 @@ export interface VisitForms {
   notes?: string[];
   canSoap?: boolean;
   soapId?: string | null;
+  /** The salon's own technician records for this visit (a lash map, a nail record…). */
+  staffForms?: { kind: FormKind; title: string; entryId: string | null; canWrite: boolean }[];
 }
 
 export interface CustomerForms {
@@ -56,15 +59,19 @@ export interface FormEntry {
   customerName: string | null; staffName: string | null; salonName: string; canAmend: boolean;
 }
 
-export interface TemplatePair { kind: FormKind; vi: ResolvedTemplate; en: ResolvedTemplate }
+/** `single`: one of the salon's own forms, written in one language — no VI / EN switch. */
+export interface TemplatePair { kind: FormKind; vi: ResolvedTemplate; en: ResolvedTemplate; single?: boolean }
 
-export const KIND_LABEL: Record<FormKind, { vi: string; en: string }> = {
+export const KIND_LABEL: Record<'intake' | 'cupping' | 'hot_stone' | 'soap', { vi: string; en: string }> = {
   intake: { vi: 'Phiếu thông tin', en: 'Intake' },
   cupping: { vi: 'Đồng ý giác hơi', en: 'Cupping consent' },
   hot_stone: { vi: 'Đồng ý đá nóng', en: 'Hot stone consent' },
   soap: { vi: 'Ghi chú SOAP', en: 'SOAP note' },
 };
-export const kindLabel = (k: string, vi: boolean) => (KIND_LABEL[k as FormKind] ? (vi ? KIND_LABEL[k as FormKind].vi : KIND_LABEL[k as FormKind].en) : k);
+const BUILT_IN = KIND_LABEL as Record<string, { vi: string; en: string }>;
+/** A form's name: the built-in label, else the salon's own name for it, else a plain word. */
+export const kindLabel = (k: string, vi: boolean, title?: string | null) =>
+  BUILT_IN[k] ? (vi ? BUILT_IN[k].vi : BUILT_IN[k].en) : (title || (vi ? 'Biểu mẫu' : 'Form'));
 
 /** An answer as words, for the viewer and the printout. Empty string = not answered. */
 export function answerText(f: ResolvedField, answers: Answers, areas: ResolvedTemplate['areas'], vi: boolean): string {

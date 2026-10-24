@@ -11,8 +11,12 @@ import { publicWebBase } from '../common/public-url.util';
 import { liveEvents } from '../common/live-events';
 import {
   CLIENT_KINDS, cleanSignature, isFormKind, redFlags, resolveTemplate, templateFor, validateAnswers, visitNotes,
-  type Answers, type ConsentKind, type FormKind, type FormLang, type ResolvedTemplate,
+  type AnyKind, type Answers, type ConsentKind, type FormKind, type FormLang, type FormTemplate, type ResolvedTemplate,
 } from './form-templates';
+import {
+  CUSTOM_LIMITS, customTemplate, isCustomKind, newCustomKind, sanitizeCustomForm, starterForm, starterList,
+  type CustomForm,
+} from './custom-forms';
 import {
   CLIENT_FORMS_KEY, consentKindsFor, defaultFormSettings, missingClientKinds, sanitizeFormSettings, visitNeeds,
   type ClientFormSettings, type EntryLite, type VisitService,
@@ -105,6 +109,26 @@ export class ClientFormsService {
     return sanitizeFormSettings(row?.value ?? null, defaultFormSettings(industry));
   }
 
+  /** The language a salon writes its own forms in: its content language, else its region's. */
+  private async regionLang(tenantId: string): Promise<FormLang> {
+    const t = await this.db.tenant.findUnique({ where: { id: tenantId }, select: { market: true, contentLang: true } }).catch(() => null);
+    const c = String(t?.contentLang ?? '').toLowerCase();
+    if (c === 'vi' || c === 'en') return c;
+    return this.langOf(null, t?.market);
+  }
+
+  /** The template behind any kind this salon hands out; null when it has no such form. */
+  private tplOf(s: ClientFormSettings, kind: string): { tpl: FormTemplate; lang: FormLang | null; custom: CustomForm | null } | null {
+    if (isFormKind(kind)) return { tpl: templateFor(kind, s.extraQuestions, s.intakeStyle), lang: null, custom: null };
+    const cf = s.customForms.find((f) => f.kind === kind);
+    return cf ? { tpl: customTemplate(cf), lang: cf.lang, custom: cf } : null;
+  }
+
+  /** Every form a client can be asked to sign here: the built-in ones and the salon's own. */
+  private clientKindsOf(s: ClientFormSettings): AnyKind[] {
+    return [...CLIENT_KINDS, ...s.customForms.filter((f) => f.active && f.signer === 'client').map((f) => f.kind)];
+  }
+
   async settingsView(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const [settings, industry, services, categories] = await Promise.all([
@@ -119,7 +143,11 @@ export class ClientFormsService {
   async updateSettings(user: AuthenticatedUser, dto: unknown) {
     if (accessOf(user) !== 'full') throw new ForbiddenException('Only the owner or a manager can change the forms');
     const tenantId = this.tenantId(user);
-    const next = sanitizeFormSettings(dto, await this.getSettings(tenantId));
+    const current = await this.getSettings(tenantId);
+    const next = sanitizeFormSettings(dto, current);
+    // The salon's own forms change only through their own endpoints (and get a
+    // new version there) — a settings save that happens to carry them is ignored.
+    next.customForms = current.customForms;
     await this.db.setting.upsert({
       where: { tenantId_key: { tenantId, key: CLIENT_FORMS_KEY } },
       update: { value: next },
@@ -133,14 +161,28 @@ export class ClientFormsService {
   async templates(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const s = await this.getSettings(tenantId);
-    return { enabled: s.enabled, templates: this.resolvedAll(s, ['intake', 'cupping', 'hot_stone', 'soap']) };
+    const own = s.customForms.filter((f) => f.active).map((f) => f.kind);
+    return { enabled: s.enabled, templates: this.resolvedAll(s, ['intake', 'cupping', 'hot_stone', 'soap', ...own]) };
   }
 
-  private resolvedAll(s: ClientFormSettings, kinds: FormKind[]) {
-    return kinds.map((k) => {
-      const tpl = templateFor(k, s.extraQuestions, s.intakeStyle);
-      return { kind: k, vi: resolveTemplate(tpl, 'vi'), en: resolveTemplate(tpl, 'en') };
-    });
+  /**
+   * Each form in both languages. The salon's own forms are written in one
+   * language, so both sides are that language and `single` tells the signing
+   * page not to offer a VI / EN switch. A kind the salon no longer has is left out.
+   */
+  private resolvedAll(s: ClientFormSettings, kinds: AnyKind[]) {
+    const out: { kind: AnyKind; vi: ResolvedTemplate; en: ResolvedTemplate; single?: true }[] = [];
+    for (const k of kinds) {
+      const t = this.tplOf(s, k);
+      if (!t) continue;
+      if (t.lang) {
+        const one = resolveTemplate(t.tpl, t.lang);
+        out.push({ kind: k, vi: one, en: one, single: true });
+      } else {
+        out.push({ kind: k, vi: resolveTemplate(t.tpl, 'vi'), en: resolveTemplate(t.tpl, 'en') });
+      }
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------- visits
@@ -248,12 +290,13 @@ export class ClientFormsService {
     if (access === 'tech' && !(me && v.staffIds.includes(me.id))) throw new ForbiddenException('Not your client');
     const kinds = consentKindsFor(s, v.services);
     const entries = await this.entriesFor(tenantId, v);
-    const needs = visitNeeds(s, { appointmentId: v.appointmentId, walkInId: v.walkInId, consentKinds: kinds }, entries as EntryLite[], new Date());
+    const needs = visitNeeds(s, { appointmentId: v.appointmentId, walkInId: v.walkInId, consentKinds: kinds, services: v.services }, entries as EntryLite[], new Date());
     const lang = this.langOf(q.lang);
     const reader = access !== 'desk';
     const signedClient = entries.filter((e) => e.kind !== 'soap' && needs.some((n) => n.entryId === e.id));
     const intake = entries.find((e) => e.kind === 'intake') ?? null;
     const soap = needs.find((n) => n.kind === 'soap' && n.status === 'signed');
+    const canWrite = access === 'full' || (access === 'tech' && !!me && v.staffIds.includes(me.id));
     return {
       enabled: true,
       access,
@@ -264,8 +307,12 @@ export class ClientFormsService {
       needs,
       flags: reader ? redFlags(signedClient.map((e) => ({ kind: e.kind as FormKind, answers: e.answers as Answers, snapshot: e.snapshot as ResolvedTemplate })), kinds, lang) : [],
       notes: reader ? visitNotes((intake?.answers as Answers) ?? null, lang) : [],
-      canSoap: s.soapRequired !== false && (access === 'full' || (access === 'tech' && !!me && v.staffIds.includes(me.id))),
+      canSoap: s.soapRequired !== false && canWrite,
       soapId: soap?.entryId ?? null,
+      // The salon's own technician records for this visit (a lash map, a nail record…).
+      staffForms: needs
+        .filter((n) => n.when === 'after' && n.kind !== 'soap')
+        .map((n) => ({ kind: n.kind, title: n.title ?? '', entryId: n.status === 'signed' ? n.entryId : null, canWrite })),
     };
   }
 
@@ -290,8 +337,8 @@ export class ClientFormsService {
     const staffName = new Map(staff.map((x) => [x.id, [x.firstName, x.lastName].filter(Boolean).join(' ')]));
     const lang = this.langOf(langRaw);
     const reader = access !== 'desk';
-    const needs = visitNeeds({ ...s, soapRequired: false }, { consentKinds: [] }, rows as EntryLite[], new Date());
-    const latestClient = (['intake', 'cupping', 'hot_stone'] as FormKind[]).map((k) => rows.find((r) => r.kind === k)).filter(Boolean) as Row[];
+    const needs = visitNeeds({ ...s, soapRequired: false }, { consentKinds: [], staffNotes: false }, rows as EntryLite[], new Date());
+    const latestClient = this.clientKindsOf(s).map((k) => rows.find((r) => r.kind === k)).filter(Boolean) as Row[];
     return {
       enabled: s.enabled,
       access,
@@ -313,8 +360,9 @@ export class ClientFormsService {
   async recent(user: AuthenticatedUser, q: { kind?: string }) {
     if (accessOf(user) !== 'full') throw new ForbiddenException('Owner or manager only');
     const tenantId = this.tenantId(user);
+    const titles = new Map((await this.getSettings(tenantId)).customForms.map((f) => [f.kind as string, f.name]));
     const rows: Row[] = await this.db.clientFormEntry.findMany({
-      where: { tenantId, ...(isFormKind(q.kind) ? { kind: q.kind } : {}) },
+      where: { tenantId, ...(isFormKind(q.kind) || isCustomKind(q.kind) ? { kind: q.kind } : {}) },
       orderBy: { signedAt: 'desc' },
       take: 60,
       select: { id: true, kind: true, signedAt: true, signedName: true, customerId: true, staffId: true, signerRole: true },
@@ -329,7 +377,7 @@ export class ClientFormsService {
     const cn = new Map((cs as Row[]).map((x) => [x.id, nm(x)]));
     const sn = new Map((ss as Row[]).map((x) => [x.id, nm(x)]));
     return rows.map((r) => ({
-      id: r.id, kind: r.kind, signedAt: r.signedAt, signerRole: r.signerRole, customerId: r.customerId ?? null,
+      id: r.id, kind: r.kind, title: titles.get(r.kind) ?? null, signedAt: r.signedAt, signerRole: r.signerRole, customerId: r.customerId ?? null,
       customerName: (r.customerId && cn.get(r.customerId)) || (r.signerRole === 'client' ? r.signedName : null) || null,
       staffName: r.staffId ? sn.get(r.staffId) ?? null : null,
     }));
@@ -391,7 +439,7 @@ export class ClientFormsService {
 
   // ---------------------------------------------------------------- links
 
-  private async newLink(tenantId: string, d: { customerId: string | null; appointmentId: string | null; walkInId: string | null; kinds: FormKind[]; lang?: FormLang | null }): Promise<Row> {
+  private async newLink(tenantId: string, d: { customerId: string | null; appointmentId: string | null; walkInId: string | null; kinds: AnyKind[]; lang?: FormLang | null }): Promise<Row> {
     const token = randomBytes(18).toString('base64url');
     return this.db.clientFormLink.create({
       data: {
@@ -415,26 +463,27 @@ export class ClientFormsService {
     const me = await this.staffOf(tenantId, user);
     let customerId: string | null = null, appointmentId: string | null = null, walkInId: string | null = null;
     let phone: string | null = null, name = '';
-    let missing: FormKind[] = [];
+    let missing: AnyKind[] = [];
     if (dto.appointmentId || dto.walkInId) {
       const v = await this.loadVisit(tenantId, dto);
       if (access === 'tech' && !(me && v.staffIds.includes(me.id))) throw new ForbiddenException('Not your client');
       ({ customerId, appointmentId, walkInId, phone } = v);
       name = v.name;
       const entries = await this.entriesFor(tenantId, v);
-      missing = missingClientKinds(visitNeeds(s, { appointmentId, walkInId, consentKinds: consentKindsFor(s, v.services) }, entries as EntryLite[], new Date()));
+      missing = missingClientKinds(visitNeeds(s, { appointmentId, walkInId, consentKinds: consentKindsFor(s, v.services), services: v.services, staffNotes: false }, entries as EntryLite[], new Date()));
     } else if (dto.customerId) {
       const c = await this.db.customer.findFirst({ where: { id: dto.customerId, tenantId }, select: { id: true, firstName: true, lastName: true, phone: true } });
       if (!c) throw new NotFoundException('Client not found');
       if (access === 'tech' && !(me && (await this.served(tenantId, me.id, c.id)))) throw new ForbiddenException('Not your client');
       customerId = c.id; phone = c.phone ?? null; name = [c.firstName, c.lastName].filter(Boolean).join(' ');
       const rows = await this.db.clientFormEntry.findMany({ where: { tenantId, customerId: c.id }, select: { id: true, kind: true, signedAt: true, appointmentId: true, walkInId: true } });
-      missing = missingClientKinds(visitNeeds({ ...s, soapRequired: false }, { consentKinds: [] }, rows as EntryLite[], new Date()));
+      missing = missingClientKinds(visitNeeds({ ...s, soapRequired: false }, { consentKinds: [], staffNotes: false }, rows as EntryLite[], new Date()));
     } else {
       throw new BadRequestException('A booking, a ticket or a client is required');
     }
-    const picked = Array.isArray(dto.kinds) ? dto.kinds.filter((k): k is FormKind => (CLIENT_KINDS as string[]).includes(k)) : [];
-    const kinds = picked.length ? [...new Set(picked)] : missing.length ? missing : ['intake' as FormKind];
+    const allowed = this.clientKindsOf(s) as string[];
+    const picked = Array.isArray(dto.kinds) ? dto.kinds.filter((k): k is AnyKind => allowed.includes(k)) : [];
+    const kinds: AnyKind[] = picked.length ? [...new Set(picked)] : missing.length ? missing : ['intake'];
     const lang = dto.lang === 'vi' || dto.lang === 'en' ? dto.lang : null;
     const link = await this.newLink(tenantId, { customerId, appointmentId, walkInId, kinds, lang });
     let sentTo: string | null = null;
@@ -468,7 +517,7 @@ export class ClientFormsService {
     if (!s.enabled) return null;
     const v = await this.loadVisit(tenantId, { walkInId });
     const entries = await this.entriesFor(tenantId, v);
-    const kinds = missingClientKinds(visitNeeds(s, { appointmentId: v.appointmentId, walkInId: v.walkInId, consentKinds: consentKindsFor(s, v.services) }, entries as EntryLite[], new Date()));
+    const kinds = missingClientKinds(visitNeeds(s, { appointmentId: v.appointmentId, walkInId: v.walkInId, consentKinds: consentKindsFor(s, v.services), services: v.services, staffNotes: false }, entries as EntryLite[], new Date()));
     if (!kinds.length) return null;
     const link = await this.newLink(tenantId, { customerId: v.customerId, appointmentId: v.appointmentId, walkInId: v.walkInId, kinds });
     return { token: link.token };
@@ -477,35 +526,55 @@ export class ClientFormsService {
   // ---------------------------------------------------------------- SOAP
 
   async createSoap(user: AuthenticatedUser, dto: { appointmentId?: string; walkInId?: string; answers?: unknown; signatureData?: unknown; signedName?: string; lang?: string }) {
+    return this.createStaffNote(user, 'soap', dto);
+  }
+
+  /**
+   * A technician's record after a visit: the SOAP note, or one of the salon's
+   * own staff forms (a lash map, a nail record…). Same rules as the SOAP note:
+   * the front desk cannot write one, a technician only for their own visit.
+   */
+  async createStaffNote(user: AuthenticatedUser, kind: string, dto: { appointmentId?: string; walkInId?: string; answers?: unknown; signatureData?: unknown; signedName?: string; lang?: string }) {
     const tenantId = this.tenantId(user);
     const s = await this.getSettings(tenantId);
     if (!s.enabled) throw new BadRequestException('Forms are switched off for this salon');
+    let tpl: FormTemplate;
+    let formLang: FormLang | null = null;
+    if (kind === 'soap') {
+      tpl = templateFor('soap');
+    } else {
+      const cf = s.customForms.find((f) => f.kind === kind && f.signer === 'staff');
+      if (!cf) throw new NotFoundException('Form not found');
+      if (!cf.active) throw new BadRequestException('This form is switched off');
+      tpl = customTemplate(cf);
+      formLang = cf.lang;
+    }
     const access = accessOf(user);
     if (access === 'desk') throw new ForbiddenException('The therapist writes the SOAP note');
     const v = await this.loadVisit(tenantId, dto);
     const me = await this.staffOf(tenantId, user);
     if (access === 'tech' && !(me && v.staffIds.includes(me.id))) throw new ForbiddenException('Not your client');
-    const tpl = templateFor('soap');
     const { answers, missing } = validateAnswers(tpl, dto.answers);
     if (missing.length) throw new BadRequestException(`Missing: ${missing.join(', ')}`);
     const signatureData = cleanSignature(dto.signatureData);
     if (!signatureData) throw new BadRequestException('Sign the note');
-    const lang = this.langOf(dto.lang);
+    const lang = formLang ?? this.langOf(dto.lang);
     const signedName = (typeof dto.signedName === 'string' && dto.signedName.trim().slice(0, 120)) || me?.name || user.email || '';
     const e = await this.db.clientFormEntry.create({
       data: {
-        tenantId, customerId: v.customerId, kind: 'soap', templateVersion: tpl.version, lang,
+        tenantId, customerId: v.customerId, kind, templateVersion: tpl.version, lang,
         answers, snapshot: resolveTemplate(tpl, lang), signatureData, signedName, signerRole: 'staff',
         staffId: me?.id ?? (v.staffIds[0] ?? null), userId: user.userId,
         appointmentId: v.appointmentId, walkInId: v.walkInId, source: 'staff',
       },
     });
-    await this.audit.log({ tenantId, userId: user.userId, action: 'client_form.signed', resourceType: 'client_form', resourceId: e.id, metadata: { kind: 'soap' } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'client_form.signed', resourceType: 'client_form', resourceId: e.id, metadata: { kind } });
     return { id: e.id, signedAt: e.signedAt };
   }
 
   /** The client's previous SOAP note, to start this one from. */
-  async lastSoap(user: AuthenticatedUser, customerId: string) {
+  async lastSoap(user: AuthenticatedUser, customerId: string, kindRaw?: string) {
+    const kind = kindRaw && isCustomKind(kindRaw) ? kindRaw : 'soap';
     const tenantId = this.tenantId(user);
     const access = accessOf(user);
     if (access === 'desk') throw new ForbiddenException('The therapist writes the SOAP note');
@@ -513,7 +582,7 @@ export class ClientFormsService {
       const me = await this.staffOf(tenantId, user);
       if (!(me && (await this.served(tenantId, me.id, customerId)))) throw new ForbiddenException('Not your client');
     }
-    const e: Row | null = await this.db.clientFormEntry.findFirst({ where: { tenantId, customerId, kind: 'soap' }, orderBy: { signedAt: 'desc' }, select: { id: true, answers: true, signedAt: true } });
+    const e: Row | null = await this.db.clientFormEntry.findFirst({ where: { tenantId, customerId, kind, signerRole: 'staff' }, orderBy: { signedAt: 'desc' }, select: { id: true, answers: true, signedAt: true } });
     if (!e) return null;
     const { note: _drop, ...answers } = (e.answers ?? {}) as Answers; // the free note is about that day only
     void _drop;
@@ -529,8 +598,10 @@ export class ClientFormsService {
     return l;
   }
 
-  private kindsOf(l: Row): FormKind[] {
-    return (Array.isArray(l.kinds) ? l.kinds : []).filter((k: unknown): k is FormKind => (CLIENT_KINDS as string[]).includes(String(k)));
+  /** The forms a link asks for that this salon still hands out (a deleted form of its own drops out). */
+  private kindsOf(l: Row, s: ClientFormSettings): AnyKind[] {
+    const allowed = this.clientKindsOf(s) as string[];
+    return (Array.isArray(l.kinds) ? l.kinds : []).filter((k: unknown): k is AnyKind => allowed.includes(String(k)));
   }
 
   async publicContext(token: string) {
@@ -554,7 +625,7 @@ export class ClientFormsService {
       if (w) prefill = { name: w.customerName ?? '', phone: w.phone ?? '' };
     }
     const doneKinds = new Set((done as Row[]).map((d) => d.kind));
-    const kinds = this.kindsOf(l);
+    const kinds = this.kindsOf(l, s);
     const brand = this.settings?.brandingFrom?.(tenant.branding) as Row | undefined;
     return {
       salon: { name: tenant.name, logoUrl: brand?.logoUrl || null },
@@ -568,21 +639,23 @@ export class ClientFormsService {
   async publicSubmit(token: string, dto: { kind?: string; answers?: unknown; signatureData?: unknown; signedName?: string; lang?: string }, meta: { ip?: string | null; userAgent?: string | null }) {
     const l = await this.linkByToken(token);
     const tenantId: string = l.tenantId;
-    const kinds = this.kindsOf(l);
-    const kind = dto.kind as FormKind;
-    if (!isFormKind(kind) || !kinds.includes(kind)) throw new BadRequestException('This form is not part of the link');
     const s = await this.getSettings(tenantId);
     if (!s.enabled) throw new NotFoundException('This link is not valid');
+    const kinds = this.kindsOf(l, s);
+    const kind = String(dto.kind ?? '') as AnyKind;
+    if (!kinds.includes(kind)) throw new BadRequestException('This form is not part of the link');
     const already = await this.db.clientFormEntry.findFirst({ where: { tenantId, linkId: l.id, kind }, select: { id: true } });
     if (already) return { ok: true, id: already.id, already: true };
-    const tpl = templateFor(kind, s.extraQuestions, s.intakeStyle);
+    const found = this.tplOf(s, kind);
+    if (!found) throw new BadRequestException('This form is not part of the link');
+    const tpl = found.tpl;
     const { answers, missing } = validateAnswers(tpl, dto.answers);
     if (missing.length) throw new BadRequestException({ message: 'Please answer every question', missing });
     const signatureData = cleanSignature(dto.signatureData);
     if (!signatureData) throw new BadRequestException('Please sign the form');
     const signedName = (typeof dto.signedName === 'string' && dto.signedName.trim().slice(0, 120)) || (typeof answers.name === 'string' ? answers.name : '');
     if (!signedName) throw new BadRequestException('Please type your name');
-    const lang = this.langOf(dto.lang);
+    const lang = found.lang ?? this.langOf(dto.lang);
     const e = await this.db.clientFormEntry.create({
       data: {
         tenantId, customerId: l.customerId ?? null, kind, templateVersion: tpl.version, lang,
@@ -598,6 +671,69 @@ export class ClientFormsService {
     await this.audit.log({ tenantId, userId: null, action: 'client_form.signed', resourceType: 'client_form', resourceId: e.id, metadata: { kind, via: 'link' } });
     if (l.walkInId) liveEvents.emit(tenantId, 'walkins', l.walkInId);
     return { ok: true, id: e.id, allDone };
+  }
+
+  // ---------------------------------------------------------------- the salon's own forms
+
+  private requireOwner(user: AuthenticatedUser) {
+    if (accessOf(user) !== 'full') throw new ForbiddenException('Only the owner or a manager can change the forms');
+  }
+
+  /** Write the salon's own forms back, leaving every other setting as stored. */
+  private async saveCustomForms(tenantId: string, forms: CustomForm[]) {
+    const row = await this.db.setting.findUnique({ where: { tenantId_key: { tenantId, key: CLIENT_FORMS_KEY } } }).catch(() => null);
+    const base = row?.value && typeof row.value === 'object' && !Array.isArray(row.value) ? (row.value as Row) : {};
+    const value = { ...base, customForms: forms };
+    await this.db.setting.upsert({
+      where: { tenantId_key: { tenantId, key: CLIENT_FORMS_KEY } },
+      update: { value },
+      create: { tenantId, key: CLIENT_FORMS_KEY, value },
+    });
+  }
+
+  /** The salon's own forms, the starters to begin from, and the language they are written in. */
+  async customFormsView(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const [s, lang, industry] = await Promise.all([this.getSettings(tenantId), this.regionLang(tenantId), this.industryOf(tenantId)]);
+    return { forms: s.customForms, starters: starterList(lang, industry), lang, max: CUSTOM_LIMITS.forms, access: accessOf(user) };
+  }
+
+  /** A new form of the salon's own, from a starter or blank, in the salon's language. */
+  async createCustomForm(user: AuthenticatedUser, dto: { starter?: unknown }) {
+    this.requireOwner(user);
+    const tenantId = this.tenantId(user);
+    const [s, lang] = await Promise.all([this.getSettings(tenantId), this.regionLang(tenantId)]);
+    if (s.customForms.length >= CUSTOM_LIMITS.forms) throw new BadRequestException(`Up to ${CUSTOM_LIMITS.forms} forms`);
+    const kind = newCustomKind(s.customForms.map((f) => f.kind), () => randomBytes(8).toString('hex'));
+    const form = starterForm(typeof dto?.starter === 'string' ? dto.starter : null, kind, lang);
+    await this.saveCustomForms(tenantId, [...s.customForms, form]);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'client_forms.custom_created', resourceType: 'client_form_template', resourceId: kind, metadata: { starter: form.starter ?? null } });
+    return form;
+  }
+
+  /** Save the owner's edits; the version goes up when the questions changed. */
+  async updateCustomForm(user: AuthenticatedUser, kind: string, dto: unknown) {
+    this.requireOwner(user);
+    const tenantId = this.tenantId(user);
+    const s = await this.getSettings(tenantId);
+    const prev = s.customForms.find((f) => f.kind === kind);
+    if (!prev) throw new NotFoundException('Form not found');
+    const next = sanitizeCustomForm(dto, prev, prev.kind, prev.lang);
+    if (!next.fields.some((f) => f.type !== 'section' && f.type !== 'note')) throw new BadRequestException('Add at least one question');
+    await this.saveCustomForms(tenantId, s.customForms.map((f) => (f.kind === kind ? next : f)));
+    await this.audit.log({ tenantId, userId: user.userId, action: 'client_forms.custom_updated', resourceType: 'client_form_template', resourceId: kind, metadata: { version: next.version, active: next.active } });
+    return next;
+  }
+
+  /** Remove a form of the salon's own. What was already signed stays, exactly as it was signed. */
+  async deleteCustomForm(user: AuthenticatedUser, kind: string) {
+    this.requireOwner(user);
+    const tenantId = this.tenantId(user);
+    const s = await this.getSettings(tenantId);
+    if (!s.customForms.some((f) => f.kind === kind)) throw new NotFoundException('Form not found');
+    await this.saveCustomForms(tenantId, s.customForms.filter((f) => f.kind !== kind));
+    await this.audit.log({ tenantId, userId: user.userId, action: 'client_forms.custom_deleted', resourceType: 'client_form_template', resourceId: kind });
+    return { ok: true };
   }
 
   // ---------------------------------------------------------------- texts before a visit
@@ -631,7 +767,7 @@ export class ClientFormsService {
           const v = await this.loadVisit(tenantId, { appointmentId: a.id });
           if (!v.phone || !OK_PHONE.test(v.phone)) continue;
           const entries = await this.entriesFor(tenantId, v);
-          const kinds = missingClientKinds(visitNeeds(s, { appointmentId: v.appointmentId, walkInId: v.walkInId, consentKinds: consentKindsFor(s, v.services) }, entries as EntryLite[], now));
+          const kinds = missingClientKinds(visitNeeds(s, { appointmentId: v.appointmentId, walkInId: v.walkInId, consentKinds: consentKindsFor(s, v.services), services: v.services, staffNotes: false }, entries as EntryLite[], now));
           if (!kinds.length) continue;
           const link = await this.newLink(tenantId, { customerId: v.customerId, appointmentId: v.appointmentId, walkInId: v.walkInId, kinds });
           await this.sendSms(tenantId, link, v.phone, v.name);

@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Headers, Ip, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Ip, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -9,8 +9,11 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { ClientFormsService } from './client-forms.service';
 
+/** A built-in client form, or one of the salon's own ("c_…"). */
+const CLIENT_KIND_RE = /^(intake|cupping|hot_stone|c_[a-z0-9]{6,16})$/;
+
 export class SignDto {
-  @IsIn(['intake', 'cupping', 'hot_stone']) kind!: string;
+  @Matches(CLIENT_KIND_RE) kind!: string;
   @IsObject() answers!: Record<string, unknown>;
   @IsString() @MaxLength(400_000) signatureData!: string;
   @IsOptional() @IsString() @MaxLength(120) signedName?: string;
@@ -26,11 +29,15 @@ export class SoapDto {
   @IsOptional() @IsIn(['vi', 'en']) lang?: string;
 }
 
+export class StaffNoteDto extends SoapDto {
+  @Matches(/^(soap|c_[a-z0-9]{6,16})$/) kind!: string;
+}
+
 export class LinkDto {
   @IsOptional() @IsString() @MaxLength(64) appointmentId?: string;
   @IsOptional() @IsString() @MaxLength(64) walkInId?: string;
   @IsOptional() @IsString() @MaxLength(64) customerId?: string;
-  @IsOptional() @IsArray() @IsIn(['intake', 'cupping', 'hot_stone'], { each: true }) kinds?: string[];
+  @IsOptional() @IsArray() @Matches(CLIENT_KIND_RE, { each: true }) kinds?: string[];
   @IsOptional() @IsBoolean() send?: boolean;
   @IsOptional() @IsIn(['vi', 'en']) lang?: string;
 }
@@ -67,6 +74,8 @@ export class FormSettingsDto {
   @IsOptional() @IsBoolean() soapRequired?: boolean;
   @IsOptional() @ValidateNested() @Type(() => AutoSendDto) autoSend?: AutoSendDto;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => ExtraQuestionDto) extraQuestions?: ExtraQuestionDto[];
+  /** Sent back by the screen with the rest; ignored — the salon's own forms have their own endpoints. */
+  @IsOptional() @IsArray() customForms?: unknown[];
 }
 
 /**
@@ -132,8 +141,8 @@ export class ClientFormsController {
   }
 
   @Get('customers/:id/last-soap')
-  lastSoap(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.forms.lastSoap(user, id);
+  lastSoap(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query('kind') kind?: string) {
+    return this.forms.lastSoap(user, id, kind);
   }
 
   @Get('entries/:id')
@@ -155,5 +164,34 @@ export class ClientFormsController {
   @Post('soap')
   soap(@CurrentUser() user: AuthenticatedUser, @Body() dto: SoapDto) {
     return this.forms.createSoap(user, dto);
+  }
+
+  /** A technician's record after the visit: the SOAP note or one of the salon's own staff forms. */
+  @Post('staff-notes')
+  staffNote(@CurrentUser() user: AuthenticatedUser, @Body() dto: StaffNoteDto) {
+    const { kind, ...rest } = dto;
+    return this.forms.createStaffNote(user, kind, rest);
+  }
+
+  // ---- the salon's own forms (owner / manager edit; the service checks) ----
+
+  @Get('custom')
+  customForms(@CurrentUser() user: AuthenticatedUser) {
+    return this.forms.customFormsView(user);
+  }
+
+  @Post('custom')
+  createCustom(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) {
+    return this.forms.createCustomForm(user, { starter: dto?.starter });
+  }
+
+  @Patch('custom/:kind')
+  updateCustom(@CurrentUser() user: AuthenticatedUser, @Param('kind') kind: string, @Body() dto: Record<string, unknown>) {
+    return this.forms.updateCustomForm(user, kind, dto);
+  }
+
+  @Delete('custom/:kind')
+  deleteCustom(@CurrentUser() user: AuthenticatedUser, @Param('kind') kind: string) {
+    return this.forms.deleteCustomForm(user, kind);
   }
 }

@@ -12,7 +12,8 @@
  *
  * Pure: no database, no clock (tested in form-settings.spec.ts).
  */
-import { CONSENT_KINDS, INTAKE_STYLES, type ConsentKind, type ExtraQuestion, type FormKind, type IntakeStyle } from './form-templates';
+import { CONSENT_KINDS, INTAKE_STYLES, type AnyKind, type ConsentKind, type ExtraQuestion, type IntakeStyle } from './form-templates';
+import { customApplies, sanitizeCustomForms, type CustomForm } from './custom-forms';
 
 export const CLIENT_FORMS_KEY = 'client_forms';
 
@@ -34,6 +35,8 @@ export interface ClientFormSettings {
   /** Text the client a link before a booked visit. */
   autoSend: { enabled: boolean; hoursBefore: number };
   extraQuestions: ExtraQuestion[];
+  /** The salon's own forms (custom-forms.ts) — changed only through their own endpoints. */
+  customForms: CustomForm[];
 }
 
 export const FORM_INDUSTRIES = ['MASSAGE', 'SPA'];
@@ -68,6 +71,7 @@ export function defaultFormSettings(industry: string | null | undefined): Client
     soapRequired: massage,
     autoSend: { enabled: false, hoursBefore: 24 },
     extraQuestions: [],
+    customForms: [],
   };
 }
 
@@ -115,6 +119,7 @@ export function sanitizeFormSettings(raw: unknown, base: ClientFormSettings): Cl
     soapRequired: bool(r.soapRequired, base.soapRequired),
     autoSend: { enabled: bool(autoRaw.enabled, base.autoSend.enabled), hoursBefore: int(autoRaw.hoursBefore, base.autoSend.hoursBefore, 1, 72) },
     extraQuestions: extra,
+    customForms: Array.isArray(r.customForms) ? sanitizeCustomForms(r.customForms, 'en') : base.customForms,
   };
 }
 
@@ -149,12 +154,14 @@ export function consentKindsFor(s: ClientFormSettings, services: VisitService[])
 // ---------------------------------------------------------------- a visit's status
 
 export interface EntryLite {
-  id: string; kind: FormKind; signedAt: Date | string;
+  id: string; kind: AnyKind; signedAt: Date | string;
   appointmentId?: string | null; walkInId?: string | null;
 }
 
 export interface FormNeed {
-  kind: FormKind;
+  kind: AnyKind;
+  /** The salon's own form's name (built-in forms are named by the screens). */
+  title?: string;
   /** before = the client signs before the session; after = the therapist's note. */
   when: 'before' | 'after';
   status: 'signed' | 'missing' | 'expired';
@@ -179,18 +186,24 @@ function monthsBefore(now: Date, months: number): Date {
  */
 export function visitNeeds(
   s: ClientFormSettings,
-  visit: { appointmentId?: string | null; walkInId?: string | null; consentKinds: ConsentKind[] },
+  visit: {
+    appointmentId?: string | null; walkInId?: string | null; consentKinds: ConsentKind[];
+    /** The visit's services — which of the salon's own forms apply. None = only the every-visit ones. */
+    services?: VisitService[];
+    /** Include the technician's records (false on a client's file and for a signing link). */
+    staffNotes?: boolean;
+  },
   entries: EntryLite[],
   now: Date,
 ): FormNeed[] {
   if (!s.enabled) return [];
   const sameVisit = (e: EntryLite) =>
     (!!visit.appointmentId && e.appointmentId === visit.appointmentId) || (!!visit.walkInId && e.walkInId === visit.walkInId);
-  const latest = (kind: FormKind) => entries
+  const latest = (kind: AnyKind) => entries
     .filter((e) => e.kind === kind)
     .sort((a, b) => new Date(b.signedAt).getTime() - new Date(a.signedAt).getTime());
 
-  const need = (kind: FormKind, months: number, when: FormNeed['when']): FormNeed => {
+  const need = (kind: AnyKind, months: number, when: FormNeed['when']): FormNeed => {
     const list = latest(kind);
     const mine = list.find(sameVisit);
     if (mine) return { kind, when, status: 'signed', entryId: mine.id, signedAt: new Date(mine.signedAt).toISOString() };
@@ -206,11 +219,19 @@ export function visitNeeds(
   const out: FormNeed[] = [];
   if (s.intakeRequired) out.push(need('intake', s.intakeValidMonths, 'before'));
   for (const k of visit.consentKinds) out.push(need(k, s.consentValidMonths, 'before'));
-  if (s.soapRequired) out.push(need('soap', 0, 'after'));
+  if (s.soapRequired && visit.staffNotes !== false) out.push(need('soap', 0, 'after'));
+  for (const cf of s.customForms ?? []) {
+    if (!customApplies(cf, visit.services ?? [])) continue;
+    if (cf.signer === 'staff') {
+      if (visit.staffNotes !== false) out.push({ ...need(cf.kind, 0, 'after'), title: cf.name });
+    } else {
+      out.push({ ...need(cf.kind, cf.validMonths, 'before'), title: cf.name });
+    }
+  }
   return out;
 }
 
 /** The client-signed forms a visit is still missing — what a link should ask for. */
-export function missingClientKinds(needs: FormNeed[]): FormKind[] {
+export function missingClientKinds(needs: FormNeed[]): AnyKind[] {
   return needs.filter((n) => n.when === 'before' && n.status !== 'signed').map((n) => n.kind);
 }

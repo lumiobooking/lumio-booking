@@ -7,6 +7,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { answerText, kindLabel, printHtml, type Answers, type FormEntry, type ResolvedTemplate, type TemplatePair } from '../../lib/client-forms';
 import { THEMED } from './FormRenderer';
 import { SignForm } from './SignForm';
@@ -36,35 +37,43 @@ export function FormModal({ title, onClose, children }: { title: string; onClose
 }
 
 /** The therapist's SOAP note for one visit: tap, sign, done. "Same as last time" starts from the previous note. */
-export function SoapSheet({ token, vi, appointmentId, walkInId, customerId, onClose, onSaved }: {
+export function SoapSheet({ token, vi, appointmentId, walkInId, customerId, onClose, onSaved, kind = 'soap', title }: {
   token: string | null; vi: boolean; appointmentId?: string | null; walkInId?: string | null; customerId?: string | null;
   onClose: () => void; onSaved: () => void;
+  /** 'soap', or one of the salon's own technician forms ("c_…"). */
+  kind?: string;
+  title?: string;
 }) {
   const [tpl, setTpl] = useState<ResolvedTemplate | null>(null);
   const [last, setLast] = useState<{ answers: Answers; signedAt: string } | null>(null);
   const [start, setStart] = useState<{ key: number; answers: Answers }>({ key: 0, answers: {} });
   const [err, setErr] = useState<string | null>(null);
+  const { user } = useAuth();
+  // The signed-in person, prefilled: a support session signs as itself, never
+  // as the salon's staff, and the server falls back to the staff record anyway.
+  const myName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
 
   useEffect(() => {
     if (!token) return;
     let alive = true;
     apiFetch<{ templates: TemplatePair[] }>('/client-forms/templates', { token })
-      .then((r) => { if (alive) setTpl(r.templates.find((x) => x.kind === 'soap')?.[vi ? 'vi' : 'en'] ?? null); })
+      .then((r) => { if (alive) setTpl(r.templates.find((x) => x.kind === kind)?.[vi ? 'vi' : 'en'] ?? null); })
       .catch(() => alive && setErr(vi ? 'Không tải được mẫu' : 'Could not load the form'));
     if (customerId) {
-      apiFetch<{ answers: Answers; signedAt: string } | null>(`/client-forms/customers/${customerId}/last-soap`, { token })
+      apiFetch<{ answers: Answers; signedAt: string } | null>(`/client-forms/customers/${customerId}/last-soap${kind === 'soap' ? '' : `?kind=${encodeURIComponent(kind)}`}`, { token })
         .then((r) => { if (alive) setLast(r); }).catch(() => undefined);
     }
     return () => { alive = false; };
-  }, [token, vi, customerId]);
+  }, [token, vi, customerId, kind]);
 
   return (
-    <FormModal title={kindLabel('soap', vi)} onClose={onClose}>
+    <FormModal title={kindLabel(kind, vi, title)} onClose={onClose}>
       {err && <div style={{ color: 'var(--ink-bad)', fontSize: 14 }}>{err}</div>}
       {!tpl && !err && <div style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>{vi ? 'Đang tải…' : 'Loading…'}</div>}
       {tpl && (
         <SignForm key={start.key} tpl={tpl} initial={start.answers} palette={THEMED} vi={vi}
           nameLabel={vi ? 'Kỹ thuật viên' : 'Therapist'} submitLabel={vi ? 'Ký & lưu ghi chú' : 'Sign & save the note'}
+          defaultName={myName} nameOptional
           top={last ? (
             <button type="button" onClick={() => setStart({ key: start.key + 1, answers: last.answers })}
               style={{ marginBottom: 12, width: '100%', minHeight: 44, borderRadius: 12, border: '1px dashed var(--line-strong)', background: 'transparent', color: 'var(--ink-link)', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
@@ -72,7 +81,10 @@ export function SoapSheet({ token, vi, appointmentId, walkInId, customerId, onCl
             </button>
           ) : null}
           onSubmit={async (answers, signatureData, signedName) => {
-            await apiFetch('/client-forms/soap', { method: 'POST', token, body: { appointmentId: appointmentId || undefined, walkInId: walkInId || undefined, answers, signatureData, signedName, lang: vi ? 'vi' : 'en' } });
+            await apiFetch(kind === 'soap' ? '/client-forms/soap' : '/client-forms/staff-notes', {
+              method: 'POST', token,
+              body: { ...(kind === 'soap' ? {} : { kind }), appointmentId: appointmentId || undefined, walkInId: walkInId || undefined, answers, signatureData, signedName, lang: vi ? 'vi' : 'en' },
+            });
             onSaved();
             onClose();
           }} />

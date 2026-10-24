@@ -29,6 +29,11 @@ export type FlagTarget = 'massage' | ConsentKind;
 export type IntakeStyle = 'massage' | 'nail' | 'general';
 export const INTAKE_STYLES: IntakeStyle[] = ['massage', 'nail', 'general'];
 
+/** A salon's own form (custom-forms.ts): "c_" and a random id, unique within the salon. */
+export type CustomKind = `c_${string}`;
+/** Any form a salon can hand out: a built-in one or one of its own. */
+export type AnyKind = FormKind | CustomKind;
+
 export const FORM_KINDS: FormKind[] = ['intake', 'cupping', 'hot_stone', 'soap'];
 export const CONSENT_KINDS: ConsentKind[] = ['cupping', 'hot_stone'];
 export const CLIENT_KINDS: FormKind[] = ['intake', 'cupping', 'hot_stone'];
@@ -59,7 +64,7 @@ export interface FormField {
 }
 
 export interface FormTemplate {
-  kind: FormKind;
+  kind: AnyKind;
   version: number;
   title: Tx;
   intro?: Tx;
@@ -76,7 +81,7 @@ export interface ResolvedField {
   prefill?: FormField['prefill']; short?: boolean;
 }
 export interface ResolvedTemplate {
-  kind: FormKind; version: number; lang: FormLang; title: string; intro?: string;
+  kind: AnyKind; version: number; lang: FormLang; title: string; intro?: string;
   signer: 'client' | 'staff'; fields: ResolvedField[];
   /** The body map's areas, so a viewer can name them without the code. */
   areas: { id: string; label: string; side: 'front' | 'back' }[];
@@ -513,7 +518,7 @@ export function validateAnswers(tpl: FormTemplate | ResolvedTemplate, raw: unkno
 
 export interface RedFlag {
   /** The form it came from and the question. */
-  kind: FormKind;
+  kind: AnyKind;
   fieldId: string;
   label: string;
   note?: string;
@@ -529,7 +534,7 @@ export interface RedFlag {
  * the client saw them. Duplicates (the same question on two forms) collapse.
  */
 export function redFlags(
-  entries: { kind: FormKind; answers: Answers; snapshot?: ResolvedTemplate | null }[],
+  entries: { kind: AnyKind; answers: Answers; snapshot?: ResolvedTemplate | null }[],
   visitKinds: ConsentKind[],
   lang: FormLang,
 ): RedFlag[] {
@@ -537,8 +542,9 @@ export function redFlags(
   const out: RedFlag[] = [];
   const seen = new Set<string>();
   for (const e of entries) {
-    if (e.kind === 'soap') continue;
-    const fields: (ResolvedField | FormField)[] = e.snapshot?.fields?.length ? e.snapshot.fields : TEMPLATES[e.kind]?.fields ?? [];
+    // A technician's own record (the SOAP note, a lash map…) holds no client cautions.
+    if (e.kind === 'soap' || e.snapshot?.signer === 'staff') continue;
+    const fields: (ResolvedField | FormField)[] = e.snapshot?.fields?.length ? e.snapshot.fields : TEMPLATES[e.kind as FormKind]?.fields ?? [];
     for (const f of fields) {
       if (f.type !== 'yesno' || e.answers?.[f.id] !== true) continue;
       const targets = (f.flags ?? []).filter((x) => wanted.has(x));

@@ -33,7 +33,8 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId }: {
   const [visit, setVisit] = useState<VisitForms | null>(null);
   const [file, setFile] = useState<CustomerForms | null>(null);
   const [open, setOpen] = useState<string | null>(null);
-  const [soap, setSoap] = useState(false);
+  // The technician's record being written: the SOAP note or one of the salon's own forms.
+  const [note, setNote] = useState<{ kind: string; title?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -99,7 +100,7 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId }: {
       : n.status === 'expired'
         ? { bg: 'var(--wash-amber)', ink: 'var(--ink-warn)', icon: '↻' }
         : { bg: 'var(--wash-red)', ink: 'var(--ink-bad)', icon: '!' };
-    const label = `${look.icon} ${kindLabel(n.kind, vi)}${n.status === 'expired' ? (vi ? ' · hết hạn' : ' · expired') : !ok ? (vi ? ' · thiếu' : ' · missing') : ''}`;
+    const label = `${look.icon} ${kindLabel(n.kind, vi, n.title)}${n.status === 'expired' ? (vi ? ' · hết hạn' : ' · expired') : !ok ? (vi ? ' · thiếu' : ' · missing') : ''}`;
     const canOpen = ok && !!n.entryId && access !== 'desk';
     return (
       <button key={n.kind} type="button" disabled={!canOpen} onClick={() => canOpen && setOpen(n.entryId)}
@@ -148,8 +149,15 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId }: {
         {visitMode && visit?.canSoap && (
           visit.soapId
             ? <button type="button" onClick={() => setOpen(visit.soapId ?? null)} style={btn}>📝 {vi ? 'Xem SOAP' : 'View SOAP'}</button>
-            : <button type="button" onClick={() => setSoap(true)} style={btn}>📝 {vi ? 'Ghi SOAP' : 'Write SOAP'}</button>
+            : <button type="button" onClick={() => setNote({ kind: 'soap' })} style={btn}>📝 {vi ? 'Ghi SOAP' : 'Write SOAP'}</button>
         )}
+        {visitMode && (visit?.staffForms ?? []).map((sf) => (
+          sf.entryId
+            ? <button key={sf.kind} type="button" disabled={access === 'desk'} onClick={() => setOpen(sf.entryId)} style={btn}>📝 {vi ? 'Xem' : 'View'} {sf.title}</button>
+            : sf.canWrite
+              ? <button key={sf.kind} type="button" onClick={() => setNote({ kind: sf.kind, title: sf.title })} style={btn}>📝 {vi ? 'Ghi' : 'Write'} {sf.title}</button>
+              : null
+        ))}
       </div>
       {msg && <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ink-link)', wordBreak: 'break-all' }}>{msg}</div>}
 
@@ -159,7 +167,7 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId }: {
           {file.entries.map((e) => (
             <button key={e.id} type="button" disabled={access === 'desk'} onClick={() => setOpen(e.id)}
               style={{ display: 'flex', width: '100%', gap: 10, alignItems: 'center', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: '1px solid var(--line)', padding: '8px 0', cursor: access === 'desk' ? 'default' : 'pointer', color: 'var(--ce2e8f0)' }}>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600 }}>{kindLabel(e.kind, vi)}{e.staffName ? ` · ${e.staffName}` : ''}{e.addenda ? ` · +${e.addenda}` : ''}</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600 }}>{kindLabel(e.kind, vi, e.title)}{e.staffName ? ` · ${e.staffName}` : ''}{e.addenda ? ` · +${e.addenda}` : ''}</span>
               <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{new Date(e.signedAt).toLocaleDateString(vi ? 'vi-VN' : undefined)}</span>
             </button>
           ))}
@@ -179,9 +187,10 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId }: {
           </button>
         </FormModal>
       )}
-      {soap && (
+      {note && (
         <SoapSheet token={token} vi={vi} appointmentId={appointmentId} walkInId={walkInId} customerId={custId}
-          onClose={() => setSoap(false)} onSaved={() => setTick((x) => x + 1)} />
+          kind={note.kind} title={note.title}
+          onClose={() => setNote(null)} onSaved={() => setTick((x) => x + 1)} />
       )}
     </div>
   );

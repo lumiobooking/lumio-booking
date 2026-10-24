@@ -93,14 +93,15 @@ export function SignFlow({ token, embedded, onFinished, finishedExtra, langHint 
         <div style={{ fontSize: 18, fontWeight: 800, color: INK }}>{ctx.salon.name}</div>
         {!finished && <div style={{ fontSize: 13, color: SUB }}>{vi ? `Phiếu ${ctx.forms.length - todo.length + 1} / ${ctx.forms.length}` : `Form ${ctx.forms.length - todo.length + 1} of ${ctx.forms.length}`}</div>}
       </div>
-      <div style={{ display: 'flex', border: `1px solid ${PAPER.line}`, borderRadius: 999, overflow: 'hidden' }}>
+      {/* The salon's own forms are written in one language: nothing to switch. */}
+      {ctx.forms.some((f) => !f.single) && <div style={{ display: 'flex', border: `1px solid ${PAPER.line}`, borderRadius: 999, overflow: 'hidden' }}>
         {(['vi', 'en'] as FormLang[]).map((l) => (
           <button key={l} type="button" onClick={() => setLang(l)}
             style={{ minHeight: 36, padding: '0 12px', border: 'none', background: lang === l ? PAPER.accent : PAPER.card, color: lang === l ? PAPER.onAccent : INK, fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
             {l === 'vi' ? 'VI' : 'EN'}
           </button>
         ))}
-      </div>
+      </div>}
     </div>
   );
 

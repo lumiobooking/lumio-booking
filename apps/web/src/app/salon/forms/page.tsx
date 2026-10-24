@@ -14,6 +14,8 @@ import { ui } from '../../../lib/ui';
 import { kindLabel, type Answers, type FormKind, type TemplatePair } from '../../../lib/client-forms';
 import { FormRenderer, THEMED } from '../../../components/forms/FormRenderer';
 import { EntryViewer, FormModal } from '../../../components/forms/FormModal';
+import { FormEditor } from '../../../components/forms/FormEditor';
+import { ruleText, type EditForm, type Starter } from '../../../lib/form-editor';
 
 type Consent = 'cupping' | 'hot_stone';
 interface Rule { enabled: boolean; serviceIds: string[]; categoryIds: string[] }
@@ -24,7 +26,7 @@ interface Settings {
   extraQuestions: { id: string; vi: string; en: string; flag: boolean }[];
 }
 interface View { settings: Settings; industry: string; access: 'full' | 'tech' | 'desk'; services: { id: string; name: string; categoryId: string | null }[] }
-interface Recent { id: string; kind: FormKind; signedAt: string; signerRole: string; customerId: string | null; customerName: string | null; staffName: string | null }
+interface Recent { id: string; kind: FormKind; title?: string | null; signedAt: string; signerRole: string; customerId: string | null; customerName: string | null; staffName: string | null }
 
 const KEYWORD: Record<Consent, RegExp> = { cupping: /cupp|gi[áa]c\s*h[ơo]i/i, hot_stone: /hot\s*-?\s*stones?|đá\s*nóng|da\s*nong/i };
 
@@ -42,9 +44,15 @@ export default function FormsPage() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // The salon's own forms (lash, nail, waxing… or from a blank page).
+  const [own, setOwn] = useState<{ forms: EditForm[]; starters: Starter[]; lang: 'vi' | 'en'; max: number } | null>(null);
+  const [editing, setEditing] = useState<EditForm | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(() => {
     if (!token) return;
+    apiFetch<{ forms: EditForm[]; starters: Starter[]; lang: 'vi' | 'en'; max: number }>('/client-forms/custom', { token }).then(setOwn).catch(() => setOwn(null));
     apiFetch<View>('/client-forms/settings', { token }).then((v) => { setView(v); setS(v.settings); }).catch((e) => setErr(e instanceof Error ? e.message : 'Error'));
     apiFetch<{ templates: TemplatePair[] }>('/client-forms/templates', { token }).then((r) => setTemplates(r.templates)).catch(() => undefined);
     apiFetch<Recent[]>('/client-forms/recent', { token }).then(setRecent).catch(() => setRecent([]));
@@ -82,6 +90,18 @@ export default function FormsPage() {
     </select>
   );
   const h2 = (t: string) => <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{t}</div>;
+
+  const createOwn = async (starter: string | null) => {
+    setCreating(true); setErr(null);
+    try {
+      const f = await apiFetch<EditForm>('/client-forms/custom', { method: 'POST', token, body: starter ? { starter } : {} });
+      setOwn((o) => (o ? { ...o, forms: [...o.forms, f] } : o));
+      setPicking(false);
+      setEditing(f);
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Error'); }
+    finally { setCreating(false); }
+  };
+  const serviceNames = new Map((view?.services ?? []).map((x) => [x.id, x.name]));
 
   if (!s || !view) {
     return <div style={{ padding: 24, color: err ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>{err ?? (vi ? 'Đang tải…' : 'Loading…')}</div>;
@@ -195,6 +215,35 @@ export default function FormsPage() {
           </div>
           </>)}
 
+          {own && (
+            <div style={{ ...ui.card, marginBottom: 14 }}>
+              {h2(vi ? 'Biểu mẫu riêng của tiệm' : 'Your own forms')}
+              <p style={{ fontSize: 13, color: 'var(--c94a3b8)', margin: '2px 0 10px', lineHeight: 1.5 }}>
+                {vi
+                  ? `Tự tạo phiếu theo nhu cầu của tiệm: cam kết nối mi, đắp bột, waxing, phiếu kỹ thuật của thợ… Viết bằng ${own.lang === 'vi' ? 'tiếng Việt' : 'tiếng Anh'} — ngôn ngữ khu vực của tiệm.`
+                  : `Make the forms your business needs: lash or acrylic consent, waxing, the technician's service record… Written in ${own.lang === 'vi' ? 'Vietnamese' : 'English'} — your region's language.`}
+              </p>
+              {own.forms.length === 0 && <div style={{ fontSize: 14, color: 'var(--c94a3b8)', marginBottom: 10 }}>{vi ? 'Chưa có biểu mẫu riêng.' : 'No forms of your own yet.'}</div>}
+              {own.forms.map((f) => (
+                <button key={f.kind} type="button" disabled={!canEdit} onClick={() => setEditing(f)}
+                  style={{ display: 'flex', width: '100%', gap: 10, alignItems: 'center', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: '1px solid var(--line)', padding: '10px 0', cursor: canEdit ? 'pointer' : 'default', color: 'var(--ce2e8f0)' }}>
+                  <span style={{ fontSize: 20 }}>{f.signer === 'staff' ? '📝' : '✍'}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 700, opacity: f.active ? 1 : 0.55 }}>{f.name}{f.active ? '' : (vi ? ' · tạm ngưng' : ' · paused')}</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>{ruleText(f, serviceNames, vi)} · {f.fields.length} {vi ? 'câu' : 'questions'}</span>
+                  </span>
+                  {canEdit && <span style={{ fontSize: 13, color: 'var(--ink-link)', fontWeight: 700 }}>{vi ? 'Sửa' : 'Edit'} ›</span>}
+                </button>
+              ))}
+              {canEdit && own.forms.length < own.max && (
+                <button type="button" onClick={() => setPicking(true)}
+                  style={{ marginTop: 10, background: 'transparent', border: '1px dashed var(--line-strong)', color: 'var(--ink-link)', borderRadius: 10, padding: '9px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                  + {vi ? 'Tạo biểu mẫu' : 'New form'}
+                </button>
+              )}
+            </div>
+          )}
+
           <div style={{ ...ui.card, marginBottom: 14 }}>
             {h2(`4 · ${vi ? 'Gửi link trước buổi hẹn' : 'Send the link before the visit'}`)}
             {toggle(s.autoSend.enabled, (v) => patch({ autoSend: { ...s.autoSend, enabled: v } }), vi ? 'Tự nhắn SMS link ký cho khách đặt lịch còn thiếu phiếu' : 'Text the signing link to booked clients with forms missing',
@@ -226,7 +275,7 @@ export default function FormsPage() {
           {recent.map((r) => (
             <button key={r.id} type="button" onClick={() => setOpen(r.id)}
               style={{ display: 'flex', width: '100%', gap: 10, alignItems: 'center', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: '1px solid var(--line)', padding: '9px 0', cursor: 'pointer', color: 'var(--ce2e8f0)' }}>
-              <span style={{ width: 130, flexShrink: 0, fontSize: 13, fontWeight: 700 }}>{kindLabel(r.kind, vi)}</span>
+              <span style={{ width: 130, flexShrink: 0, fontSize: 13, fontWeight: 700 }}>{kindLabel(r.kind, vi, r.title)}</span>
               <span style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.customerName ?? '—'}{r.staffName ? ` · ${r.staffName}` : ''}</span>
               <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{new Date(r.signedAt).toLocaleString(vi ? 'vi-VN' : undefined, { dateStyle: 'short', timeStyle: 'short' })}</span>
             </button>
@@ -241,6 +290,32 @@ export default function FormsPage() {
         </FormModal>
       )}
       {open && <EntryViewer token={token} vi={vi} id={open} onClose={() => setOpen(null)} />}
+
+      {picking && own && (
+        <FormModal title={vi ? 'Tạo biểu mẫu' : 'New form'} onClose={() => setPicking(false)}>
+          <p style={{ fontSize: 13, color: 'var(--c94a3b8)', marginTop: 0 }}>{vi ? 'Bắt đầu từ mẫu có sẵn rồi sửa theo ý tiệm, hoặc từ trang trống.' : 'Start from a ready-made form and adjust it, or from a blank page.'}</p>
+          {own.starters.map((st) => (
+            <button key={st.key} type="button" disabled={creating} onClick={() => createOwn(st.key)}
+              style={{ display: 'flex', width: '100%', gap: 10, alignItems: 'flex-start', textAlign: 'left', background: 'transparent', border: '1px solid var(--line)', borderRadius: 12, padding: '10px 12px', marginBottom: 8, cursor: 'pointer', color: 'var(--ce2e8f0)' }}>
+              <span style={{ fontSize: 20 }}>{st.signer === 'staff' ? '📝' : '✍'}</span>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: 'block', fontSize: 14, fontWeight: 700 }}>{st.name}{st.suggested ? <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--ink-good)', fontWeight: 800 }}>{vi ? 'GỢI Ý' : 'SUGGESTED'}</span> : null}</span>
+                <span style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>{st.signer === 'staff' ? (vi ? 'Thợ ghi sau buổi làm · ' : 'Technician fills after · ') : (vi ? 'Khách ký trước khi làm · ' : 'Client signs before · ')}{st.intro}</span>
+              </span>
+            </button>
+          ))}
+          <button type="button" disabled={creating} onClick={() => createOwn(null)}
+            style={{ width: '100%', background: 'transparent', border: '1px dashed var(--line-strong)', color: 'var(--ink-link)', borderRadius: 12, padding: '11px 12px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            + {vi ? 'Trang trống' : 'Blank form'}
+          </button>
+        </FormModal>
+      )}
+      {editing && (
+        <FormEditor token={token} vi={vi} form={editing} services={view.services}
+          onClose={() => setEditing(null)}
+          onSaved={(f) => { setOwn((o) => (o ? { ...o, forms: o.forms.map((x) => (x.kind === f.kind ? f : x)) } : o)); setEditing(f); }}
+          onDeleted={(kind) => { setOwn((o) => (o ? { ...o, forms: o.forms.filter((x) => x.kind !== kind) } : o)); setEditing(null); }} />
+      )}
     </div>
   );
 }

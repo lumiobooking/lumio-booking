@@ -680,7 +680,7 @@ function SelectField({ title, value, onChange, phone, children, disabled }: {
  */
 export function SalonPanel({
   t, today, phone, team, teams, canAssign, packages, notice, busy,
-  onClose, onEnter, onNext, onStage, onPackage, onTeam, onBot, onTerm, onRenewal,
+  onClose, onEnter, onNext, onStage, onPackage, onTeam, onBot, onTerm, onRenewal, notesSlot,
 }: {
   t: TenantRow; today: string; phone: boolean; team: string; teams: Board['teams']; canAssign: boolean;
   packages: ServicePackage[]; notice: RowNotice | null; busy: boolean;
@@ -693,6 +693,8 @@ export function SalonPanel({
   onBot: (t: TenantRow, on: boolean) => void;
   onTerm: (t: TenantRow, body: Record<string, unknown>) => Promise<void>;
   onRenewal: (t: TenantRow, body: Record<string, unknown>) => Promise<void>;
+  /** The team's notes block (see ./AgencyNotes), placed right under "Vào tiệm". */
+  notesSlot?: React.ReactNode;
 }) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -730,6 +732,8 @@ export function SalonPanel({
             style={{ height: 44, borderRadius: 12, border: 0, background: '#6366f1', color: '#ffffff', fontFamily: 'inherit', fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: suspended ? 'default' : 'pointer', opacity: suspended || busy ? 0.5 : 1, flexShrink: 0 }}>
             <Icon name="enter" size={17} color="#ffffff" />{busy ? 'Đang mở…' : 'Vào tiệm'}
           </button>
+
+          {notesSlot}
 
           {(notice || (t.heldPosts ?? 0) > 0) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

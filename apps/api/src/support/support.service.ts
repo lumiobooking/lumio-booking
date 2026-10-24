@@ -19,6 +19,7 @@ import { kindOf, linkFor, titleFor, type NoticeKind } from './team-notices';
 import { connectionsByTenant, sharedConnections } from './connections-audit';
 import { PAID_CHANNELS, monthWindows, salonPulse, type SalonPulse } from './salon-pulse';
 import { PLATFORM_OF, bookingChannel } from '../common/booking-channel';
+import { addNote, deleteNote, listNotes, summariesFor, updateNote } from './agency-notes';
 
 /** One row of the team's bell. `link` is relative to the salon session. */
 export interface TeamNotice {
@@ -130,8 +131,11 @@ export class SupportService {
     // Bookings this month, the growth verdict and the ads status — for the
     // whole list in a handful of tenant-grouped queries. See ./salon-pulse.
     const pulseBy = await this.pulseByTenant(rows.map((r) => ({ id: r.id, createdAt: r.createdAt })));
+    // The team's open notes on each salon — the strip under the name. See ./agency-notes.
+    const notesBy = await summariesFor(this.prisma as never, ids);
     return rows.map((r) => ({
       ...r,
+      notes: notesBy.get(r.id) ?? null,
       pulse: pulseBy.get(r.id) ?? null,
       opsStage: opsStageOf(byTenant.get(r.id), r.status),
       workNext: workNextOf(nextBy.get(r.id)),
@@ -268,6 +272,24 @@ export class SupportService {
   /** Told the renewals people / undo / renewed by N months. Audited. See ./service-term. */
   async setTenantRenewal(user: AuthenticatedUser, tenantId: string, dto: Record<string, unknown> | null | undefined) {
     return markRenewal(this.prisma as never, user, tenantId, dto);
+  }
+
+  // ---- The team's notes on a salon (internal; see ./agency-notes) ----------
+
+  listNotes(user: AuthenticatedUser, tenantId: string) {
+    return listNotes(this.prisma as never, user, tenantId);
+  }
+
+  addNote(user: AuthenticatedUser, tenantId: string, dto: Record<string, unknown> | null | undefined) {
+    return addNote(this.prisma as never, user, tenantId, dto);
+  }
+
+  updateNote(user: AuthenticatedUser, tenantId: string, noteId: string, dto: Record<string, unknown> | null | undefined) {
+    return updateNote(this.prisma as never, user, tenantId, noteId, dto);
+  }
+
+  deleteNote(user: AuthenticatedUser, tenantId: string, noteId: string) {
+    return deleteNote(this.prisma as never, user, tenantId, noteId);
   }
 
   async setTenantStage(user: AuthenticatedUser, tenantId: string, stage: unknown) {

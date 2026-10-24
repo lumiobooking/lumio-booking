@@ -46,6 +46,11 @@ export default function FormsPage() {
   const [err, setErr] = useState<string | null>(null);
   // The salon's own forms (lash, nail, waxing… or from a blank page).
   const [own, setOwn] = useState<{ forms: EditForm[]; starters: Starter[]; lang: 'vi' | 'en'; max: number } | null>(null);
+  // The language the salon writes its forms in: its region's (VN → vi, elsewhere → en), from the API.
+  const regionLang: 'vi' | 'en' = own?.lang ?? (vi ? 'vi' : 'en');
+  const qText = (q: { vi: string; en: string }) => (regionLang === 'vi' ? q.vi || q.en : q.en || q.vi);
+  const withText = <T extends { vi: string; en: string }>(q: T, text: string): T =>
+    (regionLang === 'vi' ? { ...q, vi: text, en: '' } : { ...q, en: text, vi: '' });
   const [editing, setEditing] = useState<EditForm | null>(null);
   const [picking, setPicking] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -145,8 +150,12 @@ export default function FormsPage() {
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 6 }}>{vi ? 'Câu hỏi riêng của tiệm (Có / Không)' : 'Your own questions (Yes / No)'}</div>
               {s.extraQuestions.map((q, i) => (
                 <div key={q.id || i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                  <input value={q.vi} disabled={!canEdit} placeholder="Tiếng Việt" maxLength={160} onChange={(e) => patch({ extraQuestions: s.extraQuestions.map((x, j) => (j === i ? { ...x, vi: e.target.value } : x)) })} style={{ ...ui.input, flex: '1 1 200px' }} />
-                  <input value={q.en} disabled={!canEdit} placeholder="English" maxLength={160} onChange={(e) => patch({ extraQuestions: s.extraQuestions.map((x, j) => (j === i ? { ...x, en: e.target.value } : x)) })} style={{ ...ui.input, flex: '1 1 200px' }} />
+                  {/* One box, in the salon's own region's language (VN → Vietnamese, elsewhere → English).
+                      The form falls back to whichever language is filled, so one is enough. */}
+                  <input value={qText(q)} disabled={!canEdit} maxLength={160}
+                    placeholder={regionLang === 'vi' ? 'VD: Chị có đang mang thai không?' : 'e.g. Are you pregnant?'}
+                    onChange={(e) => patch({ extraQuestions: s.extraQuestions.map((x, j) => (j === i ? withText(x, e.target.value) : x)) })}
+                    style={{ ...ui.input, flex: '1 1 320px' }} />
                   <label style={{ fontSize: 12, color: 'var(--c94a3b8)', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <input type="checkbox" checked={q.flag} disabled={!canEdit} onChange={(e) => patch({ extraQuestions: s.extraQuestions.map((x, j) => (j === i ? { ...x, flag: e.target.checked } : x)) })} />
                     {vi ? '“Có” = báo thợ' : '“Yes” alerts the therapist'}

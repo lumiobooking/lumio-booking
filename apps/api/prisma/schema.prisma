@@ -315,6 +315,7 @@ model Tenant {
   branchMemberships BranchMembership[]
   printJobs         PrintJob[]
   printDevices      PrintDevice[]
+  agencyNotes       AgencyNote[]
   tableChecks       TableCheck[]
   tableCheckLines   TableCheckLine[]
   giftCards            GiftCard[]
@@ -4127,4 +4128,24 @@ model RecurringExpense {
 
   @@index([tenantId])
   @@map("recurring_expenses")
+}
+
+/// A note the Lumio team writes on a salon for each other ("khách hẹn gọi lại
+/// thứ 6", "đừng đăng bài giá cũ"). Shown on the agency list, never to the
+/// salon. Open until someone marks it done; pinned ones show first.
+model AgencyNote {
+  id         String    @id @default(uuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  body       String
+  pinned     Boolean   @default(false)
+  authorId   String?
+  authorName String?
+  doneAt     DateTime?
+  doneBy     String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([tenantId, doneAt])
+  @@map("agency_notes")
 }

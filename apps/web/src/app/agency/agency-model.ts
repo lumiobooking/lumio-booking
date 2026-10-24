@@ -1,3 +1,4 @@
+import type { NotesSummary } from '../../lib/agency-notes';
 import type { ServiceTerm } from '../../lib/agency-term';
 
 /** One salon on the agency list (GET /support/tenants). */
@@ -33,6 +34,8 @@ export interface TenantRow {
   sharedWith?: string[];
   /** Bookings this month, the growth verdict and the ads status (GET /support/tenants → salon-pulse). */
   pulse?: SalonPulse | null;
+  /** The team's open notes on this salon — the yellow strip under the name. Internal; the salon never sees them. */
+  notes?: NotesSummary | null;
 }
 
 /** One salon's pulse, as the API computes it (apps/api/src/support/salon-pulse.ts). */

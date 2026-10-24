@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { SupportService, SUPPORT_ROLE } from './support.service';
 import { ReportsBoardService } from '../marketing/reports-board.service';
@@ -112,6 +112,47 @@ export class SupportController {
     @Body() dto: { start?: string; end?: string; months?: number; alertDays?: number; clear?: boolean },
   ) {
     return this.svc.setTenantTerm(user, tenantId, dto);
+  }
+
+  /** The team's notes on one salon: open (pinned first) and the last done ones. Internal to Lumio. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Get('tenants/:tenantId/notes')
+  notes(@CurrentUser() user: AuthenticatedUser, @Param('tenantId') tenantId: string) {
+    return this.svc.listNotes(user, tenantId);
+  }
+
+  /** Leave a note for the team on this salon: {body, pinned?}. Audited. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('tenants/:tenantId/notes')
+  addNote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: { body?: string; pinned?: boolean },
+  ) {
+    return this.svc.addNote(user, tenantId, dto);
+  }
+
+  /** {pinned?, done?, body?} — the words only by their author (or a super admin). Audited. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Patch('tenants/:tenantId/notes/:noteId')
+  updateNote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Param('noteId') noteId: string,
+    @Body() dto: { body?: string; pinned?: boolean; done?: boolean },
+  ) {
+    return this.svc.updateNote(user, tenantId, noteId, dto);
+  }
+
+  /** Author (or a super admin) only. Audited. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Delete('tenants/:tenantId/notes/:noteId')
+  deleteNote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Param('noteId') noteId: string,
+  ) {
+    return this.svc.deleteNote(user, tenantId, noteId);
   }
 
   /** The renewal of the current term: {action: told | undo | renewed, note?, months?, end?}. Audited. */

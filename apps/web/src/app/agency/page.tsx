@@ -53,6 +53,7 @@ import {
   ActiveChips, AdsText, BookingsCell, C, ChannelSquares, ChannelWords, Dot, FilterBar, FilterSheet, GrowthText, Icon, MarketChip, NextPicker, PackageText,
   PulseTiles, PulseWords, RenewAction, SalonPanel, StageText, TERM_LOOK, TermText, type FilterGroupDef,
 } from './AgencyParts';
+import { AddNoteHint, NoteStrip, NotesDialog, PanelNotes } from './AgencyNotes';
 
 /**
  * Above this many new salons in one view, the MỚI tag stops being a signal.
@@ -104,6 +105,9 @@ const cssFor = `
 .ag-next:focus-within { outline: 2px solid #6366f1; outline-offset: 1px; }
 .ag-row:focus-visible { outline: 2px solid #6366f1; outline-offset: -2px; }
 .ag-scroll { scrollbar-width: none; }
+.ag-note:hover { filter: brightness(1.12); }
+.ag-addnote { opacity: 0; transition: opacity .12s; }
+.ag-row:hover .ag-addnote, .ag-row:focus-within .ag-addnote, .ag-addnote:focus-visible { opacity: 1; }
 .ag-scroll::-webkit-scrollbar { display: none; }
 `;
 
@@ -173,6 +177,8 @@ export default function AgencyPage() {
   const [panelId, setPanelId] = useState<string | null>(null);
   /** Phone: the filter page. */
   const [sheet, setSheet] = useState(false);
+  // The salon whose team notes are open (the yellow strip / "Ghi chú" in the panel).
+  const [notesFor, setNotesFor] = useState<string | null>(null);
   const today = todayKey();
 
   useEffect(() => {
@@ -656,6 +662,7 @@ export default function AgencyPage() {
     onEnter: (landing?: string) => { void enter(t, landing); },
     onTell: () => { void renewal(t, { action: 'told' }); },
     onNext: (n: WorkNext | '') => { void setNext(t, n); },
+    onNotes: () => setNotesFor(t.id),
   });
 
   const tabs: { key: Tab; label: string; n: number; badge?: boolean }[] = [
@@ -992,8 +999,19 @@ export default function AgencyPage() {
           onBot={(t, on) => { void setBot(t, on); }}
           onTerm={saveTerm}
           onRenewal={renewal}
+          notesSlot={<PanelNotes notes={panelRow.notes} onOpen={() => setNotesFor(panelRow.id)} />}
         />
       )}
+
+      {notesFor && (() => {
+        const nt = rows.find((r) => r.id === notesFor);
+        if (!nt) return null;
+        return (
+          <NotesDialog tenantId={nt.id} salon={nt.name} token={token} phone={phone}
+            onClose={() => setNotesFor(null)}
+            onSummary={(s) => setRows((rs) => rs.map((r) => (r.id === nt.id ? { ...r, notes: s } : r)))} />
+        );
+      })()}
 
       {sheet && (
         <FilterSheet groups={filterGroups} filters={filters} counts={counts} result={shown.length}
@@ -1113,6 +1131,8 @@ interface RowProps {
   onTell: () => void;
   /** Hand the shop to the next department, right from the row. */
   onNext: (n: WorkNext | '') => void;
+  /** Open the team's notes on this salon. */
+  onNotes: () => void;
 }
 
 /** The red/amber edge: the one mark that survives a squint. */
@@ -1247,7 +1267,9 @@ function WideRow(p: RowProps) {
           {(t.awaitingApproval ?? 0) > 0 && <span style={{ color: C.sub }}>· ⏳ {t.awaitingApproval} chờ duyệt</span>}
           {/* The channel squares, where the column used to be. */}
           <span style={{ marginLeft: 2, display: 'inline-flex' }}><ChannelSquares t={t} size={12} /></span>
+          {!p.picking && !t.notes?.top && <AddNoteHint onOpen={p.onNotes} />}
         </span>
+        {t.notes?.top && <span style={{ display: 'flex', minWidth: 0, marginTop: 2 }}><NoteStrip notes={t.notes} onOpen={p.onNotes} /></span>}
       </div>
       <div style={{ minWidth: 0, display: 'flex' }}><NextPicker next={t.workNext} onChange={p.onNext} disabled={p.picking} /></div>
       <div style={{ minWidth: 0 }}><BookingsCell pulse={t.pulse} /></div>
@@ -1280,6 +1302,7 @@ function TabletRow(p: RowProps) {
           <MarketChip code={marketOf(t)} />
           <Tags t={t} fresh={p.fresh} />
         </span>
+        {t.notes?.top && <span style={{ display: 'flex', minWidth: 0 }}><NoteStrip notes={t.notes} onOpen={p.onNotes} size={12.5} /></span>}
         {(p.notice || (t.heldPosts ?? 0) > 0) && waitLine}
         <PulseWords pulse={t.pulse} />
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 }}>
@@ -1320,6 +1343,7 @@ function PhoneRow(p: RowProps) {
           </span>
           {term !== 'none' && <TermText term={t.serviceTerm} today={today} />}
         </span>
+        {t.notes?.top && <span style={{ display: 'flex', minWidth: 0 }}><NoteStrip notes={t.notes} onOpen={p.onNotes} size={12.5} wrap /></span>}
         {(p.notice || (t.heldPosts ?? 0) > 0) && <WaitLine t={t} notice={p.notice} onEnter={p.onEnter} size={12.5} />}
         <span style={{ display: 'flex', minWidth: 0, overflow: 'hidden' }}><PulseWords pulse={t.pulse} size={12} /></span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 }}>

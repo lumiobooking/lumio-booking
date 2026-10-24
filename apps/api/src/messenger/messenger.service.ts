@@ -53,6 +53,8 @@ import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { mergeBurst, alreadySaid, BURST_MS } from './burst';
+import { mayAnswerMirrored, rescueVerdict } from './rescue-stuck';
+import { isMetaSystemLine } from './meta-system-lines';
 import { publishGrantFrom } from './publish-grant';
 import { classifyPageError, pageHealthText, shouldAlert as shouldAlertPage, type PageHealth } from './page-health';
 import { AiUsageService } from '../common/ai-usage.service';
@@ -187,6 +189,18 @@ export class MessengerService implements OnModuleInit {
       first.unref?.();
       this.syncTimer = setInterval(() => void this.syncAllConversations().catch(() => undefined), Math.max(20, everySec) * 1000);
       this.syncTimer.unref?.();
+    }
+    // Customers left on "seen" when a deploy killed a burst or grace timer:
+    // every RESCUE_STUCK_SECONDS (default 120, 0 = off). See ./rescue-stuck.
+    const rescueSec = Number(process.env.RESCUE_STUCK_SECONDS ?? '120');
+    if (Number.isFinite(rescueSec) && rescueSec > 0) {
+      const runRescue = () => void this.rescueStuck()
+        .then((n) => { if (n) this.logger.log(`rescue: answered ${n} conversation(s) left waiting`); })
+        .catch((e) => this.logger.warn(`rescue sweep failed: ${String(e).slice(0, 120)}`));
+      const first = setTimeout(runRescue, 2 * 60 * 1000);
+      first.unref?.();
+      const every = setInterval(runRescue, Math.max(30, rescueSec) * 1000);
+      every.unref?.();
     }
     // Page-token health: one cheap Graph call per connected Page, every
     // PAGE_HEALTH_HOURS (default 24, 0 = off), first pass 3 minutes after boot.
@@ -1264,6 +1278,61 @@ export class MessengerService implements OnModuleInit {
     return { unanswered, parked };
   }
 
+  /** (thread id : customer line time) already rescued by this process — one try each. */
+  private readonly rescued = new Set<string>();
+
+  /**
+   * The safety net under every in-memory timer: a customer whose line is still
+   * the last word minutes after the bot should have answered — because a
+   * deploy killed the burst or the grace timer — is answered now, under the
+   * bot's ordinary rules (./rescue-stuck). One try per customer line per
+   * process, so a reply that fails for a real reason is not retried forever.
+   * Every salon, each thread with its own salon's connection and Page only.
+   */
+  async rescueStuck(now = Date.now()): Promise<number> {
+    const since = new Date(now - 24 * 3600 * 1000);
+    const until = new Date(now - 3 * 60_000);
+    const rows = await this.prisma.messengerThread.findMany({
+      where: { status: 'open', lastCustomerAt: { gte: since, lte: until } } as never,
+      select: { id: true, tenantId: true, pageId: true, senderId: true, history: true, handoff: true, handoffAt: true, handoffMode: true, assignedUserId: true, status: true, lastCustomerAt: true, channel: true } as never,
+      orderBy: { lastCustomerAt: 'desc' } as never,
+      take: 300,
+    }).catch(() => []) as unknown as {
+      id: string; tenantId: string; pageId: string; senderId: string; history: unknown; handoff: boolean; handoffAt: Date | null;
+      handoffMode: string | null; assignedUserId: string | null; status: string | null; lastCustomerAt: Date | null; channel: string | null;
+    }[];
+    type ConnRow = { enabled?: boolean; tenantId: string; aiInstruction: string | null; botFacts: unknown; graceMins?: number };
+    const conns = new Map<string, ConnRow | null>();
+    let n = 0;
+    for (const t of rows) {
+      if (this.bursts.has(t.id) || this.graceTimers.has(t.id)) continue; // a reply is on its way
+      const key = `${t.id}:${t.lastCustomerAt ? new Date(t.lastCustomerAt).getTime() : 0}`;
+      if (this.rescued.has(key)) continue;
+      if (!conns.has(t.tenantId)) conns.set(t.tenantId, await this.prisma.messengerConnection.findUnique({ where: { tenantId: t.tenantId } }).catch(() => null) as unknown as ConnRow | null);
+      const conn = conns.get(t.tenantId);
+      if (!conn) continue;
+      const hist = (Array.isArray(t.history) ? t.history : []) as Turn[];
+      const last = hist[hist.length - 1];
+      const verdict = rescueVerdict(
+        { ...t, lastRole: last?.role ?? null },
+        { botOn: !!conn.enabled, botFirst: turnSettingsOf(conn as never).botFirst, graceMins: conn.graceMins ?? 5 },
+        now,
+      );
+      if (!verdict.rescue || !last) continue;
+      const page = await this.pageByEntry(t.pageId).catch(() => null);
+      if (!page || !page.enabled || page.tenantId !== t.tenantId) continue;
+      this.rescued.add(key);
+      if (verdict.release) {
+        await this.prisma.messengerThread.update({ where: { id: t.id }, data: { handoff: false, handoffAt: null } as never }).catch(() => undefined);
+      }
+      this.logger.log(`rescue: thread ${t.id} (${t.tenantId}) — customer waiting since ${t.lastCustomerAt?.toISOString?.() ?? '?'}${verdict.release ? ', grace expired' : ''}`);
+      this.queueReply({ ...conn, pageToken: page.pageToken }, t.id, t.senderId, String(last.content ?? ''), last.at ? new Date(last.at).getTime() : undefined, {}, last.rid);
+      n++;
+    }
+    if (this.rescued.size > 5000) this.rescued.clear();
+    return n;
+  }
+
   /** Facebook "Data Deletion Request" callback. Verify the signed_request, delete
    *  the Messenger/Instagram conversation data we hold for that user, and return
    *  the status URL + confirmation code Meta requires. */
@@ -1475,6 +1544,7 @@ export class MessengerService implements OnModuleInit {
         ...r,
         state: view.state,
         stateReason: view.reason,
+        botOff: !(conn as { enabled?: boolean } | null)?.enabled && String((r as unknown as { channel?: string }).channel ?? '') !== 'web',
         pageName: pageNames.get(String((r as unknown as { pageId?: string }).pageId ?? '')) || null,
         // Fall back to updatedAt for rows written before the column existed, so
         // an old conversation still sorts somewhere sensible.
@@ -1721,6 +1791,10 @@ export class MessengerService implements OnModuleInit {
     return {
       ...row,
       historySource,
+      // The salon's Messenger/Instagram auto-reply switch is off: nobody answers
+      // automatically, whatever the ownership says. The inbox must not show
+      // "Bot is replying" over a conversation no bot will touch.
+      botOff: !(conn as { enabled?: boolean } | null)?.enabled && String(row.channel ?? '') !== 'web',
       labels: ((row as unknown as { threadLabels?: { label: { id: string; name: string; color: string } }[] }).threadLabels ?? []).map((t) => t.label),
       notes,
       canned,
@@ -2638,7 +2712,9 @@ export class MessengerService implements OnModuleInit {
         // A customer line nobody answered, two minutes old and unknown to us:
         // the webhook missed it. Hand it to the live path — recorded, pushed,
         // and answered by the bot when the salon has it on.
-        const pending = reply && last.role === 'user' && fresh.includes(last) && lastAgeMs > MISSED_AFTER_MS && !(existing as { handoff?: boolean } | null)?.handoff;
+        // Never a line older than Meta's 24-hour window: on a first mirror that would
+        // "answer" a customer who wrote in May (see ./rescue-stuck).
+        const pending = reply && last.role === 'user' && fresh.includes(last) && mayAnswerMirrored(lastAgeMs, MISSED_AFTER_MS) && !(existing as { handoff?: boolean } | null)?.handoff;
         const toWrite = pending ? fresh.filter((t) => t !== last) : fresh;
         if (existing) {
           if (toWrite.length) {
@@ -4317,7 +4393,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const PRICE_TOOLS = new Set(['quote_price', 'get_software_plans', 'send_price_cards']);
     const tools = ctx.mode === 'sales' ? (quotes ? salesTools : salesTools.filter((t) => !PRICE_TOOLS.has((t as { name: string }).name))) : bookingTools;
 
-    const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.role === 'user' ? withNote(h) : h.content }));
+    // Meta's own notices ("X replied to an ad." / "X đã trả lời một quảng cáo.")
+    // sit in the transcript as if the Page had said them. They are not our
+    // words, and a Vietnamese one pulled English chats into Vietnamese.
+    const hist: { role: string; content: unknown }[] = history
+      .filter((h) => !(h.role === 'assistant' && isMetaSystemLine(h.content)))
+      .map((h) => ({ role: h.role, content: h.role === 'user' ? withNote(h) : h.content }));
     // The API needs the first turn to be the customer's. When our greeting is
     // first we must pin something in front of it — but WHAT we pin is read by
     // the model as fact, and it used to always say the chat had just opened.

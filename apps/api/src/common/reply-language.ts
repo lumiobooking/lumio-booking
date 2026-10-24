@@ -61,6 +61,37 @@ const COURTESY_ONLY = /^(ok|oke|okay|okie|k|thanks|thank you|thank u|thx|ty|hi|h
 export type ReplyLang = 'vi' | 'en';
 
 /**
+ * A customer who NAMES a language is asking for it: "English", "english
+ * please", "can you speak English?", "tiếng Việt được không", "Vietnamese".
+ * That outranks everything else in the conversation — the word "English" on
+ * its own carries no English sentence for the vote below to count, and was
+ * answered in whatever language the earlier lines happened to be in.
+ *
+ * "Tôi không biết tiếng Anh" / "I don't speak English" is the opposite of a
+ * request and names nothing; the ordinary vote decides it.
+ */
+export type RequestedLang = ReplyLang | 'es';
+const NAMES: { lang: RequestedLang; re: RegExp }[] = [
+  { lang: 'en', re: /\b(english|eng)\b|ti[eế]ng\s+anh/i },
+  { lang: 'vi', re: /\bvietnamese\b|ti[eế]ng\s+vi[eệ]t/i },
+  { lang: 'es', re: /\b(spanish|espa[nñ]ol)\b/i },
+];
+const NEGATED = /(kh[oô]ng|\bko\b|\bk\b|ch[uư]a|don'?t|do not|can'?t|cannot|no)\s+(bi[eế]t|n[oó]i|hi[eể]u|r[aà]nh|speak|understand|know|talk)?\s*(ti[eế]ng\s+\S+|english|vietnamese|spanish)/i;
+const ASKS = /\b(in|speak|speaking|use|using|switch|reply|respond|talk|text|write|chat)\b|n[oó]i|d[uù]ng|nh[aắ]n|tr[aả]\s*l[oờ]i|chuy[eể]n|đ[uư][oợ]c\s*kh[oô]ng|please|pls|plz|only|\?/i;
+
+export function requestedLang(text: unknown): RequestedLang | null {
+  const raw = String(text ?? '').replace(/\[[^\]]*\]/g, ' ').trim();
+  if (!raw || raw.length > 160) return null;
+  if (NEGATED.test(raw)) return null;
+  const hits = NAMES.filter((n) => n.re.test(raw));
+  if (hits.length !== 1) return null; // "English or Vietnamese?" asks for neither
+  const words = raw.split(/\s+/).filter(Boolean).length;
+  // A bare name ("English", "Tiếng Việt") or a short line that asks for it.
+  if (words <= 3 || (words <= 12 && ASKS.test(raw))) return hits[0].lang;
+  return null;
+}
+
+/**
  * One message's language, or null when it carries no signal ("ok", "👍",
  * "123", an emoji, a bare phone number).
  */
@@ -70,6 +101,8 @@ export function detectLang(text: unknown): ReplyLang | null {
   // would let a photo from an English-speaking customer flip the thread.
   const raw = String(text ?? '').replace(/\[[^\]]*\]/g, ' ').trim();
   if (!raw) return null;
+  const asked = requestedLang(raw);
+  if (asked === 'en' || asked === 'vi') return asked;
   const s = raw.toLowerCase();
   if (COURTESY_ONLY.test(s)) return null;
   if (VI_DIACRITICS.test(s) || VI_STEMS.test(s)) return 'vi';
@@ -100,8 +133,10 @@ export function conversationLang(customerTexts: readonly unknown[]): ReplyLang |
   let vi = 0;
   let en = 0;
   texts.forEach((t, i) => {
-    const w = i >= texts.length - 3 ? 2 : 1;
-    const l = detectLang(t);
+    // A language the customer ASKED for outweighs any number of lines.
+    const asked = requestedLang(t);
+    const w = asked ? 100 + i : i >= texts.length - 3 ? 2 : 1;
+    const l = asked === 'en' || asked === 'vi' ? asked : asked ? null : detectLang(t);
     if (l === 'vi') vi += w;
     else if (l === 'en') en += w;
   });
@@ -117,7 +152,7 @@ export function conversationLang(customerTexts: readonly unknown[]): ReplyLang |
  */
 export function replyLangRule(lang: ReplyLang | null): string {
   if (lang === 'en') {
-    return '\nLANGUAGE — NOT NEGOTIABLE: this customer is writing in ENGLISH, so every word you send is in ENGLISH. Do not send Vietnamese, not one word, not a greeting, not "dạ" or "ạ" — even if your notes, the salon\'s information or an internal system message you are shown happens to be in Vietnamese. Translate anything you need from those into natural English before you say it. Switch to Vietnamese only if the customer writes a full sentence in Vietnamese first.';
+    return '\nLANGUAGE — NOT NEGOTIABLE: this customer is writing in ENGLISH, so every word you send is in ENGLISH. Do not send Vietnamese, not one word, not a greeting, not "dạ" or "ạ" — even if your notes, the salon\'s information, an internal system message, or EARLIER MESSAGES THE SALON SENT IN THIS CHAT (an ad greeting, a staff line) happen to be in Vietnamese — never copy their language. Translate anything you need from those into natural English before you say it. Switch to Vietnamese only if the customer writes a full sentence in Vietnamese first.';
   }
   if (lang === 'vi') {
     return '\nNGÔN NGỮ — BẮT BUỘC: khách đang nhắn/nói TIẾNG VIỆT, nên toàn bộ câu trả lời phải bằng tiếng Việt, xưng hô lễ phép ("dạ", "ạ", gọi khách là "anh/chị"). Khách chêm vài từ tiếng Anh ("ok", "thank you") KHÔNG phải là đổi sang tiếng Anh. Chỉ chuyển sang tiếng Anh khi khách viết hẳn một câu tiếng Anh.';

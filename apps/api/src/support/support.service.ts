@@ -125,6 +125,13 @@ export class SupportService {
       this.prisma.setting.findMany({ where: { tenantId: { in: ids }, key: { in: ['googleReviews', 'tiktok', 'notifications', 'messenger_health'] } }, select: { tenantId: true, key: true, value: true } }).catch(() => []),
     ]);
     const connections = connectionsByTenant({ pages, settings: conn });
+    // The Messenger/Instagram auto-reply switch per salon: on | off | none (no
+    // Page). The panel's bot switch only shows when this is known — without it
+    // a salon whose bot was off looked exactly like one whose bot was answering.
+    const botRows = await Promise.resolve()
+      .then(() => this.prisma.messengerConnection.findMany({ where: { tenantId: { in: ids } }, select: { tenantId: true, enabled: true } }))
+      .catch(() => [] as { tenantId: string; enabled: boolean }[]);
+    const botBy = new Map(botRows.map((b) => [b.tenantId, b.enabled ? 'on' as const : 'off' as const]));
     const shared = sharedConnections(connections);
     const sharedBy = new Map<string, string[]>();
     for (const sh of shared) for (const id of sh.tenantIds) sharedBy.set(id, [...(sharedBy.get(id) ?? []), sh.kind]);
@@ -136,6 +143,7 @@ export class SupportService {
     return rows.map((r) => ({
       ...r,
       notes: notesBy.get(r.id) ?? null,
+      bot: botBy.get(r.id) ?? 'none',
       pulse: pulseBy.get(r.id) ?? null,
       opsStage: opsStageOf(byTenant.get(r.id), r.status),
       workNext: workNextOf(nextBy.get(r.id)),

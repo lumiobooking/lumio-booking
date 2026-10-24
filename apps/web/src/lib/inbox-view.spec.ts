@@ -528,6 +528,7 @@ import { systemEventOf, systemEventLabel } from './inbox-view';
 describe('Meta events that look like messages', () => {
   it.each([
     'Roxanna Parvin replied to an ad.',
+    'Allison Quinn đã trả lời một quảng cáo.',
     'Customer replied to an ad.',
     'Customer replied to an ad',
     'Jane replied to your ad',

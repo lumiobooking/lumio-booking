@@ -284,6 +284,8 @@ interface CustomerCtx {
 }
 interface ThreadDetail extends InboxRow {
   history: Turn[];
+  /** The salon's Messenger/Instagram auto-reply is switched off — no bot answers this chat. */
+  botOff?: boolean;
   /** 'meta' = full transcript · 'local' = Meta refused, 12-turn buffer only ·
    *  'partial' = the fast first paint, full answer still on its way. */
   historySource?: 'partial' | 'meta' | 'local';
@@ -1381,13 +1383,20 @@ export function InboxView() {
         // on the left, the action as a small white button inside, and neither
         // ever needs more than two words.
         const held = state === 'human' || state === 'unclaimed';
-        const takeover = !held && wnotice?.kind === 'needs-takeover';
-        const statusText = state === 'unclaimed'
+        // The salon's auto-reply switch is OFF: no bot will answer, so "Bot is
+        // replying" would be a lie that stops a person from answering.
+        const botOff = !!detail.botOff && !held;
+        const takeover = !held && !botOff && wnotice?.kind === 'needs-takeover';
+        const statusText = botOff
+          ? (vi ? 'Bot đang tắt — người trả lời' : 'Auto-reply off — reply yourself')
+          : state === 'unclaimed'
           ? (vi ? 'Chờ người thật' : 'Waiting for a person')
           : held
             ? (assigned ? (vi ? `${assigned} đang trả lời` : `${assigned} is replying`) : (vi ? 'Người thật đang trả lời' : 'A person is replying'))
             : (vi ? 'Bot đang trả lời' : 'Bot is replying');
-        const statusTone = state === 'unclaimed'
+        const statusTone = botOff
+          ? { bg: 'var(--wash-amber-3)', fg: 'var(--ink-warn)', dot: '#d97706' }
+          : state === 'unclaimed'
           ? { bg: 'var(--wash-amber-3)', fg: 'var(--ink-warn)', dot: '#d97706' }
           : held
             ? { bg: 'var(--c1e293b)', fg: 'var(--ccbd5e1)', dot: 'var(--c64748b)' }
@@ -1397,7 +1406,9 @@ export function InboxView() {
           <span title={statusText} style={{ height: pillH, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 3px 0 11px', borderRadius: 999, background: statusTone.bg, flexShrink: 0 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusTone.dot, flexShrink: 0 }} />
             {(narrow || wide) && <span style={{ fontSize: 12.5, fontWeight: 700, color: statusTone.fg, whiteSpace: 'nowrap', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusText}</span>}
-            {takeover
+            {botOff
+              ? <span style={{ width: 4 }} />
+              : takeover
               ? <button disabled={busy} onClick={() => void act('handoff', { handoff: true })} title={vi ? 'Tôi nhận — bot ngừng trả lời' : 'Take over — the bot stops replying'} style={{ height: pillH - 6, padding: '0 12px', borderRadius: 999, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{vi ? 'Tôi nhận' : 'Take over'}</button>
               : <button disabled={busy} onClick={() => void act('handoff', { handoff: !held })} title={held ? (vi ? 'Để bot trả lời lại' : 'Let the bot reply again') : (vi ? 'Tôi nhận — bot ngừng trả lời' : 'Take over — the bot stops replying')}
                   style={{ height: pillH - 6, padding: '0 12px', borderRadius: 999, border: 'none', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(15,42,82,.18)' }}>

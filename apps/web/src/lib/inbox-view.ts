@@ -652,11 +652,13 @@ export type SystemEvent = 'ad-reply' | 'opened-chat';
 
 const AD_REPLY = /^(?:[^\n]{1,80}\s)?replied to (?:an|your) ad\.?$/i;
 const OPENED_CHAT = /^(?:\u{1F44B}\s*)?\(opened chat\)$/iu;
+/** The same notice when the Page admin's Facebook is in Vietnamese. */
+const AD_REPLY_VI = /^(?:[^\n]{1,80}\s)?đã trả lời (?:một |1 )?quảng cáo(?: của bạn)?\.?$/i;
 
 export function systemEventOf(text: unknown): SystemEvent | null {
   const t = String(text ?? '').trim();
   if (!t || t.length > 120) return null;
-  if (AD_REPLY.test(t)) return 'ad-reply';
+  if (AD_REPLY.test(t) || AD_REPLY_VI.test(t)) return 'ad-reply';
   if (OPENED_CHAT.test(t)) return 'opened-chat';
   return null;
 }

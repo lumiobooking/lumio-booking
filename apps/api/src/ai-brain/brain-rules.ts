@@ -9,7 +9,7 @@
  * Pure: no database, no clock (tested in brain-rules.spec.ts).
  */
 import { isLang, type Lang } from './brain-settings';
-import { detectLang as detectViEn } from '../common/reply-language';
+import { detectLang as detectViEn, requestedLang } from '../common/reply-language';
 
 // ---------------------------------------------------------------- hanging up
 
@@ -92,6 +92,9 @@ const RE_FR_MARKS = /\b(ça|être|c'est|très|où)\b|[àâçéèêëîïôûùü
 export function detectLanguage(text: unknown): Lang | null {
   const raw = String(text ?? '').replace(/\[[^\]]*\]/g, ' ').trim();
   if (!raw) return null;
+  // "English", "Spanish please", "tiếng Việt được không": the customer named it.
+  const asked = requestedLang(raw);
+  if (asked) return asked;
   if (RE_HANGUL.test(raw)) return 'ko';
   if (RE_KANA.test(raw)) return 'ja';
   if (RE_HAN.test(raw)) return 'zh';
@@ -117,7 +120,8 @@ export function conversationLanguage(customerTexts: readonly unknown[], allowed:
   const texts = (customerTexts ?? []).slice(-12);
   const votes = new Map<Lang, number>();
   texts.forEach((t, i) => {
-    const w = i >= texts.length - 3 ? 2 : 1;
+    // A language the customer ASKED for outweighs any number of lines.
+    const w = requestedLang(t) ? 100 + i : i >= texts.length - 3 ? 2 : 1;
     const l = detectLanguage(t);
     if (l) votes.set(l, (votes.get(l) ?? 0) + w);
   });

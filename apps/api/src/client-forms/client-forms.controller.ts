@@ -8,6 +8,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { ClientFormsService } from './client-forms.service';
+import { INTAKE_STYLES, type IntakeStyle } from './form-templates';
 
 /** A built-in client form, or one of the salon's own ("c_…"). */
 const CLIENT_KIND_RE = /^(intake|cupping|hot_stone|c_[a-z0-9]{6,16})$/;
@@ -67,6 +68,8 @@ class ExtraQuestionDto {
 }
 export class FormSettingsDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
+  /** Which intake clients sign. Missing here made EVERY save fail with "property intakeStyle should not exist". */
+  @IsOptional() @IsIn(INTAKE_STYLES) intakeStyle?: IntakeStyle;
   @IsOptional() @IsBoolean() intakeRequired?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(60) intakeValidMonths?: number;
   @IsOptional() @ValidateNested() @Type(() => ConsentsDto) consents?: ConsentsDto;

@@ -55,6 +55,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { mergeBurst, alreadySaid, BURST_MS } from './burst';
 import { mayAnswerMirrored, rescueVerdict } from './rescue-stuck';
 import { isMetaSystemLine } from './meta-system-lines';
+import { readSendRefusal, type GraphError } from './send-errors';
 import { publishGrantFrom } from './publish-grant';
 import { classifyPageError, pageHealthText, shouldAlert as shouldAlertPage, type PageHealth } from './page-health';
 import { AiUsageService } from '../common/ai-usage.service';
@@ -96,6 +97,8 @@ function wallToUtcISO(local: string, tz: string): string {
 
 type Turn = {
   role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean;
+  /** Meta's refusal of this reply, in plain words (./send-errors). */
+  sendError?: string | null;
   /** First name of the teammate who typed a manual reply. Inbox only - the
    *  public web-chat view and the model's prompt never read it. */
   by?: string | null;
@@ -2644,6 +2647,8 @@ export class MessengerService implements OnModuleInit {
       fields,
       appFields: appSub.fields,
       echoOk: appSub.echoOk && fields.includes('message_echoes'),
+      // The bot's last send to Meta: delivered, or Meta's refusal in plain words.
+      lastSend: ((await this.prisma.setting.findFirst({ where: { tenantId, key: META_SEND_TRACE_KEY }, select: { value: true } }).catch(() => null))?.value ?? null) as { at: string; ok: boolean; code: string; error: string } | null,
       verifiedAt: new Date().toISOString(),
       webhookUrl: `${this.apiBase()}/api/messenger/webhook`,
     };
@@ -3679,7 +3684,7 @@ export class MessengerService implements OnModuleInit {
     // A reply the mouth refused is kept, flagged, so the activity log shows
     // "Failed" instead of a "Sent" nobody received — and so the repeat guard
     // lets the bot try again when the customer writes the same thing.
-    const outTurn: Turn = sent.ok ? { role: 'assistant', content: reply, at: outAt } : ({ role: 'assistant', content: reply, at: outAt, failed: true } as Turn);
+    const outTurn: Turn = sent.ok ? { role: 'assistant', content: reply, at: outAt } : ({ role: 'assistant', content: reply, at: outAt, failed: true, sendError: sent.error ?? null } as Turn);
     const photoTurns: Turn[] = (agentCtx?.photos ?? []).map((p, i) => ({
       role: 'assistant', content: `[Đã gửi ${p.urls.length} ảnh: ${p.label}]`, at: new Date(new Date(outAt).getTime() - (agentCtx!.photos!.length - i)).toISOString(), images: p.urls,
     }));
@@ -6361,7 +6366,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // The website has no send: the reply appended to the thread's history is
     // what the visitor's browser reads on its next poll.
     if (channel === 'web') return { ok: true };
-    try {
+    // WHAT META SAID IS READ, NOT ASSUMED. This used to return ok whatever came
+    // back, so a refused reply was stored as delivered: the inbox showed the
+    // bot answering while the customer saw nothing. See ./send-errors.
+    const send = async () => {
       // metadata comes back on the Messenger echo; Instagram drops it, so we
       // also remember the message id the Send API returns.
       const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
@@ -6370,12 +6378,60 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         body: JSON.stringify({ recipient: { id: recipientId }, messaging_type: 'RESPONSE', message: { text: text.slice(0, 1900), metadata: 'LUMIO_BOT' } }),
         signal: AbortSignal.timeout(12_000),
       });
-      const out = (await res.json().catch(() => ({}))) as { message_id?: string };
-      this.rememberSentMid(out.message_id);
+      const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: GraphError };
+      return { status: res.status, ok: res.ok && !out.error && !!out.message_id, out };
+    };
+    try {
+      let r = await send();
+      if (!r.ok) {
+        const first = readSendRefusal(r.status, r.out.error);
+        if (first.threadControl) {
+          // An ad's automation, Meta's Business AI or another tool holds the
+          // conversation. The salon turned the bot on: take it back, once.
+          await this.claimThread(pageToken, recipientId).catch(() => undefined);
+          r = await send();
+        } else if (first.transient) {
+          await new Promise((ok) => { const t = setTimeout(ok, 1500); t.unref?.(); });
+          r = await send();
+        }
+      }
+      if (r.ok) {
+        this.rememberSentMid(r.out.message_id);
+        if (tenantId) void this.traceMetaSend(tenantId, { ok: true });
+        return { ok: true };
+      }
+      const why = readSendRefusal(r.status, r.out.error);
+      this.logger.warn(`Send API refused (${why.code}) tenant=${tenantId ?? '?'}: ${String(r.out.error?.message ?? '').slice(0, 160)}`);
+      if (tenantId) void this.traceMetaSend(tenantId, { ok: false, code: why.code, error: why.reason });
+      return { ok: false, error: why.reason };
     } catch (e) {
       this.logger.warn(`Send API failed: ${String(e).slice(0, 120)}`);
+      const reason = 'Không gọi được Meta (mạng chậm hoặc Meta không phản hồi).';
+      if (tenantId) void this.traceMetaSend(tenantId, { ok: false, code: 'network', error: reason });
+      return { ok: false, error: reason };
     }
-    return { ok: true };
+  }
+
+  /** Handover Protocol with a Page token: take the thread, or ask for it when we are not Primary. */
+  private async claimThread(pageToken: string, recipientId: string): Promise<void> {
+    const body = JSON.stringify({ recipient: { id: recipientId }, metadata: 'LUMIO_BOT' });
+    for (const edge of ['take_thread_control', 'request_thread_control']) {
+      const res = await fetch(`${GRAPH}/me/${edge}?access_token=${encodeURIComponent(pageToken)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(8000),
+      }).catch(() => null);
+      const json = res ? ((await res.json().catch(() => ({}))) as { success?: boolean }) : {};
+      if (res?.ok && json.success) { this.logger.log(`${edge}: ok for ${recipientId.slice(-4)}`); return; }
+    }
+  }
+
+  /** The last bot send per salon, like the Zalo trace: did it reach Meta, and if not, why. Never the text. */
+  private async traceMetaSend(tenantId: string, r: { ok: boolean; code?: string; error?: string }): Promise<void> {
+    const value = { at: new Date().toISOString(), ok: r.ok, code: r.code ?? '', error: r.ok ? '' : String(r.error ?? '').slice(0, 300) } as unknown as Prisma.InputJsonValue;
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: META_SEND_TRACE_KEY } },
+      update: { value },
+      create: { tenantId, key: META_SEND_TRACE_KEY, value },
+    }).catch(() => undefined);
   }
 
   /**
@@ -6396,6 +6452,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
 /** Edits come in bursts; the bot re-reads a salon's conversations once, this long after the last one. */
 const CATCH_UP_DEBOUNCE_MS = 20_000;
+/** Setting row: the last Messenger/Instagram bot send of a salon (ok, or Meta's refusal). */
+const META_SEND_TRACE_KEY = 'messenger_send_trace';
 /** Meta's own Page Inbox (Business Suite / the Messenger app): a human typing there echoes with this app_id. */
 const PAGE_INBOX_APP_ID = '263902037430900';
 

@@ -128,3 +128,27 @@ describe('rubbish in the data', () => {
     expect(meta[0].manual).toBeUndefined();
   });
 });
+
+describe('a reply Meta never got is said on screen', () => {
+  const NOW = new Date('2026-10-24T04:30:00Z');
+  const meta = [
+    { role: 'assistant' as const, content: 'Hi Van! Please let us know how we can help you.', at: '2026-10-24T04:11:24Z', messageId: 'm1' },
+    { role: 'user' as const, content: 'Giá cả của gói Marketing Lumio là bao nhiêu?', at: '2026-10-24T04:11:25Z', messageId: 'm2' },
+    { role: 'assistant' as const, content: 'Dạ em sẽ gửi báo giá qua cho chị ạ', at: '2026-10-24T04:17:54Z', messageId: 'm3' },
+  ];
+  it('the bot line Meta does not have, minutes later, is marked undelivered', () => {
+    const local = [{ role: 'assistant' as const, content: 'Dạ, giá bên em tuỳ theo tiệm…', at: '2026-10-24T04:11:35Z' }];
+    const out = mergeHistory(meta, local, NOW);
+    expect(out.find((t) => t.content.startsWith('Dạ, giá'))?.undelivered).toBe(true);
+    expect(out.filter((t) => t.undelivered)).toHaveLength(1);
+  });
+  it('not a reply sent a moment ago, not a photo line, not one older than Meta\'s page, not a known failure', () => {
+    const local = [
+      { role: 'assistant' as const, content: 'just now', at: '2026-10-24T04:29:00Z' },
+      { role: 'assistant' as const, content: '[Đã gửi 2 ảnh: bảng giá]', at: '2026-10-24T04:12:00Z' },
+      { role: 'assistant' as const, content: 'from last month', at: '2026-09-01T10:00:00Z' },
+      { role: 'assistant' as const, content: 'refused', at: '2026-10-24T04:13:00Z', failed: true },
+    ];
+    expect(mergeHistory(meta, local, NOW).filter((t) => t.undelivered)).toHaveLength(0);
+  });
+});

@@ -266,7 +266,7 @@ const Avatar = memo(function Avatar(
   );
 });
 
-interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite / Meta's agent), mirrored in. */ source?: 'page'; /** First name of the teammate who typed it. */ by?: string | null }
+interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Meta refused it; sendError says why. */ failed?: boolean; sendError?: string | null; /** Ours, minutes old, and missing from Meta's copy: the customer most likely never got it. */ undelivered?: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite / Meta's agent), mirrored in. */ source?: 'page'; /** First name of the teammate who typed it. */ by?: string | null }
 interface ApptCtx {
   id: string;
   startTime: string;
@@ -1564,6 +1564,16 @@ export function InboxView() {
                           border: mine ? (t.manual ? '1px solid transparent' : '1px solid var(--c3730a3)') : '1px solid var(--line)',
                           fontSize: narrow ? 14.5 : 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
                         }}><Linkified text={t.content} /></div>
+                      )}
+                      {mine && (t.failed || t.undelivered) && (
+                        // Said out loud: a reply on this screen that never reached
+                        // Messenger is how a salon believes its bot answered while
+                        // the customer was left waiting.
+                        <span role="alert" style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-bad)', padding: '0 4px', maxWidth: 360, textAlign: 'right', lineHeight: 1.35 }}>
+                          ⚠ {t.failed
+                            ? (vi ? `Chưa gửi tới khách — ${t.sendError || 'Meta từ chối tin nhắn.'}` : `Not delivered — ${t.sendError || 'Meta refused the message.'}`)
+                            : (vi ? 'Không thấy tin này trên Messenger — có thể khách chưa nhận được.' : 'Not found on Messenger — the customer may not have received it.')}
+                        </span>
                       )}
                       <span style={{ fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5, padding: '0 4px' }}>
                         {mine && !t.manual && <span style={{ width: 14, height: 14, borderRadius: 4, background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 8, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>AI</span>}

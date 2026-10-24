@@ -36,6 +36,14 @@ export interface HistoryTurn {
   /** First name of the teammate who typed it (see ./staff-name). Ours only:
    *  Meta's copy never has it, so markManual carries it across. */
   by?: string | null;
+  /** Meta refused it — and why, in Meta's words (see ./send-errors). */
+  sendError?: string | null;
+  /**
+   * Ours, more than a few minutes old, and missing from Meta's own copy of
+   * the conversation: the customer most likely never saw it. Set by
+   * mergeHistory, never stored.
+   */
+  undelivered?: boolean;
 }
 
 /**
@@ -196,7 +204,10 @@ function markManual(meta: HistoryTurn[], ours: HistoryTurn[]): HistoryTurn[] {
  *              which is NOT the same as "there are none".
  * @param local Our own buffer, oldest first.
  */
-export function mergeHistory(meta: HistoryTurn[] | null | undefined, local: HistoryTurn[]): HistoryTurn[] {
+/** How long Meta's read API is given to show a message we sent before it counts as missing. */
+export const UNDELIVERED_AFTER_MS = 3 * 60_000;
+
+export function mergeHistory(meta: HistoryTurn[] | null | undefined, local: HistoryTurn[], now: Date = new Date()): HistoryTurn[] {
   const ours = Array.isArray(local) ? local.filter(Boolean) : [];
 
   // Could not reach Meta, or Meta has nothing. Fall back to our buffer rather
@@ -210,6 +221,9 @@ export function mergeHistory(meta: HistoryTurn[] | null | undefined, local: Hist
   );
 
   const seen = new Set(merged.map(key));
+  // The span Meta's copy covers: a turn older than Meta's oldest line may
+  // simply be outside the page of messages we asked for, and says nothing.
+  const metaFrom = Math.min(...merged.map((t) => Date.parse(String(t.at ?? ''))).filter((n) => Number.isFinite(n)));
 
   for (const t of ours) {
     if (!t || !String(t.content ?? '').trim()) continue;
@@ -223,7 +237,17 @@ export function mergeHistory(meta: HistoryTurn[] | null | undefined, local: Hist
     // it because "Meta does not have it" would hide the only evidence that a
     // customer was left without an answer.
     if (!seen.has(key(t))) {
-      merged.push(t);
+      // A bot or staff reply Meta does not have, well after Meta should have
+      // shown it: it did not reach the customer. Said on screen, because the
+      // inbox showing a reply the customer never got is how a salon believes
+      // its bot is answering while the customer waits.
+      const at = Date.parse(String(t.at ?? ''));
+      // Photos we sent come back from Meta as attachments with no text, so a
+      // "[Đã gửi 2 ảnh …]" line never matches and proves nothing.
+      const photoLine = /^\[(Đã gửi|Sent) /.test(String(t.content ?? '')) || !!(t as { images?: unknown[] }).images?.length;
+      const missing = t.role === 'assistant' && !t.failed && !photoLine && Number.isFinite(at) && Number.isFinite(metaFrom)
+        && at >= metaFrom && now.getTime() - at > UNDELIVERED_AFTER_MS;
+      merged.push(missing ? { ...t, undelivered: true } : t);
       seen.add(key(t));
     }
   }

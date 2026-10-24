@@ -3,7 +3,7 @@
 // Salon-admin page for the Messenger booking bot: connect the Facebook Page,
 // set the webhook, turn the AI receptionist on, and watch conversations.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { ZaloOaPanel } from '../../../components/ZaloOaPanel';
@@ -19,6 +19,7 @@ import { KnowledgeGapsBox } from '../../../components/KnowledgeGapsBox';
 import { BotReportBox } from '../../../components/BotReportBox';
 import { uiLocale } from '../../../lib/datetime';
 import { ind } from '../../../lib/ui-industry';
+import { isVN } from '../../../lib/markets';
 
 interface BotFact { label: string; value: string; on: boolean; from?: string | null; until?: string | null }
 interface MConf {
@@ -51,35 +52,6 @@ interface MThread {
   replyWindow?: { open: boolean; minutesLeft: number | null };
 }
 
-/**
- * The badge that replaced "human handling".
- *
- * That label appeared for any thread with the handoff flag set, including ones
- * whose last human message was nine hours old — so it could not tell "someone
- * is answering this" from "nobody has looked at this since last night". Three
- * conversations sat unanswered behind it. A label that cannot distinguish
- * being-handled from abandoned is worse than none, because it stops people
- * looking.
- */
-function StateBadge({ th, lang }: { th: MThread; lang: string }) {
-  const vi = lang === 'vi';
-  const state = th.state ?? (th.handoff ? 'human' : 'bot');
-  const wait = typeof th.waitingMinutes === 'number' ? th.waitingMinutes : null;
-  const pill = (bg: string, fg: string, text: string) => (
-    <span style={{ background: bg, color: fg, borderRadius: 6, padding: '1px 7px', fontSize: 11, fontWeight: 600 }}>{text}</span>
-  );
-  if (state === 'done') return pill('var(--c1e293b)', 'var(--c94a3b8)', vi ? 'Xong' : 'Done');
-  if (state === 'human') {
-    const who = th.assignedName ? (vi ? `${th.assignedName} giữ` : `${th.assignedName} holding`) : (vi ? 'Người thật giữ' : 'Human holding');
-    return pill('var(--c064e3b)', 'var(--c6ee7b7)', `\u{1F512} ${who}`);
-  }
-  if (state === 'unclaimed') {
-    // The state that did not exist before, and the one that costs money.
-    const label = vi ? 'Chưa ai nhận' : 'Nobody has this';
-    return pill('var(--c78350f)', 'var(--cfcd34d)', wait !== null ? `${label} · ${wait}'` : label);
-  }
-  return pill('var(--c312e81)', 'var(--cc7d2fe)', vi ? 'Bot' : 'Bot');
-}
 interface FactRow extends BotFact { custom: boolean }
 interface WebhookStatus {
   connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; appFields?: string[]; echoOk?: boolean; verifiedAt?: string; webhookUrl?: string;
@@ -90,6 +62,10 @@ interface WebhookStatus {
   serverStartedAt?: string;
   callbackUrl?: string | null; callbackMatches?: boolean | null; otherApps?: string[]; subscribeError?: string | null;
   rejected?: { count: number; at: string } | null; unrouted?: { count: number; at: string } | null;
+  /** The bot's last send to Meta: delivered, or Meta's refusal in plain words (api: messenger/send-errors.ts). */
+  lastSend?: { at: string; ok: boolean; code: string; error: string } | null;
+  /** Instagram's own webhook subscription — 'NOT subscribed' means IG DMs never reach Lumio. */
+  instagram?: { igUsername?: string | null; accountSub?: string | null } | null;
 }
 interface ActivityEv { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean; channel?: string }
 interface ActivityRes { page: string; pageId: string; events: ActivityEv[] }
@@ -250,6 +226,7 @@ function Inner() {
   const canPickMode = Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN';
   const { lang } = useLang();
   const t = (k: string) => DICT[k]?.[lang as Lang] ?? k;
+  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
 
   const [c, setC] = useState<MConf | null>(null);
   const [threads, setThreads] = useState<MThread[]>([]);
@@ -272,7 +249,6 @@ function Inner() {
   const [suggest, setSuggest] = useState<{ greeting: string | null; closing: string | null; instruction: string | null } | null>(null);
   const [factsInit, setFactsInit] = useState(false);
   const [infoOpen, setInfoOpen] = useState(true);     // fold the business-info checklist
-  const [convoSearch, setConvoSearch] = useState(''); // filter the conversations list
   const [wh, setWh] = useState<WebhookStatus | null>(null);       // live webhook subscription status
   const [convImporting, setConvImporting] = useState(false);
   const [convImportMsg, setConvImportMsg] = useState<string | null>(null);
@@ -291,6 +267,13 @@ function Inner() {
   const [reviewMode, setReviewMode] = useState(false);               // Meta Review Mode (filter META-REVIEW-)
   const [reviewId, setReviewId] = useState('');                      // current Review Test ID
   const [reviewNotice, setReviewNotice] = useState<string | null>(null);
+  // Which part of the page is open. Kept in the URL hash so a link (or the
+  // overview's "Xem" buttons) lands on the right tab.
+  const [tab, setTab] = useState<TabKey>('overview');
+  const tabInit = useRef(false);
+  const [gapsOpen, setGapsOpen] = useState(0);                       // questions the bot could not answer
+  const [zaloSt, setZaloSt] = useState<{ market?: string; connected: boolean; oaName?: string; lastSend?: { ok: boolean } | null } | null>(null);
+  const [webSt, setWebSt] = useState<{ enabled: boolean } | null>(null);
 
   // Seed the checklist from stored facts once the config loads: every predefined
   // row shows (ticked/filled if saved), plus any custom rows the salon added.
@@ -515,8 +498,26 @@ function Inner() {
       setActivity(act.events || []); setActivityPage(act.page || '');
     });
     void apiFetch<SalesLead[]>('/messenger/leads', { token }).catch(() => [] as SalesLead[]).then(setLeads);
+    // For the status strip and the tab counts — each one optional.
+    void apiFetch<{ open?: unknown[] }>('/messenger/knowledge-gaps', { token }).then((r) => setGapsOpen(r.open?.length ?? 0)).catch(() => undefined);
+    void apiFetch<{ market?: string; connected: boolean; oaName?: string; lastSend?: { ok: boolean } | null }>('/zalo', { token }).then(setZaloSt).catch(() => setZaloSt(null));
+    void apiFetch<{ enabled: boolean }>('/messenger/webchat', { token }).then(setWebSt).catch(() => setWebSt(null));
   }, [token]);
   useEffect(() => { load(); }, [load]);
+
+  // Open the tab the link asked for; a salon with nothing connected starts on Kết nối.
+  useEffect(() => {
+    if (!c || tabInit.current) return;
+    tabInit.current = true;
+    const h = window.location.hash.replace('#', '');
+    if ((TAB_KEYS as string[]).includes(h)) setTab(h as TabKey);
+    else if (!c.connected) setTab('connect');
+  }, [c]);
+  // Back on the overview after answering questions: recount them.
+  useEffect(() => {
+    if (tab !== 'overview' || !token) return;
+    void apiFetch<{ open?: unknown[] }>('/messenger/knowledge-gaps', { token }).then((r) => setGapsOpen(r.open?.length ?? 0)).catch(() => undefined);
+  }, [tab, token]);
 
   // The API sleeps on idle, so the very first status check after a cold start can
   // time out. Retry quietly a few times instead of leaving a scary "Inactive" on
@@ -563,17 +564,6 @@ function Inner() {
       .filter((f) => f.label.trim() && (f.value.trim() || f.on))
       .map((f) => ({ label: f.label.trim(), value: f.value.trim(), on: f.on, from: f.from || null, until: f.until || null }));
     await save({ botFacts: payload });
-  }
-  async function handoff(id: string, val: boolean) {
-    try { await apiFetch(`/messenger/threads/${id}/handoff`, { method: 'POST', token, body: { handoff: val } }); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-  }
-  // Manual label when the Graph name lookup isn't available (pre-approval).
-  async function renameThread(id: string, current: string) {
-    const name = window.prompt('Customer name for this conversation:', current || '');
-    if (!name || !name.trim()) return;
-    try { await apiFetch(`/messenger/threads/${id}/rename`, { method: 'POST', token, body: { name: name.trim() } }); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Rename failed'); }
   }
   // Real user-initiated Send API call from the app UI (Messenger permission demo).
   async function sendTest() {
@@ -628,8 +618,75 @@ function Inner() {
   // Meta Review Mode: show only reviewer-tagged messages (real data stays in DB).
   const shownActivity = reviewMode ? activity.filter((e) => e.text.includes('META-REVIEW-')) : activity;
 
+  const goTab = (k: TabKey) => {
+    setTab(k);
+    try { window.history.replaceState(null, '', `${window.location.pathname}#${k}`); } catch { /* fine */ }
+  };
+  // A Zalo-only salon borrows the connection row with a "zalo:" page id.
+  const fbConnected = c.connected && !String(c.pageId || '').startsWith('zalo:');
+  const dayAgo = Date.now() - 24 * 3600 * 1000;
+  const failed24 = activity.filter((e) => e.direction === 'out' && e.status === 'Failed' && new Date(e.at).getTime() > dayAgo).length;
+  const sendBroken = Boolean(wh?.lastSend && !wh.lastSend.ok);
+  const unclaimed = threads.filter((th) => th.state === 'unclaimed').length;
+  const newLeads = leads.filter((l) => l.status === 'NEW').length;
+  const showLeads = c.botMode === 'sales' || leads.length > 0;
+  const igPage = (c.pages || []).find((p) => p.igId);
+  const igSubBad = /NOT subscribed/i.test(String(wh?.instagram?.accountSub ?? ''));
+  const reconnect = () => { void connectFacebook(); };
+
+  const tiles: TileProps[] = [
+    {
+      key: 'fb', mark: 'f', tint: '#1877f2', name: 'Facebook Page',
+      account: fbConnected ? (wh?.pageName || c.pageName || c.pageId) : L('Chưa có Page', 'No Page yet'),
+      ...(!fbConnected ? { tone: 'idle' as Tone, state: L('Chưa kết nối', 'Not connected'), action: L('Kết nối', 'Connect'), onAction: reconnect }
+        : c.health?.lost ? { tone: 'bad' as Tone, state: L('Mất kết nối', 'Connection lost'), action: L('Kết nối lại', 'Reconnect'), onAction: reconnect }
+        : sendBroken ? { tone: 'bad' as Tone, state: L('Gửi tin bị lỗi', 'Sends failing'), action: L('Kết nối lại', 'Reconnect'), onAction: reconnect }
+        : wh && !whFail && !whBusy && wh.subscribed === false ? { tone: 'warn' as Tone, state: L('Chưa nhận tin', 'Not receiving'), action: L('Kết nối lại', 'Reconnect'), onAction: reconnect }
+        : { tone: 'ok' as Tone, state: L('Hoạt động', 'Working'), action: L('Chi tiết', 'Details'), onAction: () => goTab('connect') }),
+    },
+    {
+      key: 'ig', mark: 'IG', tint: '#c13584', name: 'Instagram',
+      account: igPage ? (igPage.igUsername ? `@${igPage.igUsername}` : `IG ${igPage.igId}`) : L('Chưa liên kết', 'Not linked'),
+      ...(!fbConnected ? { tone: 'idle' as Tone, state: L('Cần Page trước', 'Needs the Page'), action: L('Kết nối', 'Connect'), onAction: reconnect }
+        : !igPage ? { tone: 'idle' as Tone, state: L('Chưa liên kết', 'Not linked'), action: L('Liên kết', 'Link'), onAction: reconnect }
+        : igSubBad ? { tone: 'warn' as Tone, state: L('Chưa nhận tin', 'Not receiving'), action: L('Kết nối lại', 'Reconnect'), onAction: reconnect }
+        : { tone: 'ok' as Tone, state: L('Hoạt động', 'Working'), action: L('Chi tiết', 'Details'), onAction: () => goTab('connect') }),
+    },
+    ...(zaloSt && isVN(zaloSt.market) ? [{
+      key: 'zalo', mark: 'Z', tint: '#0068ff', name: 'Zalo OA',
+      account: zaloSt.connected ? (zaloSt.oaName || 'Zalo OA') : L('Chưa có OA', 'No OA yet'),
+      ...(!zaloSt.connected ? { tone: 'idle' as Tone, state: L('Chưa kết nối', 'Not connected'), action: L('Kết nối', 'Connect') }
+        : zaloSt.lastSend && !zaloSt.lastSend.ok ? { tone: 'bad' as Tone, state: L('Gửi tin bị lỗi', 'Sends failing'), action: L('Xem', 'View') }
+        : { tone: 'ok' as Tone, state: L('Hoạt động', 'Working'), action: L('Chi tiết', 'Details') }),
+      onAction: () => goTab('connect'),
+    }] : []),
+    {
+      key: 'web', mark: 'W', tint: '#0f766e', name: L('Chat website', 'Website chat'),
+      account: L('Nút chat ở góc website', 'Chat button on your site'),
+      ...(webSt?.enabled ? { tone: 'ok' as Tone, state: L('Đang bật', 'On'), action: L('Chi tiết', 'Details') } : { tone: 'idle' as Tone, state: L('Đang tắt', 'Off'), action: L('Bật', 'Turn on') }),
+      onAction: () => goTab('connect'),
+    },
+  ];
+
+  const tabs: { key: TabKey; label: string; count: number; tone: Tone }[] = [
+    { key: 'overview', label: L('Tổng quan', 'Overview'), count: 0, tone: 'idle' },
+    { key: 'reply', label: L('Cách trả lời', 'How it replies'), count: 0, tone: 'idle' },
+    { key: 'know', label: L('Kiến thức', 'Knowledge'), count: gapsOpen, tone: 'warn' },
+    ...(showLeads ? [{ key: 'leads' as TabKey, label: L('Khách tiềm năng', 'Leads'), count: newLeads, tone: 'ok' as Tone }] : []),
+    { key: 'log', label: L('Nhật ký', 'Log'), count: failed24, tone: 'bad' },
+    { key: 'connect', label: L('Kết nối', 'Connections'), count: 0, tone: 'idle' },
+  ];
+
+  const todos: { key: string; n: string; tone: Tone; title: string; why: string; cta: string; go?: () => void; href?: string }[] = [
+    ...(failed24 > 0 ? [{ key: 'failed', n: String(failed24), tone: 'bad' as Tone, title: L('Tin của bot chưa tới khách (24 giờ qua)', 'Bot replies that never reached the customer (24h)'), why: wh?.lastSend?.error || L('Xem lý do Meta trả về trong Nhật ký.', 'See Meta\u2019s reason in the Log.'), cta: L('Xem', 'View'), go: () => goTab('log') }] : []),
+    ...(fbConnected && !c.enabled ? [{ key: 'off', n: '!', tone: 'warn' as Tone, title: L('Trợ lý AI đang tắt', 'The AI is off'), why: L('Khách nhắn tới sẽ không ai tự trả lời — chỉ nhân viên trả lời trong Hộp thư.', 'Nobody answers automatically — only staff, in the Inbox.'), cta: L('Bật', 'Turn on'), go: () => { void save({ enabled: true }); } }] : []),
+    ...(unclaimed > 0 ? [{ key: 'waiting', n: String(unclaimed), tone: 'warn' as Tone, title: L('Khách đang chờ người trả lời', 'Customers waiting for a person'), why: L('Hội thoại đã giao cho nhân viên nhưng chưa ai nhận.', 'Given to staff but nobody has picked them up.'), cta: L('Mở Hộp thư', 'Open the Inbox'), href: '/salon/inbox' }] : []),
+    ...(gapsOpen > 0 ? [{ key: 'gaps', n: String(gapsOpen), tone: 'warn' as Tone, title: L('Câu bot chưa trả lời được', 'Questions the bot could not answer'), why: L('Trả lời một lần — bot dùng cho mọi khách sau.', 'Answer once — the bot uses it for every customer after.'), cta: L('Trả lời', 'Answer'), go: () => goTab('know') }] : []),
+    ...(newLeads > 0 ? [{ key: 'leads', n: String(newLeads), tone: 'ok' as Tone, title: L('Khách tiềm năng mới', 'New leads'), why: L('Khách đã để lại tên và số điện thoại.', 'Customers who left a name and phone.'), cta: L('Xem', 'View'), go: () => goTab('leads') }] : []),
+  ];
+
   return (
-    <section style={{ maxWidth: 820 }}>
+    <section style={{ maxWidth: 1040 }}>
       {c && !c.connected && (
         <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 12, padding: '12px 16px', marginBottom: 14, fontSize: 13, lineHeight: 1.7, color: 'var(--ccbd5e1)' }}>
           <b style={{ color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? '4 bước kết nối — chỉ cần nhớ một điều: PHẢI TICK PAGE' : '4 steps — the one thing to remember: TICK THE PAGE'}</b>
@@ -770,11 +827,565 @@ function Inner() {
           )}
         </div>
       )}
-      <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('title')}</h1>
-      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 14px', fontSize: 14 }}>{t('subtitle')}</p>
+      {/* ---- The head: what this page is, and the one switch that matters. ----
+           The page used to be fourteen cards in one scroll — connection, test
+           send, activity log, webhook setup, behaviour, knowledge, facts,
+           conversations, leads — with the two things a salon must see first
+           (can the bot actually send? what needs doing now?) somewhere in the
+           middle. Now: a status strip, then tabs. Every card is still here,
+           in the tab where it belongs. */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Messenger</h1>
+          <p style={{ color: 'var(--c94a3b8)', margin: 0, fontSize: 14 }}>{L('Trợ lý AI trả lời tin nhắn trên Facebook, Instagram, Zalo và website — tất cả ở một chỗ.', 'The AI assistant answering Facebook, Instagram, Zalo and website chats — all in one place.')}</p>
+        </div>
+        {c.connected && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => goTab('log')} style={ghost}>{L('Gửi tin thử', 'Send a test')}</button>
+            <button type="button" onClick={() => save({ enabled: !c.enabled })} disabled={saving} aria-pressed={c.enabled}
+              title={c.enabled ? L('Bấm để tắt trợ lý AI', 'Click to turn the AI off') : L('Bấm để bật trợ lý AI', 'Click to turn the AI on')}
+              style={{ height: 40, padding: '0 6px 0 14px', borderRadius: 999, border: `1px solid ${c.enabled ? 'rgba(34,197,94,.55)' : 'var(--c334155)'}`, background: c.enabled ? 'rgba(34,197,94,.12)' : 'var(--c0f172a)', display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: c.enabled ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>{L('Trợ lý AI', 'AI assistant')}: {c.enabled ? L('Đang bật', 'On') : L('Đang tắt', 'Off')}</span>
+              <span aria-hidden style={{ width: 40, height: 24, borderRadius: 999, background: c.enabled ? '#16a34a' : 'var(--c64748b)', position: 'relative', display: 'inline-block', flexShrink: 0 }}>
+                <span style={{ position: 'absolute', top: 3, left: c.enabled ? 19 : 3, width: 18, height: 18, borderRadius: '50%', background: '#ffffff', transition: 'left .15s' }} />
+              </span>
+            </button>
+          </div>
+        )}
+      </div>
       {error && <div style={ui.banner}>{error}</div>}
       {notice && <div style={{ ...ui.card, marginBottom: 16, borderColor: '#22c55e', color: 'var(--cbbf7d0)', fontSize: 13.5, whiteSpace: 'pre-line', lineHeight: 1.6 }}>{notice}</div>}
 
+      {/* The bot's last send was refused by Meta. Said first, with Meta's own
+          reason and the fix that worked on 24 Oct 2026 (reconnect the Page),
+          because a screen showing bot replies the customer never got is how a
+          salon believes its bot is answering while customers wait. */}
+      {fbConnected && wh?.lastSend && !wh.lastSend.ok && (
+        <div role="alert" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', background: 'var(--wash-red)', border: '1px solid #ef4444', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: 'var(--ink-bad)', fontSize: 14.5 }}>
+              ⚠ {failed24 > 0 ? L(`${failed24} tin của bot chưa tới khách (24 giờ qua)`, `${failed24} bot replies did not reach the customer (last 24h)`) : L('Lần gửi gần nhất của bot bị Meta từ chối', 'Meta refused the bot’s last send')}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 4, lineHeight: 1.5 }}>{wh.lastSend.error}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{fmtInTz(wh.lastSend.at, { dateStyle: 'short', timeStyle: 'short' })}{wh.lastSend.code ? ` · Meta ${wh.lastSend.code}` : ''}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => goTab('log')} style={ghost}>{L('Xem tin lỗi', 'See failed')}</button>
+            <button type="button" onClick={connectFacebook} disabled={connecting} style={{ ...ui.primaryBtn, background: '#dc2626', color: '#ffffff', whiteSpace: 'nowrap' }}>{L('↻ Kết nối lại Page', '↻ Reconnect the Page')}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Every channel on one line: account, state, one action. */}
+      <div style={{ ...ui.card, padding: 0, marginBottom: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', overflow: 'hidden' }}>
+        {tiles.map(({ key, ...tl }) => <StatusTile key={key} {...tl} />)}
+      </div>
+
+      <div role="tablist" aria-label={L('Phần cài đặt', 'Sections')} style={{ display: 'flex', gap: 22, borderBottom: '1px solid var(--line)', marginBottom: 16, overflowX: 'auto' }}>
+        {tabs.map((tb) => {
+          const on = tab === tb.key;
+          return (
+            <button key={tb.key} type="button" role="tab" aria-selected={on} onClick={() => goTab(tb.key)}
+              style={{ height: 42, padding: '0 2px', border: 0, borderBottom: `2px solid ${on ? '#6366f1' : 'transparent'}`, background: 'transparent', fontFamily: 'inherit', fontSize: 14, fontWeight: on ? 700 : 600, color: on ? 'var(--ink-link)' : 'var(--c94a3b8)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+              {tb.label}
+              {tb.count > 0 && (
+                <span style={{ minWidth: 20, height: 20, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, fontSize: 11.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', ...toneStyle(tb.tone) }}>{tb.count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ============ TỔNG QUAN / OVERVIEW ============ */}
+      {tab === 'overview' && (
+        <>
+          <div style={{ ...ui.card, marginBottom: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>{L('Việc nên làm', 'To do')}</div>
+            {todos.length === 0 ? (
+              <p style={{ color: 'var(--ink-good)', fontSize: 13.5, margin: 0 }}>✓ {L('Không có việc gì đang chờ.', 'Nothing waiting.')}</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+                {todos.map((td, i) => (
+                  <div key={td.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderTop: i ? '1px solid var(--line)' : 'none', flexWrap: 'wrap' }}>
+                    <span style={{ minWidth: 36, height: 36, padding: '0 6px', boxSizing: 'border-box', borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, ...toneStyle(td.tone) }}>{td.n}</span>
+                    <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{td.title}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>{td.why}</div>
+                    </div>
+                    {td.href
+                      ? <a href={td.href} style={{ ...ghost, textDecoration: 'none', whiteSpace: 'nowrap' }}>{td.cta} →</a>
+                      : <button type="button" onClick={td.go} style={{ ...ghost, whiteSpace: 'nowrap' }}>{td.cta} →</button>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <BotReportBox token={token} vi={lang === 'vi'} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+            <a href="/salon/ai" style={{ display: 'block', padding: '12px 14px', borderRadius: 12, background: 'var(--wash-blue)', border: '1px solid var(--line)', textDecoration: 'none', color: 'inherit', fontSize: 13, lineHeight: 1.45 }}>
+              <b>{L('Bộ não AI', 'AI brain')}</b> — {L('tên, giọng, giá, khuyến mãi, quy tắc và ngôn ngữ dùng chung cho chat và tổng đài.', 'name, tone, prices, promotions, rules and languages shared by chat and the hotline.')} <span style={{ color: 'var(--ink-link)' }}>{L('Mở →', 'Open →')}</span>
+            </a>
+            <a href="/salon/inbox" style={{ display: 'block', padding: '12px 14px', borderRadius: 12, background: 'var(--c0f172a)', border: '1px solid var(--line)', textDecoration: 'none', color: 'inherit', fontSize: 13, lineHeight: 1.45 }}>
+              <b>{L('Hộp thư', 'Inbox')}</b> — {L(`${c.threads} hội thoại · nhận / trả bot / đặt tên khách ở đây.`, `${c.threads} conversations · take over, hand back and name customers there.`)} <span style={{ color: 'var(--ink-link)' }}>{L('Mở →', 'Open →')}</span>
+            </a>
+          </div>
+        </>
+      )}
+      {/* ============ CÁCH TRẢ LỜI / HOW IT REPLIES ============ */}
+      {tab === 'reply' && (
+        <>
+      {/* Behaviour */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
+          {t('behaviorTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: c.aiEnabled ? 'var(--ink-good)' : 'var(--ink-warn)' }}>· {c.aiEnabled ? t('aiOn') : t('aiOff')}</span>
+        </div>
+        {canPickMode && (
+          <>
+            <label style={ui.label}>{t('modeLabel')}</label>
+            <div style={{ display: 'inline-flex', border: '1px solid var(--c334155)', borderRadius: 10, overflow: 'hidden', marginBottom: 6 }}>
+              {(['booking', 'sales'] as const).map((m) => (
+                <button key={m}
+                  onClick={() => { setC({ ...c, botMode: m }); save({ botMode: m }); }}
+                  style={{ padding: '8px 16px', fontSize: 13, border: 'none', cursor: 'pointer',
+                    background: c.botMode === m ? '#6366f1' : 'transparent',
+                    color: c.botMode === m ? '#fff' : 'var(--c64748b)', fontWeight: c.botMode === m ? 700 : 500 }}>
+                  {m === 'booking' ? t('modeBooking') : t('modeSales')}
+                </button>
+              ))}
+            </div>
+            <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('modeHint')}</p>
+            {c.botMode === 'sales' && (
+              <>
+                <label style={ui.label}>{lang === 'vi' ? 'Ai báo giá trong chat' : 'Who names the price in chat'}</label>
+                <div style={{ display: 'inline-flex', border: '1px solid var(--c334155)', borderRadius: 10, overflow: 'hidden', marginBottom: 6 }}>
+                  {(['sales', 'facts'] as const).map((q) => {
+                    const on = (c.quotePolicy ?? 'sales') === q;
+                    return (
+                      <button key={q} type="button" onClick={() => { setC({ ...c, quotePolicy: q }); save({ quotePolicy: q }); }}
+                        style={{ padding: '8px 16px', fontSize: 13, border: 'none', cursor: 'pointer', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--c64748b)', fontWeight: on ? 700 : 500 }}>
+                        {q === 'sales' ? (lang === 'vi' ? 'Sale báo giá (bot không nói giá)' : 'Sales team quotes (bot never)') : (lang === 'vi' ? 'Bot báo giá theo FACTS' : 'Bot quotes from FACTS')}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 12px', lineHeight: 1.5 }}>
+                  {lang === 'vi'
+                    ? '"Sale báo giá": bot không bao giờ nêu giá, gói, phí tháng hay quy đổi tiền tệ — kể cả khi khách hỏi; bot xin tên tiệm + tên + số điện thoại để team gửi báo giá. Giá lỡ lọt vào câu trả lời sẽ bị chặn trước khi gửi. "Bot báo giá": bot nêu giá có trong FACTS / thẻ giá.'
+                    : '"Sales team quotes": the bot never states a price, plan, monthly fee or currency conversion — even when asked; it collects shop + name + phone so the team sends the quote. A price that slips into a reply is blocked before it is sent. "Bot quotes": the bot may state prices from its FACTS / price cards.'}
+                </p>
+                <label style={ui.label}>{t('leadEmail')}</label>
+                <input value={c.leadEmail} placeholder={t('leadEmailPh')}
+                  onChange={(e) => setC({ ...c, leadEmail: e.target.value })} onBlur={() => save({})}
+                  style={{ ...ui.input, marginBottom: 12 }} />
+              </>
+            )}
+          </>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 10, marginBottom: 12 }}>
+          <div>
+            <label style={ui.label}>{lang === 'vi' ? 'Tên nhân viên (bot xưng tên này)' : 'Staff name (the bot goes by it)'}</label>
+            <input value={c.agentName} placeholder={lang === 'vi' ? 'vd: Vy' : 'e.g. Amy'}
+              onChange={(e) => setC({ ...c, agentName: e.target.value })} onBlur={() => save({})} style={ui.input} />
+          </div>
+          <div>
+            <label style={ui.label}>{lang === 'vi' ? 'Giới thiệu doanh nghiệp (1 câu bot dùng khi tự giới thiệu) — đừng liệt kê ngành nghề, bot sẽ hiểu là danh sách đóng và từ chối ngành khác' : 'Business intro (one line the bot uses) — avoid listing trades; the bot reads a list as a limit and turns other trades away'}</label>
+            <input value={c.bizIntro}
+              placeholder={ind(lang === 'vi' ? 'vd: agency marketing trọn gói cho mọi ngành — website, quảng cáo, chatbot AI, phần mềm đặt lịch' : 'e.g. full-service marketing agency for any trade — websites, ads, AI chat, booking software')}
+              onChange={(e) => setC({ ...c, bizIntro: e.target.value })} onBlur={() => save({})} style={ui.input} />
+          </div>
+        </div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
+          {lang === 'vi'
+            ? 'Đặt tên là bot nói chuyện như một nhân viên thật, không tự nhận là trợ lý. Nếu khách hỏi thẳng "bot hả?", bot không nói dối — nó khéo léo mời gọi lại ngay và ghi lead.'
+            : 'With a name set, the bot speaks as a real team member and never calls itself an assistant. Asked point-blank "is this a bot?", it won\u2019t lie — it gracefully offers an instant call back and logs the lead.'}
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12, maxWidth: 460 }}>
+          <div>
+            <label style={ui.label}>{lang === 'vi' ? 'Nhân viên "đang trực" trong (phút)' : 'Staff counts as active for (min)'}</label>
+            <input type="number" min={1} max={720} value={c.humanActiveMins}
+              onChange={(e) => setC({ ...c, humanActiveMins: Math.min(720, Math.max(1, Number(e.target.value) || 15)) })}
+              onBlur={() => save({})} style={ui.input} />
+          </div>
+          <div>
+            <label style={ui.label}>{lang === 'vi' ? 'Bot nhường người thật (phút)' : 'Bot yields to a human for (min)'}</label>
+            <input type="number" min={0} max={60} value={c.graceMins}
+              onChange={(e) => setC({ ...c, graceMins: Math.min(60, Math.max(0, Number(e.target.value) || 0)) })}
+              onBlur={() => save({})} style={ui.input} />
+          </div>
+        </div>
+        {/* Chat turns ("chia turn"): the rules for handing each new
+            conversation to one person. Its own panel and its own endpoint —
+            see components/ChatTurnsPanel. */}
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', marginBottom: 8 }}>
+            {lang === 'vi' ? 'Chia turn hội thoại cho nhân viên' : 'Chat turns for the team'}
+          </div>
+          <ChatTurnsPanel token={token} vi={lang === 'vi'} />
+        </div>
+
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
+          {lang === 'vi'
+            ? 'Nhân viên vừa nhắn trong X phút thì mỗi tin mới của khách được nhường Y phút cho người thật; hết Y phút bot trả lời. Nhân viên im quá X phút thì bot trực lại ngay. Y = 0 nghĩa là bot không chờ.'
+            : 'If staff messaged within X minutes, each new customer message waits Y minutes for a human; then the bot answers. Staff idle past X minutes → bot resumes instantly. Y = 0 means the bot never waits.'}
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <label style={ui.label}>{t('greeting')}</label>
+          <button type="button" onClick={() => setGreetOpen((v) => !v)}
+            style={{ background: 'transparent', border: '1px solid #6366f1', color: 'var(--ca5b4fc)', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginBottom: 6 }}>
+            {lang === 'vi' ? '✨ Nhờ AI viết giúp' : '✨ Let AI write it'}
+          </button>
+        </div>
+        <textarea value={c.greeting} placeholder={t('greetingPh')} rows={2} onChange={(e) => setC({ ...c, greeting: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: greetOpen ? 8 : 12 }} />
+        {greetOpen && (
+          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c312e81)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '0 0 8px', lineHeight: 1.5 }}>
+              {lang === 'vi'
+                ? 'AI đọc dịch vụ, ưu đãi đang chạy, giờ làm và địa chỉ của tiệm để viết. Gõ thêm ý bạn muốn nhấn mạnh (không bắt buộc).'
+                : 'AI reads your services, live discounts, hours and address. Add anything you want emphasised (optional).'}
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input value={greetKeywords} onChange={(e) => setGreetKeywords(e.target.value)}
+                placeholder={ind(lang === 'vi' ? 'vd: nhấn mạnh bột dip, đang giảm 20% cho khách mới' : 'e.g. highlight dip powder, 20% off for new clients')}
+                style={{ ...ui.input, flex: 1, minWidth: 220, marginBottom: 0 }} />
+              <button type="button" onClick={suggestGreeting} disabled={greetBusy}
+                style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '9px 16px', fontSize: 12.5, fontWeight: 600, cursor: greetBusy ? 'wait' : 'pointer', opacity: greetBusy ? 0.6 : 1 }}>
+                {greetBusy ? (lang === 'vi' ? 'Đang viết…' : 'Writing…') : (lang === 'vi' ? 'Gợi ý 3 câu' : 'Draft 3')}
+              </button>
+            </div>
+            {greetErr && <p style={{ color: 'var(--cf87171)', fontSize: 12, margin: '8px 0 0' }}>{greetErr}</p>}
+            {greetOptions && greetOptions.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                {greetOptions.map((op, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--c111827)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '9px 11px' }}>
+                    <div style={{ flex: 1, color: 'var(--ce2e8f0)', fontSize: 13, lineHeight: 1.55 }}>{op}</div>
+                    <button type="button"
+                      onClick={() => { setC({ ...c, greeting: op }); save({ greeting: op }); setGreetOpen(false); setGreetOptions(null); }}
+                      style={{ background: '#22c55e', border: 'none', color: '#052e16', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      {lang === 'vi' ? 'Dùng' : 'Use'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <label style={ui.label}>{lang === 'vi' ? 'Câu kết thúc / cảm ơn (tùy chọn)' : 'Goodbye / thank-you line (optional)'}</label>
+        <textarea value={c.closing} rows={2}
+          placeholder={lang === 'vi' ? 'vd: Cảm ơn anh/chị đã tin tưởng Lumio — chúc một ngày thật đẹp ạ! 🌸' : 'e.g. Thank you for trusting Lumio — have a lovely day! 🌸'}
+          onChange={(e) => setC({ ...c, closing: e.target.value })} onBlur={() => save({})}
+          style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-6px 0 12px', lineHeight: 1.5 }}>
+          {ind(lang === 'vi' ? 'Bot không dán nguyên văn — nó chào tạm biệt theo đúng tinh thần câu này, bằng ngôn ngữ của khách.' : 'Not pasted verbatim — the bot says goodbye in the spirit of this line, in the customer\u2019s language.')}
+        </p>
+        {/* Persona, facts, rules, booking policy and languages now live in the salon's one AI brain (/salon/ai); the notes below stay as this channel's extra. */}
+        <a href="/salon/ai" style={{ display: 'block', padding: '10px 12px', marginBottom: 12, borderRadius: 10, background: 'var(--wash-blue)', border: '1px solid var(--line)', textDecoration: 'none', color: 'inherit', fontSize: 13, lineHeight: 1.45 }}>
+          <b>{lang === 'vi' ? 'Bộ não AI' : 'AI brain'}</b> — {lang === 'vi' ? 'Tên, giọng, thông tin tiệm, quy tắc, chính sách booking và ngôn ngữ của cả tổng đài lẫn chat được chỉnh ở một nơi.' : 'Name, tone, salon facts, rules, booking policy and languages for both the hotline and chat are set in one place.'} <span style={{ color: 'var(--ink-link)' }}>{lang === 'vi' ? 'Mở →' : 'Open →'}</span>
+        </a>
+        <AiNotesBox token={token} vi={lang === 'vi'} />
+        <label style={ui.label}>{t('extraNotes')}</label>
+        <textarea value={c.aiInstruction} placeholder={t('extraNotesPh')} rows={3} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+        {/* Follow-up for quiet booking chats — each salon's own switch, off by default. */}
+        {c.botMode !== 'sales' && <FollowUpBox token={token} vi={lang === 'vi'} />}
+      </div>
+        </>
+      )}
+
+      {/* ============ KIẾN THỨC / KNOWLEDGE ============ */}
+      {tab === 'know' && (
+        <>
+        {/* What the bot could not answer — answered once here, known to the bot from then on. */}
+        <KnowledgeGapsBox token={token} vi={lang === 'vi'} onTaught={(label, value) => setFacts((rows) => {
+          const i = rows.findIndex((r) => r.label.trim().toLowerCase() === label.trim().toLowerCase());
+          if (i >= 0) { const next = [...rows]; next[i] = { ...next[i], value, on: true }; return next; }
+          return [...rows, { label, value, on: true, from: null, until: null, custom: true }];
+        })} />
+      {/* Knowledge import: website / fanpage → proposed facts → human approves */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+          📥 {lang === 'vi' ? 'Nạp kiến thức tự động' : 'Auto-import knowledge'}
+        </div>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.55 }}>
+          {lang === 'vi'
+            ? 'Đọc website hoặc fanpage, AI chưng cất thành các dòng thông tin — bạn duyệt rồi mới lưu. Bot chỉ nói những gì đã được duyệt.'
+            : 'Reads your website or fanpage and distills it into fact rows — you approve before saving. The bot only speaks approved facts.'}
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://lumioagency.com"
+            style={{ ...ui.input, flex: 1, minWidth: 220 }} />
+          <button onClick={() => importFacts('website')} disabled={!!importing || !importUrl.trim()}
+            style={{ ...ui.primaryBtn, opacity: importing || !importUrl.trim() ? 0.6 : 1 }}>
+            {importing === 'website' ? '…' : (lang === 'vi' ? '🌐 Đọc website' : '🌐 Read website')}
+          </button>
+          <button onClick={() => importFacts('page')} disabled={!!importing || !c.connected}
+            title={c.connected ? '' : (lang === 'vi' ? 'Kết nối page trước' : 'Connect the page first')}
+            style={{ ...ui.primaryBtn, background: '#1877f2', opacity: importing || !c.connected ? 0.6 : 1 }}>
+            {importing === 'page' ? '…' : (lang === 'vi' ? '📘 Đọc từ Fanpage' : '📘 Read from Fanpage')}
+          </button>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <label style={ui.label}>{ind(lang === 'vi' ? '✍️ Hoặc dán nội dung bạn muốn bot truyền tải (khuyến mãi, bảng giá, cách chào khách…)' : '✍️ Or paste anything the bot should carry (promos, price list, how to greet…)')}</label>
+          <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={4}
+            placeholder={lang === 'vi' ? 'Dán tự do — hệ thống tự nhận ra đâu là thông tin, đâu là giọng điệu, đâu là câu chào/câu cảm ơn.' : 'Paste freely — the system sorts out facts, tone, hello and thank-you lines by itself.'}
+            style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+          <button onClick={() => importFacts('paste')} disabled={!!importing || pasteText.trim().length < 20}
+            style={{ ...ui.primaryBtn, marginTop: 8, opacity: importing || pasteText.trim().length < 20 ? 0.6 : 1 }}>
+            {lang === 'vi' ? '✨ Phân loại tự động' : '✨ Sort it out'}
+          </button>
+        </div>
+        {importErr && <div style={{ color: 'var(--cf87171)', fontSize: 13, marginTop: 10 }}>{importErr}</div>}
+        {suggest && (
+          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {([['greeting', lang === 'vi' ? 'Câu chào' : 'Greeting'], ['closing', lang === 'vi' ? 'Câu kết thúc' : 'Goodbye'], ['instruction', lang === 'vi' ? 'Giọng điệu / luật' : 'Tone / rules']] as const).map(([k, title]) => {
+              const v = suggest[k];
+              if (!v) return null;
+              return (
+                <div key={k} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ca5b4fc)', marginBottom: 3 }}>{title}</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.5 }}>{v}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (k === 'greeting') { setC({ ...c, greeting: v }); save({ greeting: v }); }
+                      else if (k === 'closing') { setC({ ...c, closing: v }); save({ closing: v }); }
+                      else { const nv = c.aiInstruction ? `${c.aiInstruction}\n${v}` : v; setC({ ...c, aiInstruction: nv }); save({ aiInstruction: nv }); }
+                      setSuggest((sg) => sg ? { ...sg, [k]: null } : sg);
+                    }}
+                    style={{ ...ui.primaryBtn, padding: '6px 14px', fontSize: 12.5, flexShrink: 0 }}>
+                    {lang === 'vi' ? 'Dùng' : 'Use'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {proposed && (
+          <div style={{ marginTop: 14, border: '1px solid var(--c334155)', borderRadius: 10, padding: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ca5b4fc)', marginBottom: 8 }}>
+              {lang === 'vi' ? `AI đề xuất ${proposed.length} mục — bỏ tick mục nào sai rồi bấm thêm:` : `AI proposes ${proposed.length} row(s) — untick anything wrong, then add:`}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+              {proposed.map((f, i) => (
+                <label key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={f.pick}
+                    onChange={(e) => setProposed((ps) => ps ? ps.map((x, k) => k === i ? { ...x, pick: e.target.checked } : x) : ps)}
+                    style={{ marginTop: 2 }} />
+                  <span><b style={{ color: 'var(--ce2e8f0)' }}>{f.label}:</b> {f.value}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button onClick={mergeProposed} disabled={!proposed.some((f) => f.pick)} style={{ ...ui.primaryBtn, opacity: proposed.some((f) => f.pick) ? 1 : 0.5 }}>
+                {lang === 'vi' ? `➕ Thêm ${proposed.filter((f) => f.pick).length} mục vào Bot facts` : `➕ Add ${proposed.filter((f) => f.pick).length} row(s) to Bot facts`}
+              </button>
+              <button onClick={() => setProposed(null)} style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>
+                {lang === 'vi' ? 'Bỏ qua' : 'Discard'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Salon info — tick + fill so the bot answers common questions */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: infoOpen ? 6 : 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
+            {t('infoTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--c64748b)' }}>· {facts.filter((f) => f.on && f.value.trim()).length}</span>
+          </div>
+          <button onClick={() => setInfoOpen((v) => !v)} style={{ ...ghost, fontSize: 12 }}>{infoOpen ? t('collapse') : t('expand')}</button>
+        </div>
+        {infoOpen && (
+          <>
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '4px 0 10px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
+            <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 11px', marginBottom: 12, fontSize: 12 }}>
+              <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>✓ {t('infoKnows')}</span> <span style={{ color: 'var(--c94a3b8)' }}>{t('infoKnowsList')}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto', paddingRight: facts.length > 6 ? 4 : 0 }}>
+              {facts.map((f, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: f.on ? 'var(--c0f172a)' : 'transparent', border: '1px solid', borderColor: f.on ? 'var(--c334155)' : 'var(--c1e293b)', borderRadius: 8, padding: '8px 10px' }}>
+                  <input type="checkbox" checked={f.on} onChange={(e) => setFact(i, { on: e.target.checked })} style={{ flexShrink: 0, width: 16, height: 16 }} />
+                  {f.custom
+                    ? <input value={f.label} placeholder={t('customLabelPh')} onChange={(e) => setFact(i, { label: e.target.value })} style={{ ...ui.input, width: 150, flexShrink: 0 }} />
+                    : <span style={{ width: 150, flexShrink: 0, fontSize: 13, color: f.on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)' }}>{factLabel(f.label)}</span>}
+                  <input value={f.value} placeholder={factPh(f.label)} onChange={(e) => setFact(i, { value: e.target.value })} style={{ ...ui.input, flex: 1, minWidth: 160 }} />
+                  {/* Dated facts: a grand-opening offer is only told to customers between these
+                      days and vanishes from the bot on its own the morning after it ends. */}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--c94a3b8)', flexShrink: 0 }} title={ind(lang === 'vi' ? 'Chỉ áp dụng trong khoảng ngày này (để trống = luôn áp dụng). Hết hạn là bot tự quên.' : 'Only told to customers between these days (blank = always). The bot forgets it on its own after the end date.')}>
+                    <span>{lang === 'vi' ? 'Từ' : 'From'}</span>
+                    <input type="date" value={f.from ?? ''} onChange={(e) => setFact(i, { from: e.target.value || null })} style={{ ...ui.input, width: 138, padding: '5px 6px', fontSize: 12 }} />
+                    <span>{lang === 'vi' ? 'đến' : 'to'}</span>
+                    <input type="date" value={f.until ?? ''} onChange={(e) => setFact(i, { until: e.target.value || null })} style={{ ...ui.input, width: 138, padding: '5px 6px', fontSize: 12 }} />
+                    {f.until && f.until < new Date().toISOString().slice(0, 10) && <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{lang === 'vi' ? 'Hết hạn — bot không dùng nữa' : 'Expired — the bot no longer uses it'}</span>}
+                  </span>
+                  {f.custom && <button onClick={() => removeFact(i)} title="remove" style={{ ...ghost, padding: '6px 10px', color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>✕</button>}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
+              <button onClick={addFact} style={ghost}>{t('addItem')}</button>
+              <button onClick={saveFacts} disabled={saving} style={ui.primaryBtn}>{t('saveInfo')}</button>
+              {saved && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('saved')}</span>}
+            </div>
+          </>
+        )}
+      </div>
+        </>
+      )}
+
+      {/* ============ KHÁCH TIỀM NĂNG / LEADS ============ */}
+      {tab === 'leads' && (
+        <>
+      {/* Sales-mode leads: the bot's handover list for the human team. */}
+      <div style={{ ...ui.card, marginTop: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>🔥 {t('leadsTitle')} ({leads.length})</div>
+        {leads.length === 0 ? (
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noLeads')}</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr>
+                {['👤', '📞', '💅', '💬', ''].map((h, i) => <th key={i} style={{ textAlign: 'left', color: 'var(--c94a3b8)', fontSize: 11, padding: '6px 8px', borderBottom: '1px solid var(--c334155)' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {leads.map((l) => (
+                  <tr key={l.id} style={{ borderBottom: '1px solid var(--c1f2937)' }}>
+                    <td style={{ padding: '9px 8px', fontWeight: 600, color: 'var(--ce2e8f0)' }}>{l.name}{l.salonName ? <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: 'var(--c64748b)' }}>{l.salonName}{l.city ? ` · ${l.city}` : ''}</span> : null}</td>
+                    <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{l.phone}</td>
+                    <td style={{ padding: '9px 8px', color: 'var(--c94a3b8)', maxWidth: 220 }}>{l.interest || '—'}{l.note ? <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)' }}>{l.note}</span> : null}</td>
+                    <td style={{ padding: '9px 8px', color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{fmtInTz(l.createdAt, { dateStyle: 'short' })}</td>
+                    <td style={{ padding: '9px 8px' }}>
+                      <select value={l.status}
+                        onChange={async (e) => {
+                          const status = e.target.value;
+                          setLeads((ls) => ls.map((x) => x.id === l.id ? { ...x, status } : x));
+                          try { await apiFetch(`/messenger/leads/${l.id}/status`, { method: 'POST', token, body: { status } }); } catch { /* next refresh corrects */ }
+                        }}
+                        style={{ ...ui.input, padding: '5px 8px', fontSize: 12, width: 120 }}>
+                        <option value="NEW">{t('ldNew')}</option>
+                        <option value="CONTACTED">{t('ldCtd')}</option>
+                        <option value="WON">{t('ldWon')}</option>
+                        <option value="LOST">{t('ldLost')}</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+        </>
+      )}
+
+      {/* ============ NHẬT KÝ / LOG ============ */}
+      {tab === 'log' && (
+        c.connected ? (
+        <>
+      {/* Messenger activity — chronological in/out log (App Review evidence) */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t('activityTitle')}</div>
+          <button onClick={silentRefresh} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{t('refreshActivity')}</button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12.5, color: 'var(--ce2e8f0)', marginLeft: 'auto' }}>
+            <input type="checkbox" checked={reviewMode} onChange={(e) => setReviewMode(e.target.checked)} />
+            Meta Review Mode
+          </label>
+        </div>
+        {(activityPage || wh?.pageName || c.pageName) && (
+          <div style={{ color: 'var(--c94a3b8)', fontSize: 12, marginBottom: 10 }}>
+            Page: <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{activityPage || wh?.pageName || c.pageName}</span>
+          </div>
+        )}
+        {reviewMode && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 12.5 }}>
+            <span style={{ color: 'var(--c94a3b8)' }}>Review Test ID:</span>
+            <code style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{reviewId || '—'}</code>
+            <button onClick={genReviewId} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>Generate new review ID</button>
+            {reviewId && <button onClick={() => copy(reviewId, 'rid')} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{copied === 'rid' ? '✓' : 'Copy'}</button>}
+            <button onClick={clearReview} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>Clear review test data</button>
+            <button onClick={clearAllConvos} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>Clear ALL conversations</button>
+            {reviewNotice && <span style={{ color: 'var(--ink-good)' }}>{reviewNotice}</span>}
+          </div>
+        )}
+        {shownActivity.length === 0 ? (
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{reviewMode ? 'No review activity yet — send a message containing the Review Test ID.' : t('noActivity')}</p>
+        ) : (
+          <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
+                  <th style={thc}>{t('colTime')}</th><th style={thc}>Channel</th><th style={thc}>{t('colDirection')}</th><th style={thc}>{t('colUser')}</th><th style={thc}>{t('colMessage')}</th><th style={thc}>{t('colStatus')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shownActivity.map((ev, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid var(--line)', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
+                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{fmtInTz(ev.at, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}><ChannelBadge channel={ev.channel} /></td>
+                    <td style={{ ...tdc, color: ev.direction === 'in' ? 'var(--ink-sky)' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
+                    <td style={{ ...tdc, fontFamily: 'monospace', color: 'var(--c94a3b8)' }}>{ev.user}</td>
+                    <td style={{ ...tdc, maxWidth: 320 }}>{ev.text}</td>
+                    <td style={{ ...tdc, color: ev.status === 'Failed' ? 'var(--cfca5a5)' : ev.status === 'Received' ? 'var(--ink-sky)' : '#a3e635', fontWeight: 600 }}>{ev.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Send a test message — a real user-initiated Send API call from the app UI */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('sendTestTitle')}</div>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('sendTestHint')}</p>
+        {threads.length === 0 ? (
+          <p style={{ color: 'var(--ink-warn)', fontSize: 13 }}>{t('noRecipient')}</p>
+        ) : (
+          <>
+            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 10 }}>
+              {t('sendingAs')}: <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{wh?.pageName || c.pageName || '—'}</span>
+            </div>
+            <label style={ui.label}>{t('recipient')}</label>
+            <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 4 }}>
+              {threads.map((th) => (
+                <option key={th.id} value={th.id}>
+                  {(th.channel === 'instagram' ? 'Instagram · ' : 'Messenger · ') + (th.senderName || `${th.channel === 'instagram' ? 'IGSID' : 'PSID'} …${th.senderId.slice(-6)}`)}
+                </option>
+              ))}
+            </select>
+            {(() => {
+              const cur = threads.find((x) => x.id === sendTo) || threads[0];
+              if (!cur) return <div style={{ marginBottom: 10 }} />;
+              const ig = cur.channel === 'instagram';
+              return (
+                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <ChannelBadge channel={cur.channel} />
+                  <span>{lang === 'vi'
+                    ? (ig ? 'Gửi qua Instagram Direct (Instagram-scoped ID)' : 'Gửi qua Facebook Messenger (page-scoped ID)')
+                    : (ig ? 'Delivered via Instagram Direct (Instagram-scoped ID)' : 'Delivered via Facebook Messenger (page-scoped ID)')}</span>
+                  {cur.lastText && <span style={{ opacity: 0.8 }}>· {cur.lastText.slice(0, 70)}</span>}
+                </div>
+              );
+            })()}
+            <label style={ui.label}>{t('messageLabel')}</label>
+            <textarea value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} rows={2} placeholder={t('sendMsgPh')} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={sendTest} disabled={sending || !sendMsg.trim()} style={ui.primaryBtn}>{sending ? t('sendingMsg') : t('sendMessageBtn')}</button>
+              {sendResult === 'ok' && <span style={{ color: 'var(--ink-good)', fontSize: 12.5 }}>{t('sentOk')}{sentAt ? ` · ${sentAt}` : ''}</span>}
+              {sendResult && sendResult !== 'ok' && <span style={{ color: 'var(--cfca5a5)', fontSize: 12.5 }}>{sendResult}</span>}
+            </div>
+          </>
+        )}
+      </div>
+        </>
+        ) : (
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{L('Kết nối Facebook Page ở tab Kết nối trước — nhật ký gửi/nhận hiện ở đây.', 'Connect a Facebook Page in the Connections tab first — the send/receive log shows here.')}</p>
+        )
+      )}
+
+      {/* ============ KẾT NỐI / CONNECTIONS ============ */}
+      {tab === 'connect' && (
+        <>
       {/* Connect */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -1022,108 +1633,6 @@ function Inner() {
         </div>
       )}
 
-      {/* Evidence blocks appear only once a Page is connected — a fresh page
-          starts with just the Connect card, then these light up on connect. */}
-      {c.connected && <>
-      {/* Send a test message — a real user-initiated Send API call from the app UI */}
-      <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('sendTestTitle')}</div>
-        <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('sendTestHint')}</p>
-        {threads.length === 0 ? (
-          <p style={{ color: 'var(--ink-warn)', fontSize: 13 }}>{t('noRecipient')}</p>
-        ) : (
-          <>
-            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 10 }}>
-              {t('sendingAs')}: <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{wh?.pageName || c.pageName || '—'}</span>
-            </div>
-            <label style={ui.label}>{t('recipient')}</label>
-            <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 4 }}>
-              {threads.map((th) => (
-                <option key={th.id} value={th.id}>
-                  {(th.channel === 'instagram' ? 'Instagram · ' : 'Messenger · ') + (th.senderName || `${th.channel === 'instagram' ? 'IGSID' : 'PSID'} …${th.senderId.slice(-6)}`)}
-                </option>
-              ))}
-            </select>
-            {(() => {
-              const cur = threads.find((x) => x.id === sendTo) || threads[0];
-              if (!cur) return <div style={{ marginBottom: 10 }} />;
-              const ig = cur.channel === 'instagram';
-              return (
-                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <ChannelBadge channel={cur.channel} />
-                  <span>{lang === 'vi'
-                    ? (ig ? 'Gửi qua Instagram Direct (Instagram-scoped ID)' : 'Gửi qua Facebook Messenger (page-scoped ID)')
-                    : (ig ? 'Delivered via Instagram Direct (Instagram-scoped ID)' : 'Delivered via Facebook Messenger (page-scoped ID)')}</span>
-                  {cur.lastText && <span style={{ opacity: 0.8 }}>· {cur.lastText.slice(0, 70)}</span>}
-                </div>
-              );
-            })()}
-            <label style={ui.label}>{t('messageLabel')}</label>
-            <textarea value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} rows={2} placeholder={t('sendMsgPh')} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button onClick={sendTest} disabled={sending || !sendMsg.trim()} style={ui.primaryBtn}>{sending ? t('sendingMsg') : t('sendMessageBtn')}</button>
-              {sendResult === 'ok' && <span style={{ color: 'var(--ink-good)', fontSize: 12.5 }}>{t('sentOk')}{sentAt ? ` · ${sentAt}` : ''}</span>}
-              {sendResult && sendResult !== 'ok' && <span style={{ color: 'var(--cfca5a5)', fontSize: 12.5 }}>{sendResult}</span>}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Messenger activity — chronological in/out log (App Review evidence) */}
-      <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t('activityTitle')}</div>
-          <button onClick={silentRefresh} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{t('refreshActivity')}</button>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12.5, color: 'var(--ce2e8f0)', marginLeft: 'auto' }}>
-            <input type="checkbox" checked={reviewMode} onChange={(e) => setReviewMode(e.target.checked)} />
-            Meta Review Mode
-          </label>
-        </div>
-        {(activityPage || wh?.pageName || c.pageName) && (
-          <div style={{ color: 'var(--c94a3b8)', fontSize: 12, marginBottom: 10 }}>
-            Page: <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{activityPage || wh?.pageName || c.pageName}</span>
-          </div>
-        )}
-        {reviewMode && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 12.5 }}>
-            <span style={{ color: 'var(--c94a3b8)' }}>Review Test ID:</span>
-            <code style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{reviewId || '—'}</code>
-            <button onClick={genReviewId} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>Generate new review ID</button>
-            {reviewId && <button onClick={() => copy(reviewId, 'rid')} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{copied === 'rid' ? '✓' : 'Copy'}</button>}
-            <button onClick={clearReview} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>Clear review test data</button>
-            <button onClick={clearAllConvos} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>Clear ALL conversations</button>
-            {reviewNotice && <span style={{ color: 'var(--ink-good)' }}>{reviewNotice}</span>}
-          </div>
-        )}
-        {shownActivity.length === 0 ? (
-          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{reviewMode ? 'No review activity yet — send a message containing the Review Test ID.' : t('noActivity')}</p>
-        ) : (
-          <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-              <thead>
-                <tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
-                  <th style={thc}>{t('colTime')}</th><th style={thc}>Channel</th><th style={thc}>{t('colDirection')}</th><th style={thc}>{t('colUser')}</th><th style={thc}>{t('colMessage')}</th><th style={thc}>{t('colStatus')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shownActivity.map((ev, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid var(--line)', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
-                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{fmtInTz(ev.at, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
-                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}><ChannelBadge channel={ev.channel} /></td>
-                    <td style={{ ...tdc, color: ev.direction === 'in' ? 'var(--ink-sky)' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
-                    <td style={{ ...tdc, fontFamily: 'monospace', color: 'var(--c94a3b8)' }}>{ev.user}</td>
-                    <td style={{ ...tdc, maxWidth: 320 }}>{ev.text}</td>
-                    <td style={{ ...tdc, color: ev.status === 'Failed' ? 'var(--cfca5a5)' : ev.status === 'Received' ? 'var(--ink-sky)' : '#a3e635', fontWeight: 600 }}>{ev.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      </>}
-
       {/* Webhook manual setup — advanced. The app auto-subscribes the Page on connect. */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <button onClick={() => setShowWebhook((v) => !v)} style={{ ...ghost, fontSize: 12.5 }}>
@@ -1145,388 +1654,7 @@ function Inner() {
           </div>
         )}
       </div>
-
-      {/* Behaviour */}
-      <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
-          {t('behaviorTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: c.aiEnabled ? 'var(--ink-good)' : 'var(--ink-warn)' }}>· {c.aiEnabled ? t('aiOn') : t('aiOff')}</span>
-        </div>
-        {canPickMode && (
-          <>
-            <label style={ui.label}>{t('modeLabel')}</label>
-            <div style={{ display: 'inline-flex', border: '1px solid var(--c334155)', borderRadius: 10, overflow: 'hidden', marginBottom: 6 }}>
-              {(['booking', 'sales'] as const).map((m) => (
-                <button key={m}
-                  onClick={() => { setC({ ...c, botMode: m }); save({ botMode: m }); }}
-                  style={{ padding: '8px 16px', fontSize: 13, border: 'none', cursor: 'pointer',
-                    background: c.botMode === m ? '#6366f1' : 'transparent',
-                    color: c.botMode === m ? '#fff' : 'var(--c64748b)', fontWeight: c.botMode === m ? 700 : 500 }}>
-                  {m === 'booking' ? t('modeBooking') : t('modeSales')}
-                </button>
-              ))}
-            </div>
-            <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('modeHint')}</p>
-            {c.botMode === 'sales' && (
-              <>
-                <label style={ui.label}>{lang === 'vi' ? 'Ai báo giá trong chat' : 'Who names the price in chat'}</label>
-                <div style={{ display: 'inline-flex', border: '1px solid var(--c334155)', borderRadius: 10, overflow: 'hidden', marginBottom: 6 }}>
-                  {(['sales', 'facts'] as const).map((q) => {
-                    const on = (c.quotePolicy ?? 'sales') === q;
-                    return (
-                      <button key={q} type="button" onClick={() => { setC({ ...c, quotePolicy: q }); save({ quotePolicy: q }); }}
-                        style={{ padding: '8px 16px', fontSize: 13, border: 'none', cursor: 'pointer', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--c64748b)', fontWeight: on ? 700 : 500 }}>
-                        {q === 'sales' ? (lang === 'vi' ? 'Sale báo giá (bot không nói giá)' : 'Sales team quotes (bot never)') : (lang === 'vi' ? 'Bot báo giá theo FACTS' : 'Bot quotes from FACTS')}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 12px', lineHeight: 1.5 }}>
-                  {lang === 'vi'
-                    ? '"Sale báo giá": bot không bao giờ nêu giá, gói, phí tháng hay quy đổi tiền tệ — kể cả khi khách hỏi; bot xin tên tiệm + tên + số điện thoại để team gửi báo giá. Giá lỡ lọt vào câu trả lời sẽ bị chặn trước khi gửi. "Bot báo giá": bot nêu giá có trong FACTS / thẻ giá.'
-                    : '"Sales team quotes": the bot never states a price, plan, monthly fee or currency conversion — even when asked; it collects shop + name + phone so the team sends the quote. A price that slips into a reply is blocked before it is sent. "Bot quotes": the bot may state prices from its FACTS / price cards.'}
-                </p>
-                <label style={ui.label}>{t('leadEmail')}</label>
-                <input value={c.leadEmail} placeholder={t('leadEmailPh')}
-                  onChange={(e) => setC({ ...c, leadEmail: e.target.value })} onBlur={() => save({})}
-                  style={{ ...ui.input, marginBottom: 12 }} />
-              </>
-            )}
-          </>
-        )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 10, marginBottom: 12 }}>
-          <div>
-            <label style={ui.label}>{lang === 'vi' ? 'Tên nhân viên (bot xưng tên này)' : 'Staff name (the bot goes by it)'}</label>
-            <input value={c.agentName} placeholder={lang === 'vi' ? 'vd: Vy' : 'e.g. Amy'}
-              onChange={(e) => setC({ ...c, agentName: e.target.value })} onBlur={() => save({})} style={ui.input} />
-          </div>
-          <div>
-            <label style={ui.label}>{lang === 'vi' ? 'Giới thiệu doanh nghiệp (1 câu bot dùng khi tự giới thiệu) — đừng liệt kê ngành nghề, bot sẽ hiểu là danh sách đóng và từ chối ngành khác' : 'Business intro (one line the bot uses) — avoid listing trades; the bot reads a list as a limit and turns other trades away'}</label>
-            <input value={c.bizIntro}
-              placeholder={ind(lang === 'vi' ? 'vd: agency marketing trọn gói cho mọi ngành — website, quảng cáo, chatbot AI, phần mềm đặt lịch' : 'e.g. full-service marketing agency for any trade — websites, ads, AI chat, booking software')}
-              onChange={(e) => setC({ ...c, bizIntro: e.target.value })} onBlur={() => save({})} style={ui.input} />
-          </div>
-        </div>
-        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
-          {lang === 'vi'
-            ? 'Đặt tên là bot nói chuyện như một nhân viên thật, không tự nhận là trợ lý. Nếu khách hỏi thẳng "bot hả?", bot không nói dối — nó khéo léo mời gọi lại ngay và ghi lead.'
-            : 'With a name set, the bot speaks as a real team member and never calls itself an assistant. Asked point-blank "is this a bot?", it won\u2019t lie — it gracefully offers an instant call back and logs the lead.'}
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12, maxWidth: 460 }}>
-          <div>
-            <label style={ui.label}>{lang === 'vi' ? 'Nhân viên "đang trực" trong (phút)' : 'Staff counts as active for (min)'}</label>
-            <input type="number" min={1} max={720} value={c.humanActiveMins}
-              onChange={(e) => setC({ ...c, humanActiveMins: Math.min(720, Math.max(1, Number(e.target.value) || 15)) })}
-              onBlur={() => save({})} style={ui.input} />
-          </div>
-          <div>
-            <label style={ui.label}>{lang === 'vi' ? 'Bot nhường người thật (phút)' : 'Bot yields to a human for (min)'}</label>
-            <input type="number" min={0} max={60} value={c.graceMins}
-              onChange={(e) => setC({ ...c, graceMins: Math.min(60, Math.max(0, Number(e.target.value) || 0)) })}
-              onBlur={() => save({})} style={ui.input} />
-          </div>
-        </div>
-        {/* Chat turns ("chia turn"): the rules for handing each new
-            conversation to one person. Its own panel and its own endpoint —
-            see components/ChatTurnsPanel. */}
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', marginBottom: 8 }}>
-            {lang === 'vi' ? 'Chia turn hội thoại cho nhân viên' : 'Chat turns for the team'}
-          </div>
-          <ChatTurnsPanel token={token} vi={lang === 'vi'} />
-        </div>
-
-        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
-          {lang === 'vi'
-            ? 'Nhân viên vừa nhắn trong X phút thì mỗi tin mới của khách được nhường Y phút cho người thật; hết Y phút bot trả lời. Nhân viên im quá X phút thì bot trực lại ngay. Y = 0 nghĩa là bot không chờ.'
-            : 'If staff messaged within X minutes, each new customer message waits Y minutes for a human; then the bot answers. Staff idle past X minutes → bot resumes instantly. Y = 0 means the bot never waits.'}
-        </p>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <label style={ui.label}>{t('greeting')}</label>
-          <button type="button" onClick={() => setGreetOpen((v) => !v)}
-            style={{ background: 'transparent', border: '1px solid #6366f1', color: 'var(--ca5b4fc)', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginBottom: 6 }}>
-            {lang === 'vi' ? '✨ Nhờ AI viết giúp' : '✨ Let AI write it'}
-          </button>
-        </div>
-        <textarea value={c.greeting} placeholder={t('greetingPh')} rows={2} onChange={(e) => setC({ ...c, greeting: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: greetOpen ? 8 : 12 }} />
-        {greetOpen && (
-          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c312e81)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-            <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '0 0 8px', lineHeight: 1.5 }}>
-              {lang === 'vi'
-                ? 'AI đọc dịch vụ, ưu đãi đang chạy, giờ làm và địa chỉ của tiệm để viết. Gõ thêm ý bạn muốn nhấn mạnh (không bắt buộc).'
-                : 'AI reads your services, live discounts, hours and address. Add anything you want emphasised (optional).'}
-            </p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input value={greetKeywords} onChange={(e) => setGreetKeywords(e.target.value)}
-                placeholder={ind(lang === 'vi' ? 'vd: nhấn mạnh bột dip, đang giảm 20% cho khách mới' : 'e.g. highlight dip powder, 20% off for new clients')}
-                style={{ ...ui.input, flex: 1, minWidth: 220, marginBottom: 0 }} />
-              <button type="button" onClick={suggestGreeting} disabled={greetBusy}
-                style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '9px 16px', fontSize: 12.5, fontWeight: 600, cursor: greetBusy ? 'wait' : 'pointer', opacity: greetBusy ? 0.6 : 1 }}>
-                {greetBusy ? (lang === 'vi' ? 'Đang viết…' : 'Writing…') : (lang === 'vi' ? 'Gợi ý 3 câu' : 'Draft 3')}
-              </button>
-            </div>
-            {greetErr && <p style={{ color: 'var(--cf87171)', fontSize: 12, margin: '8px 0 0' }}>{greetErr}</p>}
-            {greetOptions && greetOptions.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-                {greetOptions.map((op, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--c111827)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '9px 11px' }}>
-                    <div style={{ flex: 1, color: 'var(--ce2e8f0)', fontSize: 13, lineHeight: 1.55 }}>{op}</div>
-                    <button type="button"
-                      onClick={() => { setC({ ...c, greeting: op }); save({ greeting: op }); setGreetOpen(false); setGreetOptions(null); }}
-                      style={{ background: '#22c55e', border: 'none', color: '#052e16', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                      {lang === 'vi' ? 'Dùng' : 'Use'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        <label style={ui.label}>{lang === 'vi' ? 'Câu kết thúc / cảm ơn (tùy chọn)' : 'Goodbye / thank-you line (optional)'}</label>
-        <textarea value={c.closing} rows={2}
-          placeholder={lang === 'vi' ? 'vd: Cảm ơn anh/chị đã tin tưởng Lumio — chúc một ngày thật đẹp ạ! 🌸' : 'e.g. Thank you for trusting Lumio — have a lovely day! 🌸'}
-          onChange={(e) => setC({ ...c, closing: e.target.value })} onBlur={() => save({})}
-          style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
-        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-6px 0 12px', lineHeight: 1.5 }}>
-          {ind(lang === 'vi' ? 'Bot không dán nguyên văn — nó chào tạm biệt theo đúng tinh thần câu này, bằng ngôn ngữ của khách.' : 'Not pasted verbatim — the bot says goodbye in the spirit of this line, in the customer\u2019s language.')}
-        </p>
-        {/* What the bot could not answer — answered once here, known to the bot from then on. */}
-        <BotReportBox token={token} vi={lang === 'vi'} />
-        <KnowledgeGapsBox token={token} vi={lang === 'vi'} onTaught={(label, value) => setFacts((rows) => {
-          const i = rows.findIndex((r) => r.label.trim().toLowerCase() === label.trim().toLowerCase());
-          if (i >= 0) { const next = [...rows]; next[i] = { ...next[i], value, on: true }; return next; }
-          return [...rows, { label, value, on: true, from: null, until: null, custom: true }];
-        })} />
-        {/* Persona, facts, rules, booking policy and languages now live in the salon's one AI brain (/salon/ai); the notes below stay as this channel's extra. */}
-        <a href="/salon/ai" style={{ display: 'block', padding: '10px 12px', marginBottom: 12, borderRadius: 10, background: 'var(--wash-blue)', border: '1px solid var(--line)', textDecoration: 'none', color: 'inherit', fontSize: 13, lineHeight: 1.45 }}>
-          <b>{lang === 'vi' ? 'Bộ não AI' : 'AI brain'}</b> — {lang === 'vi' ? 'Tên, giọng, thông tin tiệm, quy tắc, chính sách booking và ngôn ngữ của cả tổng đài lẫn chat được chỉnh ở một nơi.' : 'Name, tone, salon facts, rules, booking policy and languages for both the hotline and chat are set in one place.'} <span style={{ color: 'var(--ink-link)' }}>{lang === 'vi' ? 'Mở →' : 'Open →'}</span>
-        </a>
-        <AiNotesBox token={token} vi={lang === 'vi'} />
-        <label style={ui.label}>{t('extraNotes')}</label>
-        <textarea value={c.aiInstruction} placeholder={t('extraNotesPh')} rows={3} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
-        {/* Follow-up for quiet booking chats — each salon's own switch, off by default. */}
-        {c.botMode !== 'sales' && <FollowUpBox token={token} vi={lang === 'vi'} />}
-      </div>
-
-      {/* Knowledge import: website / fanpage → proposed facts → human approves */}
-      <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
-          📥 {lang === 'vi' ? 'Nạp kiến thức tự động' : 'Auto-import knowledge'}
-        </div>
-        <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.55 }}>
-          {lang === 'vi'
-            ? 'Đọc website hoặc fanpage, AI chưng cất thành các dòng thông tin — bạn duyệt rồi mới lưu. Bot chỉ nói những gì đã được duyệt.'
-            : 'Reads your website or fanpage and distills it into fact rows — you approve before saving. The bot only speaks approved facts.'}
-        </p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://lumioagency.com"
-            style={{ ...ui.input, flex: 1, minWidth: 220 }} />
-          <button onClick={() => importFacts('website')} disabled={!!importing || !importUrl.trim()}
-            style={{ ...ui.primaryBtn, opacity: importing || !importUrl.trim() ? 0.6 : 1 }}>
-            {importing === 'website' ? '…' : (lang === 'vi' ? '🌐 Đọc website' : '🌐 Read website')}
-          </button>
-          <button onClick={() => importFacts('page')} disabled={!!importing || !c.connected}
-            title={c.connected ? '' : (lang === 'vi' ? 'Kết nối page trước' : 'Connect the page first')}
-            style={{ ...ui.primaryBtn, background: '#1877f2', opacity: importing || !c.connected ? 0.6 : 1 }}>
-            {importing === 'page' ? '…' : (lang === 'vi' ? '📘 Đọc từ Fanpage' : '📘 Read from Fanpage')}
-          </button>
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <label style={ui.label}>{ind(lang === 'vi' ? '✍️ Hoặc dán nội dung bạn muốn bot truyền tải (khuyến mãi, bảng giá, cách chào khách…)' : '✍️ Or paste anything the bot should carry (promos, price list, how to greet…)')}</label>
-          <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={4}
-            placeholder={lang === 'vi' ? 'Dán tự do — hệ thống tự nhận ra đâu là thông tin, đâu là giọng điệu, đâu là câu chào/câu cảm ơn.' : 'Paste freely — the system sorts out facts, tone, hello and thank-you lines by itself.'}
-            style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
-          <button onClick={() => importFacts('paste')} disabled={!!importing || pasteText.trim().length < 20}
-            style={{ ...ui.primaryBtn, marginTop: 8, opacity: importing || pasteText.trim().length < 20 ? 0.6 : 1 }}>
-            {lang === 'vi' ? '✨ Phân loại tự động' : '✨ Sort it out'}
-          </button>
-        </div>
-        {importErr && <div style={{ color: 'var(--cf87171)', fontSize: 13, marginTop: 10 }}>{importErr}</div>}
-        {suggest && (
-          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {([['greeting', lang === 'vi' ? 'Câu chào' : 'Greeting'], ['closing', lang === 'vi' ? 'Câu kết thúc' : 'Goodbye'], ['instruction', lang === 'vi' ? 'Giọng điệu / luật' : 'Tone / rules']] as const).map(([k, title]) => {
-              const v = suggest[k];
-              if (!v) return null;
-              return (
-                <div key={k} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 12px' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ca5b4fc)', marginBottom: 3 }}>{title}</div>
-                    <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.5 }}>{v}</div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (k === 'greeting') { setC({ ...c, greeting: v }); save({ greeting: v }); }
-                      else if (k === 'closing') { setC({ ...c, closing: v }); save({ closing: v }); }
-                      else { const nv = c.aiInstruction ? `${c.aiInstruction}\n${v}` : v; setC({ ...c, aiInstruction: nv }); save({ aiInstruction: nv }); }
-                      setSuggest((sg) => sg ? { ...sg, [k]: null } : sg);
-                    }}
-                    style={{ ...ui.primaryBtn, padding: '6px 14px', fontSize: 12.5, flexShrink: 0 }}>
-                    {lang === 'vi' ? 'Dùng' : 'Use'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {proposed && (
-          <div style={{ marginTop: 14, border: '1px solid var(--c334155)', borderRadius: 10, padding: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ca5b4fc)', marginBottom: 8 }}>
-              {lang === 'vi' ? `AI đề xuất ${proposed.length} mục — bỏ tick mục nào sai rồi bấm thêm:` : `AI proposes ${proposed.length} row(s) — untick anything wrong, then add:`}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
-              {proposed.map((f, i) => (
-                <label key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={f.pick}
-                    onChange={(e) => setProposed((ps) => ps ? ps.map((x, k) => k === i ? { ...x, pick: e.target.checked } : x) : ps)}
-                    style={{ marginTop: 2 }} />
-                  <span><b style={{ color: 'var(--ce2e8f0)' }}>{f.label}:</b> {f.value}</span>
-                </label>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button onClick={mergeProposed} disabled={!proposed.some((f) => f.pick)} style={{ ...ui.primaryBtn, opacity: proposed.some((f) => f.pick) ? 1 : 0.5 }}>
-                {lang === 'vi' ? `➕ Thêm ${proposed.filter((f) => f.pick).length} mục vào Bot facts` : `➕ Add ${proposed.filter((f) => f.pick).length} row(s) to Bot facts`}
-              </button>
-              <button onClick={() => setProposed(null)} style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>
-                {lang === 'vi' ? 'Bỏ qua' : 'Discard'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Salon info — tick + fill so the bot answers common questions */}
-      <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: infoOpen ? 6 : 0 }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
-            {t('infoTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--c64748b)' }}>· {facts.filter((f) => f.on && f.value.trim()).length}</span>
-          </div>
-          <button onClick={() => setInfoOpen((v) => !v)} style={{ ...ghost, fontSize: 12 }}>{infoOpen ? t('collapse') : t('expand')}</button>
-        </div>
-        {infoOpen && (
-          <>
-            <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '4px 0 10px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
-            <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 11px', marginBottom: 12, fontSize: 12 }}>
-              <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>✓ {t('infoKnows')}</span> <span style={{ color: 'var(--c94a3b8)' }}>{t('infoKnowsList')}</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto', paddingRight: facts.length > 6 ? 4 : 0 }}>
-              {facts.map((f, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: f.on ? 'var(--c0f172a)' : 'transparent', border: '1px solid', borderColor: f.on ? 'var(--c334155)' : 'var(--c1e293b)', borderRadius: 8, padding: '8px 10px' }}>
-                  <input type="checkbox" checked={f.on} onChange={(e) => setFact(i, { on: e.target.checked })} style={{ flexShrink: 0, width: 16, height: 16 }} />
-                  {f.custom
-                    ? <input value={f.label} placeholder={t('customLabelPh')} onChange={(e) => setFact(i, { label: e.target.value })} style={{ ...ui.input, width: 150, flexShrink: 0 }} />
-                    : <span style={{ width: 150, flexShrink: 0, fontSize: 13, color: f.on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)' }}>{factLabel(f.label)}</span>}
-                  <input value={f.value} placeholder={factPh(f.label)} onChange={(e) => setFact(i, { value: e.target.value })} style={{ ...ui.input, flex: 1, minWidth: 160 }} />
-                  {/* Dated facts: a grand-opening offer is only told to customers between these
-                      days and vanishes from the bot on its own the morning after it ends. */}
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--c94a3b8)', flexShrink: 0 }} title={ind(lang === 'vi' ? 'Chỉ áp dụng trong khoảng ngày này (để trống = luôn áp dụng). Hết hạn là bot tự quên.' : 'Only told to customers between these days (blank = always). The bot forgets it on its own after the end date.')}>
-                    <span>{lang === 'vi' ? 'Từ' : 'From'}</span>
-                    <input type="date" value={f.from ?? ''} onChange={(e) => setFact(i, { from: e.target.value || null })} style={{ ...ui.input, width: 138, padding: '5px 6px', fontSize: 12 }} />
-                    <span>{lang === 'vi' ? 'đến' : 'to'}</span>
-                    <input type="date" value={f.until ?? ''} onChange={(e) => setFact(i, { until: e.target.value || null })} style={{ ...ui.input, width: 138, padding: '5px 6px', fontSize: 12 }} />
-                    {f.until && f.until < new Date().toISOString().slice(0, 10) && <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{lang === 'vi' ? 'Hết hạn — bot không dùng nữa' : 'Expired — the bot no longer uses it'}</span>}
-                  </span>
-                  {f.custom && <button onClick={() => removeFact(i)} title="remove" style={{ ...ghost, padding: '6px 10px', color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>✕</button>}
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
-              <button onClick={addFact} style={ghost}>{t('addItem')}</button>
-              <button onClick={saveFacts} disabled={saving} style={ui.primaryBtn}>{t('saveInfo')}</button>
-              {saved && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('saved')}</span>}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Conversations — hidden until a Page is connected, so a fresh page
-          shows nothing but the Connect card (clean App-Review opening shot). */}
-      {c.connected && (
-      <div style={{ ...ui.card }}>
-        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>{t('convosTitle')} ({c.threads})</div>
-        {threads.length === 0 ? (
-          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noConvos')}</p>
-        ) : (() => {
-          const q = convoSearch.trim().toLowerCase();
-          const shown = q ? threads.filter((th) => (th.lastText || '').toLowerCase().includes(q)) : threads;
-          return (
-            <>
-              {threads.length > 5 && (
-                <input value={convoSearch} onChange={(e) => setConvoSearch(e.target.value)} placeholder={t('searchConvo')} style={{ ...ui.input, marginBottom: 10 }} />
-              )}
-              {shown.length === 0 ? (
-                <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noMatch')}</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', paddingRight: shown.length > 6 ? 4 : 0 }}>
-                  {shown.map((th) => (
-                    <div key={th.id} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <ChannelBadge channel={th.channel} />
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ color: 'var(--ccbd5e1)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {th.senderName && <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{th.senderName} · </span>}{th.lastText || '—'}
-                        </div>
-                        <div style={{ color: 'var(--c64748b)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <span>{fmtInTz(th.updatedAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
-                          <StateBadge th={th} lang={lang} />
-                        </div>
-                      </div>
-                      <button onClick={() => renameThread(th.id, th.senderName || '')} title="Set customer name" style={{ ...ghost, padding: '6px 10px' }}>✎</button>
-                      {/* The button now matches what the badge says. Before, a
-                          thread whose human had walked away hours ago still
-                          offered "Give back to bot" — an action for a situation
-                          that had already ended by itself. */}
-                      {(th.state === 'human' || th.state === 'unclaimed')
-                        ? <button onClick={() => handoff(th.id, false)} style={ghost}>{t('giveBack')}</button>
-                        : <button onClick={() => handoff(th.id, true)} style={ghost}>{t('takeOver')}</button>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          );
-        })()}
-      </div>
-      )}
-
-      {/* Sales-mode leads: the bot's handover list for the human team. */}
-      {c.connected && c.botMode === 'sales' && (
-      <div style={{ ...ui.card, marginTop: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>🔥 {t('leadsTitle')} ({leads.length})</div>
-        {leads.length === 0 ? (
-          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noLeads')}</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr>
-                {['👤', '📞', '💅', '💬', ''].map((h, i) => <th key={i} style={{ textAlign: 'left', color: 'var(--c94a3b8)', fontSize: 11, padding: '6px 8px', borderBottom: '1px solid var(--c334155)' }}>{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {leads.map((l) => (
-                  <tr key={l.id} style={{ borderBottom: '1px solid var(--c1f2937)' }}>
-                    <td style={{ padding: '9px 8px', fontWeight: 600, color: 'var(--ce2e8f0)' }}>{l.name}{l.salonName ? <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: 'var(--c64748b)' }}>{l.salonName}{l.city ? ` · ${l.city}` : ''}</span> : null}</td>
-                    <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{l.phone}</td>
-                    <td style={{ padding: '9px 8px', color: 'var(--c94a3b8)', maxWidth: 220 }}>{l.interest || '—'}{l.note ? <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)' }}>{l.note}</span> : null}</td>
-                    <td style={{ padding: '9px 8px', color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{fmtInTz(l.createdAt, { dateStyle: 'short' })}</td>
-                    <td style={{ padding: '9px 8px' }}>
-                      <select value={l.status}
-                        onChange={async (e) => {
-                          const status = e.target.value;
-                          setLeads((ls) => ls.map((x) => x.id === l.id ? { ...x, status } : x));
-                          try { await apiFetch(`/messenger/leads/${l.id}/status`, { method: 'POST', token, body: { status } }); } catch { /* next refresh corrects */ }
-                        }}
-                        style={{ ...ui.input, padding: '5px 8px', fontSize: 12, width: 120 }}>
-                        <option value="NEW">{t('ldNew')}</option>
-                        <option value="CONTACTED">{t('ldCtd')}</option>
-                        <option value="WON">{t('ldWon')}</option>
-                        <option value="LOST">{t('ldLost')}</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+        </>
       )}
     </section>
   );
@@ -1552,3 +1680,37 @@ const fbBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 10, padding: '12px 20px', borderRadius: 10,
   border: 'none', background: '#1877F2', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
 };
+
+// ---- the status strip and the tabs ------------------------------------------
+
+type TabKey = 'overview' | 'reply' | 'know' | 'leads' | 'log' | 'connect';
+const TAB_KEYS: TabKey[] = ['overview', 'reply', 'know', 'leads', 'log', 'connect'];
+type Tone = 'ok' | 'warn' | 'bad' | 'idle';
+
+function toneStyle(tone: Tone): React.CSSProperties {
+  if (tone === 'ok') return { background: 'rgba(34,197,94,.14)', color: 'var(--ink-good)' };
+  if (tone === 'warn') return { background: 'var(--wash-amber-3)', color: 'var(--ink-warn)' };
+  if (tone === 'bad') return { background: 'var(--wash-red)', color: 'var(--ink-bad)' };
+  return { background: 'var(--c1e293b)', color: 'var(--c94a3b8)' };
+}
+
+interface TileProps { key: string; mark: string; tint: string; name: string; account: string; tone: Tone; state: string; action: string; onAction: () => void }
+
+/** One channel: who it is, whether it works, and the one thing to do about it. */
+function StatusTile({ mark, tint, name, account, tone, state, action, onAction }: Omit<TileProps, 'key'>) {
+  return (
+    <div style={{ padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0, borderRight: '1px solid var(--line)', borderBottom: '1px solid var(--line)', marginRight: -1, marginBottom: -1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span aria-hidden style={{ width: 28, height: 28, borderRadius: 8, background: tint, color: '#ffffff', fontSize: 12.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{mark}</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{name}</span>
+      </div>
+      <span style={{ fontSize: 13, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{account}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, padding: '0 9px', borderRadius: 999, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', ...toneStyle(tone) }}>
+          <span aria-hidden style={{ width: 7, height: 7, borderRadius: '50%', background: 'currentColor' }} />{state}
+        </span>
+        <button type="button" onClick={onAction} style={{ border: 0, background: 'transparent', padding: 0, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--ink-link)', cursor: 'pointer', whiteSpace: 'nowrap' }}>{action}</button>
+      </div>
+    </div>
+  );
+}

@@ -40,12 +40,14 @@ export function readSendRefusal(status: number, err: GraphError | null | undefin
   const tag = `${code || status}${sub ? `/${sub}` : ''}`;
   const threadControl = /thread[\s_-]*(control|owner)|handover|secondary receiver|not the owner/i.test(msg) || sub === 2018300;
   const transient = code === 1 || code === 2 || code === 4 || code === 613 || code === 32 || status >= 500;
-  // (#2022) "You're temporarily restricted from sending messages until …":
-  // Meta's penalty on the PAGE (spam reports, too many unanswered sends,
-  // a policy strike). Nothing on our side gets around it.
+  // (#2022) "You're temporarily restricted from sending messages until …".
+  // Reads like a penalty on the Page, but on 24 Oct 2026 (Lumio Agency) the
+  // Page status showed no issue at all and RECONNECTING the Page (a fresh
+  // token + subscription) made sends work at once. So the first advice is
+  // to reconnect; Business Suite is the fallback.
   const pageRestricted = code === 2022 || sub === 1404078 || /restricted from sending|tạm thời bị hạn chế gửi tin/i.test(msg);
   let reason: string;
-  if (pageRestricted) reason = `Meta đang hạn chế Page gửi tin nhắn${msg ? ` — ${msg.replace(/^\(#\d+\)\s*/, '')}` : ''}. Trả lời khách trực tiếp trong Meta Business Suite và xem mục Chất lượng Trang để biết lý do / kháng nghị.`;
+  if (pageRestricted) reason = `Meta đang hạn chế Page gửi tin nhắn${msg ? ` — ${msg.replace(/^\(#\d+\)\s*/, '')}` : ''}. Làm trước: vào Messenger → “Thêm page / kết nối lại” (24/10 Lumio Agency kết nối lại là gửi được ngay). Chưa được thì trả lời khách trong Meta Business Suite.`;
   else if (threadControl) reason = 'Một ứng dụng khác đang giữ cuộc trò chuyện (tin tự động của quảng cáo, Meta Business AI hoặc công cụ chat khác).';
   else if (code === 10 && (sub === 2018278 || sub === 2018065 || /outside of allowed window/i.test(msg))) reason = 'Đã quá 24 giờ kể từ tin cuối của khách — Meta không cho bot gửi.';
   else if (code === 190) reason = 'Mã truy cập Facebook Page đã hết hạn — cần kết nối lại Page.';

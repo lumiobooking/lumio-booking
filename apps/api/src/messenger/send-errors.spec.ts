@@ -27,6 +27,7 @@ describe('reading what Meta said when it refused our message', () => {
     expect(r.pageRestricted).toBe(true);
     expect(r.transient).toBe(false);
     expect(r.reason).toMatch(/hạn chế Page gửi tin nhắn — Bạn tạm thời bị hạn chế gửi tin nhắn đến 30 tháng 10 lúc 15:49/);
+    expect(r.reason).toMatch(/kết nối lại/);
     expect(r.reason).toMatch(/Business Suite/);
   });
 

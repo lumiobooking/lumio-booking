@@ -37,6 +37,9 @@ export function KnowledgeGapsBox({ token, vi, onTaught }: {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
+  // One question open at a time; the list shows a page at a time.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [shown, setShown] = useState(8);
   const L = (v: string, e: string) => ind(vi ? v : e);
 
   const load = useCallback(async () => {
@@ -45,12 +48,10 @@ export function KnowledgeGapsBox({ token, vi, onTaught }: {
       const r = await apiFetch<{ open: Gap[]; answered: Gap[] }>('/messenger/knowledge-gaps', { token });
       setOpen(r?.open ?? []);
       setAnswered(r?.answered ?? []);
-      // A staff member's reply is offered as the starting point, never saved by itself.
-      setDrafts((d) => {
-        const next = { ...d };
-        for (const g of r?.open ?? []) if (next[g.id] === undefined && g.suggestedAnswer) next[g.id] = g.suggestedAnswer;
-        return next;
-      });
+      // A staff member's reply is SHOWN as a suggestion ("Dùng câu này"), never
+      // typed into the box for them: it is whatever staff said next in that
+      // chat, and sometimes that was small talk ("Chị thức khuya quá") — a
+      // pre-filled box one click from "Lưu cho bot" taught the bot exactly that.
     } catch { setOpen([]); }
   }, [token]);
   useEffect(() => { void load(); }, [load]);
@@ -99,34 +100,63 @@ export function KnowledgeGapsBox({ token, vi, onTaught }: {
         <div style={{ fontSize: 13, color: 'var(--ink-good)' }}>✓ {L('Không có câu hỏi nào đang chờ. Bot đang trả lời được hết.', 'Nothing waiting — the bot has been able to answer everything.')}</div>
       )}
 
-      <div style={{ display: 'grid', gap: 12 }}>
-        {(open ?? []).map((g) => (
-          <div key={g.id} style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 12, background: 'var(--c0f172a)' }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>“{g.question}”</div>
-            <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 3 }}>
-              {L(`Khách hỏi ${g.count} lần`, `Asked ${g.count}×`)} · {L('lần cuối', 'last')} {ago(g.lastAt, vi)}
-              {g.source === 'staff' && <span style={{ color: 'var(--cc7d2fe)' }}> · {L('nhân viên đã trả lời — câu trả lời được điền sẵn bên dưới', 'a staff member answered — their reply is filled in below')}</span>}
+      {n > 0 && (
+        <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, overflow: 'hidden' }}>
+          {(open ?? []).slice(0, shown).map((g, idx) => {
+            const isOpen = (openId ?? (open ?? [])[0]?.id) === g.id;
+            const staffSaid = (g.suggestedAnswer ?? '').trim();
+            return (
+              <div key={g.id} style={{ borderTop: idx ? '1px solid var(--line)' : 'none', background: isOpen ? 'var(--c0f172a)' : 'transparent' }}>
+                <button type="button" onClick={() => setOpenId(isOpen ? '' : g.id)} aria-expanded={isOpen}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', border: 0, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>“{g.question}”</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>{L(`Khách hỏi ${g.count} lần`, `Asked ${g.count}×`)} · {L('lần cuối', 'last')} {ago(g.lastAt, vi)}</span>
+                  </span>
+                  {staffSaid && <span style={{ fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(34,197,94,.14)', color: 'var(--ink-good)', whiteSpace: 'nowrap' }}>{L('Có câu nhân viên', 'Staff answered')}</span>}
+                  <span aria-hidden style={{ color: 'var(--c94a3b8)' }}>{isOpen ? '▾' : '▸'}</span>
+                </button>
+                {isOpen && (
+                  <div style={{ padding: '0 12px 12px' }}>
+                    {staffSaid && (
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', fontSize: 12.5, color: 'var(--ccbd5e1)', background: 'var(--c1e293b)', borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.5 }}>
+                        <span style={{ flex: '1 1 240px', minWidth: 0 }}>{L('Nhân viên đã trả lời:', 'A staff member replied:')} “{staffSaid}”</span>
+                        <button type="button" onClick={() => setDrafts((d) => ({ ...d, [g.id]: staffSaid.slice(0, 1000) }))}
+                          style={{ border: 0, background: 'transparent', padding: 0, color: 'var(--ink-link)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
+                          {L('Dùng câu này', 'Use this')}
+                        </button>
+                      </div>
+                    )}
+                    <textarea
+                      value={drafts[g.id] ?? ''}
+                      onChange={(e) => setDrafts((d) => ({ ...d, [g.id]: e.target.value.slice(0, 1000) }))}
+                      placeholder={L('Bot nên trả lời khách thế nào? (vd: Tiệm khai trương thứ Sáu 9/10, giảm 20% cả tuần đầu)', 'What should the bot tell customers? (e.g. Our grand opening is Friday Oct 9 — 20% off all week)')}
+                      rows={2}
+                      style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }}
+                    />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button type="button" onClick={() => void dismiss(g)} disabled={busy === g.id}
+                        style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, cursor: 'pointer' }}>
+                        {L('Bỏ qua', 'Dismiss')}
+                      </button>
+                      <button type="button" onClick={() => void save(g)} disabled={busy === g.id || !(drafts[g.id] ?? '').trim()}
+                        style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: 'rgba(99,102,241,0.9)', color: 'var(--cf8fafc)', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: busy === g.id || !(drafts[g.id] ?? '').trim() ? 0.5 : 1 }}>
+                        {busy === g.id ? L('Đang lưu…', 'Saving…') : L('Lưu cho bot', 'Teach the bot')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {n > shown && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderTop: '1px solid var(--line)', fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+              <span>{L(`Đang xem ${shown} / ${n}`, `Showing ${shown} of ${n}`)}</span>
+              <button type="button" onClick={() => setShown((v) => v + 8)} style={{ border: 0, background: 'transparent', padding: 0, color: 'var(--ink-link)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{L('Xem thêm', 'Show more')}</button>
             </div>
-            <textarea
-              value={drafts[g.id] ?? ''}
-              onChange={(e) => setDrafts((d) => ({ ...d, [g.id]: e.target.value.slice(0, 1000) }))}
-              placeholder={L('Bot nên trả lời khách thế nào? (vd: Tiệm khai trương thứ Sáu 9/10, giảm 20% cả tuần đầu)', 'What should the bot tell customers? (e.g. Our grand opening is Friday Oct 9 — 20% off all week)')}
-              rows={2}
-              style={{ ...ui.input, marginTop: 8, resize: 'vertical', lineHeight: 1.5 }}
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => void save(g)} disabled={busy === g.id || !(drafts[g.id] ?? '').trim()}
-                style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: 'rgba(99,102,241,0.9)', color: 'var(--cf8fafc)', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: busy === g.id || !(drafts[g.id] ?? '').trim() ? 0.5 : 1 }}>
-                {busy === g.id ? L('Đang lưu…', 'Saving…') : L('Lưu cho bot', 'Teach the bot')}
-              </button>
-              <button type="button" onClick={() => void dismiss(g)} disabled={busy === g.id}
-                style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, cursor: 'pointer' }}>
-                {L('Bỏ qua', 'Dismiss')}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+          )}
+        </div>
+      )}
 
       {error && <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink-bad)' }}>{error}</div>}
 

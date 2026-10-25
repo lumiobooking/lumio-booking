@@ -1,4 +1,4 @@
-import { isMetaSystemLine } from './meta-system-lines';
+import { isMetaAdGreeting, isMetaSystemLine } from './meta-system-lines';
 import { conversationLang, detectLang, requestedLang, replyLangRule } from '../common/reply-language';
 import { conversationLanguage, detectLanguage } from '../ai-brain/brain-rules';
 
@@ -47,5 +47,14 @@ describe('a customer who names a language gets that language', () => {
 
   it('the English rule tells the model not to copy the salon\'s earlier Vietnamese', () => {
     expect(replyLangRule('en')).toMatch(/EARLIER MESSAGES THE SALON SENT/);
+  });
+});
+
+describe("Meta's ad greeting is not a person", () => {
+  it('knows the default greeting in both languages', () => {
+    expect(isMetaAdGreeting('Hi Stephany! Please let us know how we can help you.')).toBe(true);
+    expect(isMetaAdGreeting('Hi Linda! Please let us know how we can help you.')).toBe(true);
+    expect(isMetaAdGreeting('Chào Allison! Chúng tôi có thể giúp gì cho bạn?')).toBe(true);
+    expect(isMetaAdGreeting('Hi! We have openings at 3pm today, want one?')).toBe(false);
   });
 });

@@ -152,3 +152,15 @@ describe('a reply Meta never got is said on screen', () => {
     expect(mergeHistory(meta, local, NOW).filter((t) => t.undelivered)).toHaveLength(0);
   });
 });
+
+describe("Meta's ad notice is never 'undelivered'", () => {
+  it('the local "replied to an ad" line Meta has no copy of stays quiet', () => {
+    const NOW = new Date('2026-10-23T16:00:00Z');
+    const meta = [
+      { role: 'assistant' as const, content: 'Hi Linda! Please let us know how we can help you.', at: '2026-10-23T15:05:15Z', messageId: 'm1' },
+      { role: 'user' as const, content: 'Do I need to book an appointment in advance?', at: '2026-10-23T15:05:16Z', messageId: 'm2' },
+    ];
+    const local = [{ role: 'assistant' as const, content: 'Linda Cain Sperling replied to an ad.', at: '2026-10-23T15:05:15Z', manual: true }];
+    expect(mergeHistory(meta, local, NOW).filter((t) => t.undelivered)).toHaveLength(0);
+  });
+});

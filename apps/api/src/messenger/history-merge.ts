@@ -1,3 +1,4 @@
+import { isMetaSystemLine } from './meta-system-lines';
 /**
  * Turning Meta's copy of a conversation and ours into the one a person reads.
  *
@@ -245,7 +246,9 @@ export function mergeHistory(meta: HistoryTurn[] | null | undefined, local: Hist
       // Photos we sent come back from Meta as attachments with no text, so a
       // "[Đã gửi 2 ảnh …]" line never matches and proves nothing.
       const photoLine = /^\[(Đã gửi|Sent) /.test(String(t.content ?? '')) || !!(t as { images?: unknown[] }).images?.length;
-      const missing = t.role === 'assistant' && !t.failed && !photoLine && Number.isFinite(at) && Number.isFinite(metaFrom)
+      // Meta's own "X replied to an ad." notice: an event, never a message we sent.
+      const metaLine = isMetaSystemLine(t.content);
+      const missing = t.role === 'assistant' && !t.failed && !photoLine && !metaLine && Number.isFinite(at) && Number.isFinite(metaFrom)
         && at >= metaFrom && now.getTime() - at > UNDELIVERED_AFTER_MS;
       merged.push(missing ? { ...t, undelivered: true } : t);
       seen.add(key(t));

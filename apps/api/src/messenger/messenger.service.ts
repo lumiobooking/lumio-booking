@@ -54,8 +54,8 @@ import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { mergeBurst, alreadySaid, BURST_MS } from './burst';
 import { mayAnswerMirrored, rescueVerdict } from './rescue-stuck';
-import { isMetaSystemLine } from './meta-system-lines';
-import { readSendRefusal, type GraphError } from './send-errors';
+import { isMetaAdGreeting, isMetaSystemLine } from './meta-system-lines';
+import { AD_HOLD_REASON, AD_HOLD_RETRY_MS, adGreetingHold, readSendRefusal, type GraphError } from './send-errors';
 import { publishGrantFrom } from './publish-grant';
 import { classifyPageError, pageHealthText, shouldAlert as shouldAlertPage, type PageHealth } from './page-health';
 import { AiUsageService } from '../common/ai-usage.service';
@@ -3063,7 +3063,8 @@ export class MessengerService implements OnModuleInit {
     if (!thread) return;
     const body = (text || '').trim();
     if (body) {
-      this.noteStaffAnswer(page.tenantId, thread as unknown as { id: string; history?: unknown }, body);
+      // Meta's ad greeting is not a staff member answering a question — never a "staff answer" for the bot to learn.
+      if (!isMetaAdGreeting(body) && !isMetaSystemLine(body)) this.noteStaffAnswer(page.tenantId, thread as unknown as { id: string; history?: unknown }, body);
       const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
       const last = hist[hist.length - 1];
       // sendManual already stored this exact message — its echo must not duplicate it
@@ -3073,6 +3074,12 @@ export class MessengerService implements OnModuleInit {
         ]);
       }
     }
+    // Meta's own lines — a click-to-Messenger ad's greeting ("Hi Stephany!
+    // Please let us know how we can help you.") or its "replied to an ad"
+    // notice — echo like a person typing in Business Suite. They are kept in
+    // the history above, but nobody is holding the chat: the bot must not
+    // stand aside for five minutes because an ad said hello.
+    if (body && (isMetaAdGreeting(body) || isMetaSystemLine(body))) return;
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
       data: { handoff: true, handoffAt: new Date() } as never,
@@ -3674,7 +3681,23 @@ export class MessengerService implements OnModuleInit {
       this.reasking.delete(threadId);
       if (isUnknownReply(reply) || agentFailed) { this.logger.log(`catch-up: still no answer on thread ${threadId}, staying quiet`); return; }
     }
-    const sent = await this.sendText(conn.pageToken, senderId, reply, freshCh === 'zalo' ? 'zalo' : freshCh === 'web' ? 'web' : undefined, conn.tenantId);
+    const sendStart = Date.now();
+    const customerAt = eventTs && Number.isFinite(eventTs) ? eventTs
+      : (() => { const v = (fresh as unknown as { lastCustomerAt?: Date | string | null }).lastCustomerAt; const n = v ? new Date(v).getTime() : NaN; return Number.isFinite(n) ? n : null; })();
+    const sent = await this.sendText(conn.pageToken, senderId, reply, freshCh === 'zalo' ? 'zalo' : freshCh === 'web' ? 'web' : undefined, conn.tenantId, {
+      customerAt,
+      // Retrying for a minute: stop if a PERSON answered meanwhile (a manual
+      // line that is not Meta's own ad greeting / notice) or took the chat.
+      stillWanted: async () => {
+        const th = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { handoff: true, handoffMode: true, history: true } as never }) as unknown as { handoff?: boolean; handoffMode?: string | null; history?: unknown } | null;
+        if (!th) return false;
+        if (th.handoff && String(th.handoffMode ?? '') === 'locked') return false;
+        const turns = (Array.isArray(th.history) ? th.history : []) as Turn[];
+        return !turns.some((t) => t.role === 'assistant' && t.manual && !t.failed
+          && new Date(t.at ?? 0).getTime() > sendStart
+          && !isMetaAdGreeting(t.content) && !isMetaSystemLine(t.content));
+      },
+    });
     // The billable event, and the only one: a reply the ROBOT produced and the
     // mouth accepted. A refused send is not work delivered, a canned greeting
     // is not the robot thinking, and a line a person typed is the salon's own
@@ -6374,7 +6397,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     return sent;
   }
 
-  private async sendText(pageToken: string, recipientId: string, text: string, channel?: Channel, tenantId?: string): Promise<{ ok: boolean; error?: string }> {
+  private async sendText(
+    pageToken: string, recipientId: string, text: string, channel?: Channel, tenantId?: string,
+    /** When the customer last wrote, and a check that sending is still wanted — for the ad-greeting retry (./send-errors). */
+    hold?: { customerAt?: number | null; stillWanted?: () => Promise<boolean> },
+  ): Promise<{ ok: boolean; error?: string }> {
     // Zalo is a different mouth entirely: its own endpoint, its own auth
     // header, no echo/mid machinery (Zalo webhooks do not echo our sends).
     if (channel === 'zalo') {
@@ -6413,6 +6440,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         } else if (first.transient) {
           await new Promise((ok) => { const t = setTimeout(ok, 1500); t.unref?.(); });
           r = await send();
+        } else if (adGreetingHold(first, hold?.customerAt != null ? Date.now() - hold.customerAt : null)) {
+          // The customer wrote moments ago, yet Meta calls the window closed:
+          // a click-to-Messenger ad's welcome flow is still running. Wait for
+          // Meta's greeting to go out, then send again (twice, about a minute
+          // in all) — unless someone has answered meanwhile.
+          for (const wait of AD_HOLD_RETRY_MS) {
+            await new Promise((ok) => { const t = setTimeout(ok, wait); t.unref?.(); });
+            if (hold?.stillWanted && !(await hold.stillWanted().catch(() => true))) break;
+            r = await send();
+            if (r.ok) { this.logger.log(`ad-greeting hold: delivered after waiting (${recipientId.slice(-4)})`); break; }
+          }
         }
       }
       if (r.ok) {
@@ -6421,6 +6459,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         return { ok: true };
       }
       const why = readSendRefusal(r.status, r.out.error);
+      if (adGreetingHold(why, hold?.customerAt != null ? Date.now() - hold.customerAt : null)) why.reason = AD_HOLD_REASON;
       this.logger.warn(`Send API refused (${why.code}) tenant=${tenantId ?? '?'}: ${String(r.out.error?.message ?? '').slice(0, 160)}`);
       if (tenantId) void this.traceMetaSend(tenantId, { ok: false, code: why.code, error: why.reason });
       return { ok: false, error: why.reason };

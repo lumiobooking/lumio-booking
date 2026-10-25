@@ -1,4 +1,4 @@
-import { readSendRefusal } from './send-errors';
+import { AD_HOLD_RETRY_MS, adGreetingHold, readSendRefusal } from './send-errors';
 
 describe('reading what Meta said when it refused our message', () => {
   it('another app holding the thread is recognised, so we can take it back', () => {
@@ -36,5 +36,21 @@ describe('reading what Meta said when it refused our message', () => {
     expect(r.code).toBe('9999/1');
     expect(r.reason).toBe('Meta từ chối: Something new');
     expect(readSendRefusal(400, undefined).reason).toMatch(/HTTP 400/);
+  });
+});
+
+describe('the ad greeting hold (Zb Nails & Spa, 25 Oct)', () => {
+  const windowErr = { code: 10, error_subcode: 2018278, message: '(#10) This message is sent outside of allowed window.' };
+  it('a window refusal minutes after the customer wrote is the ad flow, not 24 hours', () => {
+    const r = readSendRefusal(400, windowErr);
+    expect(r.windowClosed).toBe(true);
+    expect(adGreetingHold(r, 10_000)).toBe(true);
+    expect(adGreetingHold(r, 25 * 3600 * 1000)).toBe(false);
+    expect(adGreetingHold(r, null)).toBe(false);
+    expect(AD_HOLD_RETRY_MS.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(60_000);
+  });
+  it('other refusals are not held', () => {
+    expect(adGreetingHold(readSendRefusal(400, { code: 190 }), 10_000)).toBe(false);
+    expect(adGreetingHold(readSendRefusal(400, { code: 2022, error_subcode: 1404078 }), 10_000)).toBe(false);
   });
 });

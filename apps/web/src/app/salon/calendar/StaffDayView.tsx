@@ -10,6 +10,7 @@ import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { uiLocale, wallToInstantISO } from '../../../lib/datetime';
 import { ind } from '../../../lib/ui-industry';
+import { cardInk, cardLines, statusTag } from '../../../lib/cal-day';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -100,6 +101,25 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const swipe = useRef<{ x: number; y: number } | null>(null);
+  // Phone, one technician: the chip row (arrows at an edge while more chips
+  // are hidden there) and which way the column slid in.
+  const chipsRef = useRef<HTMLDivElement | null>(null);
+  const [chipEdge, setChipEdge] = useState({ l: false, r: false });
+  const [slide, setSlide] = useState<0 | 1 | -1>(0);
+  const chipEdges = () => {
+    const el = chipsRef.current; if (!el) return;
+    const l = el.scrollLeft > 4, r = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setChipEdge((p) => (p.l === l && p.r === r ? p : { l, r }));
+  };
+  // The chosen technician's chip slides to the middle of the row.
+  useEffect(() => {
+    const box = chipsRef.current; if (!box || !focus) return;
+    const el = box.querySelector<HTMLElement>(`[data-chip="${CSS.escape(focus)}"]`);
+    if (el) box.scrollTo({ left: Math.max(0, el.offsetLeft - (box.clientWidth - el.offsetWidth) / 2), behavior: 'smooth' });
+    const t = window.setTimeout(chipEdges, 350);
+    chipEdges();
+    return () => window.clearTimeout(t);
+  }, [focus, staff.length]);
   // Desktop: the dashed slot under the pointer — where a click books, or where
   // a dragged card will land — and how far down the card it was grabbed.
   const [ghost, setGhost] = useState<{ col: string; min: number; dur: number; drag: boolean; clash?: boolean } | null>(null);
@@ -488,14 +508,13 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
     // ── Board 4: one technician, full-width column ──
     const order = [...onShift, ...offToday];
     const idx = order.findIndex((r) => r.id === focusRow.id);
-    const go = (d: number) => { const n = order[(idx + d + order.length) % order.length]; if (n) setFocus(n.id); };
     const r = focusRow;
     const rev = r.live.reduce((s, b) => s + b.priceCents, 0);
     // Column range: the shift (or the shared axis), stretched to fit bookings.
     let cS = r.shift?.s ?? aS, cE = r.shift?.e ?? aE;
     for (const b of r.live) { const { s, e } = span(b); cS = Math.min(cS, s); cE = Math.max(cE, e); }
     cS = Math.floor(cS / 60) * 60; cE = Math.ceil(cE / 60) * 60; if (cE - cS < 4 * 60) cE = cS + 4 * 60;
-    const H = 68; // px per hour — the mockup's column
+    const H = 84; // px per hour: a 60-min card holds its three lines (time · name · service)
     const y = (m: number) => ((m - cS) / 60) * H;
     const colH = ((cE - cS) / 60) * H;
     // Free gaps (≥ 45 min) inside the column, after now if today.
@@ -513,95 +532,172 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
     const colNow = isToday && nowMin >= cS && nowMin <= cE ? y(nowMin) : -1;
     const lanes = place(r.live);
 
+    // Swipe the column (never the chip row) for the next / previous technician.
+    const canPrev = idx > 0, canNext = idx < order.length - 1;
+    const prevR = canPrev ? order[idx - 1] : null, nextR = canNext ? order[idx + 1] : null;
+    const goTo = (d: -1 | 1) => { const n = order[idx + d]; if (n) { setSlide(d); setFocus(n.id); } };
+    const swipeHandlers = {
+      onTouchStart: (e: React.TouchEvent) => { const tch = e.touches[0]; swipe.current = { x: tch.clientX, y: tch.clientY }; },
+      onTouchEnd: (e: React.TouchEvent) => {
+        const st = swipe.current; swipe.current = null; if (!st) return;
+        const tch = e.changedTouches[0]; const dx = tch.clientX - st.x, dy = tch.clientY - st.y;
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) goTo(dx < 0 ? 1 : -1);
+      },
+    };
+    const arrowBtn = (side: 'l' | 'r') => (
+      <button type="button" onClick={() => chipsRef.current?.scrollBy({ left: side === 'r' ? 180 : -180, behavior: 'smooth' })}
+        aria-label={side === 'r' ? (vi ? 'Xem thêm thợ bên phải' : 'More technicians to the right') : (vi ? 'Xem thêm thợ bên trái' : 'More technicians to the left')}
+        style={{ position: 'absolute', top: 0, [side === 'r' ? 'right' : 'left']: 0, width: 52, height: 44, border: 0, padding: side === 'r' ? '0 6px 0 0' : '0 0 0 6px', cursor: 'pointer',
+          background: `linear-gradient(to ${side === 'r' ? 'right' : 'left'}, transparent, var(--page-bg, var(--c0b1120)) 55%)`, display: 'flex', alignItems: 'center', justifyContent: side === 'r' ? 'flex-end' : 'flex-start' }}>
+        <span style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', color: 'var(--ink-link)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={side === 'r' ? 'M9 18l6-6-6-6' : 'M15 18l-6-6 6-6'} /></svg>
+        </span>
+      </button>
+    );
+    const navBtn = (d: -1 | 1, who: Row) => (
+      <button type="button" onClick={() => goTo(d)} aria-label={d < 0 ? (vi ? `Thợ trước: ${who.name}` : `Previous technician: ${who.name}`) : (vi ? `Thợ sau: ${who.name}` : `Next technician: ${who.name}`)}
+        style={{ height: 40, maxWidth: '100%', minWidth: 0, padding: d < 0 ? '0 12px 0 6px' : '0 6px 0 12px', borderRadius: 999, border: '1px solid var(--c243044)', background: 'var(--c111827)', color: 'var(--ink-link)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+        {d < 0 && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M15 18l-6-6 6-6" /></svg>}
+        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{who.name}</span>
+        {d > 0 && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6" /></svg>}
+      </button>
+    );
+
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
-        onTouchStart={(e) => { const tch = e.touches[0]; swipe.current = { x: tch.clientX, y: tch.clientY }; }}
-        onTouchEnd={(e) => {
-          const st = swipe.current; swipe.current = null; if (!st) return;
-          const tch = e.changedTouches[0]; const dx = tch.clientX - st.x, dy = tch.clientY - st.y;
-          if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) go(dx < 0 ? 1 : -1);
-        }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <style>{'@keyframes lumioInR{from{opacity:.35;transform:translateX(28px)}to{opacity:1;transform:none}}@keyframes lumioInL{from{opacity:.35;transform:translateX(-28px)}to{opacity:1;transform:none}}.lumio-chips::-webkit-scrollbar{display:none}'}</style>
         {note && <div style={{ fontSize: 13, color: 'var(--ca7f3d0)', background: 'var(--c064e3b)', padding: '6px 10px', borderRadius: 8 }}>{note}</div>}
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', alignItems: 'center', scrollbarWidth: 'none', paddingBottom: 2 }}>
-          <button type="button" onClick={() => setFocus(null)} aria-label={t('cal.allStaff')} style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 999, border: '1px solid var(--c243044)', background: 'var(--c111827)', color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
-          </button>
-          {order.map((o) => (
-            <button key={o.id} type="button" onClick={() => setFocus(o.id)}
-              style={o.id === r.id
-                ? { flexShrink: 0, height: 34, padding: '0 10px 0 4px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', background: '#4f46e5', color: '#fff' }
-                : { flexShrink: 0, height: 34, padding: '0 10px 0 4px', borderRadius: 999, border: '1px solid var(--c243044)', background: 'var(--c111827)', color: 'var(--ce2e8f0)', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-              {avatar(o, 26, 11)}{o.name}
+        {/* Technician chips: swipe sideways; an arrow shows at an edge while more are hidden there. */}
+        <div style={{ position: 'relative' }}>
+          <div ref={chipsRef} className="lumio-chips" onScroll={chipEdges}
+            style={{ display: 'flex', gap: 8, overflowX: 'auto', alignItems: 'center', scrollbarWidth: 'none', scrollSnapType: 'x proximity', WebkitOverflowScrolling: 'touch' }}>
+            <button type="button" onClick={() => setFocus(null)} aria-label={t('cal.allStaff')}
+              style={{ flexShrink: 0, height: 44, padding: '0 14px', borderRadius: 999, border: '1px solid var(--c243044)', background: 'var(--c111827)', color: 'var(--ccbd5e1)', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', scrollSnapAlign: 'start' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
+              {vi ? 'Tất cả' : 'All'}
             </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {avatar(r, 40, 16)}
-          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{r.name}</span>
-            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>
-              {r.live.length} {t('cal.apptWord')}{rev > 0 && <> · {formatPrice(rev, currency).replace(/[.,]00(?=\D*$)/, '')}</>}
-              {firstGap ? <> · {vi ? 'trống' : 'free'} {hm(firstGap.s)}–{hm(firstGap.e)}</> : r.shift && !r.live.length ? <> · {vi ? 'nghỉ hôm nay' : 'off today'}</> : null}
-            </span>
-          </span>
-          <a href={bookHref} style={{ height: 36, padding: '0 12px', borderRadius: 10, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap', background: '#4f46e5', color: '#fff' }}>+ {vi ? `Đặt cho ${r.name}` : `Book ${r.name}`}</a>
-        </div>
-        <div style={{ borderRadius: 14, background: 'var(--c111827)', border: '1px solid var(--c1f2937)', overflow: 'hidden', display: 'flex', opacity: busy ? 0.6 : 1 }}>
-          <div style={{ width: 48, flexShrink: 0, borderRight: '1px solid var(--c1f2937)', position: 'relative', height: colH }}>
-            {Array.from({ length: (cE - cS) / 60 }, (_, i) => cS + i * 60).map((h) => (
-              <span key={h} style={{ position: 'absolute', top: y(h) + 4, left: 8, fontSize: 11, color: 'var(--c64748b)' }}>{hm(h)}</span>
-            ))}
-          </div>
-          <div style={{ flex: 1, position: 'relative', height: colH }}>
-            {Array.from({ length: (cE - cS) / 60 - 1 }, (_, i) => i + 1).map((i) => (
-              <div key={i} style={{ position: 'absolute', top: i * H, left: 0, right: 0, borderTop: '1px solid var(--c1f2937)' }} />
-            ))}
-            {r.shift && r.shift.s > cS && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: y(r.shift.s), background: 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(148,163,184,0.10) 6px 7px)' }} />}
-            {r.shift && r.shift.e < cE && <div style={{ position: 'absolute', left: 0, right: 0, top: y(r.shift.e), bottom: 0, background: 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(148,163,184,0.10) 6px 7px)' }} />}
-            {gaps.map((g) => (
-              <a key={`${g.s}-${g.e}`} href={`/salon/bookings?new=1&staff=${encodeURIComponent(r.id)}&at=${encodeURIComponent(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(Math.floor(g.s / 60)).padStart(2, '0')}:${String(g.s % 60).padStart(2, '0')}`)}`}
-                style={{ position: 'absolute', left: 6, right: 6, top: y(g.s) + 3, height: Math.max(28, y(g.e) - y(g.s) - 6), boxSizing: 'border-box', borderRadius: 10, border: '1px dashed var(--c334155)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, color: 'var(--c64748b)', textDecoration: 'none' }}>
-                + {vi ? 'Trống' : 'Free'} {hm(g.s)} – {hm(g.e)} · {vi ? 'chạm để đặt' : 'tap to book'}
-              </a>
-            ))}
-            {lanes.map(({ b, s, e, col, cols }) => {
-              const cc = barColor(b.status);
-              const w = 100 / cols;
-              const h = Math.max(48, y(e) - y(s) - 6);
-              const stLabel = b.status === 'ARRIVED' ? (vi ? 'Đã đến · đang làm' : 'Arrived · in progress')
-                : b.status === 'COMPLETED' ? (vi ? 'Đã xong' : 'Done')
-                : (b.status === 'PENDING' || b.status === 'ASSIGNED' || b.status === 'REJECTED') ? (vi ? 'Chờ xác nhận' : 'Pending')
-                : '';
+            {order.map((o) => {
+              const on = o.id === r.id;
               return (
-                <div key={b.id} onClick={() => onOpen(b)}
-                  style={{ position: 'absolute', top: y(s) + 3, height: h, left: `calc(${col * w}% + 6px)`, width: `calc(${w}% - 12px)`, boxSizing: 'border-box', padding: '6px 10px', borderRadius: 10, background: `${cc}22`, border: `1px solid ${cc}`, display: 'flex', flexDirection: 'column', gap: 2, lineHeight: 1.25, overflow: 'hidden', cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: cc, whiteSpace: 'nowrap' }}>{hm(s)} – {hm(e)}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: cc, whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency).replace(/[.,]00(?=\D*$)/, '')}</span>
-                  </div>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{custName(b)}{b.partySize != null && b.partySize > 1 ? ` ×${b.partySize}` : ''}</span>
-                  {h >= 58 ? (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                      <SourceChip b={b} vi={vi} />
-                      <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{b.service?.name ?? ''}</span>
-                    </span>
-                  ) : <SourceDot b={b} vi={vi} />}
-                  {h > 84 && stLabel && <span style={{ fontSize: 11.5, color: cc, marginTop: 'auto' }}>{stLabel}</span>}
-                </div>
+                <button key={o.id} type="button" data-chip={o.id} aria-pressed={on} onClick={() => { setSlide(order.indexOf(o) < idx ? -1 : 1); setFocus(o.id); }}
+                  style={{ flexShrink: 0, height: 44, maxWidth: 190, padding: '0 12px 0 5px', borderRadius: 999, fontSize: 14, fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', scrollSnapAlign: 'center',
+                    ...(on ? { border: '1px solid #4f46e5', background: '#4f46e5', color: '#fff' } : { border: '1px solid var(--c243044)', background: 'var(--c111827)', color: 'var(--ce2e8f0)' }) }}>
+                  {avatar(o, 32, 13)}
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{o.name}</span>
+                  <span style={{ flexShrink: 0, minWidth: 20, height: 20, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    ...(on ? { background: 'rgba(255,255,255,0.22)', color: '#fff' } : { background: 'var(--c1e293b)', color: 'var(--ccbd5e1)' }) }}>{o.live.length}</span>
+                </button>
               );
             })}
-            {r.items.filter((b) => isGone(b.status)).map((b) => {
-              const { s } = span(b);
-              return <div key={b.id} onClick={() => onOpen(b)} style={{ position: 'absolute', left: 6, right: 6, top: y(s) + 3, height: 24, boxSizing: 'border-box', padding: '0 10px', borderRadius: 8, background: 'var(--c18202f)', border: '1px solid var(--c334155)', fontSize: 11.5, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'line-through', cursor: 'pointer' }}>{hm(s)} · {custName(b)}</div>;
-            })}
-            {colNow >= 0 && (
-              <div style={{ position: 'absolute', left: 0, right: 0, top: colNow, borderTop: '2px solid #f43f5e', pointerEvents: 'none' }}>
-                <span style={{ position: 'absolute', left: -5, top: -5, width: 8, height: 8, borderRadius: '50%', background: '#f43f5e' }} />
-              </div>
-            )}
+            <span aria-hidden="true" style={{ flex: '0 0 4px' }} />
           </div>
+          {chipEdge.l && arrowBtn('l')}
+          {chipEdge.r && arrowBtn('r')}
         </div>
-        <span style={{ fontSize: 12, color: 'var(--c64748b)', padding: '2px 0 8px' }}>{ind(vi ? 'Vuốt trái/phải để sang thợ khác · Đổi thợ cho một lịch: mở lịch → “Đổi thợ”.' : 'Swipe left/right for the next technician · To reassign one booking: open it → “Change tech”.')}</span>
+
+        <div key={r.id} {...swipeHandlers} style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: slide ? `${slide > 0 ? 'lumioInR' : 'lumioInL'} .22s ease-out` : undefined }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48 }}>
+            {avatar(r, 44, 17)}
+            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2, lineHeight: 1.25 }}>
+              <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+              <span style={{ fontSize: 13, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {r.live.length} {t('cal.apptWord')}{rev > 0 && <> · {formatPrice(rev, currency).replace(/[.,]00(?=\D*$)/, '')}</>}
+                {firstGap ? <> · {vi ? 'trống' : 'free'} {hm(firstGap.s)}–{hm(firstGap.e)}</> : r.shift && !r.live.length ? <> · {vi ? 'nghỉ hôm nay' : 'off today'}</> : null}
+              </span>
+            </span>
+            <a href={bookHref} aria-label={vi ? `Đặt lịch cho ${r.name}` : `Book ${r.name}`}
+              style={{ flexShrink: 0, height: 44, padding: '0 16px', borderRadius: 12, fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', whiteSpace: 'nowrap', background: '#4f46e5', color: '#fff' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              {vi ? 'Đặt' : 'Book'}
+            </a>
+          </div>
+
+          {order.length > 1 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)', alignItems: 'center', gap: 8, minHeight: 40 }}>
+              <span style={{ display: 'flex', justifyContent: 'flex-start', minWidth: 0 }}>{prevR && navBtn(-1, prevR)}</span>
+              {order.length <= 10 ? (
+                <span aria-hidden="true" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {order.map((o) => <span key={o.id} style={{ height: 6, width: o.id === r.id ? 18 : 6, borderRadius: 999, background: o.id === r.id ? 'var(--ink-link)' : 'var(--c334155)' }} />)}
+                </span>
+              ) : (
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c94a3b8)' }}>{idx + 1}/{order.length}</span>
+              )}
+              <span style={{ display: 'flex', justifyContent: 'flex-end', minWidth: 0 }}>{nextR && navBtn(1, nextR)}</span>
+            </div>
+          )}
+
+          <div style={{ borderRadius: 14, background: 'var(--c111827)', border: '1px solid var(--c1f2937)', overflow: 'hidden', display: 'flex', opacity: busy ? 0.6 : 1 }}>
+            <div style={{ width: 44, flexShrink: 0, borderRight: '1px solid var(--c1f2937)', position: 'relative', height: colH }}>
+              {Array.from({ length: (cE - cS) / 60 }, (_, i) => cS + i * 60).map((h) => (
+                <span key={h} style={{ position: 'absolute', top: y(h) + 6, left: 8, fontSize: 11.5, fontWeight: 600, color: 'var(--c94a3b8)' }}>{hm(h)}</span>
+              ))}
+            </div>
+            <div style={{ flex: 1, position: 'relative', height: colH }}>
+              {Array.from({ length: (cE - cS) / 60 - 1 }, (_, i) => i + 1).map((i) => (
+                <div key={i} style={{ position: 'absolute', top: i * H, left: 0, right: 0, borderTop: '1px solid var(--c1f2937)' }} />
+              ))}
+              {r.shift && r.shift.s > cS && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: y(r.shift.s), background: 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(148,163,184,0.10) 6px 7px)' }} />}
+              {r.shift && r.shift.e < cE && <div style={{ position: 'absolute', left: 0, right: 0, top: y(r.shift.e), bottom: 0, background: 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(148,163,184,0.10) 6px 7px)' }} />}
+              {gaps.map((g) => (
+                <a key={`${g.s}-${g.e}`} href={`/salon/bookings?new=1&staff=${encodeURIComponent(r.id)}&at=${encodeURIComponent(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(Math.floor(g.s / 60)).padStart(2, '0')}:${String(g.s % 60).padStart(2, '0')}`)}`}
+                  style={{ position: 'absolute', left: 8, right: 8, top: y(g.s) + 4, height: Math.max(30, y(g.e) - y(g.s) - 8), boxSizing: 'border-box', borderRadius: 10, border: '1px dashed var(--c334155)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--c94a3b8)', textDecoration: 'none' }}>
+                  + {vi ? 'Trống' : 'Free'} {hm(g.s)} – {hm(g.e)} · {vi ? 'chạm để đặt' : 'tap to book'}
+                </a>
+              ))}
+              {lanes.map(({ b, s, e, col, cols }) => {
+                const cc = barColor(b.status);
+                const ink = cardInk(b.status);
+                const w = 100 / cols;
+                // Height decides how many lines fit — never more lines than room (no text on text).
+                const h = Math.max(30, y(e) - y(s) - 4);
+                const lines = cardLines(h);
+                const tag = statusTag(b.status, vi);
+                const price = formatPrice(b.priceCents, b.currency).replace(/[.,]00(?=\D*$)/, '');
+                const who = `${custName(b)}${b.partySize != null && b.partySize > 1 ? ` ×${b.partySize}` : ''}`;
+                return (
+                  <button key={b.id} type="button" onClick={() => onOpen(b)} aria-label={`${who}, ${hm(s)}–${hm(e)}, ${price}${tag ? `, ${tag}` : ''}`}
+                    style={{ position: 'absolute', top: y(s) + 2, height: h, left: `calc(${col * w}% + 8px)`, width: `calc(${w}% - 16px)`, boxSizing: 'border-box', padding: lines === 1 ? '0 10px' : '7px 10px', borderRadius: 10,
+                      background: `color-mix(in srgb, ${cc} 16%, var(--c111827))`, border: `1px solid ${cc}`, display: 'flex', flexDirection: 'column', justifyContent: lines === 1 ? 'center' : 'flex-start', gap: 3, overflow: 'hidden', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--cf1f5f9)' }}>
+                    {lines === 1 ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: ink, whiteSpace: 'nowrap' }}>{hm(s)}</span>
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{who}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: ink, whiteSpace: 'nowrap' }}>{price}</span>
+                      </span>
+                    ) : (
+                      <>
+                        <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', lineHeight: '16px' }}>
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hm(s)} – {hm(e)}</span>
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: ink, whiteSpace: 'nowrap' }}>{price}</span>
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0, lineHeight: '20px' }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{who}</span>
+                          {tag && <span style={{ flexShrink: 0, height: 18, padding: '0 7px', borderRadius: 999, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', background: `color-mix(in srgb, ${cc} 26%, transparent)`, color: ink }}>{tag}</span>}
+                        </span>
+                        {lines === 3 && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, lineHeight: '20px' }}>
+                            <span style={{ flexShrink: 0, display: 'inline-flex' }}><SourceChip b={b} vi={vi} /></span>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}</span>
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </button>
+                );
+              })}
+              {r.items.filter((b) => isGone(b.status)).map((b) => {
+                const { s } = span(b);
+                return <button key={b.id} type="button" onClick={() => onOpen(b)} style={{ position: 'absolute', left: 8, right: 8, top: y(s) + 3, height: 26, boxSizing: 'border-box', padding: '0 10px', borderRadius: 8, background: 'var(--c18202f)', border: '1px solid var(--c334155)', fontSize: 12, fontFamily: 'inherit', color: 'var(--c94a3b8)', display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'line-through', cursor: 'pointer' }}>{hm(s)} · {custName(b)}</button>;
+              })}
+              {colNow >= 0 && (
+                <div style={{ position: 'absolute', left: 0, right: 0, top: colNow, borderTop: '2px solid #f43f5e', pointerEvents: 'none' }}>
+                  <span style={{ position: 'absolute', left: -5, top: -5, width: 8, height: 8, borderRadius: '50%', background: '#f43f5e' }} />
+                </div>
+              )}
+            </div>
+          </div>
+          <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', padding: '2px 0 8px', textAlign: 'center', lineHeight: 1.5 }}>{ind(vi ? 'Vuốt lịch hoặc bấm ‹ › để sang thợ khác · Đổi thợ cho một lịch: mở lịch → “Đổi thợ”.' : 'Swipe the schedule, or tap ‹ ›, for the next technician · To reassign one booking: open it → “Change tech”.')}</span>
+        </div>
       </div>
     );
   }

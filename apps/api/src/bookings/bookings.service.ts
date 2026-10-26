@@ -58,6 +58,7 @@ import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc, planLineT
 import { clashMessage, stretchMayOverlap, type Lang as StretchLang } from './stretch-policy';
 import { matchMissedToVisits, pairTicketWithBooking } from '../walkins/booking-link';
 import { WalkinsService } from '../walkins/walkins.service';
+import { repairTillLinks } from './till-repair';
 import { dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { openTimesFor, type BusyBlock } from './open-times';
 import { hasPromoWindow, inPromoWindow, salonYmd, type PromoWindow } from '../settings/promo-window';
@@ -4235,6 +4236,11 @@ export class BookingsService {
    * back to ARRIVED, tied to that ticket. Only the sweep's own marks
    * (audit booking.no_show_auto) — never a No-show the desk pressed.
    */
+  /** Till sales written before 26/10/2026 that lost their booking (till-repair.ts). Idempotent. */
+  async repairTillLinks(now = new Date()): Promise<{ payments: number; services: number }> {
+    return repairTillLinks(this.prisma as never, now);
+  }
+
   async repairFalseNoShows(now = new Date()): Promise<{ tenants: number; repaired: number }> {
     const since = new Date(now.getTime() - 60 * 86400000);
     const marks = await this.prisma.auditLog.findMany({

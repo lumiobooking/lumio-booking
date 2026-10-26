@@ -576,7 +576,10 @@ export class PosService {
             await tx.payment.create({
               data: {
                 tenantId,
-                appointmentId: dto.appointmentId ?? null,
+                // A booking paid through its floor ticket names the booking too
+                // (else its drawer reads "Chưa thu" for a paid visit). A party on
+                // one bill stays unattached: one row cannot be every guest's money.
+                appointmentId: dto.appointmentId ?? (linkedApptIds.length === 1 ? linkedApptIds[0] : null),
                 amountCents: kept,
                 currency: created.currency,
                 type: PaymentType.PAY_LATER,
@@ -604,7 +607,7 @@ export class PosService {
             where: { id: targetApptId, tenantId },
             select: { serviceId: true, startTime: true, endTime: true },
           });
-          const apptData: Prisma.AppointmentUpdateManyMutationInput = {
+          const apptData: Prisma.AppointmentUncheckedUpdateManyInput = {
             status: AppointmentStatus.COMPLETED,
             completedAt: new Date(),
           };
@@ -638,6 +641,10 @@ export class PosService {
               // Never shrink a visit that already ran long; only extend it.
               const currentMinutes = Math.round((appt.endTime.getTime() - appt.startTime.getTime()) / 60000);
               const minutes = Math.max(5, Math.max(currentMinutes, totalMinutes));
+              // The till sold a different service than the one booked (60 → 90
+              // mins): the booking names what was sold, or it shows "60 mins"
+              // next to the 90-minute price.
+              if (primaryIdx < 0 && svcLines[0]?.serviceId) apptData.serviceId = svcLines[0].serviceId;
               apptData.priceCents = svcLines.reduce((sum, l) => sum + l.lineTotalCents, 0);
               apptData.addons = extraLines as unknown as Prisma.InputJsonValue;
               apptData.endTime = new Date(appt.startTime.getTime() + minutes * 60000);

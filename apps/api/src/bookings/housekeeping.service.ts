@@ -47,6 +47,15 @@ export class HousekeepingService implements OnModuleInit, OnModuleDestroy {
         .then((r) => { if (r.repaired) this.logger.log(`False no-show repair: ${r.repaired} booking(s) back to arrived.`); })
         .catch((e) => this.logger.warn(`False no-show repair failed: ${(e as Error).message}`));
     }, 45 * 1000);
+    // Till sales paid through a floor ticket that lost their booking
+    // (bookings/till-repair.ts): money and sold service back on it. Idempotent, per boot.
+    setTimeout(() => {
+      const run = (this.bookings as { repairTillLinks?: () => Promise<{ payments: number; services: number }> }).repairTillLinks;
+      if (typeof run !== 'function') return;
+      run.call(this.bookings)
+        .then((r) => { if (r.payments || r.services) this.logger.log(`Till repair: ${r.payments} payment(s) linked to their booking, ${r.services} booking(s) now name the service sold.`); })
+        .catch((e) => this.logger.warn(`Till repair failed: ${(e as Error).message}`));
+    }, 60 * 1000);
     this.timer = setInterval(() => this.tick(), this.intervalMs);
     this.timer.unref?.();
     this.logger.log(`Booking housekeeping on (every ${this.intervalMs / 60000}m).`);

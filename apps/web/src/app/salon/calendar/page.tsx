@@ -30,7 +30,7 @@ import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
 import { VisitContactEditor } from '../../../components/VisitContactEditor';
 import { notify } from '../../../lib/feedback';
 
-interface Addon { id: string; name: string; priceCents: number; kind?: string; staffMemberId?: string }
+interface Addon { id: string; name: string; priceCents: number; durationMinutes?: number; kind?: string; staffMemberId?: string }
 /** Pill/label text: primary service plus a +N badge for the extra lines. */
 function svcLabel(b: Booking): string {
   const n = (b.addons ?? []).filter((a) => a.kind === 'service').length;
@@ -152,6 +152,7 @@ function Inner() {
     } catch { /* ignore */ }
   }, []);
   const modeSeen = useRef(false);
+  const weekSwipe = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
     // Not the first render: that is the default, not a choice.
     if (!modeSeen.current) { modeSeen.current = true; return; }
@@ -499,6 +500,9 @@ function Inner() {
     if (mode === 'month') { setView(new Date(view.getFullYear(), view.getMonth() + delta, 1)); setMonthFocus(null); setMonthPage(0); }
     else goDay(addDays(dayDate, delta));
   };
+  // Phone week strip: a week back / forward keeps the same weekday selected.
+  const weekStep = (delta: number) => pickStrip(addDays(mode === 'month' ? (monthFocus ?? stripAnchor) : dayDate, delta * 7));
+  const stripMonth = (mode === 'month' ? (monthFocus ?? view) : dayDate).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
   const goToday = () => { setMonthFocus(null); setMonthPage(0); if (mode === 'month') setView(new Date(today.getFullYear(), today.getMonth(), 1)); else goDay(today); };
   const pickStrip = (d: Date) => {
     if (mode === 'month') { setMonthFocus(d); setMonthPage(0); setShowPast(false); if (d.getMonth() !== view.getMonth()) setView(new Date(d.getFullYear(), d.getMonth(), 1)); }
@@ -557,16 +561,28 @@ function Inner() {
       {searchOpen && mode !== 'floor' && <div style={{ marginTop: 10 }}>{searchBox('100%', 44)}</div>}
       {mode !== 'floor' && (
         <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: '4px 6px 6px', margin: '10px 0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 42 }}>
-            <button type="button" onClick={goToday} style={{ ...btn(false, 32), padding: '0 10px' }}>{t('cal.today')}</button>
+          {/* Phone: the month on the left, "Today" on the right, and a week
+              strip you can swipe (or step with the arrows at its sides). */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 44, padding: '0 4px 0 0' }}>
             <button type="button" onClick={() => { setPickMonth(new Date((mode === 'month' ? view : dayDate).getFullYear(), (mode === 'month' ? view : dayDate).getMonth(), 1)); setDateOpen(true); }}
-              style={{ flex: 1, minWidth: 0, height: 38, border: 0, background: 'transparent', color: C.ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, textTransform: 'capitalize' }}>
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{dateTitle}</span><Icon name="down" size={15} color="var(--c94a3b8)" />
+              style={{ minWidth: 0, height: 44, padding: '0 8px', border: 0, background: 'transparent', color: C.ink, fontFamily: 'inherit', fontSize: 16, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'capitalize' }}>
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stripMonth}</span><Icon name="down" size={15} color="var(--c94a3b8)" />
             </button>
-            <button type="button" aria-label={L('Trước', 'Previous')} onClick={() => step(-1)} style={{ width: 36, height: 36, border: 0, background: 'transparent', color: C.sub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="left" size={20} /></button>
-            <button type="button" aria-label={L('Sau', 'Next')} onClick={() => step(1)} style={{ width: 36, height: 36, border: 0, background: 'transparent', color: C.sub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="right" size={20} /></button>
+            <span style={{ flex: 1 }} />
+            <button type="button" onClick={goToday} aria-pressed={stripSelected.getTime() === today.getTime()}
+              style={{ height: 34, padding: '0 14px', borderRadius: 999, border: `1px solid ${C.indigoLine}`, background: C.indigoSoft, color: C.indigoText, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>{t('cal.today')}</button>
           </div>
-          <DayStrip compact solid days={stripDays(stripAnchor, 7)} selected={stripSelected} today={today} info={dayInfo} vi={vi} onPick={pickStrip} />
+          <div style={{ position: 'relative', padding: '0 28px' }}
+            onTouchStart={(e) => { const p = e.touches[0]; weekSwipe.current = { x: p.clientX, y: p.clientY }; }}
+            onTouchEnd={(e) => {
+              const st = weekSwipe.current; weekSwipe.current = null; if (!st) return;
+              const p = e.changedTouches[0]; const dx = p.clientX - st.x, dy = p.clientY - st.y;
+              if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) weekStep(dx < 0 ? 1 : -1);
+            }}>
+            <button type="button" aria-label={L('Tuần trước', 'Previous week')} onClick={() => weekStep(-1)} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, border: 0, background: 'transparent', color: C.indigoText, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><Icon name="left" size={18} sw={2.6} /></button>
+            <DayStrip compact solid days={stripDays(stripAnchor, 7)} selected={stripSelected} today={today} info={dayInfo} vi={vi} onPick={pickStrip} />
+            <button type="button" aria-label={L('Tuần sau', 'Next week')} onClick={() => weekStep(1)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, border: 0, background: 'transparent', color: C.indigoText, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><Icon name="right" size={18} sw={2.6} /></button>
+          </div>
         </div>
       )}
       {mode !== 'floor' && mode !== 'day' && nF > 0 && <div style={{ marginBottom: 10 }}><ActiveChips f={filters} set={setFilters} staff={staffList} vi={vi} pad="8px 12px" rounded /></div>}
@@ -899,7 +915,16 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
 
         <DetailRow label={t('cal.dDate')} value={start.toLocaleDateString(locale, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', ...(tz ? { timeZone: tz } : {}) })} />
         <DetailRow label={t('cal.dTime')} value={`${fmtTime(start, tz)} – ${fmtTime(end, tz)}`} />
-        <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
+        <DetailRow label={t('cal.dDuration')} value={(() => {
+          // Say where the minutes come from when they are not just the services
+          // ("120 phút" on a "60 mins" massage reads like a bug otherwise).
+          const planned = b.service ? (b.service.durationMinutes ?? 0) + (b.addons ?? []).reduce((s, a) => s + (a.durationMinutes ?? 0), 0) : 0;
+          const diff = duration - planned;
+          if (!b.service || !planned || diff === 0) return `${duration} ${t('cal.min')}`;
+          const vi = lang === 'vi';
+          const why = diff > 0 ? (vi ? `dịch vụ ${planned} + thêm ${diff}` : `services ${planned} + ${diff} added`) : (vi ? `dịch vụ ${planned}, bớt ${-diff}` : `services ${planned}, ${-diff} less`);
+          return <span>{duration} {t('cal.min')} <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>({why})</span></span>;
+        })()} />
         {active && <QuickEdit b={b} onAction={onAction} />}
         {active && !b.assignedStaff && <UnassignedHelp bookingId={b.id} vi={lang === 'vi'} onAssign={() => onAction(b.id, 'auto-assign')} />}
         <DetailRow label={t('cal.dSource')} value={<SourceChip b={b} vi={lang === 'vi'} />} />

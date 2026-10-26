@@ -36,6 +36,7 @@ function make(o: { tickets?: Row[]; appts?: Row[]; payments?: Row[] } = {}) {
   let orderData: Row = {};
   const apptUpdates: Row[] = [];
   const reads: Row[] = [];
+  const ledger: Row[] = [];
   const tx: Row = {
     order: {
       findFirst: jest.fn(async ({ where }: Row) => (where.id ? { id: 'o1', orderNumber: 42, ...orderData } : { orderNumber: 41 })),
@@ -44,7 +45,7 @@ function make(o: { tickets?: Row[]; appts?: Row[]; payments?: Row[] } = {}) {
     orderItem: { createMany: async () => undefined },
     orderPayment: { createMany: async () => undefined },
     payment: {
-      create: async () => undefined,
+      create: async ({ data }: Row) => { ledger.push(data); },
       findMany: async ({ where }: Row) => payments.filter((p) => p.tenantId === where.tenantId && where.appointmentId.in.includes(p.appointmentId) && p.status === 'PAID' && p.type === 'PAY_LATER' && p.providerReference == null),
       updateMany: async ({ where, data }: Row) => { const hit = payments.filter((p) => p.id === where.id && p.tenantId === where.tenantId); hit.forEach((p) => Object.assign(p, data)); return { count: hit.length }; },
     },
@@ -75,7 +76,7 @@ function make(o: { tickets?: Row[]; appts?: Row[]; payments?: Row[] } = {}) {
     {} as never, {} as never,
     { seatWaitingQueue: async () => [] } as never,
   );
-  return { svc, order: () => orderData, apptUpdates, reads, payments, reversed };
+  return { svc, order: () => orderData, apptUpdates, reads, payments, reversed, ledger };
 }
 
 const sale = (o: Row = {}) => ({
@@ -109,6 +110,26 @@ describe('a checked-in booking paid through its floor ticket', () => {
     expect(f.apptUpdates).toHaveLength(1);
     expect(f.apptUpdates[0].where).toEqual({ id: 'a1', tenantId: T1 });
     expect(f.apptUpdates[0].data.status).toBe('COMPLETED');
+  });
+
+  it('the money names the booking, and a different service sold at the till replaces the booked one', async () => {
+    // Renu Rai, 25/10: booked "General Massage 60 mins", sold "90 mins" at the till from her ticket.
+    const f = make({
+      tickets: [{ id: 'w1', tenantId: T1, appointmentId: 'a1' }],
+      appts: [{ id: 'a1', tenantId: T1, status: 'ARRIVED', serviceId: 'm60', startTime: new Date('2026-10-25T17:15:00Z'), endTime: new Date('2026-10-25T18:15:00Z') }],
+    });
+    await f.svc.createOrder(admin, sale({ walkInId: 'w1', items: [{ kind: 'SERVICE', serviceId: 'm90', name: 'General Massage 90 mins', unitPriceCents: 15000 }], tenders: [{ method: 'CARD', amountCents: 15000 }] }));
+    expect(f.ledger.map((p) => p.appointmentId)).toEqual(['a1']);
+    expect(f.apptUpdates[0].data).toMatchObject({ serviceId: 'm90', priceCents: 15000, status: 'COMPLETED' });
+  });
+
+  it('the same service at the till keeps the booking as booked', async () => {
+    const f = make({
+      tickets: [{ id: 'w1', tenantId: T1, appointmentId: 'a1' }],
+      appts: [{ id: 'a1', tenantId: T1, status: 'ARRIVED', serviceId: 'gel', startTime: new Date('2026-10-12T15:00:00Z'), endTime: new Date('2026-10-12T15:45:00Z') }],
+    });
+    await f.svc.createOrder(admin, sale({ walkInId: 'w1' }));
+    expect(f.apptUpdates[0].data.serviceId).toBeUndefined();
   });
 
   it('a booking already completed is linked (no double count) but not completed again', async () => {

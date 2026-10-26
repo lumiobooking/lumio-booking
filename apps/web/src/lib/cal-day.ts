@@ -339,3 +339,14 @@ export function suggestStart(args: {
   }
   return { date: args.date, minutes: isToday ? nextQuarter : 600 };
 }
+
+// ── Phone technician column: one booking card ──
+// Text colour on a phone card (theme-aware), and how many lines a card of this
+// height can hold: 1 (time · name · price), 2 (+ end time, status) or 3 (+ source, service).
+export const cardInk = (status: string) => (status === 'COMPLETED' ? 'var(--ink-good)'
+  : status === 'PENDING' || status === 'ASSIGNED' || status === 'REJECTED' ? 'var(--ink-warn)' : 'var(--ink-link)');
+export const cardLines = (h: number): 1 | 2 | 3 => (h >= 76 ? 3 : h >= 46 ? 2 : 1);
+export const statusTag = (status: string, vi: boolean): string => (status === 'COMPLETED' ? (vi ? 'Xong' : 'Done')
+  : status === 'ARRIVED' ? (vi ? 'Đang làm' : 'In chair')
+  : status === 'PENDING' || status === 'ASSIGNED' || status === 'REJECTED' ? (vi ? 'Chờ xác nhận' : 'Pending')
+  : status === 'CONFIRMED' || status === 'ACCEPTED' ? (vi ? 'Đã đặt' : 'Booked') : '');

@@ -1,6 +1,7 @@
 import {
   activeFilterCount, applyFilters, attentionOf, capacityMinutes, facetCounts, isClosedDay, listKey, loadLevel, loadOf,
   monthGrid, nextMonday, NO_FILTERS, periodOf, stripDays, suggestStart, summarize, toggle, type DayBooking,
+  cardLines, statusTag, cardInk,
 } from './cal-day';
 
 const NOW = new Date('2026-10-14T13:45:00').getTime();
@@ -120,5 +121,23 @@ describe('calendar day model', () => {
     expect(at(suggestStart({ date: wed, today: wed, nowMin: 4 * 60 + 20, week: null }))).toBe('14 4:30'); // no hours: as before
     const split = Array.from({ length: 7 }, () => ({ intervals: [{ open: 540, close: 720 }, { open: 780, close: 1140 }] }));
     expect(at(suggestStart({ date: wed, today: wed, nowMin: 12 * 60 + 10, week: split }))).toBe('14 13:00'); // lunch break
+  });
+});
+
+describe('phone technician card: never more lines than room', () => {
+  // 84px an hour, card = duration minus 4px of gutter.
+  const h = (min: number) => (min / 60) * 84 - 4;
+  it('30 min is one line, 45 min two, 60 min and up three', () => {
+    expect(cardLines(h(30))).toBe(1);
+    expect(cardLines(h(45))).toBe(2);
+    expect(cardLines(h(60))).toBe(3);
+    expect(cardLines(h(90))).toBe(3);
+  });
+  it('labels the status next to the name, in the salon language', () => {
+    expect(statusTag('COMPLETED', false)).toBe('Done');
+    expect(statusTag('COMPLETED', true)).toBe('Xong');
+    expect(statusTag('ARRIVED', false)).toBe('In chair');
+    expect(statusTag('CANCELLED', false)).toBe('');
+    expect(cardInk('PENDING')).toBe('var(--ink-warn)');
   });
 });

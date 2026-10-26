@@ -40,12 +40,17 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId }: {
   const [tick, setTick] = useState(0);
   // "Sign on this device": the client signs in a popup over this screen.
   const [signing, setSigning] = useState<string | null>(null);
+  // Why the box could not load. Shown on the visit instead of hiding the box,
+  // so "no Forms on this client" always comes with its cause.
+  const [loadErr, setLoadErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!token) return;
     if (visitMode) {
       const q = appointmentId ? `appointmentId=${encodeURIComponent(appointmentId)}` : `walkInId=${encodeURIComponent(walkInId as string)}`;
-      apiFetch<VisitForms>(`/client-forms/visit?${q}&lang=${vi ? 'vi' : 'en'}`, { token }).then(setVisit).catch(() => setVisit({ enabled: false }));
+      apiFetch<VisitForms>(`/client-forms/visit?${q}&lang=${vi ? 'vi' : 'en'}`, { token })
+        .then((v) => { setVisit(v); setLoadErr(null); })
+        .catch((e) => { setVisit({ enabled: false }); setLoadErr(e instanceof Error ? e.message : String(e)); });
     } else if (customerId) {
       apiFetch<CustomerForms>(`/client-forms/customers/${customerId}?lang=${vi ? 'vi' : 'en'}`, { token }).then(setFile).catch(() => setFile(null));
     }
@@ -91,7 +96,16 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId }: {
     finally { setBusy(false); }
   };
 
-  if (!enabled) return null;
+  if (!enabled) {
+    if (!visitMode || !loadErr) return null;
+    return (
+      <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: '10px 14px', margin: '0 0 12px', background: 'var(--wash-amber)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink-warn)' }}>📋 {vi ? 'Không mở được phiếu & SOAP' : "Forms & SOAP didn't load"}</span>
+        <span style={{ flex: 1, minWidth: 160, fontSize: 12.5, color: 'var(--ce2e8f0)', wordBreak: 'break-word' }}>{loadErr}</span>
+        <button type="button" onClick={() => setTick((x) => x + 1)} style={{ minHeight: 32, padding: '0 10px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>{vi ? 'Thử lại' : 'Retry'}</button>
+      </div>
+    );
+  }
 
   const pill = (n: FormNeed) => {
     const ok = n.status === 'signed';

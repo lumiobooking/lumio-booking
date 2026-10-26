@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 /**
  * Edit an in-flight visit. All three parts are optional and applied together:
@@ -21,4 +21,9 @@ export class EditLinesDto {
   @Min(-600)
   @Max(600)
   extraMinutes?: number;
+
+  /** The language the desk reads — for the overlap message (./stretch-policy). */
+  @IsOptional()
+  @IsIn(['vi', 'en'])
+  lang?: 'vi' | 'en';
 }

@@ -40,6 +40,8 @@ function svcLabel(b: Booking): string {
 interface Booking {
   id: string;
   status: string;
+  /** Set by "Adjust visit" when a visit that already started now overlaps the technician's next booking. */
+  stretchWarning?: string | null;
   startTime: string;
   endTime: string;
   priceCents: number;
@@ -1066,6 +1068,10 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
 
   const lines = b.addons ?? [];
   const dirty = !!pick || minutes !== 0 || drop.length > 0;
+  const vi = lang === 'vi';
+  // The visit as booked now, and how far it may shrink (the API keeps at least 5 minutes).
+  const curMin = Math.max(5, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
+  const minDelta = -(curMin - 5);
   if (b.status === 'CANCELLED' || b.status === 'REJECTED') return null;
 
   return (
@@ -1095,16 +1101,24 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
             <option value="">{t('cal.addService')}</option>
             {services.map((sv) => <option key={sv.id} value={sv.id}>{sv.name} · {sv.durationMinutes}m</option>)}
           </select>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', flex: 1 }}>{t('cal.addTime')}</span>
+          {/* Time: shorter as well as longer. Only "+" existed, so a visit
+              stretched by mistake could not be brought back down. The new
+              length is spelled out (75 → 90 min) instead of a bare "+15m". */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', flex: '1 1 70px' }}>{vi ? 'Thời gian' : 'Time'}</span>
+            <button type="button" onClick={() => setMinutes((v) => Math.max(minDelta, v - 15))} disabled={minutes - 15 < minDelta} style={{ ...chipBtn, opacity: minutes - 15 < minDelta ? 0.4 : 1 }} aria-label={vi ? 'Bớt 15 phút' : 'Take off 15 minutes'}>−15m</button>
             {[15, 30, 60].map((m) => (
-              <button key={m} onClick={() => setMinutes((v) => v + m)} style={chipBtn}>+{m}m</button>
+              <button key={m} type="button" onClick={() => setMinutes((v) => v + m)} style={chipBtn}>+{m}m</button>
             ))}
-            <button onClick={() => setMinutes(0)} style={chipBtn} disabled={minutes === 0}>↺</button>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: minutes ? 'var(--ink-good)' : 'var(--c475569)', width: 46, textAlign: 'right' }}>
-              {minutes ? `+${minutes}m` : '—'}
-            </span>
+            <button type="button" onClick={() => setMinutes(0)} style={{ ...chipBtn, opacity: minutes === 0 ? 0.4 : 1 }} disabled={minutes === 0} title={vi ? 'Về như cũ' : 'Undo'}>↺</button>
           </div>
+          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: -2 }}>
+            {curMin} {vi ? 'phút' : 'min'}
+            {minutes !== 0 && <> → <b style={{ color: minutes > 0 ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{curMin + minutes} {vi ? 'phút' : 'min'}</b> ({minutes > 0 ? '+' : '−'}{Math.abs(minutes)}m)</>}
+          </div>
+          {b.stretchWarning && (
+            <div role="status" style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink-warn)', background: 'var(--wash-amber-3)', borderRadius: 8, padding: '7px 9px' }}>⚠ {b.stretchWarning}</div>
+          )}
           <button
             disabled={!dirty || busy}
             onClick={async () => {
@@ -1114,6 +1128,7 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
                   ...(pick ? { addServiceIds: [pick] } : {}),
                   ...(drop.length ? { removeIndexes: drop } : {}),
                   ...(minutes ? { extraMinutes: minutes } : {}),
+                  lang: vi ? 'vi' : 'en',
                 });
               } finally { setBusy(false); setPick(''); setMinutes(0); setDrop([]); }
             }}

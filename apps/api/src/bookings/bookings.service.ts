@@ -55,6 +55,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
 import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc, planLineTechnician, lineStaffIds } from './booking.util';
+import { clashMessage, stretchMayOverlap, type Lang as StretchLang } from './stretch-policy';
 import { matchMissedToVisits, pairTicketWithBooking } from '../walkins/booking-link';
 import { dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { openTimesFor, type BusyBlock } from './open-times';
@@ -3341,7 +3342,7 @@ export class BookingsService {
   async editLines(
     user: AuthenticatedUser,
     id: string,
-    dto: { addServiceIds?: string[]; removeIndexes?: number[]; extraMinutes?: number },
+    dto: { addServiceIds?: string[]; removeIndexes?: number[]; extraMinutes?: number; lang?: string },
   ) {
     const tenantId = this.tenantId(user);
     const b = await this.prisma.appointment.findFirst({ where: { id, tenantId } });
@@ -3388,10 +3389,34 @@ export class BookingsService {
     const newEnd = addMinutes(b.startTime, newMinutes);
     const lines = [...kept, ...added];
 
+    // Running into the technician's next booking: a visit already under way
+    // records the time it really took (and says what it now overlaps); one
+    // still ahead is refused, naming the booking in the way. See ./stretch-policy.
+    const lang: StretchLang = dto.lang === 'vi' ? 'vi' : 'en';
+    let stretchWarning: string | null = null;
     const updated = await this.prisma.$transaction(async (tx) => {
       if (b.assignedStaffId && newEnd.getTime() > b.endTime.getTime()) {
         await this.lockStaffSlot(tx, tenantId, b.assignedStaffId);
-        await this.assertNoOverlap(tx, tenantId, b.assignedStaffId, b.startTime, newEnd, id);
+        const clash = await tx.appointment.findFirst({
+          where: {
+            tenantId, assignedStaffId: b.assignedStaffId, status: { in: BLOCKING_STATUSES },
+            startTime: { lt: newEnd }, endTime: { gt: b.startTime }, id: { not: id },
+          },
+          orderBy: { startTime: 'asc' },
+          select: { startTime: true, endTime: true, customer: { select: { firstName: true, lastName: true } }, assignedStaff: { select: { firstName: true } } },
+        });
+        if (clash) {
+          const tz = (await tx.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null))?.timezone || 'UTC';
+          const info = {
+            staff: clash.assignedStaff?.firstName?.trim() ?? '',
+            customer: [clash.customer?.firstName, clash.customer?.lastName].filter(Boolean).join(' ').trim(),
+            start: clash.startTime, end: clash.endTime,
+          };
+          if (!stretchMayOverlap(b.status, b.startTime, new Date())) {
+            throw new ConflictException(clashMessage(info, newEnd, tz, lang, 'blocked'));
+          }
+          stretchWarning = clashMessage(info, newEnd, tz, lang, 'warning');
+        }
       }
       await tx.appointment.updateMany({
         where: { id, tenantId },
@@ -3411,7 +3436,7 @@ export class BookingsService {
         priceCents: newPrice,
       },
     });
-    return updated;
+    return updated && stretchWarning ? { ...updated, stretchWarning } : updated;
   }
 
   async noShow(user: AuthenticatedUser, id: string) {

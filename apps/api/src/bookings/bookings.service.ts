@@ -57,6 +57,7 @@ import { ListBookingsDto } from './dto/list-bookings.dto';
 import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc, planLineTechnician, lineStaffIds } from './booking.util';
 import { clashMessage, stretchMayOverlap, type Lang as StretchLang } from './stretch-policy';
 import { matchMissedToVisits, pairTicketWithBooking } from '../walkins/booking-link';
+import { WalkinsService } from '../walkins/walkins.service';
 import { dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { openTimesFor, type BusyBlock } from './open-times';
 import { hasPromoWindow, inPromoWindow, salonYmd, type PromoWindow } from '../settings/promo-window';
@@ -126,7 +127,24 @@ export class BookingsService {
     private readonly trash: TrashService,
     // Correcting a booking's contact (updateContact). Optional so the unit tests build it bare.
     @Optional() private readonly customers?: CustomersService,
+    // The client's open floor ticket follows a change of technician (followOnFloor).
+    @Optional() private readonly walkins?: WalkinsService,
   ) {}
+
+  /**
+   * The booking changed technician while the client may already be in the
+   * salon: move her floor ticket too (walkins/booking-tech-sync.ts), or the old
+   * tech keeps the "Right now" card and the new one cannot write the SOAP note.
+   * Never fails the booking change; a failure is logged with its cause.
+   */
+  private async followOnFloor(tenantId: string, id: string, from: string | null, to: string | null | undefined, serviceId?: string) {
+    if (!this.walkins || !to || (!serviceId && from === to)) return;
+    try {
+      await this.walkins.followBooking(tenantId, id, from, to, serviceId);
+    } catch (e) {
+      this.logger.warn(`booking ${id}: the floor ticket could not follow the new technician — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -2634,6 +2652,7 @@ export class BookingsService {
       metadata: { staffId },
     });
 
+    await this.followOnFloor(tenantId, id, booking.assignedStaffId, staffId);
     // Notify the assigned technician (fire-and-forget).
     this.sendStaffAssignmentEmail(tenantId, id).catch(() => undefined);
     // The customer was told "to be assigned": now tell them who.
@@ -2700,6 +2719,7 @@ export class BookingsService {
       resourceId: id,
       metadata: { from: booking.startTime.toISOString(), to: newStart.toISOString(), fromStaffId: booking.assignedStaffId, staffId },
     });
+    await this.followOnFloor(tenantId, id, booking.assignedStaffId, staffId);
     this.sendStaffAssignmentEmail(tenantId, id).catch(() => undefined);
     return updated;
   }
@@ -3786,6 +3806,7 @@ export class BookingsService {
       resourceId: id,
       metadata: { serviceId: dto.serviceId, staffId: dto.staffId ?? null },
     });
+    await this.followOnFloor(tenantId, id, null, dto.staffId, dto.serviceId);
     return this.getById(user, id);
   }
 

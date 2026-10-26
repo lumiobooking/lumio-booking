@@ -13,9 +13,10 @@ import { PaymentsModule } from '../payments/payments.module';
 import { ReferralModule } from '../referral/referral.module';
 import { MaintenanceModule } from '../maintenance/maintenance.module';
 import { PushModule } from '../push/push.module';
+import { WalkinsModule } from '../walkins/walkins.module';
 
 @Module({
-  imports: [MaintenanceModule, AssignmentModule, NotificationsModule, SettingsModule, PaymentsModule, ReferralModule, PushModule, CustomersModule],
+  imports: [MaintenanceModule, AssignmentModule, NotificationsModule, SettingsModule, PaymentsModule, ReferralModule, PushModule, CustomersModule, WalkinsModule],
   controllers: [BookingsController, PublicAppointmentController],
   providers: [BookingsService, ReminderService, HousekeepingService, PartyAvailabilityService],
   exports: [BookingsService, PartyAvailabilityService], // reused by PublicModule (WordPress plugin flow)

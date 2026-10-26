@@ -21,6 +21,7 @@ import {
 import { turnReport, weekOf } from './turn-report';
 import { settledWalkIns, unpaidFromPastDays, UNPAID_LIST_DAYS } from './unpaid-sweep';
 import { linkWalkInToBooking } from './booking-link';
+import { bookingTechAfter, handLegsTo } from './booking-tech-sync';
 import { allocate } from '../payroll/sales-ledger';
 import { appointmentTurns, cleanTurnRules, DEFAULT_TURN_RULES, latePenalty, legTurns, minutesLate, tieCompare, toBottomDelta, TURN_RULES_KEY, TurnRules, newTechBoost } from './turn-rules';
 import { AuditService } from '../audit/audit.service';
@@ -445,7 +446,66 @@ export class WalkinsService {
         ...extra,
       },
     });
+    // A booked client: the calendar follows the floor (booking-tech-sync.ts).
+    const apptId = (w as { appointmentId?: string | null }).appointmentId;
+    if (apptId) await this.bookingFollowsFloor(w.tenantId, apptId, w, items);
     return s;
+  }
+
+  /**
+   * Floor → calendar. The desk handed the client to another tech on the floor
+   * (or the dispatcher re-seated her): the booking shows that tech, so the old
+   * one's schedule no longer lists a client she is not doing. Never fails the
+   * floor change; a failure is logged with its cause.
+   */
+  private async bookingFollowsFloor(tenantId: string, appointmentId: string, before: TicketLike, after: LegItem[]) {
+    try {
+      const appt = await this.prisma.appointment.findFirst({
+        where: { id: appointmentId, tenantId, status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW, AppointmentStatus.REJECTED] } },
+        select: { assignedStaffId: true },
+      });
+      if (!appt) return;
+      const next = bookingTechAfter(before, after, appt.assignedStaffId);
+      if (!next) return;
+      await this.prisma.appointment.updateMany({ where: { id: appointmentId, tenantId }, data: { assignedStaffId: next, assignedAt: new Date() } });
+      await this.audit?.log({ tenantId, action: 'booking.tech_follows_floor', resourceType: 'appointment', resourceId: appointmentId, metadata: { from: appt.assignedStaffId, to: next, walkInId: before.id } });
+    } catch (e) {
+      console.warn(`[walkins] booking ${appointmentId} could not follow the floor's technician: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /**
+   * Calendar → floor. The desk gave a booking (or one service line of it) to
+   * another technician while the client is already in the salon: the open
+   * floor ticket follows, so the new tech gets the "Right now" card, the turn
+   * and the SOAP note, and the old tech's card clears. Finished parts keep
+   * who did them. Returns whether anything moved.
+   */
+  async followBooking(tenantId: string, appointmentId: string, from: string | null, to: string, serviceId?: string): Promise<boolean> {
+    let changed = false;
+    await serial(tenantId, async () => {
+      const w = await this.prisma.walkIn.findFirst({
+        where: { tenantId, appointmentId, status: { in: [WalkInStatus.WAITING, WalkInStatus.SERVING] } },
+      });
+      if (!w) return;
+      const t = w as unknown as TicketLike;
+      const { items } = await this.legItems(tenantId, t, TICKET_LEG);
+      if (!items.length) {
+        // A ticket with no lines: the ticket itself moves.
+        if (serviceId || (w.assignedStaffId && w.assignedStaffId !== from) || w.assignedStaffId === to) return;
+        await this.prisma.walkIn.updateMany({ where: { id: w.id, tenantId }, data: { assignedStaffId: to } });
+        changed = true;
+        if (w.status === WalkInStatus.SERVING) this.notifyStart(tenantId, to, w.customerName, []);
+        return;
+      }
+      const r = handLegsTo(t, items, from, to, serviceId);
+      if (!r.moved.length) return;
+      await this.writeItems({ ...(w as unknown as TicketLike), tenantId }, r.items);
+      changed = true;
+      for (const l of r.moved) if (l.status === 'SERVING') this.notifyStart(tenantId, to, w.customerName, l.names);
+    });
+    if (changed) await this.settle(tenantId);
+    return changed;
   }
 
   /** An active technician of this salon, or a 400. */

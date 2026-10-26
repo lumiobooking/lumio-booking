@@ -8,6 +8,7 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { chargeAmounts } from './tip-fold';
 import { keyFormatProblem } from './key-format';
 import { ModuleRef } from '@nestjs/core';
 import { PaymentStatus, PaymentType, UserRole } from '@prisma/client';
@@ -306,16 +307,19 @@ export class PaymentOrchestrator {
     let readerExternalId = dto.readerExternalId;
     if (!readerExternalId && device) readerExternalId = device.externalReaderId;
 
+    // The tip rides on the card for every provider (tip-fold.ts); only one
+    // that itemises tips on its own slip gets it separately.
+    const amounts = chargeAmounts(provider, dto.amountCents, (dto as any).tipCents);
     const record = await this.prisma.paymentIntentRecord.create({
       data: {
         tenantId, provider, connectionId: conn?.id ?? null, orderId: dto.orderId ?? null,
-        amountCents: dto.amountCents, currency, status: 'REQUIRES_PAYMENT', connectionType: 'CLOUD',
+        amountCents: amounts.amountCents, currency, status: 'REQUIRES_PAYMENT', connectionType: 'CLOUD',
         deviceId: dto.deviceId ?? null, clientRef: dto.clientRef, createdByUserId: user.userId,
       },
     });
     const res = await this.registry.get(provider).charge(cred.secret, {
-      amountCents: dto.amountCents,
-      tipCents: (dto as any).tipCents,
+      amountCents: amounts.amountCents,
+      tipCents: amounts.tipCents,
       currency,
       readerExternalId,
       reference: dto.clientRef,
@@ -334,7 +338,7 @@ export class PaymentOrchestrator {
         succeededAt: res.status === 'SUCCEEDED' ? new Date() : null,
       },
     });
-    await this.audit(tenantId, user.userId, 'payment.charge', { intentId: updated.id, amountCents: dto.amountCents, status: res.status });
+    await this.audit(tenantId, user.userId, 'payment.charge', { intentId: updated.id, amountCents: amounts.amountCents, tipCents: amounts.tipCents ?? 0, status: res.status });
     // clientSecret returned ONLY here (never persisted) for the mobile SDK path.
     return { ...this.intentView(updated), clientSecret: res.clientSecret };
   }

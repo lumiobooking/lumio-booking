@@ -600,6 +600,10 @@ export class PaymentOrchestrator {
     }
   }
 
+  /** Who records a booking's online payment once the provider says it is paid (set by public/online-deposit.service). */
+  private onlinePaidHook: ((tenantId: string, reference: string) => Promise<unknown>) | null = null;
+  onOnlinePaid(fn: (tenantId: string, reference: string) => Promise<unknown>) { this.onlinePaidHook = fn; }
+
   async handleWebhook(provider: string, tenantId: string, rawBody: Buffer, signature: string) {
     if (!this.enabled()) return { received: true, skipped: 'disabled' };
     const cred = await this.creds.loadCred(tenantId, provider as ProviderId).catch(() => null);
@@ -619,10 +623,24 @@ export class PaymentOrchestrator {
       update: {},
     });
     if (evt.intentExternalId && evt.status) {
+      const keepRaw = evt.raw && (provider === 'clover' || (evt.raw as { paymentId?: string }).paymentId);
       await this.prisma.paymentIntentRecord.updateMany({
         where: { tenantId, externalIntentId: evt.intentExternalId },
-        data: { status: evt.status, succeededAt: evt.status === 'SUCCEEDED' ? new Date() : undefined, ...(provider === 'clover' && evt.raw ? { providerRaw: evt.raw as any } : {}) },
+        data: { status: evt.status, succeededAt: evt.status === 'SUCCEEDED' ? new Date() : undefined, ...(keepRaw ? { providerRaw: evt.raw as any } : {}) },
       });
+      // A booking's online payment just succeeded: record it on the booking now
+      // (public/online-deposit.service), not only when the customer comes back.
+      if (evt.status === 'SUCCEEDED' && this.onlinePaidHook) {
+        const rows = await this.prisma.paymentIntentRecord.findMany({
+          where: { tenantId, externalIntentId: evt.intentExternalId, clientRef: { startsWith: 'online:' } },
+          select: { clientRef: true },
+        }).catch(() => [] as { clientRef: string | null }[]);
+        for (const r of rows) {
+          const ref = String(r.clientRef ?? '').slice('online:'.length);
+          if (!ref) continue;
+          await this.onlinePaidHook(tenantId, ref).catch((e) => this.logger.warn(`online paid ${ref}: ${(e as Error).message}`));
+        }
+      }
     }
     await this.prisma.paymentWebhookEvent.update({ where: key, data: { processedAt: new Date() } });
     return { received: true };

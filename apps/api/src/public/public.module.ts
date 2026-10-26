@@ -6,6 +6,7 @@ import { BookingsModule } from '../bookings/bookings.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SettingsModule } from '../settings/settings.module';
 import { PaymentsHubModule } from '../payments-hub/payments-hub.module';
+import { OnlineDepositService } from './online-deposit.service';
 
 // Reuses BookingsService + PaymentsService + SettingsService for both public
 // flows: the API-key WordPress plugin (PublicController) and the slug-based
@@ -13,6 +14,7 @@ import { PaymentsHubModule } from '../payments-hub/payments-hub.module';
 @Module({
   imports: [BookingsModule, PaymentsModule, SettingsModule, PaymentsHubModule],
   controllers: [PublicController, PublicSalonController],
-  providers: [ApiKeyGuard],
+  // OnlineDepositService: records online deposits from every source and lets unpaid holds go.
+  providers: [ApiKeyGuard, OnlineDepositService],
 })
 export class PublicModule {}

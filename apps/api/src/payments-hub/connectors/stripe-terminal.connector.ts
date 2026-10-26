@@ -123,12 +123,22 @@ export class StripeTerminalConnector implements PaymentConnector {
     const event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
     let intentExternalId: string | undefined;
     let status: IntentStatus | undefined;
+    let paymentId: string | undefined;
     if (event.type.startsWith('payment_intent.')) {
       const pi = event.data.object as Stripe.PaymentIntent;
       intentExternalId = pi.id;
       status = this.mapStatus(pi.status);
+    } else if (event.type.startsWith('checkout.session.')) {
+      // An online deposit (Stripe Checkout): the session id is what the booking's
+      // intent row holds. "Paid" settles it even if the customer closed the page
+      // before coming back (payment-orchestrator → onOnlinePaid).
+      const cs = event.data.object as Stripe.Checkout.Session;
+      intentExternalId = cs.id;
+      paymentId = typeof cs.payment_intent === 'string' ? cs.payment_intent : cs.payment_intent?.id ?? undefined;
+      status = event.type === 'checkout.session.expired' || event.type === 'checkout.session.async_payment_failed' ? 'CANCELED'
+        : cs.payment_status === 'paid' ? 'SUCCEEDED' : 'PROCESSING';
     }
-    return { id: event.id, type: event.type, intentExternalId, status, raw: { type: event.type } };
+    return { id: event.id, type: event.type, intentExternalId, status, raw: { type: event.type, ...(paymentId ? { paymentId } : {}) } };
   }
 
   // ---- ONLINE: Stripe Checkout (booking deposits / pay online) ----

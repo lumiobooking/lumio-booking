@@ -71,7 +71,8 @@ const BOOKING_INCLUDE = {
   table: { select: { id: true, name: true, seats: true } },
   preferredStaff: { select: { id: true, firstName: true, lastName: true } },
   // Lightweight payment summary so the calendar/list can show "paid / unpaid".
-  payments: { select: { status: true, amountCents: true } },
+  // type + createdAt: the drawer says "waiting for the online deposit since…" for an open hold.
+  payments: { select: { status: true, amountCents: true, type: true, createdAt: true } },
 } satisfies Prisma.AppointmentInclude;
 
 // Minimal shape of the Prisma transaction client we rely on (keeps the file
@@ -2950,7 +2951,7 @@ export class BookingsService {
   }
 
   /** Cancel + settle money, scoped to a tenant (admin or token-based customer cancel). */
-  async cancelForTenant(tenantId: string, id: string, actorUserId: string | null, by: 'staff' | 'customer' | 'ai' = 'customer', byName: string | null = null, money: MoneyChoice | null = null) {
+  async cancelForTenant(tenantId: string, id: string, actorUserId: string | null, by: 'staff' | 'customer' | 'ai' | 'system' = 'customer', byName: string | null = null, money: MoneyChoice | null = null) {
     // Cancelling twice must not tell everyone twice — nor refund twice.
     const before = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { status: true, startTime: true, priceCents: true, customerId: true, partySize: true } as never }).catch(() => null) as
       { status: AppointmentStatus; startTime: Date; priceCents: number; customerId: string | null; partySize?: number | null } | null;
@@ -3012,7 +3013,7 @@ export class BookingsService {
     tenantId: string,
     appointmentId: string,
     kind: 'cancelled' | 'rescheduled',
-    ctx: { by?: 'staff' | 'customer' | 'ai' | null; byName?: string | null; from?: Date | null } = {},
+    ctx: { by?: 'staff' | 'customer' | 'ai' | 'system' | null; byName?: string | null; from?: Date | null } = {},
   ) {
     const appt = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, tenantId },

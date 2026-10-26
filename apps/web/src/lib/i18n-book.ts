@@ -221,6 +221,7 @@ const VI: Record<string, string> = {
   'Book {n} visits': 'Đặt {n} lượt',
   'Each visit has its own confirmation and its own cancel link, so you can change one without touching the others.': 'Mỗi lượt hẹn có xác nhận và link huỷ riêng, nên bạn đổi một lượt mà không ảnh hưởng các lượt còn lại.',
   'Deposit due today: ': 'Đặt cọc hôm nay: ',
+  'Your time is held for {minutes} minutes while you pay the deposit. If it is not paid by then, the booking is cancelled and the time released.': 'Giờ của bạn được giữ {minutes} phút để trả cọc. Quá thời gian mà chưa trả, lịch sẽ tự huỷ và giờ đó được nhả cho khách khác.',
   'Share this booking page': 'Chia sẻ trang đặt lịch này',
   'Call the salon': 'Gọi cho tiệm',
   'Copy number': 'Chép số',

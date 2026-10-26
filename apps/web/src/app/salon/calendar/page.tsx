@@ -68,7 +68,7 @@ interface Booking {
   // one table instead of four strangers who happen to collide.
   groupId?: string | null;
   addons?: Addon[];
-  payments?: { status: string; amountCents: number }[];
+  payments?: { status: string; amountCents: number; type?: string; createdAt?: string }[];
   customer: { id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
   service: { id: string; name: string; durationMinutes: number } | null;
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
@@ -935,6 +935,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
           const who = b.cancelledBy === 'customer' ? (vi ? 'Khách tự huỷ' : 'Customer (self-service)')
             : b.cancelledBy === 'ai' ? (vi ? 'Trợ lý AI' : 'AI assistant')
             : b.cancelledBy === 'staff' ? `${vi ? 'Nhân viên' : 'Staff'}${b.cancelledByName ? ` · ${b.cancelledByName}` : ''}`
+            : b.cancelledBy === 'system' ? `${vi ? 'Tự động' : 'Automatic'}${b.cancelledByName ? ` · ${b.cancelledByName}` : ''}`
             : (vi ? 'Không rõ (trước bản cập nhật)' : 'Unknown (pre-update)');
           return <DetailRow label={vi ? 'Huỷ bởi' : 'Cancelled by'} value={<span style={{ color: 'var(--cfca5a5)', fontWeight: 600 }}>{who}</span>} />;
         })()}
@@ -961,7 +962,15 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
           <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.dPaid')}</span>
           <span style={{ textAlign: 'right', fontWeight: 600, color: paidCents > 0 ? 'var(--ink-good)' : 'var(--ink-warn)' }}>
-            {paidCents > 0 ? `✓ ${formatPrice(paidCents, b.currency)}` : t('cal.unpaid')}
+            {paidCents > 0 ? `✓ ${formatPrice(paidCents, b.currency)}` : (() => {
+              // An online deposit the customer has not paid yet (the slot is held for her).
+              const wait = (b.payments ?? []).find((p) => p.status === 'PENDING' && p.type === 'PAY_ONLINE');
+              if (!wait || !active) return t('cal.unpaid');
+              const since = wait.createdAt ? fmtTime(new Date(wait.createdAt), tz) : '';
+              return lang === 'vi'
+                ? `Chờ khách trả online ${formatPrice(wait.amountCents, b.currency)}${since ? ` (từ ${since})` : ''}`
+                : `Waiting for online payment ${formatPrice(wait.amountCents, b.currency)}${since ? ` (since ${since})` : ''}`;
+            })()}
           </span>
         </div>
         <ServiceLines b={b} onAction={onAction} editable={active} />

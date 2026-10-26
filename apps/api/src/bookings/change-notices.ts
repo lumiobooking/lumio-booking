@@ -75,7 +75,7 @@ export function ownerNoticeText(i: {
   staff: string;
   when: string;
   from?: string;
-  by?: 'staff' | 'customer' | 'ai' | null;
+  by?: 'staff' | 'customer' | 'ai' | 'system' | null;
   byName?: string | null;
 }): { subject: string; body: string; sms: string } {
   const push = changePushText({ kind: i.kind, vi: i.vi, customer: i.customer, service: i.service, when: i.when, from: i.from, by: i.by, byName: i.byName });
@@ -120,12 +120,14 @@ export function changePushText(i: {
   when: string;
   /** For a move: where it was. */
   from?: string;
-  by?: 'staff' | 'customer' | 'ai' | null;
+  by?: 'staff' | 'customer' | 'ai' | 'system' | null;
   byName?: string | null;
 }): { title: string; body: string } {
   const who = i.by === 'customer' ? (i.vi ? 'Khách tự huỷ' : 'Customer cancelled')
     : i.by === 'ai' ? (i.vi ? `Huỷ qua ${i.byName || 'trợ lý AI'}` : `Cancelled via ${i.byName || 'AI assistant'}`)
     : i.by === 'staff' ? (i.vi ? `${i.byName || 'Nhân viên'} huỷ` : `Cancelled by ${i.byName || 'staff'}`)
+    // Lumio itself (an unpaid deposit hold ran out): the reason is the name.
+    : i.by === 'system' ? (i.vi ? `Tự huỷ · ${i.byName || 'hệ thống'}` : `Auto-cancelled · ${i.byName || 'system'}`)
     : (i.vi ? 'Đã huỷ' : 'Cancelled');
   if (i.kind === 'cancelled') {
     return { title: i.vi ? 'Lịch bị huỷ ✕' : 'Booking cancelled ✕', body: `${i.customer} • ${i.service} • ${i.when} • ${who}` };

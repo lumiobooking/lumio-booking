@@ -3,6 +3,7 @@ import { PARTY_DEPOSIT_KEY, PartyDeposit, cleanPartyDeposit } from '../payments/
 import { CHAT_FOLLOWUP_KEY, followUpSettingsFrom, type FollowUpSettings } from '../messenger/followup';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { brandsOnly, holdsKeys } from './legacy-gateways';
+import { holdMinutesOf } from '../payments/deposit-hold';
 import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { INDUSTRIES, INDUSTRY_KEY, isIndustry, resolveIndustry, writeIndustry } from '../common/industry';
@@ -1427,6 +1428,7 @@ export class SettingsService implements OnApplicationBootstrap {
       scope: dto.scope === 'new' || dto.scope === 'repeat_noshow' || dto.scope === 'all' ? dto.scope : (cur.scope ?? 'all'),
       noShowThreshold: Math.max(1, num(dto.noShowThreshold, cur.noShowThreshold ?? 2)),
       refundHours: Math.min(168, num(dto.refundHours, cur.refundHours ?? 24)),
+      holdMinutes: dto.holdMinutes === undefined ? holdMinutesOf(cur) : holdMinutesOf({ holdMinutes: dto.holdMinutes }),
       provider: dto.provider === null || dto.provider === '' ? null
         : isOnlineProvider(dto.provider) ? dto.provider : (cur.provider ?? null),
     };

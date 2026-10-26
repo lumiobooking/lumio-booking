@@ -68,7 +68,7 @@ interface SettingsData {
   pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; requireShift?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
-  deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; provider?: string | null };
+  deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; holdMinutes?: number; provider?: string | null };
   gmailRedirectUri?: string;
   /** Settings → Hoá đơn in (footer included — it lives with the till settings). */
   receipt?: Partial<ReceiptDesign>;
@@ -1041,7 +1041,7 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
   const t = (k: string) => tr(k, lang);
   const { token } = useAuth();
   const d = data.deposit ?? { enabled: false, type: 'percent' as const, percent: 30, fixedCents: 1000, scope: 'all' as const, noShowThreshold: 2, refundHours: 24, provider: null };
-  const [f, setF] = useState({ ...d, fixed: ((d.fixedCents ?? 0) / 100).toFixed(2), percentStr: String(d.percent ?? 30), thr: String(d.noShowThreshold ?? 2), hours: d.refundHours ?? 24, prov: d.provider ?? '' });
+  const [f, setF] = useState({ ...d, fixed: ((d.fixedCents ?? 0) / 100).toFixed(2), percentStr: String(d.percent ?? 30), thr: String(d.noShowThreshold ?? 2), hours: d.refundHours ?? 24, hold: d.holdMinutes ?? 30, prov: d.provider ?? '' });
   // The online providers this salon has live on the payment hub: the only
   // thing that can actually take (and give back) a deposit.
   const [online, setOnline] = useState<string[]>([]);
@@ -1058,7 +1058,7 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
       percent: Math.min(100, Math.max(1, parseInt(f.percentStr, 10) || 30)),
       fixedCents: Math.max(0, Math.round((parseFloat(f.fixed) || 0) * 100)),
       scope: f.scope, noShowThreshold: Math.max(1, parseInt(f.thr, 10) || 2),
-      refundHours: f.hours, provider: f.prov || null,
+      refundHours: f.hours, holdMinutes: f.hold, provider: f.prov || null,
     }, 'Deposits');
   }
   return (
@@ -1089,6 +1089,12 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
             {[0, 2, 4, 12, 24, 48, 72].map((h) => <option key={h} value={h}>{h === 0 ? t('se.dep.refundAny') : `${h} ${t('se.dep.hoursBefore')}`}</option>)}
           </select>
         </Field>
+        {/* How long the slot waits for the deposit before it is freed again. */}
+        <Field label={t('se.dep.hold')}>
+          <select style={ui.input} value={f.hold} onChange={(e) => setF({ ...f, hold: Number(e.target.value) })}>
+            {[10, 15, 20, 30, 45, 60, 120, 240, 0].map((m) => <option key={m} value={m}>{m === 0 ? t('se.dep.holdNever') : t('se.dep.holdMin').replace('{m}', String(m))}</option>)}
+          </select>
+        </Field>
         {online.length > 1 && (
           <Field label={t('se.dep.provider')}>
             <select style={ui.input} value={f.prov} onChange={(e) => setF({ ...f, prov: e.target.value })}>
@@ -1100,6 +1106,7 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
       </div>
       <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 8, lineHeight: 1.55 }}>
         {f.hours > 0 ? t('se.dep.ruleText').replace('{h}', String(f.hours)) : t('se.dep.ruleAny')}
+        {' '}{f.hold > 0 ? t('se.dep.holdText').replace('{m}', String(f.hold)) : t('se.dep.holdNeverText')}
       </div>
       {online.length === 0 ? (
         <div style={{ background: 'var(--wash-amber-3)', color: 'var(--cfde68a)', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, marginTop: 12, lineHeight: 1.55 }}>

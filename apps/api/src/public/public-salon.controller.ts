@@ -1,3 +1,5 @@
+import { OnlineDepositService } from './online-deposit.service';
+import { HOLD_REF } from '../payments/deposit-hold';
 import { BadRequestException, Body, Controller, Get, Header, Headers, NotFoundException, Param, Post, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { TenantStatus } from '@prisma/client';
@@ -33,6 +35,7 @@ export class PublicSalonController {
     private readonly payments: PaymentsService,
     private readonly settings: SettingsService,
     private readonly hub: PaymentOrchestrator,
+    private readonly online: OnlineDepositService,
   ) {}
 
   /** A salon is reachable only if ACTIVE and not past its access expiry. */
@@ -434,6 +437,11 @@ export class PublicSalonController {
     let payNowCents = 0;
     if (depositCents > 0) {
       // Taken in the provider's own page right after this (online-checkout).
+      // The slot is held meanwhile: one PENDING online row marked as the hold
+      // (payments/deposit-hold.ts) — paid fills it, not paid in time frees the slot.
+      payment = await this.prisma.payment.create({
+        data: { tenantId, appointmentId: booking.id, amountCents: depositCents, currency: booking.currency, type: 'PAY_ONLINE', status: 'PENDING', provider: onlineProvider as string, providerReference: HOLD_REF },
+      });
     } else if (dto.paymentType === 'PAY_ONLINE' && onlineProvider && booking.priceCents > 0) {
       // "Pay now" for the whole visit: same hosted page, the price instead of a deposit.
       payment = await this.payments.markPayOnlinePending(tenantId, booking.id, onlineProvider);
@@ -465,11 +473,11 @@ export class PublicSalonController {
     if (!appt) throw new NotFoundException('Booking not found');
 
     const deposit = await this.settings.getDepositSettings(tenantId);
-    const { base, kind } = await this.onlineDue(tenantId, appt, deposit);
+    const { base, kind } = await this.online.onlineDue(tenantId, appt as never);
     if (base <= 0) throw new BadRequestException('Nothing is due online for this booking');
     // Online payment is card-not-present, so the salon's card surcharge (dual
     // pricing) applies to it exactly like an in-salon card charge.
-    const amountCents = await this.withCardSurcharge(tenantId, base);
+    const amountCents = await this.online.withCardSurcharge(tenantId, base);
 
     return this.hub.onlineStart(tenantId, amountCents, appt.currency, appt.id, {
       preferred: deposit.provider,
@@ -483,22 +491,6 @@ export class PublicSalonController {
   }
 
   /**
-   * What a booking owes online, decided on the SERVER only: the deposit the
-   * salon's rule asks, or — when the customer chose "pay now" (a PENDING
-   * online row) — the whole price.
-   */
-  private async onlineDue(
-    tenantId: string,
-    appt: { id: string; priceCents: number; customerId: string | null; partySize?: number | null },
-    deposit: Awaited<ReturnType<SettingsService['getDepositSettings']>>,
-  ): Promise<{ base: number; kind: 'deposit' | 'full' }> {
-    const dep = await this.payments.depositFor(tenantId, appt, deposit, await this.settings.getPartyDeposit(tenantId));
-    if (dep > 0) return { base: dep, kind: 'deposit' };
-    const pending = await this.prisma.payment.findFirst({ where: { tenantId, appointmentId: appt.id, type: 'PAY_ONLINE', status: 'PENDING' }, select: { id: true } });
-    return pending ? { base: appt.priceCents, kind: 'full' } : { base: 0, kind: 'deposit' };
-  }
-
-  /**
    * Confirm the deposit. We verify the payment DIRECTLY with the provider by
    * our own reference and only then record it — the browser's word is not trusted.
    */
@@ -506,49 +498,9 @@ export class PublicSalonController {
   @Post(':slug/bookings/:id/online-confirm')
   async confirmOnlineCheckout(@Param('slug') slug: string, @Param('id') id: string) {
     const tenantId = await this.resolveTenantId(slug);
-    const appt = await this.prisma.appointment.findFirst({
-      where: { id, tenantId },
-      select: { id: true, priceCents: true, currency: true, customerId: true, partySize: true },
-    });
-    if (!appt) throw new NotFoundException('Booking not found');
-
-    const already = await this.prisma.payment.findFirst({ where: { tenantId, appointmentId: appt.id, status: 'PAID' } });
-    if (already) return { ok: true, alreadyPaid: true };
-
-    const res = await this.hub.onlineLookup(tenantId, appt.id);
-    if (!res.approved) return { ok: false, reason: 'not_approved' };
-
-    const deposit = await this.settings.getDepositSettings(tenantId);
-    const { base } = await this.onlineDue(tenantId, appt, deposit);
-    const expected = await this.withCardSurcharge(tenantId, base);
-    if (res.amountCents !== undefined && res.amountCents + 1 < expected) {
-      return { ok: false, reason: 'amount_mismatch' };
-    }
-
-    // What the provider actually took is what is recorded (never more than it
-    // reported); "pay now" fills the PENDING row the booking left for it.
-    const amount = res.amountCents ?? expected;
-    const pending = await this.prisma.payment.findFirst({ where: { tenantId, appointmentId: appt.id, type: 'PAY_ONLINE', status: 'PENDING' }, select: { id: true } });
-    const data = {
-      amountCents: amount, currency: appt.currency, type: 'PAY_ONLINE' as const, status: 'PAID' as const, provider: res.provider,
-      providerReference: res.transactionId ?? null, paidAt: new Date(),
-    };
-    const payment = pending
-      ? await this.prisma.payment.update({ where: { id: pending.id }, data })
-      : await this.prisma.payment.create({ data: { tenantId, appointmentId: appt.id, ...data } });
-    return { ok: true, payment };
+    const r = await this.online.settle(tenantId, id, 'return');
+    if (r.reason === 'not_found') throw new NotFoundException('Booking not found');
+    return r;
   }
 
-  /**
-   * Adds the salon's card surcharge to a card-not-present amount. Online
-   * checkout is always a card payment, so dual-pricing salons charge the same
-   * +% they would on the terminal. 0% (or unset) leaves the amount unchanged.
-   */
-  private async withCardSurcharge(tenantId: string, baseCents: number): Promise<number> {
-    if (baseCents <= 0) return baseCents;
-    const pos = await this.settings.getPosSettings(tenantId).catch(() => null);
-    const pct = pos?.cardSurchargePercent ?? 0;
-    if (!pos?.cardSurchargeEnabled || !pct || pct <= 0) return baseCents;
-    return baseCents + Math.round((baseCents * pct) / 100);
-  }
 }

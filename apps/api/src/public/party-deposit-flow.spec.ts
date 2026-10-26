@@ -13,7 +13,11 @@ type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-exp
 
 function make(provider: string | null) {
   const charged: Row[] = [];
-  const prisma: Row = { tenant: { findFirst: async () => ({ id: 't1', status: 'ACTIVE', billingExempt: true, accessUntil: null, businessType: 'RESTAURANT' }) } }; // a bistro: one table for the party
+  const holds: Row[] = [];
+  const prisma: Row = {
+    tenant: { findFirst: async () => ({ id: 't1', status: 'ACTIVE', billingExempt: true, accessUntil: null, businessType: 'RESTAURANT' }) }, // a bistro: one table for the party
+    payment: { create: async ({ data }: Row) => { holds.push(data); return { id: 'hold', ...data }; } },
+  };
   const bookings: Row = { createForTenant: async () => ({ id: 'ap1', customerId: 'c1', priceCents: 0, partySize: 10 }) };
   const payments: Row = {
     depositFor: async (_t: string, appt: Row, _d: Row, party: Row) => partyDepositCents(appt.partySize, party as never),
@@ -22,22 +26,25 @@ function make(provider: string | null) {
   };
   const settings: Row = { getDepositSettings: async () => ({ enabled: false }), getPartyDeposit: async () => ({ enabled: true, fromParty: 8, perPersonCents: 1000 }) };
   const hub: Row = { onlineProviderFor: async () => provider };
-  return { ctl: new PublicSalonController(prisma as never, bookings as never, payments as never, settings as never, hub as never), charged };
+  return { ctl: new PublicSalonController(prisma as never, bookings as never, payments as never, settings as never, hub as never, {} as never), charged, holds };
 }
 const dto = { serviceId: 's', startTime: '2030-03-09T19:00:00.000Z', customerFirstName: 'Anna', customerPhone: '5125551234', partySize: 10 };
 
 describe('party deposit at booking', () => {
   it('with a real provider: 10 × 10.00 is due, paid in the provider\'s checkout (nothing charged here)', async () => {
-    const { ctl, charged } = make('helcim');
+    const { ctl, charged, holds } = make('helcim');
     const r: Row = await ctl.createBooking('bistro', dto as never);
     expect(r.depositCents).toBe(10000);
     expect(r.onlineProvider).toBe('helcim');
     expect(charged).toHaveLength(0);
+    // The slot is held by one PENDING online row (payments/deposit-hold.ts).
+    expect(holds).toEqual([expect.objectContaining({ tenantId: 't1', appointmentId: 'ap1', amountCents: 10000, type: 'PAY_ONLINE', status: 'PENDING', providerReference: 'hold:deposit' })]);
   });
   it('without a provider: no party deposit, nothing recorded as paid', async () => {
-    const { ctl, charged } = make(null);
+    const { ctl, charged, holds } = make(null);
     const r: Row = await ctl.createBooking('bistro', dto as never);
     expect(r.depositCents).toBe(0);
     expect(charged).toHaveLength(0);
+    expect(holds).toHaveLength(0);
   });
 });

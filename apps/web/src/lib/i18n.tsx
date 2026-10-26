@@ -1807,6 +1807,11 @@ const SETTINGS_DICT: Record<string, { en: string; vi: string }> = {
   'se.lo.save': { en: 'Save loyalty', vi: 'Lưu tích điểm' },
   // Deposit
   'se.dep.title': { en: 'Deposits (hold the slot)', vi: 'Tiền cọc (giữ chỗ)' },
+  'se.dep.hold': { en: 'Hold the slot while unpaid', vi: 'Giữ chỗ khi khách chưa cọc' },
+  'se.dep.holdMin': { en: '{m} minutes', vi: '{m} phút' },
+  'se.dep.holdNever': { en: 'Never cancel (pay at the salon)', vi: 'Không tự huỷ (trả tại tiệm)' },
+  'se.dep.holdText': { en: 'A booking whose deposit is not paid within {m} minutes is cancelled automatically, the time is freed and the client is told.', vi: 'Lịch nào không trả cọc trong {m} phút sẽ tự huỷ, giờ đó được nhả ra và khách được báo.' },
+  'se.dep.holdNeverText': { en: 'An unpaid deposit never cancels the booking — the client pays at the salon.', vi: 'Không cọc thì lịch vẫn giữ — khách trả tại tiệm.' },
   'se.dep.desc': { en: 'Require a deposit at booking to cut no-shows. Kept if the customer no-shows, refunded if they cancel, and credited toward the final bill at checkout.', vi: 'Yêu cầu đặt cọc khi đặt lịch để giảm vắng. Giữ cọc nếu khách vắng, hoàn lại nếu huỷ, và trừ vào hoá đơn cuối khi thanh toán.' },
   'se.dep.require': { en: 'Require a deposit', vi: 'Yêu cầu đặt cọc' },
   'se.dep.type': { en: 'Deposit type', vi: 'Loại cọc' },

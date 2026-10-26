@@ -128,7 +128,7 @@ interface PromoWindow { startDate?: string | null; endDate?: string | null }
 interface WeekdayDiscounts extends PromoWindow { enabled: boolean; message: string; rules: WdRule[] }
 interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
 interface DateDiscounts { enabled: boolean; rules: DateRule[] }
-interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number }
+interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; holdMinutes?: number }
 interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
   branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string; cartArt?: string; cartTitle?: string; cartHint?: string }; booking?: BookingRules;
@@ -2567,6 +2567,12 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
                   ? btf('Cancel at least {hours} hours before and the deposit goes back to your card. Later, or if you don’t come, the deposit is not refunded.', { hours: salon?.deposit?.refundHours ?? 24 })
                   : bt('Cancel any time before your appointment and the deposit goes back to your card. If you don’t come, it is not refunded.')}
               </span>
+              {/* The hold, said up front: pay within the window or the time is released. */}
+              {(salon?.deposit?.holdMinutes ?? 30) > 0 && (
+                <span style={{ display: 'block', fontWeight: 600, color: 'var(--c64748b)', fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+                  {btf('Your time is held for {minutes} minutes while you pay the deposit. If it is not paid by then, the booking is cancelled and the time released.', { minutes: salon?.deposit?.holdMinutes ?? 30 })}
+                </span>
+              )}
             </div>
           );
         })()}

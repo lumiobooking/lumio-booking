@@ -163,6 +163,10 @@ export interface DepositSettings {
   // refunded to the card (for real, by the provider that took it); later — or
   // not showing up — and the salon keeps it. bookings/deposit-policy.ts.
   refundHours: number;
+  // Minutes the slot is held while the customer pays the deposit online; not
+  // paid by then → the booking is cancelled and the time freed. 0 = never.
+  // payments/deposit-hold.ts.
+  holdMinutes?: number;
   // Which connected online provider takes deposits when the salon has several
   // (payment hub). null = the first one connected.
   provider: string | null;
@@ -176,6 +180,7 @@ export const DEFAULT_DEPOSIT_SETTINGS: DepositSettings = {
   scope: 'all',
   noShowThreshold: 2,
   refundHours: 24,
+  holdMinutes: 30,
   provider: null,
 };
 

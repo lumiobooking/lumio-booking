@@ -60,7 +60,7 @@ export function guideFor(key: TerminalBrand, vi: boolean): Guide {
           'Vào developer.squareup.com bằng tài khoản Square CỦA TIỆM → Create application.',
           'Mở app vừa tạo → Production → copy Access Token và Location ID (mục Locations).',
           'Lumio → Máy quẹt thẻ → chọn "Square Terminal" → dán Access Token + Location ID → Kết nối.',
-          'Bấm "Thêm máy" → Lumio hiện mã ghép (device code). Trên máy Square Terminal: Sign in → Use a device code → nhập mã.',
+          'Bấm "Thêm máy quẹt" → Lumio hiện mã ghép (device code). Trên máy Square Terminal: Sign in → Use a device code → nhập mã.',
           'Chạy "giao dịch thử" 1$ để kiểm tra. Cũng từ tài khoản này, Lumio thu được tiền cọc online của khách.',
         ] : [
           'Go to developer.squareup.com with the SALON\'S Square account → Create application.',
@@ -77,13 +77,13 @@ export function guideFor(key: TerminalBrand, vi: boolean): Guide {
           'Stripe Dashboard → Developers → API keys → Create restricted key: cấp quyền Terminal, PaymentIntents, Checkout Sessions, Refunds (Write).',
           'Terminal → Locations → tạo địa điểm, copy Location ID (tml_…).',
           'Lumio → Máy quẹt thẻ → "Stripe Terminal" → dán key + Location ID → Kết nối.',
-          'Trên máy: vuốt từ trái → Settings → Generate pairing code. Trong Lumio bấm "Thêm máy" và nhập mã đó.',
+          'Trên máy: vuốt từ trái → Settings → Generate pairing code. Trong Lumio, ở khung Stripe đã kết nối → mục "Máy quẹt (reader)" → nhập mã ghép → bấm "Thêm máy quẹt".',
           'Chạy giao dịch thử. Key này cũng dùng để thu cọc online (Stripe Checkout).',
         ] : [
           'Stripe Dashboard → Developers → API keys → Create restricted key with Terminal, PaymentIntents, Checkout Sessions and Refunds (Write).',
           'Terminal → Locations → create one, copy the Location ID (tml_…).',
           'Lumio → Card terminals → "Stripe Terminal" → paste the key + Location ID → Connect.',
-          'On the reader: swipe from the left → Settings → Generate pairing code. In Lumio click "Add reader" and enter it.',
+          'On the reader: swipe from the left → Settings → Generate pairing code. In Lumio, in the connected Stripe box → "Card readers" → enter the pairing code → "Add card reader".',
           'Run a test charge. The same key also takes online deposits (Stripe Checkout).',
         ],
       };
@@ -93,7 +93,7 @@ export function guideFor(key: TerminalBrand, vi: boolean): Guide {
         steps: vi ? [
           'Helcim Dashboard → Settings → Integrations → API Access → tạo API token (bật Payments + Payments Hardware).',
           'Lumio → Máy quẹt thẻ → "Helcim" → dán token → Kết nối.',
-          'Trên Smart Terminal xem mã thiết bị (device code) → Lumio → "Thêm máy" → nhập mã.',
+          'Trên Smart Terminal xem mã thiết bị (device code) → Lumio → "Thêm máy quẹt" → nhập mã.',
           'Chạy giao dịch thử. Cùng tài khoản này thu được cọc online.',
         ] : [
           'Helcim Dashboard → Settings → Integrations → API Access → create a token (Payments + Payments Hardware).',
@@ -121,7 +121,7 @@ export function guideFor(key: TerminalBrand, vi: boolean): Guide {
       return {
         driven: true, title: 'SumUp Solo',
         steps: vi
-          ? ['SumUp Dashboard → Developers → tạo API key.', 'Lumio → Máy quẹt thẻ → "SumUp" → dán key → Kết nối.', 'Trên Solo lấy pairing code → Lumio → "Thêm máy".']
+          ? ['SumUp Dashboard → Developers → tạo API key.', 'Lumio → Máy quẹt thẻ → "SumUp" → dán key → Kết nối.', 'Trên Solo lấy pairing code → Lumio → "Thêm máy quẹt".']
           : ['SumUp Dashboard → Developers → create an API key.', 'Lumio → Card terminals → "SumUp" → paste it → Connect.', 'Get the pairing code on the Solo → Lumio → "Add reader".'],
       };
     case 'adyen':

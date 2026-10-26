@@ -572,7 +572,7 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
   );
 }
 
-interface GatewayEdit { enabled: boolean; apiKey: string; secret: string }
+interface GatewayEdit { enabled: boolean }
 
 const SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', CAD: '$', AUD: '$', VND: '₫', JPY: '¥', SGD: '$' };
 function previewPrice(amount: number, currency: string, symbol: string, position: string, decimals: number) {
@@ -594,13 +594,13 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
   const [decimals, setDecimals] = useState(b.priceDecimals ?? 2);
   const [defaultMethod, setDefaultMethod] = useState<'online' | 'onsite'>(b.defaultPaymentMethod ?? 'onsite');
   const [onSite, setOnSite] = useState(b.payLaterEnabled);
-  // Local editable gateways. secret starts blank (server never returns it).
+  // Which card brand(s) the salon swipes at the counter. Only the on/off:
+  // the keys that once sat here connected nothing (and a browser's password
+  // manager filled the owner's login into them). The real connection, with
+  // "Test connection", is the Card terminals page.
   const [gw, setGw] = useState<Record<string, GatewayEdit>>(() => {
     const init: Record<string, GatewayEdit> = {};
-    for (const g of GATEWAYS) {
-      const v = data.gateways?.[g.id];
-      init[g.id] = { enabled: v?.enabled ?? false, apiKey: v?.apiKey ?? '', secret: '' };
-    }
+    for (const g of GATEWAYS) init[g.id] = { enabled: data.gateways?.[g.id]?.enabled ?? false };
     return init;
   });
 
@@ -609,7 +609,8 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
   }
 
   const enabledGw = GATEWAYS.filter((g) => gw[g.id]?.enabled);
-  const connectedGw = GATEWAYS.filter((g) => data.gateways?.[g.id]?.connected);
+  // "Pay online" is real only with a live connection on the Card terminals page.
+  const onlineReady = !!b.onlinePaymentEnabled;
   /**
    * Which card gateways this salon is offered.
    *
@@ -623,7 +624,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
    * it can no longer reach — a worse failure than the clutter this removes.
    */
   const shownGw = isVN
-    ? GATEWAYS.filter((g) => gw[g.id]?.enabled || data.gateways?.[g.id]?.connected)
+    ? GATEWAYS.filter((g) => gw[g.id]?.enabled)
     : GATEWAYS;
   const cardChannelName = GATEWAYS.find((g) => g.id === data.pos?.primaryCardGateway)?.name;
 
@@ -661,12 +662,12 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             {t('se.pay.default')}
             <select
               style={{ ...ui.input, padding: '6px 8px', width: 'auto' }}
-              value={connectedGw.length ? defaultMethod : 'onsite'}
+              value={onlineReady ? defaultMethod : 'onsite'}
               onChange={(e) => setDefaultMethod(e.target.value as 'online' | 'onsite')}
             >
               <option value="onsite">{t('se.pay.payAtSalon')}</option>
               {/* Only offer "Pay online" once a gateway is actually connected. */}
-              {connectedGw.length > 0 && <option value="online">{t('se.pay.payOnline')}</option>}
+              {onlineReady && <option value="online">{t('se.pay.payOnline')}</option>}
             </select>
           </label>
         </div>
@@ -686,8 +687,8 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       {(!isVN || shownGw.length > 0) && (
       <Panel
         title={t('se.pay.gwTitle')}
-        badge={connectedGw.length ? { text: t('se.pay.connectedN').replace('{n}', String(connectedGw.length)), color: 'var(--ink-good)' } : { text: t('se.pay.none'), color: 'var(--c64748b)' }}
-        hint={connectedGw.length ? connectedGw.map((g) => g.name).join(', ') : t('se.pay.gwHintNone')}
+        badge={enabledGw.length ? { text: t('se.pay.connectedN').replace('{n}', String(enabledGw.length)), color: 'var(--ink-good)' } : { text: t('se.pay.none'), color: 'var(--c64748b)' }}
+        hint={enabledGw.length ? enabledGw.map((g) => g.name).join(', ') : t('se.pay.gwHintNone')}
       >
         <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 10px' }}>
           {t('se.pay.gwIntro')}
@@ -701,29 +702,17 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {shownGw.map((g) => {
             const e = gw[g.id];
-            const connected = data.gateways?.[g.id]?.connected;
             return (
               <div key={g.id} style={{ border: `1px solid ${e.enabled ? '#6366f1' : 'var(--c334155)'}`, borderRadius: 10, padding: 14, background: 'var(--c111827)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 15 }}>
-                      {g.name}{' '}
-                      {connected && <span style={{ color: 'var(--ink-good)', fontSize: 12, fontWeight: 600 }}>{t('se.pay.connected')}</span>}
+                      {g.name}
                     </div>
                     <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{t(`se.gw.${g.id}`)}</div>
                   </div>
                   <Toggle on={e.enabled} onChange={(v) => upd(g.id, { enabled: v })} label="" />
                 </div>
-                {e.enabled && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginTop: 12 }}>
-                    <Field label={g.apiLabel}>
-                      <input style={ui.input} value={e.apiKey} onChange={(ev) => upd(g.id, { apiKey: ev.target.value })} placeholder={g.apiLabel} />
-                    </Field>
-                    <Field label={g.secretLabel}>
-                      <input style={ui.input} type="password" value={e.secret} onChange={(ev) => upd(g.id, { secret: ev.target.value })} placeholder={connected ? t('se.pay.secretSaved') : g.secretLabel} />
-                    </Field>
-                  </div>
-                )}
               </div>
             );
           })}

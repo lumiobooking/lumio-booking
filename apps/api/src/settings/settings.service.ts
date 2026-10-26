@@ -1,7 +1,8 @@
 import { dialCodeFor } from '../common/phone';
 import { PARTY_DEPOSIT_KEY, PartyDeposit, cleanPartyDeposit } from '../payments/party-deposit';
 import { CHAT_FOLLOWUP_KEY, followUpSettingsFrom, type FollowUpSettings } from '../messenger/followup';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
+import { brandsOnly, holdsKeys } from './legacy-gateways';
 import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { INDUSTRIES, INDUSTRY_KEY, isIndustry, resolveIndustry, writeIndustry } from '../common/industry';
@@ -134,7 +135,7 @@ function usableSecret(v: unknown): string {
 }
 
 @Injectable()
-export class SettingsService {
+export class SettingsService implements OnApplicationBootstrap {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -632,14 +633,39 @@ export class SettingsService {
     return { ...DEFAULT_BRANDING, ...((branding as Partial<Branding>) ?? {}) };
   }
 
-  /** Raw gateway config (incl. secrets) — for server-side use only. */
+  /** Which card brands the salon uses at the counter (legacy-gateways.ts: no keys, ever). */
   async getGateways(tenantId: string): Promise<PaymentGateways> {
-    const stored = await this.readKey<PaymentGateways>(tenantId, PAYMENT_GATEWAYS_KEY, DEFAULT_PAYMENT_GATEWAYS);
-    const out = {} as PaymentGateways;
-    for (const id of GATEWAY_IDS) {
-      out[id] = { ...DEFAULT_PAYMENT_GATEWAYS[id], ...(stored[id] ?? {}) };
+    return brandsOnly(await this.readKey<PaymentGateways>(tenantId, PAYMENT_GATEWAYS_KEY, DEFAULT_PAYMENT_GATEWAYS));
+  }
+
+  /**
+   * Once per boot (idempotent): wipe the API keys and secrets the old
+   * "card brand" form stored in plain settings — they connected nothing, and
+   * some are an owner's login that a browser filled in. Each row stays in its
+   * own salon; only the on/off is kept.
+   */
+  onApplicationBootstrap() {
+    const on = (process.env.HOUSEKEEPING_ENABLED ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false')) === 'true';
+    if (!on) return;
+    setTimeout(() => {
+      this.wipeLegacyGatewayKeys()
+        .then((n) => { if (n) new Logger('Settings').log(`Card-brand settings: removed stored keys from ${n} salon(s).`); })
+        .catch((e) => new Logger('Settings').warn(`Card-brand key wipe failed: ${(e as Error).message}`));
+    }, 75 * 1000);
+  }
+
+  async wipeLegacyGatewayKeys(): Promise<number> {
+    const rows = await this.prisma.setting.findMany({ where: { key: PAYMENT_GATEWAYS_KEY }, select: { tenantId: true, value: true } });
+    let n = 0;
+    for (const r of rows) {
+      if (!holdsKeys(r.value)) continue;
+      const res = await this.prisma.setting.updateMany({
+        where: { tenantId: r.tenantId, key: PAYMENT_GATEWAYS_KEY },
+        data: { value: brandsOnly(r.value as never) as unknown as Prisma.InputJsonValue },
+      });
+      n += res.count ? 1 : 0;
     }
-    return out;
+    return n;
   }
 
   /** Full notification settings (incl. secrets) — server-side use. */
@@ -1188,7 +1214,7 @@ export class SettingsService {
     const out: Record<string, { enabled: boolean; connected: boolean; apiKey: string }> = {};
     for (const id of GATEWAY_IDS) {
       const g = raw[id];
-      out[id] = { enabled: g.enabled, connected: g.secret.length > 0, apiKey: g.apiKey };
+      out[id] = { enabled: g.enabled, connected: false, apiKey: '' };
     }
     return out;
   }
@@ -1519,22 +1545,15 @@ export class SettingsService {
     const current = await this.getGateways(tenantId);
     const incoming = (dto.gateways ?? {}) as Record<string, Partial<GatewayConfig>>;
 
-    const merged = {} as PaymentGateways;
-    for (const id of GATEWAY_IDS) {
-      const cur = current[id];
+    // Only which brands are on; any key sent is dropped (legacy-gateways.ts).
+    const merged = brandsOnly(Object.fromEntries(GATEWAY_IDS.map((id) => {
       const inc = incoming[id] ?? {};
-      merged[id] = {
-        enabled: typeof inc.enabled === 'boolean' ? inc.enabled : cur.enabled,
-        apiKey: typeof inc.apiKey === 'string' ? inc.apiKey : cur.apiKey,
-        // Blank secret = keep the stored one.
-        secret: inc.secret ? String(inc.secret) : cur.secret,
-      };
-    }
+      return [id, { enabled: typeof inc.enabled === 'boolean' ? inc.enabled : current[id].enabled }];
+    })));
     await this.writeKey(tenantId, PAYMENT_GATEWAYS_KEY, merged);
 
-    const onlineEnabled = (Object.values(merged) as GatewayConfig[]).some(
-      (g) => g.enabled && g.secret.length > 0,
-    );
+    // "Pay online" is real only with a live payment-hub connection.
+    const onlineEnabled = await this.hasOnlineProvider(tenantId);
 
     const rules = await this.getBookingRules(tenantId);
     await this.writeKey(tenantId, BOOKING_RULES_KEY, {

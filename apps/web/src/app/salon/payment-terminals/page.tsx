@@ -29,8 +29,8 @@ const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help:
   stripe: {
     name: 'Stripe (Terminal + cọc online)',
     help: {
-      en: 'Stripe Dashboard → Developers → API keys → Create restricted key (allow Terminal, PaymentIntents, Checkout Sessions, Charges/Refunds). Paste the rk_live_… key. The same key takes card terminals AND customers\' online deposits (Stripe Checkout). Lumio registers nothing.',
-      vi: 'Stripe Dashboard → Developers → API keys → Create restricted key (cấp quyền Terminal, PaymentIntents, Checkout Sessions, Charges/Refunds). Dán key rk_live_…. Cùng key này dùng cho máy quẹt VÀ thu cọc online của khách (Stripe Checkout). Lumio không đăng ký gì.',
+      en: 'You need: (1) REQUIRED — a key: Stripe Dashboard → Developers → API keys → Create restricted key (allow Terminal, PaymentIntents, Checkout Sessions, Charges/Refunds) → paste the rk_live_… key (sk_live_… also works). The publishable key (pk_…) is NOT needed. (2) RECOMMENDED — webhook secret: Developers → Webhooks → Add endpoint with the address below → copy the Signing secret (whsec_…); it confirms a deposit even if the customer closes the page. (3) ONLY for card readers / Tap to Pay — Location ID (tml_…). The same key takes card terminals AND online deposits (Stripe Checkout). Lumio registers nothing.',
+      vi: 'Cần: (1) BẮT BUỘC — key: Stripe Dashboard → Developers → API keys → Create restricted key (cấp quyền Terminal, PaymentIntents, Checkout Sessions, Charges/Refunds) → dán key rk_live_… (sk_live_… cũng được). KHÔNG cần Publishable key (pk_…). (2) NÊN CÓ — webhook secret: Developers → Webhooks → Add endpoint với địa chỉ bên dưới → copy Signing secret (whsec_…); nhờ nó khoản cọc vẫn được xác nhận dù khách đóng trang. (3) CHỈ khi dùng máy quẹt / Tap to Pay — Location ID (tml_…). Cùng một key dùng cho máy quẹt VÀ thu cọc online (Stripe Checkout). Lumio không đăng ký gì.',
     },
     fields: ['secret', 'currency', 'locationId', 'webhookSecret'],
   },
@@ -177,7 +177,7 @@ function Inner() {
         amountIncludesTip: provider === 'dejavoo' ? amountIncludesTip : undefined,
       } });
       setSecret(''); setWebhookSecret('');
-      setMsg(vi ? 'Kết nối thành công.' : 'Connected successfully.');
+      setMsg(vi ? 'Đã kết nối — Lumio đã kiểm tra key trực tiếp với nhà cung cấp ✓. Bấm “Kiểm tra kết nối” bất cứ lúc nào để thử lại.' : 'Connected — Lumio checked the key with the provider ✓. Press “Test connection” any time to check again.');
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Connect failed'); }
     finally { setBusy(false); }
@@ -199,6 +199,17 @@ function Inner() {
   const usbOk = agents.some((a) => a.kind === 'BRIDGE' && a.paired);
   const btOk = agents.some((a) => a.kind === 'COMPANION' && a.paired);
   const meta = PROVIDER_META[provider];
+  // The same check the server runs (payments-hub/key-format.ts), shown as you type.
+  const keyHint = (() => {
+    const k = secret.trim(), w = webhookSecret.trim();
+    if (!k && !w) return null;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(k)) return vi ? 'Ô này đang chứa một email — có thể trình duyệt tự điền. Xoá đi rồi dán key.' : 'This holds an email — your browser may have filled it in. Clear it and paste the key.';
+    if (provider !== 'stripe') return null;
+    if (/^pk_(live|test)_/.test(k)) return vi ? 'Đây là Publishable key (pk_…) — Lumio không cần. Dán Restricted key (rk_live_…) hoặc Secret key (sk_live_…).' : 'That is the publishable key (pk_…) — not needed. Paste a restricted key (rk_live_…) or the secret key (sk_live_…).';
+    if (k && !/^(sk|rk)_(live|test)_[A-Za-z0-9]+$/.test(k)) return vi ? 'Key Stripe bắt đầu bằng rk_live_ hoặc sk_live_ (rk_test_ / sk_test_ để thử).' : 'A Stripe key starts with rk_live_ or sk_live_ (rk_test_ / sk_test_ to try).';
+    if (w && !/^whsec_[A-Za-z0-9]+$/.test(w)) return vi ? 'Webhook secret bắt đầu bằng whsec_.' : 'A webhook secret starts with whsec_.';
+    return null;
+  })();
   const activeProviders = (status?.providers ?? []).filter((p) => PROVIDER_META[p]);
 
   return (
@@ -299,7 +310,9 @@ function Inner() {
                   </p>
                 )}
                 <label style={label}>{provider === 'dejavoo' ? L.authKey : provider === 'clover' ? (vi ? 'Ecommerce private token' : 'Ecommerce private token') : provider === 'paypal' ? 'Secret' : L.secret}</label>
-                <input style={input} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={provider === 'stripe' ? 'rk_live_…' : provider === 'mock' ? 'mock_test' : provider === 'helcim' ? 'Helcim API token' : provider === 'dejavoo' ? (vi ? 'Token 10 ký tự từ iPOSpays' : '10-character token from iPOSpays') : ''} autoComplete="off" />
+                {/* new-password + a non-login name: a browser's password manager must never fill the owner's login in here. */}
+                <input style={input} type="password" name={`${provider}-api-key`} value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={provider === 'stripe' ? 'rk_live_…' : provider === 'mock' ? 'mock_test' : provider === 'helcim' ? 'Helcim API token' : provider === 'dejavoo' ? (vi ? 'Token 10 ký tự từ iPOSpays' : '10-character token from iPOSpays') : ''} autoComplete="new-password" data-1p-ignore="true" data-lpignore="true" spellCheck={false} />
+                {keyHint && <div style={{ fontSize: 12.5, color: 'var(--ink-warn)', marginTop: 6, lineHeight: 1.5 }}>{keyHint}</div>}
                 {meta.fields.includes('currency') && (
                   <>
                     <label style={label}>{L.currency}</label>
@@ -309,7 +322,7 @@ function Inner() {
                     </select>
                   </>
                 )}
-                {meta.fields.includes('locationId') && (<><label style={label}>{L.location}</label><input style={input} value={locationId} onChange={(e) => setLocationId(e.target.value)} placeholder="tml_… / loc_…" /></>)}
+                {meta.fields.includes('locationId') && (<><label style={label}>{L.location}</label><input style={input} name={`${provider}-location`} value={locationId} onChange={(e) => setLocationId(e.target.value)} placeholder="tml_… / loc_…" autoComplete="off" data-1p-ignore="true" data-lpignore="true" spellCheck={false} /></>)}
                 {meta.fields.includes('region') && (
                   <>
                     <label style={label}>{L.region}</label>
@@ -340,9 +353,9 @@ function Inner() {
                     </label>
                   </div>
                 )}
-                {meta.fields.includes('webhookSecret') && (<><label style={label}>{L.webhook}</label><input style={input} type="password" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder="whsec_…" autoComplete="off" /></>)}
+                {meta.fields.includes('webhookSecret') && (<><label style={label}>{L.webhook}</label><input style={input} type="password" name={`${provider}-webhook-secret`} value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder="whsec_…" autoComplete="new-password" data-1p-ignore="true" data-lpignore="true" spellCheck={false} /></>)}
                 <div style={{ marginTop: 14 }}>
-                  <button onClick={doConnect} disabled={busy || !secret.trim() || !status?.enabled} style={{ ...ui.primaryBtn, opacity: busy || !secret.trim() || !status?.enabled ? 0.6 : 1 }}>
+                  <button onClick={doConnect} disabled={busy || !secret.trim() || !!keyHint || !status?.enabled} style={{ ...ui.primaryBtn, opacity: busy || !secret.trim() || !!keyHint || !status?.enabled ? 0.6 : 1 }}>
                     {busy ? '…' : L.connect}
                   </button>
                 </div>

@@ -8,6 +8,7 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { keyFormatProblem } from './key-format';
 import { ModuleRef } from '@nestjs/core';
 import { PaymentStatus, PaymentType, UserRole } from '@prisma/client';
 import { ledgerProviderFor } from '../pos/payment-methods';
@@ -79,6 +80,9 @@ export class PaymentOrchestrator {
       amountIncludesTip: (dto as any).amountIncludesTip,
       publicId: dto.publicId?.trim() || undefined,
     };
+    // Wrong kind of key (an autofilled email, Stripe's pk_…): say what to paste, send nothing.
+    const bad = keyFormatProblem(dto.provider, cred.secret, cred.webhookSecret);
+    if (bad) throw new BadRequestException(bad);
     const result = await connector.verifyCredential(cred.secret, {
       currency: dto.currency,
       locationId: cred.locationId,

@@ -64,8 +64,11 @@ interface WebhookStatus {
   rejected?: { count: number; at: string } | null; unrouted?: { count: number; at: string } | null;
   /** The bot's last send to Meta: delivered, or Meta's refusal in plain words (api: messenger/send-errors.ts). */
   lastSend?: { at: string; ok: boolean; code: string; error: string } | null;
-  /** Instagram's own webhook subscription — 'NOT subscribed' means IG DMs never reach Lumio. */
-  instagram?: { igUsername?: string | null; accountSub?: string | null } | null;
+  /** Instagram DMs: the API's verdict from what Facebook-Login delivery really depends on (api: messenger/instagram-status.ts). */
+  instagram?: {
+    igUsername?: string | null; state?: 'not_linked' | 'ok' | 'not_receiving' | 'unknown'; receiving?: boolean;
+    reason?: string | null; reasonVi?: string | null; threads?: number; lastEvent?: { at: string } | null; metaNewestAt?: string | null; probeError?: string | null;
+  } | null;
 }
 interface ActivityEv { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean; channel?: string }
 interface ActivityRes { page: string; pageId: string; events: ActivityEv[] }
@@ -631,7 +634,9 @@ function Inner() {
   const newLeads = leads.filter((l) => l.status === 'NEW').length;
   const showLeads = c.botMode === 'sales' || leads.length > 0;
   const igPage = (c.pages || []).find((p) => p.igId);
-  const igSubBad = /NOT subscribed/i.test(String(wh?.instagram?.accountSub ?? ''));
+  // Only the API's verdict decides "not receiving" — and it says why.
+  const igSubBad = wh?.instagram?.state === 'not_receiving';
+  const igWhy = igSubBad ? (L(wh?.instagram?.reasonVi ?? '', wh?.instagram?.reason ?? '') || null) : null;
   const reconnect = () => { void connectFacebook(); };
 
   const tiles: TileProps[] = [
@@ -649,7 +654,7 @@ function Inner() {
       account: igPage ? (igPage.igUsername ? `@${igPage.igUsername}` : `IG ${igPage.igId}`) : L('Chưa liên kết', 'Not linked'),
       ...(!fbConnected ? { tone: 'idle' as Tone, state: L('Cần Page trước', 'Needs the Page'), action: L('Kết nối', 'Connect'), onAction: reconnect }
         : !igPage ? { tone: 'idle' as Tone, state: L('Chưa liên kết', 'Not linked'), action: L('Liên kết', 'Link'), onAction: reconnect }
-        : igSubBad ? { tone: 'warn' as Tone, state: L('Chưa nhận tin', 'Not receiving'), action: L('Kết nối lại', 'Reconnect'), onAction: reconnect }
+        : igSubBad ? { tone: 'warn' as Tone, state: L('Chưa nhận tin', 'Not receiving'), action: L('Kết nối lại', 'Reconnect'), onAction: reconnect, why: igWhy }
         : { tone: 'ok' as Tone, state: L('Hoạt động', 'Working'), action: L('Chi tiết', 'Details'), onAction: () => goTab('connect') }),
     },
     ...(zaloSt && isVN(zaloSt.market) ? [{
@@ -1694,10 +1699,10 @@ function toneStyle(tone: Tone): React.CSSProperties {
   return { background: 'var(--c1e293b)', color: 'var(--c94a3b8)' };
 }
 
-interface TileProps { key: string; mark: string; tint: string; name: string; account: string; tone: Tone; state: string; action: string; onAction: () => void }
+interface TileProps { key: string; mark: string; tint: string; name: string; account: string; tone: Tone; state: string; action: string; onAction: () => void; /** Why it is not working, in plain words. */ why?: string | null }
 
 /** One channel: who it is, whether it works, and the one thing to do about it. */
-function StatusTile({ mark, tint, name, account, tone, state, action, onAction }: Omit<TileProps, 'key'>) {
+function StatusTile({ mark, tint, name, account, tone, state, action, onAction, why }: Omit<TileProps, 'key'>) {
   return (
     <div style={{ padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0, borderRight: '1px solid var(--line)', borderBottom: '1px solid var(--line)', marginRight: -1, marginBottom: -1 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1711,6 +1716,7 @@ function StatusTile({ mark, tint, name, account, tone, state, action, onAction }
         </span>
         <button type="button" onClick={onAction} style={{ border: 0, background: 'transparent', padding: 0, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--ink-link)', cursor: 'pointer', whiteSpace: 'nowrap' }}>{action}</button>
       </div>
+      {why && <span style={{ fontSize: 12, color: 'var(--ink-warn)', lineHeight: 1.45 }}>{why}</span>}
     </div>
   );
 }

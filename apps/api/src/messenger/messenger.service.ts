@@ -18,6 +18,7 @@ import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
+import { igCustomer, igVerdict } from './instagram-status';
 import { decideFollowUp, threadStateFrom, contextualNudge, followUpSettingsFrom, CHAT_FOLLOWUP_KEY, WINDOW_MS, type StoredTurn } from './followup';
 import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION, repeatCorrection, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap, questionFirstCorrection, answersBeforeRecap, endsOnFiller, customerWrappingUp, FILLER_CORRECTION } from './booking-guards';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
@@ -892,21 +893,15 @@ export class MessengerService implements OnModuleInit {
    *  ONLY thing we use instagram_basic for: showing the owner (and an App Review
    *  reviewer) WHICH Instagram account is connected, as "@username" instead of a
    *  bare numeric id. No media, insights or follower data is read. */
-  /** Instagram Direct needs the IG ACCOUNT itself subscribed to the app, not
-   *  just the Page. Without this Meta accepts the connection but never delivers
-   *  a single DM webhook. Idempotent and best-effort. */
-  private async subscribeIgAccount(igId: string, pageToken: string): Promise<void> {
-    try {
-      const res = await fetch(
-        `${GRAPH}/${igId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers&access_token=${encodeURIComponent(pageToken)}`,
-        { method: 'POST', signal: AbortSignal.timeout(8000) },
-      );
-      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string } };
-      if (!json.success) this.logger.warn(`ig subscribe ${igId}: ${String(json.error?.message || 'no success flag').slice(0, 140)}`);
-    } catch (e) {
-      this.logger.warn(`ig subscribe failed: ${String(e).slice(0, 120)}`);
-    }
-  }
+  /*
+   * No per-account Instagram subscription. `POST /{ig-id}/subscribed_apps`
+   * belongs to "Instagram API with Instagram Login" (graph.instagram.com and
+   * an Instagram user token). Lumio connects Instagram through Facebook Login,
+   * where DMs are delivered by the PAGE's subscription (subscribePageWebhook)
+   * plus the app's `instagram` object (ensureAppSubscription). The old call
+   * failed on every salon (wrong edge, and two fields Instagram does not
+   * have) — quietly, into a log line.
+   */
 
   private async fetchIgUsername(igId: string, pageToken: string): Promise<string | null> {
     try {
@@ -989,7 +984,6 @@ export class MessengerService implements OnModuleInit {
         pageId: p.id,
         run: async () => {
           if (ig) {
-            await this.subscribeIgAccount(ig, token);
             if (needHandle) {
               const handle = await this.fetchIgUsername(ig, token);
               if (handle) await this.prisma.messengerPage.updateMany({ where: { pageId: p.id, igId: ig }, data: { igUsername: handle } as never }).catch(() => undefined);
@@ -1054,7 +1048,6 @@ export class MessengerService implements OnModuleInit {
     // round trips the person on the connect screen does not need to wait for.
     void (async () => {
       if (igId) {
-        await this.subscribeIgAccount(igId, page.access_token);
         if (!igUsername) {
           const handle = await this.fetchIgUsername(igId, page.access_token);
           if (handle) await this.prisma.messengerPage.updateMany({ where: { pageId: page.id, igId }, data: { igUsername: handle } as never }).catch(() => undefined);
@@ -2482,11 +2475,13 @@ export class MessengerService implements OnModuleInit {
   private appSubCache: { at: number; fields: string[]; echoOk: boolean } | null = null;
   /** The callback URL Meta holds for this app's page subscription — where EVERY Page's events go. */
   private appCallbackUrl: string | null = null;
-  private async ensureAppSubscription(force = false, object: 'page' | 'instagram' = 'page'): Promise<{ fields: string[]; echoOk: boolean; error?: string }> {
+  /** The callback URL Meta holds for this app's INSTAGRAM subscription (null = none read yet). */
+  private appIgCallbackUrl: string | null = null;
+  private async ensureAppSubscription(force = false, object: 'page' | 'instagram' = 'page'): Promise<{ fields: string[]; echoOk: boolean; error?: string; callbackUrl?: string | null }> {
     if (object === 'page' && !force && this.appSubCache && Date.now() - this.appSubCache.at < 10 * 60_000) {
       return { fields: this.appSubCache.fields, echoOk: this.appSubCache.echoOk };
     }
-    const out: { fields: string[]; echoOk: boolean; error?: string } = { fields: [], echoOk: false };
+    const out: { fields: string[]; echoOk: boolean; error?: string; callbackUrl?: string | null } = { fields: [], echoOk: false };
     try {
       const id = this.appId();
       const secret = this.appSecret();
@@ -2498,6 +2493,8 @@ export class MessengerService implements OnModuleInit {
       };
       const sub = (json.data || []).find((d) => d.object === object);
       if (object === 'page' && sub?.callback_url) this.appCallbackUrl = sub.callback_url;
+      if (object === 'instagram') this.appIgCallbackUrl = sub?.callback_url ?? null;
+      out.callbackUrl = sub?.callback_url ?? null;
       const names = (sub?.fields || [])
         .map((f) => (typeof f === 'string' ? f : f?.name || ''))
         .filter(Boolean);
@@ -2505,7 +2502,10 @@ export class MessengerService implements OnModuleInit {
       // messaging_handovers: so a Page whose conversations another app holds
       // (Meta's Business Agent) still reaches us — see the standby branch of
       // handleWebhook. Page-object only; Instagram has no handover edge here.
-      const need = object === 'page' ? ['messages', 'messaging_postbacks', 'message_echoes', 'messaging_handovers'] : ['messages', 'messaging_postbacks', 'message_echoes'];
+      // Instagram (Messenger Platform, Facebook Login): echoes come INSIDE
+      // `messages`, and there is no `message_echoes` field to subscribe —
+      // asking for it made every repair fail with "An unknown error occurred".
+      const need = object === 'page' ? ['messages', 'messaging_postbacks', 'message_echoes', 'messaging_handovers'] : ['messages', 'messaging_postbacks'];
       const missing = need.filter((n) => !names.includes(n));
       if (!missing.length) {
         out.echoOk = true;
@@ -2515,7 +2515,7 @@ export class MessengerService implements OnModuleInit {
         const callback = sub?.callback_url
           || (await this.pageCallbackUrl(token, id))
           || `${this.apiBase()}/api/messenger/webhook`;
-        const fields = Array.from(new Set([...names, ...need, 'message_reactions', ...(object === 'page' ? ['feed'] : [])])).join(',');
+        const fields = Array.from(new Set([...names, ...need, ...(object === 'page' ? ['message_reactions', 'feed'] : [])])).join(',');
         const body = new URLSearchParams({
           object,
           callback_url: callback,
@@ -2558,6 +2558,28 @@ export class MessengerService implements OnModuleInit {
    *  pages_manage_metadata use case) and return the Page name + subscribed fields.
    *  This reads GET /{page-id}/subscribed_apps straight from the Graph API so the
    *  UI shows the real subscription state, not a hard-coded label. */
+  /** Meta's own answer to "may this Page token read its Instagram conversations?" — the newest one's time, or the refusal word for word. */
+  private async probeIgConversations(pageId: string, pageToken: string): Promise<{ ok: true; newestAt: string | null } | { ok: false; error: string }> {
+    try {
+      const res = await fetch(`${GRAPH}/${pageId}/conversations?platform=instagram&limit=1&fields=id,updated_time&access_token=${encodeURIComponent(pageToken)}`, { signal: AbortSignal.timeout(8000) });
+      const j = (await res.json().catch(() => ({}))) as { data?: { updated_time?: string }[]; error?: { message?: string; code?: number } };
+      if (j.error) return { ok: false, error: `${j.error.message || 'Graph error'}${j.error.code != null ? ` (#${j.error.code})` : ''}` };
+      return { ok: true, newestAt: j.data?.[0]?.updated_time ?? null };
+    } catch (e) {
+      return { ok: false, error: String(e).slice(0, 160) };
+    }
+  }
+
+  /** Is this Page subscribed to OUR app (by id)? */
+  private async pageSubscribedToUs(pageId: string, pageToken: string): Promise<boolean> {
+    try {
+      const r = await fetch(`${GRAPH}/${pageId}/subscribed_apps?access_token=${encodeURIComponent(pageToken)}`, { signal: AbortSignal.timeout(8000) });
+      const j = (await r.json().catch(() => ({}))) as { data?: { id?: string }[] };
+      const apps = j.data || [];
+      return this.appId() ? apps.some((a) => String(a.id) === this.appId()) : apps.length > 0;
+    } catch { return false; }
+  }
+
   async webhookStatus(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const c = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
@@ -2593,12 +2615,14 @@ export class MessengerService implements OnModuleInit {
     // Instagram diagnostics — surfaced so a blocked DM pipeline can be read
     // from the dashboard instead of guessed at.
     const igOn = process.env.FB_ENABLE_INSTAGRAM === '1' || process.env.FB_ENABLE_INSTAGRAM === 'true';
-    let ig: { enabled: boolean; igId: string | null; appObject: string[]; appError?: string; accountSub?: string; igUsername?: string | null } | undefined;
+    let ig: Record<string, unknown> | undefined;
     if (igOn) {
-      const pg = await this.prisma.messengerPage.findFirst({ where: { tenantId }, select: { igId: true, pageToken: true } }).catch(() => null);
+      // The Page that carries the Instagram account (a salon may have several Pages).
+      const pg = await this.prisma.messengerPage.findFirst({ where: { tenantId, igId: { not: null } }, select: { igId: true, pageToken: true, pageId: true } }).catch(() => null);
       const igSub = await this.ensureAppSubscription(true, 'instagram');
-      let accountSub = 'no Instagram account linked';
       let igUsername: string | null = null;
+      let probe: { ok: true; newestAt: string | null } | { ok: false; error: string } | null = null;
+      let pageSubscribed = subscribed;
       if (pg?.igId && pg.pageToken) {
         // Re-read the handle every time this panel is opened rather than trusting
         // the copy saved at connect time: a salon that renames its Instagram
@@ -2611,15 +2635,35 @@ export class MessengerService implements OnModuleInit {
             data: { igUsername } as never,
           }).catch(() => undefined);
         }
-        try {
-          const r = await fetch(`${GRAPH}/${pg.igId}/subscribed_apps?access_token=${encodeURIComponent(pg.pageToken)}`, { signal: AbortSignal.timeout(8000) });
-          const j = (await r.json().catch(() => ({}))) as { data?: { subscribed_fields?: string[] }[]; error?: { message?: string } };
-          accountSub = j.error?.message ? `ERROR: ${j.error.message}` : (j.data?.length ? `subscribed: ${(j.data[0]?.subscribed_fields || []).join(', ') || '(no fields)'}` : 'NOT subscribed');
-        } catch (e) {
-          accountSub = `ERROR: ${String(e).slice(0, 120)}`;
-        }
+        probe = await this.probeIgConversations(pg.pageId, pg.pageToken);
+        // Instagram on a second Page: that Page's own subscription is the one that counts.
+        if (pg.pageId !== c.pageId) pageSubscribed = await this.pageSubscribedToUs(pg.pageId, pg.pageToken);
       }
-      ig = { enabled: true, igId: pg?.igId ?? null, igUsername, appObject: igSub.fields, appError: igSub.error, accountSub };
+      const ours = await this.prisma.messengerThread.findFirst({ where: { tenantId, channel: 'instagram' } as never, orderBy: { lastMessageAt: 'desc' } as never, select: { lastMessageAt: true } as never }).catch(() => null) as { lastMessageAt?: Date | null } | null;
+      const igThreads = await this.prisma.messengerThread.count({ where: { tenantId, channel: 'instagram' } as never }).catch(() => 0);
+      const igTrace = pg?.igId ? this.webhookTrace.get(pg.igId) ?? null : null;
+      const hostOf = (u: string | null | undefined) => { try { return u ? new URL(u).host : null; } catch { return null; } };
+      const hosts = [hostOf(process.env.PUBLIC_API_URL), hostOf(process.env.RENDER_EXTERNAL_URL), hostOf(this.apiBase())].filter((h): h is string => !!h);
+      const appReadable = !(igSub.error && !igSub.fields.length);
+      const verdict = igVerdict({
+        igId: pg?.igId ?? null,
+        pageSubscribed,
+        app: appReadable ? { fields: igSub.fields, callbackUrl: igSub.callbackUrl ?? null } : null,
+        appUnreadable: !appReadable,
+        myHosts: hosts,
+        probe,
+        ourNewestAt: ours?.lastMessageAt ? new Date(ours.lastMessageAt).toISOString() : null,
+        lastEventAt: igTrace ? new Date(igTrace.at).toISOString() : null,
+      });
+      ig = {
+        enabled: true, igId: pg?.igId ?? null, igUsername,
+        // The verdict (instagram-status.ts) and the facts behind it.
+        state: verdict.state, receiving: verdict.state !== 'not_receiving', reason: verdict.reason, reasonVi: verdict.reasonVi,
+        pageSubscribed, appObject: igSub.fields, appError: igSub.error ?? null, appCallbackUrl: igSub.callbackUrl ?? null,
+        metaNewestAt: probe && probe.ok ? probe.newestAt : null, probeError: probe && !probe.ok ? probe.error : null,
+        ourNewestAt: ours?.lastMessageAt ?? null, threads: igThreads,
+        lastEvent: igTrace ? { at: new Date(igTrace.at).toISOString(), count: igTrace.count, lane: igTrace.lane } : null,
+      };
     }
     const trace = this.webhookTrace.get(c.pageId) ?? null;
     const threads = await this.prisma.messengerThread.count({ where: { tenantId } }).catch(() => 0);
@@ -2678,10 +2722,12 @@ export class MessengerService implements OnModuleInit {
    */
   /** Per Page: the newest `updated_time` seen, so a sweep touches only what changed. */
   private readonly syncSeen = new Map<string, string>();
+  /** Per Page: Meta's last refusal to mirror Instagram (kept, not logged every minute). */
+  private readonly igSyncErrors = new Map<string, string>();
   async syncConversations(tenantId: string, opts: { limit?: number; reply?: boolean; incremental?: boolean; lines?: number } = {}) {
-    const pages = await this.prisma.messengerPage.findMany({ where: { tenantId, enabled: true }, select: { pageId: true, pageToken: true, pageName: true } }).catch(() => [] as { pageId: string; pageToken: string; pageName: string | null }[]);
-    const conn = pages.length ? null : await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageId: true, pageToken: true, pageName: true } });
-    const targets = (pages.length ? pages : conn?.pageId && conn.pageToken ? [{ pageId: conn.pageId, pageToken: conn.pageToken, pageName: conn.pageName }] : [])
+    const pages = await this.prisma.messengerPage.findMany({ where: { tenantId, enabled: true }, select: { pageId: true, pageToken: true, pageName: true, igId: true } }).catch(() => [] as { pageId: string; pageToken: string; pageName: string | null; igId: string | null }[]);
+    const conn = pages.length ? null : await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageId: true, pageToken: true, pageName: true, igId: true } });
+    const targets = (pages.length ? pages : conn?.pageId && conn.pageToken ? [{ pageId: conn.pageId, pageToken: conn.pageToken, pageName: conn.pageName, igId: conn.igId }] : [])
       .filter((p) => !isWebPage(p.pageId) && !p.pageId.startsWith('zalo:'));
     if (!targets.length) throw new BadRequestException('No Page connected');
     const take = Math.min(100, Math.max(1, Math.round(opts.limit ?? 50) || 50));
@@ -2694,28 +2740,47 @@ export class MessengerService implements OnModuleInit {
     let imported = 0, updated = 0, skipped = 0, answered = 0;
     const errors: string[] = [];
     const sameTurn = (hist: Turn[], t: Turn) => hist.some((h) => h.role === t.role && h.content === t.content && Math.abs(new Date(h.at || 0).getTime() - new Date(t.at || 0).getTime()) < 120_000);
+    // Instagram DMs are mirrored too (they used to depend on the webhook alone,
+    // so one DM the webhook dropped was a DM nobody ever saw).
+    const igOn = process.env.FB_ENABLE_INSTAGRAM === '1' || process.env.FB_ENABLE_INSTAGRAM === 'true';
     for (const pg of targets) {
-      const url = `${GRAPH}/${pg.pageId}/conversations?platform=messenger&limit=${take}&fields=id,updated_time,participants,messages.limit(${lines}){message,from,created_time}&access_token=${encodeURIComponent(pg.pageToken)}`;
-      let json: { data?: { id: string; updated_time?: string; participants?: { data?: { id: string; name?: string }[] }; messages?: { data?: { message?: string; from?: { id: string; name?: string }; created_time?: string }[] } }[]; error?: { message?: string; code?: number } };
+      const sources: { platform: 'messenger' | 'instagram'; channel: Channel; own: string[]; entry: string; key: string }[] = [
+        { platform: 'messenger', channel: 'messenger', own: [pg.pageId], entry: pg.pageId, key: pg.pageId },
+        ...(igOn && pg.igId ? [{ platform: 'instagram' as const, channel: 'instagram' as Channel, own: [pg.igId, pg.pageId], entry: pg.igId, key: `${pg.pageId}:ig` }] : []),
+      ];
+      for (const src of sources) {
+      const url = `${GRAPH}/${pg.pageId}/conversations?platform=${src.platform}&limit=${take}&fields=id,updated_time,participants,messages.limit(${lines}){message,from,created_time}&access_token=${encodeURIComponent(pg.pageToken)}`;
+      let json: { data?: { id: string; updated_time?: string; participants?: { data?: { id: string; name?: string; username?: string }[] }; messages?: { data?: { message?: string; from?: { id: string; name?: string }; created_time?: string }[] } }[]; error?: { message?: string; code?: number } };
       try {
         const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
         json = (await res.json().catch(() => ({}))) as typeof json;
       } catch (e) { errors.push(`${pg.pageName || pg.pageId}: ${String(e).slice(0, 120)}`); continue; }
-      if (json.error) { errors.push(`${pg.pageName || pg.pageId}: ${json.error.message || 'Graph error'} (code ${json.error.code ?? '?'})`); continue; }
-      const seenBefore = opts.incremental ? this.syncSeen.get(pg.pageId) ?? null : null;
+      if (json.error) {
+        const why = `${pg.pageName || pg.pageId}${src.platform === 'instagram' ? ' (Instagram)' : ''}: ${json.error.message || 'Graph error'} (code ${json.error.code ?? '?'})`;
+        // The minute-by-minute sweep would repeat an Instagram refusal forever
+        // in the log; it is kept for the status page instead (webhook-status
+        // shows Meta's words), and reported on a manual or first mirror.
+        if (src.platform === 'instagram' && opts.incremental) { this.igSyncErrors.set(pg.pageId, why); continue; }
+        errors.push(why);
+        continue;
+      }
+      if (src.platform === 'instagram') this.igSyncErrors.delete(pg.pageId);
+      const seenBefore = opts.incremental ? this.syncSeen.get(src.key) ?? null : null;
       let newest = seenBefore ?? '';
       for (const conv of json.data || []) {
         if (conv.updated_time && conv.updated_time > newest) newest = conv.updated_time;
         // Unchanged since the last tick: nothing to read.
         if (seenBefore && conv.updated_time && conv.updated_time <= seenBefore) { skipped++; continue; }
-        const other = (conv.participants?.data || []).find((p) => p.id !== pg.pageId);
+        const other = src.platform === 'instagram'
+          ? igCustomer(conv.participants?.data, src.entry, pg.pageId)
+          : (() => { const o = (conv.participants?.data || []).find((p) => p.id !== pg.pageId); return o ? { id: o.id, name: o.name || null } : null; })();
         if (!other) { skipped++; continue; }
         const msgs = [...(conv.messages?.data || [])].filter((m) => m.message && m.created_time).reverse(); // oldest first
         if (!msgs.length) { skipped++; continue; }
         // A line sent by the Page outside Lumio (a person in Business Suite,
         // Meta's Business Agent, another tool) is NOT the bot's: it is marked
         // like a staff reply, with its origin, so the inbox never shows it as "AI".
-        const turns: Turn[] = msgs.map((m) => (m.from?.id === pg.pageId
+        const turns: Turn[] = msgs.map((m) => (src.own.includes(m.from?.id ?? '')
           ? { role: 'assistant' as const, content: String(m.message).slice(0, 2000), at: new Date(m.created_time!).toISOString(), manual: true, source: 'page' as const }
           : { role: 'user' as const, content: String(m.message).slice(0, 2000), at: new Date(m.created_time!).toISOString() }));
         const last = turns[turns.length - 1];
@@ -2745,7 +2810,7 @@ export class MessengerService implements OnModuleInit {
           const lastCustomer = [...toWrite].reverse().find((t) => t.role === 'user');
           await this.prisma.messengerThread.create({
             data: {
-              tenantId, pageId: pg.pageId, senderId: other.id, senderName: other.name || null, channel: 'messenger',
+              tenantId, pageId: pg.pageId, senderId: other.id, senderName: other.name || null, channel: src.channel,
               lastText: toWrite[toWrite.length - 1].content.slice(0, 300),
               // The conversation's own clock, so a mirrored chat from September
               // sits where September belongs — not at the top as "just now".
@@ -2759,10 +2824,11 @@ export class MessengerService implements OnModuleInit {
         }
         if (pending) {
           answered++;
-          await this.handleMessage(pg.pageId, other.id, last.content, new Date(last.at!).getTime(), 'messenger').catch((e) => this.logger.warn(`sync reply failed: ${String(e).slice(0, 160)}`));
+          await this.handleMessage(src.entry, other.id, last.content, new Date(last.at!).getTime(), src.channel).catch((e) => this.logger.warn(`sync reply failed: ${String(e).slice(0, 160)}`));
         }
       }
-      if (newest) this.syncSeen.set(pg.pageId, newest);
+      if (newest) this.syncSeen.set(src.key, newest);
+      }
     }
     if (imported || updated) this.events.publish(tenantId, 'message');
     return { imported, updated, skipped, answered, errors };

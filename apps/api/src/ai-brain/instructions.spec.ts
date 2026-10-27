@@ -3,7 +3,7 @@
  * placed above everything else in the prompt, and checked before a reply goes.
  */
 import {
-  cleanInstruction, correctionFor, instructionsBlock, keepsWords, labelOf, lastResort, matchInstructions, matchScore,
+  checkingLine, cleanInstruction, correctionFor, instructionsBlock, keepsWords, labelOf, lastResort, matchInstructions, matchScore,
   matchedBlock, normalize, parseJudge, toCheck, judgePrompt, type Instruction,
 } from './instructions';
 
@@ -99,5 +99,8 @@ describe('the check before a reply is sent', () => {
     expect(lastResort([firstVisit], '', true)).toBe(firstVisit.text);
     expect(lastResort([firstVisit], '', false)).toBe('');
     expect(lastResort([promo], 'We have no discount right now.', false)).toBe('We have no discount right now.');
+    expect(lastResort([promo], '', true)).toBe('');
+    expect(checkingLine('vi')).toMatch(/kiểm tra lại/);
+    expect(checkingLine('es')).toMatch(/double-check/);
   });
 });

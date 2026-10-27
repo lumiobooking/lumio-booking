@@ -311,3 +311,13 @@ export function lastResort(broken: Instruction[], rewrite: string, sameLanguage:
   if (a && sameLanguage) return a.text;
   return '';
 }
+
+/**
+ * Said when a reply broke an instruction twice and nothing compliant exists:
+ * an honest "let me check", never the reply the owner forbade.
+ */
+export function checkingLine(lang: string | null | undefined): string {
+  return lang === 'vi'
+    ? 'Dạ để em kiểm tra lại với tiệm cho chính xác rồi báo anh/chị ngay ạ.'
+    : "Let me double-check that with the salon so I give you the right answer — I'll get back to you shortly.";
+}

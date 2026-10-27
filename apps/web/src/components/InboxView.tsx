@@ -42,6 +42,7 @@ import {
   windowNotice, type WindowInfo, spamCount, isSpamRow, systemEventOf, systemEventLabel,
 } from '../lib/inbox-view';
 import { ind } from '../lib/ui-industry';
+import { TeachAiPanel, canTeachAi, type InsChannel } from './TeachAiPanel';
 
 /**
  * Avatar with the channel mark tucked into its corner, coloured by PAGE.
@@ -408,6 +409,9 @@ export function InboxView() {
   const { lang } = useLang();
   const me = useAuth().user?.id ?? null;
   const vi = lang === 'vi';
+  // "Sửa" under a bot reply: the owner teaches the AI the right answer (TeachAiPanel).
+  const mayTeach = canTeachAi(useAuth().user);
+  const [teach, setTeach] = useState<{ index: number; question: string; reply: string } | null>(null);
   const [topRows, setRows] = useState<InboxRow[]>([]);
   /** Pages of older conversations the person asked for with "load more". The
    *  live list (first page, refreshed by the stream) sits on top; these follow.
@@ -1578,6 +1582,16 @@ export function InboxView() {
                       <span style={{ fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5, padding: '0 4px' }}>
                         {mine && !t.manual && <span style={{ width: 14, height: 14, borderRadius: 4, background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 8, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>AI</span>}
                         {who}{t.at ? <span title={fmtInTz(t.at, { dateStyle: 'full', timeStyle: 'short' })}> · {bubbleStampLabel(t.at, vi)}</span> : null}
+                        {mine && !t.manual && t.source !== 'page' && mayTeach && (
+                          <button type="button" onClick={() => {
+                            let qi = i - 1;
+                            while (qi >= 0 && detail.history[qi].role !== 'user') qi -= 1;
+                            setTeach({ index: qi >= 0 ? qi : i, question: qi >= 0 ? detail.history[qi].content : '', reply: t.content });
+                          }} title={vi ? 'AI trả lời sai? Dạy AI câu đúng' : 'Wrong reply? Teach the AI'}
+                            style={{ marginLeft: 4, minHeight: 26, padding: '0 8px', borderRadius: 7, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            ✎ {vi ? 'Sửa' : 'Fix'}
+                          </button>
+                        )}
                       </span>
                     </div>
                   </div>
@@ -1594,6 +1608,17 @@ export function InboxView() {
                 </span>
               </div>
             ))}
+            {teach && (
+              <TeachAiPanel token={token} vi={vi} question={teach.question} reply={teach.reply}
+                channel={((['messenger', 'instagram', 'zalo', 'web'].includes(String(detail.channel)) ? detail.channel : 'messenger') as InsChannel)}
+                source={{ kind: 'thread', id: detail.id }} customerName={detail.senderName ?? null}
+                context={detail.history.slice(0, teach.index).filter((h) => !h.images?.length).map((h) => ({ role: h.role, content: h.content }))}
+                onSendCorrection={async (text) => {
+                  await apiFetch('/messenger/send', { method: 'POST', token, body: { threadId: detail.id, text } });
+                  await Promise.all([loadList(), loadThread(detail.id)]);
+                }}
+                onClose={() => setTeach(null)} />
+            )}
             <div ref={endRef} />
           </div>
 

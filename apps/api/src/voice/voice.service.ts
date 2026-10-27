@@ -4,7 +4,9 @@ import { VOICE_CATALOG, cleanVoiceSetting, parseVoices } from './voice-catalog';
 import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor, agentFallbackLines, transferLines } from './voice-lang';
 import { isTransientStatus } from '../messenger/agent-fallback';
 import { AiBrainService } from '../ai-brain/ai-brain.service';
-import { MAX_FILLER_HOPS, brainLangOfVoice, callbackLines, keepOpenLine, mayHangUp, nextPendingId, parsePendingId, type EndReason } from '../ai-brain/brain-rules';
+import { MAX_FILLER_HOPS, brainLangOfVoice, callbackLines, detectLanguage as detectBrainLanguage, keepOpenLine, mayHangUp, nextPendingId, parsePendingId, type EndReason } from '../ai-brain/brain-rules';
+import { AiInstructionsService } from '../ai-brain/instructions.service';
+import { checkingLine, lastResort } from '../ai-brain/instructions';
 import { Prisma, NotificationChannel, NotificationStatus, AppointmentStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { wallTimeToUtc } from '../bookings/booking.util';
@@ -179,6 +181,8 @@ export class VoiceService implements OnModuleInit {
     @Optional() private readonly party?: PartyAvailabilityService,
     // The salon's AI brain (ai-brain/): persona, facts, rules, memory, the log of why a call ended.
     @Optional() private readonly brain?: AiBrainService,
+    // The owner's instructions (ai-brain/instructions.ts): above every other rule, checked before a line is spoken.
+    @Optional() private readonly instructions?: AiInstructionsService,
   ) {}
 
   /** The party service, built on demand when Nest did not hand one in (specs). */
@@ -1082,6 +1086,9 @@ export class VoiceService implements OnModuleInit {
     // old per-line note still applies.
     const brainOut = this.brain ? await this.brain.promptBlocks(tenantId, 'voice', brainLangOfVoice(lang)).catch(() => null) : null;
     const blocks = brainOut?.blocks ?? null;
+    // The owner's instructions: the highest-priority section, the ones this
+    // sentence is about pinned for this turn, and a check before it is spoken.
+    const owner = this.instructions ? await this.instructions.forTurn(tenantId, 'voice', userText).catch(() => null) : null;
     let shared = '';
     if (!blocks) { try { shared = (await this.settings.getAiNotes(tenantId))?.text ?? ''; } catch { shared = ''; } }
     const facts = blocks ? blocks.facts : await this.factsFor(tenantId);
@@ -1188,7 +1195,7 @@ Speak times naturally ("two thirty PM on Friday"). The ${persona.venueNoun}'s lo
 Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours.
 When the conversation is finished — they've booked and have nothing else, or their question is answered, or they say goodbye — call end_call. ${canTransfer ? 'If the caller asks for a real person — a staff member, the owner, a manager, "someone at the ' + persona.venueNoun + '" — or is upset and wants a human, do not argue or keep them: say ONE short sentence that you are connecting them now (no goodbye), and call transfer_to_human. If they ask something you cannot answer from what you were given here (never guess), say you are not sure and offer to connect them to the front desk; if they say yes, call transfer_to_human.' : 'If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. If they ask something you cannot answer from what you were given here, never guess: say a staff member will call them back with the answer.'} Never ask for payment or card details.
 ${blocks?.persona ? blocks.persona + '\n' : ''}${servicesBlock}
-${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\n' + facts + '\n' : ''}${ownerRules}${blocks?.booking ? blocks.booking + '\n' : ''}${knownBlock ? knownBlock + '\n' : ''}${blocks ? blocks.handoffNote + '\n' : ''}If you cannot help with something — a question not answered here, a request the ${persona.venueNoun} must handle — call request_callback with a one-line summary; a team member calls back. Never end the call on your own because you are stuck.${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
+${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\n' + facts + '\n' : ''}${ownerRules}${blocks?.booking ? blocks.booking + '\n' : ''}${knownBlock ? knownBlock + '\n' : ''}${blocks ? blocks.handoffNote + '\n' : ''}If you cannot help with something — a question not answered here, a request the ${persona.venueNoun} must handle — call request_callback with a one-line summary; a team member calls back. Never end the call on your own because you are stuck.${owner?.block ? `\n${owner.block}\nOn the phone: say an instruction's answer in one or two short spoken sentences.` : ''}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
 
     const personItem = (withName: boolean) => ({
       type: 'object',
@@ -1345,7 +1352,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
           model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
           max_tokens: 180, // keep replies short → faster generation + faster text-to-speech
           // Cache the (stable) system prompt so turns 2+ of the same call are faster.
-          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }, ...(owner?.matched ? [{ type: 'text', text: owner.matched }] : [])],
           tools,
           messages,
         }),
@@ -1382,7 +1389,23 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
       if (acc.transfer) {
         return { reply: text || transferLines(acc.langSwitch || lang).connecting, done: true, transfer: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure };
       }
-      return { reply: text || agentFallbackLines(acc.langSwitch || lang).keepGoing, done: acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure };
+      // THE OWNER'S INSTRUCTIONS, checked before the line is spoken. No second
+      // model round on the phone (the caller is waiting): a broken one is
+      // replaced at once by the judge's corrected line, the owner's own words,
+      // or an honest "let me check". A check that is slow or fails never holds
+      // the caller — it is skipped.
+      let said = text;
+      if (owner && this.instructions && text) {
+        const insLang = brainLangOfVoice(acc.langSwitch || lang);
+        const chk = await this.instructions.check(tenantId, { turn: owner, channel: 'voice', customer: userText, draft: text, lang: insLang, timeoutMs: 2500 }).catch(() => null);
+        if (chk?.broken.length) {
+          const sameLang = chk.broken.every((i) => { const l = detectBrainLanguage(i.text); return !l || l === insLang; });
+          said = lastResort(chk.broken, chk.rewrite, sameLang) || checkingLine(insLang);
+          this.logger.warn(`voice line replaced (owner instruction): ${text.slice(0, 120)}`);
+        }
+        if (chk) this.instructions.noteUse(tenantId, chk.applied, chk.broken);
+      }
+      return { reply: said || agentFallbackLines(acc.langSwitch || lang).keepGoing, done: acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure };
     }
     // Out of tool budget: NOT a goodbye. The desk is handed the thread and the line stays open.
     return { reply: callbackLines(acc.langSwitch || lang).stuck, done: false, stuck: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure ?? 'tool loop exhausted' };
@@ -1830,6 +1853,22 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
       select: { id: true, fromNumber: true, outcome: true, appointmentId: true, durationSec: true, createdAt: true },
     });
     return rows;
+  }
+
+  /** One call of THIS salon with what was said, turn by turn. Another salon's id is simply not found. */
+  async callDetail(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const c = await this.prisma.voiceCall.findFirst({
+      where: { id, tenantId },
+      select: { id: true, fromNumber: true, outcome: true, appointmentId: true, durationSec: true, createdAt: true, language: true, transcript: true },
+    });
+    if (!c) throw new NotFoundException('Call not found');
+    const turns = (Array.isArray(c.transcript) ? c.transcript : [])
+      .map((t) => t as { role?: string; content?: unknown })
+      .filter((t) => (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string' && t.content.trim())
+      .map((t) => ({ role: t.role as 'user' | 'assistant', content: String(t.content) }));
+    const { transcript: _t, ...rest } = c; // eslint-disable-line @typescript-eslint/no-unused-vars
+    return { ...rest, turns };
   }
 
   async usage(user: AuthenticatedUser): Promise<VoiceUsage> {

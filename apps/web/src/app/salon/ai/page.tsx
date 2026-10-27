@@ -14,10 +14,12 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { useLang } from '../../../lib/i18n';
 import { ui } from '../../../lib/ui';
+import { AiInstructionsTab } from '../../../components/AiInstructionsTab';
+import { TeachAiPanel, canTeachAi, type InsChannel } from '../../../components/TeachAiPanel';
 
 type Lang = 'en' | 'vi' | 'es' | 'zh' | 'ko' | 'fr' | 'ja';
-type Tab = 'overview' | 'persona' | 'knowledge' | 'booking' | 'channels' | 'memory' | 'sandbox';
-const TABS: Tab[] = ['overview', 'persona', 'knowledge', 'booking', 'channels', 'memory', 'sandbox'];
+type Tab = 'overview' | 'teach' | 'persona' | 'knowledge' | 'booking' | 'channels' | 'memory' | 'sandbox';
+const TABS: Tab[] = ['overview', 'teach', 'persona', 'knowledge', 'booking', 'channels', 'memory', 'sandbox'];
 const LANGS: { id: Lang; label: string }[] = [
   { id: 'en', label: 'English' }, { id: 'vi', label: 'Tiếng Việt' }, { id: 'es', label: 'Español' },
   { id: 'zh', label: '中文' }, { id: 'ko', label: '한국어' }, { id: 'fr', label: 'Français' }, { id: 'ja', label: '日本語' },
@@ -89,6 +91,7 @@ function Inner() {
 
   const tabLabel: Record<Tab, string> = {
     overview: L(vi, 'Tổng quan & sức khoẻ', 'Overview & health'),
+    teach: L(vi, 'Lời dặn của chủ tiệm', 'Owner’s instructions'),
     persona: L(vi, 'Nhân cách & ngôn ngữ', 'Persona & languages'),
     knowledge: L(vi, 'Kiến thức & quy tắc', 'Knowledge & rules'),
     booking: L(vi, 'Đặt lịch & chuyển người', 'Booking & hand-off'),
@@ -131,6 +134,7 @@ function Inner() {
       </div>
 
       {tab === 'overview' && <Overview token={token} vi={vi} view={view} onGo={setTab} />}
+      {tab === 'teach' && <AiInstructionsTab token={token} vi={vi} />}
       {tab === 'persona' && <Persona brain={brain} patch={patch} vi={vi} canEdit={canEdit} />}
       {tab === 'knowledge' && <Knowledge brain={brain} patch={patch} vi={vi} canEdit={canEdit} />}
       {tab === 'booking' && <Booking brain={brain} patch={patch} vi={vi} canEdit={canEdit} />}
@@ -555,6 +559,8 @@ function Memory({ token, vi, canEdit }: { token: string | null; vi: boolean; can
 // ---------------------------------------------------------------- 7 · sandbox & logs
 
 function Sandbox({ token, vi }: { token: string | null; vi: boolean }) {
+  const mayTeach = canTeachAi(useAuth().user);
+  const [teach, setTeach] = useState<{ question: string; reply: string; channel: InsChannel; source: { kind: 'session' | 'manual'; id: string | null }; context: { role: 'user' | 'assistant'; content: string }[] } | null>(null);
   const [channel, setChannel] = useState<'chat' | 'voice'>('chat');
   const [msgs, setMsgs] = useState<{ role: 'user' | 'assistant'; content: string; trace?: string[]; ms?: number; lang?: string }[]>([]);
   const [input, setInput] = useState('');
@@ -603,6 +609,14 @@ function Sandbox({ token, vi }: { token: string | null; vi: boolean }) {
                   ? { background: '#6366f1', color: '#fff', borderRadius: '14px 14px 4px 14px', padding: '8px 12px', fontSize: 14 }
                   : { background: 'var(--c111827)', color: 'var(--ce2e8f0)', border: '1px solid var(--line)', borderRadius: '14px 14px 14px 4px', padding: '8px 12px', fontSize: 14 }}>{m.content}</div>
                 {m.role === 'assistant' && (m.trace?.length || m.ms) ? <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 3 }}>↳ {m.lang?.toUpperCase()} · {m.ms} ms{m.trace?.length ? ` · ${m.trace.join(' · ')}` : ''}</div> : null}
+                {m.role === 'assistant' && mayTeach && (
+                  <button type="button" onClick={() => {
+                    const prior = msgs.slice(0, i);
+                    const q = [...prior].reverse().find((x) => x.role === 'user')?.content ?? '';
+                    const at = prior.map((x) => x.content).lastIndexOf(q);
+                    setTeach({ question: q, reply: m.content, channel: channel === 'voice' ? 'voice' : 'messenger', source: { kind: 'manual', id: null }, context: prior.slice(0, Math.max(0, at)).map((x) => ({ role: x.role, content: x.content })) });
+                  }} style={{ marginTop: 4, minHeight: 30, padding: '0 10px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>✎ {L(vi, 'Sửa câu này', 'Fix this reply')}</button>
+                )}
               </div>
             ))}
           </div>
@@ -642,9 +656,27 @@ function Sandbox({ token, vi }: { token: string | null; vi: boolean }) {
           {open.failures.length > 0 && <div style={{ fontSize: 12, color: 'var(--ink-bad)', marginTop: 6 }}>{open.failures.map((f) => f.what).join(' · ')}</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10, padding: 12, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--raised)', fontSize: 13, maxHeight: 360, overflowY: 'auto' }}>
             {open.turns.length === 0 && <span style={{ color: 'var(--c94a3b8)' }}>{L(vi, 'Không có nội dung.', 'No transcript.')}</span>}
-            {open.turns.map((t, i) => <div key={i}><b style={{ color: t.role === 'user' ? 'var(--ce2e8f0)' : 'var(--ink-link)' }}>{t.role === 'user' ? L(vi, 'Khách', 'Customer') : 'AI'}</b> <span style={{ color: 'var(--ccbd5e1)' }}>{t.content}</span></div>)}
+            {open.turns.map((t, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <span style={{ flex: 1, minWidth: 0 }}><b style={{ color: t.role === 'user' ? 'var(--ce2e8f0)' : 'var(--ink-link)' }}>{t.role === 'user' ? L(vi, 'Khách', 'Customer') : 'AI'}</b> <span style={{ color: 'var(--ccbd5e1)' }}>{t.content}</span></span>
+                {t.role === 'assistant' && mayTeach && t.content.trim() && (
+                  <button type="button" onClick={() => {
+                    const prior = open.turns.slice(0, i);
+                    let qi = prior.length - 1;
+                    while (qi >= 0 && prior[qi].role !== 'user') qi -= 1;
+                    const ch = (['voice', 'messenger', 'instagram', 'zalo', 'web'].includes(open.channel) ? open.channel : 'messenger') as InsChannel;
+                    setTeach({ question: qi >= 0 ? prior[qi].content : '', reply: t.content, channel: ch, source: { kind: 'session', id: open.id }, context: prior.slice(0, Math.max(0, qi)).filter((x) => x.role === 'user' || x.role === 'assistant').map((x) => ({ role: x.role as 'user' | 'assistant', content: x.content })) });
+                  }} style={{ flexShrink: 0, minHeight: 30, padding: '0 10px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>✎ {L(vi, 'Sửa', 'Fix')}</button>
+                )}
+              </div>
+            ))}
           </div>
         </div>
+      )}
+      {teach && (
+        <TeachAiPanel token={token} vi={vi} question={teach.question} reply={teach.reply} channel={teach.channel} source={teach.source} context={teach.context}
+          callback={teach.channel === 'voice' && open?.phone ? { phone: open.phone, name: open.customerName } : null}
+          onClose={() => setTeach(null)} />
       )}
     </div>
   );

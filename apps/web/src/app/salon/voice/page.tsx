@@ -12,6 +12,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { useLang } from '../../../lib/i18n';
+import { TeachAiPanel, canTeachAi } from '../../../components/TeachAiPanel';
 import { AiNotesBox } from '../../../components/AiNotesBox';
 import { VoicePicker, type VoiceOpt } from '../../../components/VoicePicker';
 import { uiLocale } from '../../../lib/datetime';
@@ -247,6 +248,17 @@ function Inner() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [usage, setUsage] = useState<VUsage | null>(null);
+  // One call opened to read what the AI said — and to correct it (TeachAiPanel).
+  const mayTeach = canTeachAi(useAuth().user);
+  const [callOpen, setCallOpen] = useState<{ id: string; fromNumber: string | null; createdAt: string; turns: { role: 'user' | 'assistant'; content: string }[] } | null>(null);
+  const [callErr, setCallErr] = useState<string | null>(null);
+  const [teach, setTeach] = useState<{ index: number; question: string; reply: string } | null>(null);
+  const openCall = useCallback(async (id: string) => {
+    if (!token) return;
+    setCallErr(null);
+    try { setCallOpen(await apiFetch(`/voice/calls/${id}`, { token })); }
+    catch (e) { setCallErr(e instanceof Error ? e.message : 'Error'); }
+  }, [token]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -633,6 +645,7 @@ function Inner() {
                   <th style={ui.th}>{t('colFrom')}</th>
                   <th style={ui.th}>{t('colOutcome')}</th>
                   <th style={ui.th}>{t('colWhen')}</th>
+                  <th style={ui.th}><span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>{lang === 'vi' ? 'Nội dung' : 'Transcript'}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -641,6 +654,11 @@ function Inner() {
                     <td style={ui.td}>{cl.fromNumber || '—'}</td>
                     <td style={ui.td}><span style={{ color: outc(cl.outcome).color, fontWeight: 600 }}>● {outc(cl.outcome)[lang as Lang]}</span></td>
                     <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{fmtWhen(cl.createdAt)}</td>
+                    <td style={{ ...ui.td, textAlign: 'right' }}>
+                      <button type="button" onClick={() => void openCall(cl.id)} style={{ minHeight: 32, padding: '0 10px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                        {lang === 'vi' ? 'Xem lời AI nói' : 'What the AI said'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -648,6 +666,38 @@ function Inner() {
           </div>
           <Pager paged={pgCalls} />
           </>
+        )}
+        {callErr && <div role="alert" style={{ fontSize: 13, color: 'var(--ink-bad)', marginTop: 8 }}>{callErr}</div>}
+        {callOpen && (
+          <div style={{ marginTop: 14, border: '1px solid var(--c334155)', borderRadius: 12, padding: 14, background: 'var(--raised)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+              <span style={{ fontWeight: 800, color: 'var(--ce2e8f0)', flex: 1, minWidth: 0 }}>{callOpen.fromNumber || '—'} · {fmtWhen(callOpen.createdAt)}</span>
+              <button type="button" aria-label={lang === 'vi' ? 'Đóng' : 'Close'} onClick={() => setCallOpen(null)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 18, cursor: 'pointer' }}>×</button>
+            </div>
+            {callOpen.turns.length === 0 && <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{lang === 'vi' ? 'Cuộc gọi này không có nội dung.' : 'No transcript for this call.'}</div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto' }}>
+              {callOpen.turns.map((tu, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13.5, lineHeight: 1.5 }}>
+                  <b style={{ width: 52, flexShrink: 0, color: tu.role === 'user' ? 'var(--ce2e8f0)' : 'var(--ink-link)' }}>{tu.role === 'user' ? (lang === 'vi' ? 'Khách' : 'Caller') : 'AI'}</b>
+                  <span style={{ flex: 1, minWidth: 0, color: 'var(--ccbd5e1)' }}>{tu.content}</span>
+                  {tu.role === 'assistant' && mayTeach && (
+                    <button type="button" onClick={() => {
+                      let qi = i - 1;
+                      while (qi >= 0 && callOpen.turns[qi].role !== 'user') qi -= 1;
+                      setTeach({ index: qi >= 0 ? qi : i, question: qi >= 0 ? callOpen.turns[qi].content : '', reply: tu.content });
+                    }} style={{ flexShrink: 0, minHeight: 30, padding: '0 10px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      ✎ {lang === 'vi' ? 'Sửa' : 'Fix'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {teach && callOpen && (
+          <TeachAiPanel token={token} vi={lang === 'vi'} question={teach.question} reply={teach.reply} channel="voice"
+            source={{ kind: 'call', id: callOpen.id }} context={callOpen.turns.slice(0, teach.index)}
+            callback={{ phone: callOpen.fromNumber, name: null }} onClose={() => setTeach(null)} />
         )}
       </div>
 

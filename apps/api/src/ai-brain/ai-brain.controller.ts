@@ -8,6 +8,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { AiBrainService } from './ai-brain.service';
+import { AiInstructionsService } from './instructions.service';
 import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
 import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 
@@ -34,7 +35,7 @@ class MemoryNoteDto {
 @Caps('marketing')
 @Controller('ai-brain')
 export class AiBrainController {
-  constructor(private readonly brain: AiBrainService) {}
+  constructor(private readonly brain: AiBrainService, private readonly instructions: AiInstructionsService) {}
 
   @Get('settings')
   settings(@CurrentUser() user: AuthenticatedUser) { return this.brain.settingsView(user); }
@@ -86,4 +87,33 @@ export class AiBrainController {
   @RateLimit(30, 60_000)
   @Post('sandbox')
   sandbox(@CurrentUser() user: AuthenticatedUser, @Body() dto: SandboxDto) { return this.brain.sandbox(user, dto); }
+  // ---- The owner's instructions (instructions.ts). Reading: anyone with the
+  // screen; writing: owner / manager, decided in the service. Bodies are
+  // cleaned field by field there (cleanInstruction).
+  @Get('instructions')
+  listInstructions(@CurrentUser() user: AuthenticatedUser) { return this.instructions.list(user); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('aiBrain')
+  @Post('instructions')
+  createInstruction(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.instructions.create(user, dto); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('aiBrain')
+  @RateLimit(30, 60_000)
+  @Post('instructions/try')
+  tryInstruction(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.brain.tryInstruction(user, dto); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('aiBrain')
+  @Patch('instructions/:id')
+  updateInstruction(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: Record<string, unknown>) { return this.instructions.update(user, id, dto); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('aiBrain')
+  @Delete('instructions/:id')
+  deleteInstruction(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.instructions.remove(user, id); }
+
+  @Post('callbacks')
+  addCallback(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.brain.ownerCallback(user, dto); }
 }

@@ -31,6 +31,9 @@ import {
   sharedAiHealth, recordAiSuccess, recordAiFailure, shouldAlert, markAlerted, aiAlertLine,
 } from './ai-health';
 import { chat as llmChat, openAiEnabled, type ChatMessage, type ToolDef, type TextBlock } from '../common/llm';
+import { AiInstructionsService, instructionChannel } from '../ai-brain/instructions.service';
+import { checkingLine, correctionFor, lastResort } from '../ai-brain/instructions';
+import { detectLanguage as detectBrainLanguage } from '../ai-brain/brain-rules';
 import { withBookingLink } from './booking-link';
 import { FbPageRow, FbPagesBody, walkFbPages } from './fb-pages';
 import { runLimited } from './run-limited';
@@ -286,6 +289,8 @@ export class MessengerService implements OnModuleInit {
     @Optional() private readonly gaps?: KnowledgeGapsService,
     // The salon's AI brain (ai-brain/): persona, facts, rules, cross-channel memory, callback tasks, the session log.
     @Optional() private readonly brain?: AiBrainService,
+    // The owner's instructions (ai-brain/instructions.ts): above every other rule, checked before a reply goes.
+    @Optional() private readonly instructions?: AiInstructionsService,
   ) {}
 
   /**
@@ -3973,6 +3978,14 @@ export class MessengerService implements OnModuleInit {
       ? [brainOut.blocks.facts ? `Salon notes:\n${brainOut.blocks.facts}` : '', brainOut.blocks.rules].filter(Boolean).join('\n')
       : [sharedNotes, String(aiInstruction ?? '').trim()].filter(Boolean).join('\n')).slice(0, 4000);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    // The owner's instructions to the AI (ai-brain/instructions.ts): the
+    // highest-priority section of the prompt, the ones THIS message is about
+    // pinned next to it, and a check of the reply before it goes (below).
+    // Booking mode only: the sales page is Lumio's own.
+    const insCh = instructionChannel(ctx.channel);
+    const owner = this.instructions && ctx.mode === 'booking'
+      ? await this.instructions.forTurn(tenantId, insCh, userText).catch(() => null)
+      : null;
 
     // WHERE this chat is happening. It said "Facebook Messenger" to everyone,
     // including a customer typing into the salon's own website and one writing
@@ -4418,7 +4431,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
      * the API's prefix, so the one breakpoint below covers them as well.
      */
     const brainStatic = brainOut ? `\n${[brainOut.blocks.persona, brainOut.blocks.booking, brainOut.blocks.handoffNote].filter(Boolean).join('\n')}` : '';
-    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + brainStatic + personaRule + readingRule + voiceRule + formatRule + channelRule + closingRule;
+    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + brainStatic + personaRule + readingRule + voiceRule + formatRule + channelRule + closingRule + (owner?.block ? `\n${owner.block}` : '');
     const clockLine = ctx.mode === 'sales'
       ? `\nThe current time is ${nowLocal} (timezone ${tz}).`
       : `\nThe salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.`;
@@ -4433,7 +4446,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         + (ctx.mode === 'sales' ? '\nWhen a photo shows their shop and they confirm (or simply carry on), call save_lead with salonName, city and phone taken from the photo — use their Facebook name as the name if they have not typed one.' : '')
       : '';
     const crossMemoryBlock = ctx.crossMemory ? `\n${ctx.crossMemory}` : '';
-    const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang));
+    const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang));
     const system = [
       { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicSystem },
@@ -4486,6 +4499,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     let repeatRetried = false;
     let questionRetried = false;
     let fillerRetried = false;
+    let ownerRetried = false;
     // Which tools this run actually called — the booking gates judge a reply
     // against what HAPPENED, not against what the model says happened.
     const toolsUsed = new Set<string>();
@@ -4728,6 +4742,31 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         messages.push({ role: 'assistant', content: blocks });
         messages.push({ role: 'user', content: VAGUE_CORRECTION });
         continue;
+      }
+      // THE OWNER'S INSTRUCTIONS — the last gate, so the owner has the final
+      // word over every rewrite above. A reply that breaks one goes back once
+      // with the instruction quoted; a second break sends the judge's
+      // corrected reply (or, for one broken answer, the owner's own words).
+      // A check that cannot run never holds a reply back.
+      if (owner && this.instructions && ctx.mode === 'booking' && text) {
+        const insLang = brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en');
+        const chk = await this.instructions.check(tenantId, { turn: owner, channel: insCh, customer: userText, draft: text, lang: insLang, timeoutMs: 6000 }).catch(() => null);
+        if (chk?.broken.length) {
+          this.instructions.noteUse(tenantId, chk.applied, chk.broken);
+          if (!ownerRetried) {
+            ownerRetried = true;
+            this.logger.warn(`Reply blocked (owner instruction): ${text.slice(0, 140)}`);
+            messages.push({ role: 'assistant', content: blocks });
+            messages.push({ role: 'user', content: correctionFor(owner.all, chk.broken) });
+            continue;
+          }
+          const sameLang = chk.broken.every((i) => { const l = detectBrainLanguage(i.text); return !l || l === insLang; });
+          const last = lastResort(chk.broken, chk.rewrite, sameLang);
+          this.logger.warn(`Reply blocked twice (owner instruction); ${last ? 'sending the corrected reply' : 'no correction available'}`);
+          return last ? withBookingLink(last, ctx.booked?.url) : checkingLine(insLang);
+        } else if (chk?.applied.length) {
+          this.instructions.noteUse(tenantId, chk.applied, []);
+        }
       }
       return withBookingLink(text || (customerLang === 'vi' ? 'Dạ em nghe ạ — em giúp gì thêm cho anh/chị không ạ?' : 'Got it! How else can I help you book?'), ctx.booked?.url);
     }

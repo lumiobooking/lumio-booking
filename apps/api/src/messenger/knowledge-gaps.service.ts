@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { requestBotCatchUp } from './bot-refresh';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { factLabel, gapKey, redact, type GapSource } from './knowledge-gaps';
+import { AiInstructionsService } from '../ai-brain/instructions.service';
 
 /** Open questions kept per salon. Past this, new ones wait until some are answered. */
 export const MAX_OPEN_GAPS = 300;
@@ -23,7 +24,12 @@ export interface GapRow {
 export class KnowledgeGapsService {
   private readonly logger = new Logger('KnowledgeGaps');
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // The owner's answer also becomes an instruction of the salon's AI brain, which every
+    // channel obeys — bot facts alone stopped reaching the AI once the brain was saved.
+    @Optional() private readonly instructions?: AiInstructionsService,
+  ) {}
 
   /** The generated client on a dev machine may predate the table — typed loosely on purpose. */
   private get gaps(): {
@@ -112,6 +118,10 @@ export class KnowledgeGapsService {
       data: { status: 'answered', answer, answeredBy: user.userId ?? null, answeredAt: new Date() },
     });
     await this.audit(tenantId, user.userId ?? null, 'messenger.knowledge_gap_answered', gap.id);
+    if (this.instructions) {
+      await this.instructions.fromGap(tenantId, user.userId ?? null, user.email || user.userId || null, gap.question, answer, gap.id)
+        .catch((e) => this.logger.warn(`gap answer not saved as an instruction: ${String(e).slice(0, 120)}`));
+    }
     // The customer who asked is still waiting: the bot re-reads that conversation and answers now.
     requestBotCatchUp(tenantId, 'messenger.knowledge_gap_answered');
     return { ok: true, label };

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { VoiceService } from './voice.service';
 import { ProvisionVoiceDto, UpdateVoiceDto, VoiceLimitsDto } from './dto/voice.dto';
@@ -29,6 +29,12 @@ export class VoiceController {
   @Get('calls')
   calls(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.listCalls(user);
+  }
+
+  // One call with its transcript, for reviewing (and correcting) what the AI said.
+  @Get('calls/:id')
+  call(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.callDetail(user, id);
   }
 
   @Get('usage')

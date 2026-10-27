@@ -4,6 +4,7 @@ import { PushModule } from '../push/push.module';
 import { BookingsModule } from '../bookings/bookings.module';
 import { AiBrainController } from './ai-brain.controller';
 import { AiBrainService } from './ai-brain.service';
+import { AiInstructionsService } from './instructions.service';
 
 /**
  * The salon's AI brain (brain-settings.ts). Global, so the hotline, Messenger,
@@ -13,7 +14,7 @@ import { AiBrainService } from './ai-brain.service';
 @Module({
   imports: [SettingsModule, PushModule, BookingsModule],
   controllers: [AiBrainController],
-  providers: [AiBrainService],
-  exports: [AiBrainService],
+  providers: [AiBrainService, AiInstructionsService],
+  exports: [AiBrainService, AiInstructionsService],
 })
 export class AiBrainModule {}

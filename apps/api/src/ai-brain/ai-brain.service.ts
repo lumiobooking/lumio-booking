@@ -13,7 +13,9 @@ import {
   AI_BRAIN_KEY, brainFromLegacy, brainPromptBlocks, defaultBrain, sanitizeBrain,
   type AiBrain, type Lang,
 } from './brain-settings';
-import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, type EndReason } from './brain-rules';
+import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLanguage, type EndReason } from './brain-rules';
+import { AiInstructionsService, instructionChannel } from './instructions.service';
+import { checkingLine, cleanInstruction, correctionFor, lastResort, type Instruction, type InstructionChannel } from './instructions';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -55,6 +57,8 @@ export class AiBrainService {
     @Optional() private readonly settings?: SettingsService,
     @Optional() private readonly push?: PushService,
     @Optional() private readonly party?: PartyAvailabilityService,
+    // The owner's instructions (instructions.ts): the sandbox obeys them exactly as the live assistants do.
+    @Optional() private readonly instructions?: AiInstructionsService,
   ) {}
 
   private get db(): Row { return this.prisma as unknown as Row; }
@@ -455,7 +459,11 @@ export class AiBrainService {
    * and the real book are read, nothing is written, no text is sent, and
    * the memory is untouched. The same prompt blocks the live assistants use.
    */
-  async sandbox(user: AuthenticatedUser, dto: { messages: { role: 'user' | 'assistant'; content: string }[]; channel?: 'voice' | 'chat'; customerId?: string | null }) {
+  async sandbox(
+    user: AuthenticatedUser,
+    dto: { messages: { role: 'user' | 'assistant'; content: string }[]; channel?: 'voice' | 'chat'; customerId?: string | null },
+    opts: { instructions?: Instruction[]; on?: InstructionChannel } = {},
+  ) {
     const tenantId = this.tenantId(user);
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) throw new BadRequestException('AI is not configured on this server');
@@ -474,6 +482,9 @@ export class AiBrainService {
     const locale = String(tenant?.market ?? '').toUpperCase() === 'VN' ? 'vi-VN' : 'en-US';
     const menuText = services.map((s, i) => `- ${serviceCode(i)} ${s.name} — ${formatMoneyShort(s.priceCents, s.currency ?? 'USD', locale)}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''}`).join('\n');
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const lastUser = msgs[msgs.length - 1].content;
+    const insCh: InstructionChannel = opts.on ?? (channel === 'voice' ? 'voice' : 'messenger');
+    const owner = this.instructions ? await this.instructions.forTurn(tenantId, insCh, lastUser, opts.instructions).catch(() => null) : null;
     const system = `You are the ${channel === 'voice' ? 'phone receptionist' : 'booking assistant'} for "${tenant?.name ?? 'our salon'}". THIS IS A TEST CONVERSATION run by the salon's own staff: behave exactly as with a real customer, but no booking will be written.
 ${pre.persona}
 ${channel === 'voice' ? 'Your words are read aloud: one or two short sentences, under 30 words, one question at a time, no lists or emoji.' : 'Write like a warm receptionist texting: 1–2 short sentences, one question at a time, a light emoji sometimes.'}
@@ -485,7 +496,7 @@ ${blocks.facts ? `Salon notes:\n${blocks.facts}` : ''}
 ${blocks.rules ? `THE OWNER'S RULES — follow on every conversation:\n${blocks.rules}` : ''}
 ${this.memoryBlock(memory)}
 The salon's local time is ${nowLocal} (${tz}). Only state hours, prices and services given here.
-${blocks.language}`;
+${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n` : ''}${blocks.language}`;
     const ctx = { menu, staff: staff as { id: string; firstName: string; lastName: string | null }[] };
     const parties = this.party ?? (this.settings ? new PartyAvailabilityService(this.prisma, this.settings) : null);
     const tools = [
@@ -496,7 +507,10 @@ ${blocks.language}`;
     const messages: Row[] = msgs.map((m) => ({ role: m.role, content: m.content }));
     const trace: string[] = [];
     const t0 = Date.now();
-    for (let loop = 0; loop < 5; loop++) {
+    let corrected = false;
+    let firstDraft: string | null = null;
+    let firstBroken: string[] | null = null;
+    for (let loop = 0; loop < 6; loop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({ model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 300, system, tools, messages }),
@@ -525,8 +539,70 @@ ${blocks.language}`;
         continue;
       }
       const text = blocksOut.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
-      return { reply: text, lang, trace, ms: Date.now() - t0 };
+      // The owner's instructions, checked exactly as on a live conversation:
+      // a broken one goes back once for a rewrite, then the judge's (or the
+      // owner's own) words go out instead.
+      if (owner && this.instructions && text) {
+        const chk = await this.instructions.check(tenantId, { turn: owner, channel: insCh, customer: lastUser, draft: text, lang, timeoutMs: 8000 }).catch(() => null);
+        if (chk?.broken.length) {
+          const brokenText = chk.broken.map((i) => i.text);
+          if (!corrected) {
+            corrected = true;
+            firstDraft = text;
+            firstBroken = brokenText;
+            trace.push(`blocked: ${brokenText.join(' | ').slice(0, 200)}`);
+            messages.push({ role: 'assistant', content: blocksOut });
+            messages.push({ role: 'user', content: correctionFor(owner.all, chk.broken) });
+            continue;
+          }
+          const sameLang = chk.broken.every((i) => { const l = detectLanguage(i.text); return !l || l === lang; });
+          const last = lastResort(chk.broken, chk.rewrite, sameLang);
+          trace.push('blocked twice: replaced');
+          return { reply: last || checkingLine(lang), lang, trace, ms: Date.now() - t0, check: { followed: !!last, corrected: true, draft: firstDraft ?? text, broken: firstBroken ?? brokenText, applied: chk.applied.map((i) => i.id) } };
+        }
+        return { reply: text, lang, trace, ms: Date.now() - t0, check: { followed: true, corrected, draft: firstDraft, broken: firstBroken ?? [], applied: (chk?.applied ?? []).map((i) => i.id) } };
+      }
+      return { reply: text, lang, trace, ms: Date.now() - t0, check: null };
     }
-    return { reply: '', lang, trace: [...trace, 'tool loop exhausted'], ms: Date.now() - t0 };
+    return { reply: '', lang, trace: [...trace, 'tool loop exhausted'], ms: Date.now() - t0, check: null };
+  }
+
+  /**
+   * "Thử lại" on the teach panel: the customer's question run through the
+   * sandbox with the instruction being written (or edited) already in force,
+   * and nothing saved. The rest of the salon's instructions apply too.
+   */
+  async tryInstruction(user: AuthenticatedUser, dto: Record<string, unknown>) {
+    const tenantId = this.tenantId(user);
+    if (!this.instructions) throw new BadRequestException('Instructions are not available');
+    const c = cleanInstruction(dto);
+    if (!c.ok) throw new BadRequestException(c.error);
+    const question = typeof dto.question === 'string' ? dto.question.trim().slice(0, 2000) : '';
+    if (!question) throw new BadRequestException('Send the customer\'s question');
+    const editing = typeof dto.editingId === 'string' ? dto.editingId : null;
+    const stored = await this.instructions.allFor(tenantId);
+    const temp: Instruction = { id: '__try', kind: c.value.kind, text: c.value.text, triggers: c.value.triggers, mode: c.value.mode, channels: c.value.channels, on: true };
+    const list = [...stored.filter((i) => i.id !== editing), temp];
+    const on = instructionChannel(typeof dto.channel === 'string' ? dto.channel : null);
+    const ctx = (Array.isArray(dto.context) ? dto.context : [])
+      .filter((m): m is { role: 'user' | 'assistant'; content: string } => !!m && typeof m === 'object' && ((m as Row).role === 'user' || (m as Row).role === 'assistant') && typeof (m as Row).content === 'string')
+      .slice(-8).map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }));
+    while (ctx.length && ctx[0].role !== 'user') ctx.shift();
+    while (ctx.length && ctx[ctx.length - 1].role === 'user') ctx.pop();
+    const r = await this.sandbox(user, { messages: [...ctx, { role: 'user', content: question }], channel: on === 'voice' ? 'voice' : 'chat' }, { instructions: list, on });
+    return { reply: r.reply, lang: r.lang, ms: r.ms, followed: r.check ? r.check.followed : true, corrected: r.check?.corrected ?? false, draft: r.check?.draft ?? null, applied: (r.check?.applied ?? []).includes('__try') };
+  }
+
+  /** "Gọi lại cho khách" from a call or a chat the owner reviewed: a callback task for the desk. */
+  async ownerCallback(user: AuthenticatedUser, dto: Record<string, unknown>) {
+    const tenantId = this.tenantId(user);
+    const s = (v: unknown, n: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : null);
+    const summary = s(dto.summary, 600);
+    if (!summary) throw new BadRequestException('Say what to tell the customer');
+    const ch = s(dto.channel, 20);
+    const channel = (['voice', 'messenger', 'instagram', 'zalo', 'web'].includes(String(ch)) ? ch : 'voice') as Channel;
+    const r = await this.createCallback({ tenantId, channel, reason: 'owner', summary, phone: s(dto.phone, 40), name: s(dto.name, 120), customerId: s(dto.customerId, 64), threadId: s(dto.threadId, 64) });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'ai_callback.created_by_owner', resourceType: 'ai_callback', resourceId: r?.id ?? 'none' });
+    return { ok: !!r, id: r?.id ?? null };
   }
 }

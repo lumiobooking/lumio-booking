@@ -3989,6 +3989,37 @@ model AiCallbackTask {
   @@map("ai_callback_tasks")
 }
 
+// The owner's instructions to the salon's AI (ai-brain/instructions.ts): a
+// corrected answer, an "always" or a "never" rule, usually written straight
+// from a reply the AI got wrong. They outrank every other part of the brain,
+// on every channel the owner ticked. One salon's rows are never read for
+// another salon.
+model AiInstruction {
+  id           String    @id @default(uuid())
+  tenantId     String
+  kind         String    // 'answer' | 'always' | 'never'
+  text         String
+  triggers     Json      @default("[]") // example customer questions this answers
+  mode         String    @default("meaning") // 'meaning' | 'verbatim'
+  channels     Json      @default("[]") // [] = every channel; else voice/messenger/instagram/zalo/web
+  on           Boolean   @default(true)
+  reason       String?   // why the AI was wrong (the owner's chip)
+  sourceKind   String?   // 'thread' | 'call' | 'session' | 'gap' | 'manual'
+  sourceId     String?
+  sourceQuestion String? // the customer's words the owner corrected
+  sourceReply  String?   // what the AI said
+  usedCount    Int       @default(0)
+  blockedCount Int       @default(0)
+  lastUsedAt   DateTime?
+  createdBy    String?
+  updatedBy    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
+
+  @@index([tenantId, on])
+  @@map("ai_instructions")
+}
+
 // Money given back on a paid bill (POS › Orders › Refund). The negative row in
 // `payments` moves revenue; this row says what came off WHICH line — so the
 // technician's sales, tips and commission drop by the refunded part on the

@@ -157,15 +157,27 @@ export class HelcimConnector implements PaymentConnector {
    * payments — e.g. booking deposits. The frontend renders the returned
    * checkoutToken in the HelcimPay modal; no card data touches Lumio.
    */
-  async startOnlineCheckout(secret: string, amountCents: number, currency: string, reference: string) {
+  async startOnlineCheckout(secret: string, amountCents: number, currency: string, reference: string, opts?: { description?: string }) {
+    const description = opts?.description || 'Booking deposit';
+    const amount = this.money(amountCents);
+    const invoiceNumber = this.invoiceNo(reference);
+    const base = { paymentType: 'purchase', amount, currency: currency.toUpperCase() };
+    // `invoiceNumber` on its own must name an invoice that ALREADY exists in
+    // Helcim; ours never does. `invoiceRequest` creates the invoice when the
+    // card is approved, under the number we later poll by.
     const r = await httpJson('POST', `${BASE}/helcim-pay/initialize`, this.headers(secret), {
-      paymentType: 'purchase',
-      amount: this.money(amountCents),
-      currency: currency.toUpperCase(),
-      invoiceNumber: this.invoiceNo(reference),
+      ...base,
+      invoiceRequest: {
+        invoiceNumber,
+        lineItems: [{ sku: 'DEPOSIT', description: description.slice(0, 120), quantity: 1, price: amount, total: amount }],
+      },
     });
-    if (!r.ok) throw new Error(this.err(r));
-    return { checkoutToken: r.json?.checkoutToken, secretToken: r.json?.secretToken };
+    if (r.ok && r.json?.checkoutToken) return { checkoutToken: r.json.checkoutToken, secretToken: r.json?.secretToken };
+    // Older accounts accept the plain shape; try it once before giving up so
+    // a schema difference never silently blocks deposits.
+    const legacy = await httpJson('POST', `${BASE}/helcim-pay/initialize`, this.headers(secret), { ...base, invoiceNumber });
+    if (legacy.ok && legacy.json?.checkoutToken) return { checkoutToken: legacy.json.checkoutToken, secretToken: legacy.json?.secretToken };
+    throw new Error(this.err(r.ok ? legacy : r));
   }
 
   /**

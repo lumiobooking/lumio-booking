@@ -20,6 +20,21 @@ export function bookLangForCountry(country?: string | null): BookLang {
 }
 
 const VI: Record<string, string> = {
+  // online deposit / pay-now after booking
+  'Almost done — pay the deposit': 'Sắp xong — vui lòng đặt cọc',
+  'Almost done — complete the payment': 'Sắp xong — vui lòng thanh toán',
+  'Deposit {amount} not paid yet': 'Chưa đặt cọc {amount}',
+  'Payment {amount} not paid yet': 'Chưa thanh toán {amount}',
+  'Your time is held for {minutes} minutes. If the deposit is not paid by then, the booking is cancelled automatically.': 'Giờ của bạn được giữ {minutes} phút. Nếu chưa đặt cọc trong thời gian này, lịch hẹn sẽ tự động huỷ.',
+  'Opening secure payment…': 'Đang mở trang thanh toán an toàn…',
+  'Checking payment…': 'Đang kiểm tra thanh toán…',
+  'Payment window open — reopen it': 'Cửa sổ thanh toán đang mở — mở lại',
+  'Pay {amount} now': 'Thanh toán {amount} ngay',
+  'The payment could not start (error {code}).': 'Không mở được thanh toán (lỗi {code}).',
+  'The payment page did not open. Please try again.': 'Trang thanh toán không mở được. Vui lòng thử lại.',
+  'The secure payment window could not load. Check your connection or turn off ad blockers, then try again.': 'Không tải được cửa sổ thanh toán. Kiểm tra kết nối hoặc tắt chặn quảng cáo rồi thử lại.',
+  'The payment was not completed.': 'Thanh toán chưa hoàn tất.',
+  'We have not received the payment yet.': 'Chúng tôi chưa nhận được thanh toán.',
   // group booking — the cart lists every person
   'You': 'Bạn',
   'Guest {n}': 'Khách {n}',

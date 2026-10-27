@@ -405,6 +405,11 @@ export default function PublicBookingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ paymentStatus: string | null } | null>(null);
+  // Money due online right after booking (deposit or "pay now"). Until the
+  // provider confirms it, the result screen says so — with the reason when it
+  // failed and a button to try again — never "Pay at the salon".
+  const [onlineDue, setOnlineDue] = useState<{ bookingId: string; cents: number; kind: 'deposit' | 'full'; phase: 'starting' | 'open' | 'checking' | 'failed' | 'paid'; error?: string } | null>(null);
+  const patchDue = (p: Partial<NonNullable<typeof onlineDue>>) => setOnlineDue((d) => (d ? { ...d, ...p } : d));
   // The visit cart. A customer who wants two different times books TWO visits:
   // finish one, press "add another", pick again. Saved visits sit here as chips
   // until one final Book creates them all. Contact details are shared.
@@ -642,51 +647,69 @@ export default function PublicBookingPage() {
   // a new tab, then poll our server which verifies the payment with the
   // provider. Poll every 6s (public confirm endpoint is rate-limited 12/min).
   async function payDepositViaUrl(bookingId: string, url: string) {
-    window.open(url, '_blank', 'noopener');
+    const tab = window.open(url, '_blank', 'noopener');
+    // Browsers return null for a noopener tab even when it opened, so this
+    // cannot tell a blocked popup apart; the retry button covers both.
+    void tab;
+    patchDue({ phase: 'open' });
     for (let i = 0; i < 100; i++) {
       await new Promise((s2) => setTimeout(s2, 6000));
       try {
         const c = await fetch(`${base}/bookings/${bookingId}/online-confirm`, { method: 'POST' });
         const cj = await c.json().catch(() => null);
-        if (cj?.ok) { setResult({ paymentStatus: 'PAID' }); return; }
+        if (cj?.ok) { setResult({ paymentStatus: 'PAID' }); patchDue({ phase: 'paid', error: undefined }); return; }
       } catch { /* transient network error — keep polling */ }
     }
+    patchDue({ phase: 'failed', error: bt('We have not received the payment yet.') });
   }
 
   async function payDepositOnline(bookingId: string) {
+    const fail = (error: string) => patchDue({ phase: 'failed', error });
+    patchDue({ phase: 'starting', error: undefined });
     try {
       const r = await fetch(`${base}/bookings/${bookingId}/online-checkout`, { method: 'POST' });
       const j = await r.json().catch(() => null);
-      if (!r.ok) return;
+      // Say WHY — a silent return here once left customers on "Booking
+      // received · Pay at the salon" while the unpaid hold cancelled them.
+      if (!r.ok) return fail(String((j && (Array.isArray(j.message) ? j.message.join(', ') : j.message)) || btf('The payment could not start (error {code}).', { code: r.status })));
+      if (typeof j?.amountCents === 'number' && j.amountCents > 0) patchDue({ cents: j.amountCents });
       if (j?.url && !j?.checkoutToken) { await payDepositViaUrl(bookingId, String(j.url)); return; }
-      if (!j?.checkoutToken) return;
+      if (!j?.checkoutToken) return fail(bt('The payment page did not open. Please try again.'));
 
-      await loadHelcimPay();
+      try { await loadHelcimPay(); } catch { return fail(bt('The secure payment window could not load. Check your connection or turn off ad blockers, then try again.')); }
       const w = window as any;
-      if (typeof w.appendHelcimPayIframe !== 'function') return;
+      if (typeof w.appendHelcimPayIframe !== 'function') return fail(bt('The secure payment window could not load. Check your connection or turn off ad blockers, then try again.'));
 
+      patchDue({ phase: 'open' });
       // Wait for the modal to finish (success or cancel), with a safety timeout.
       await new Promise<void>((resolve) => {
         let done = false;
         const finish = () => { if (!done) { done = true; window.removeEventListener('message', onMsg); resolve(); } };
         const onMsg = (ev: MessageEvent) => {
           const d: any = ev.data;
-          if (d && typeof d === 'object' && String(d.eventName || '').includes(String(j.checkoutToken))) finish();
+          if (d && typeof d === 'object' && String(d.eventName || '').includes(String(j.checkoutToken))) {
+            // HelcimPay posts SUCCESS / ABORTED / HIDE for its modal.
+            const st = String(d.eventStatus || '').toUpperCase();
+            if (st === 'SUCCESS' || st === 'ABORTED' || st === 'HIDE') finish();
+          }
         };
         window.addEventListener('message', onMsg);
         w.appendHelcimPayIframe(j.checkoutToken);
         setTimeout(finish, 5 * 60_000);
       });
+      try { w.removeHelcimPayIframe?.(); } catch { /* modal already gone */ }
 
       // Server-side verification (settlement can lag a moment, so retry briefly).
+      patchDue({ phase: 'checking' });
       for (let i = 0; i < 5; i++) {
         const c = await fetch(`${base}/bookings/${bookingId}/online-confirm`, { method: 'POST' });
         const cj = await c.json().catch(() => null);
-        if (cj?.ok) { setResult({ paymentStatus: 'PAID' }); return; }
+        if (cj?.ok) { setResult({ paymentStatus: 'PAID' }); patchDue({ phase: 'paid', error: undefined }); return; }
         await new Promise((s2) => setTimeout(s2, 2000));
       }
+      fail(bt('The payment was not completed.'));
     } catch {
-      /* deposit not collected — the booking still stands, payable at the salon */
+      fail(bt('Network error. Please try again.'));
     }
   }
 
@@ -839,7 +862,11 @@ export default function PublicBookingPage() {
       // Salon has a real online provider + a deposit (or the whole visit, "pay
       // now") is due -> collect it now, in the provider's own page.
       if (body?.onlineProvider && ((body?.depositCents ?? 0) > 0 || (body?.payNowCents ?? 0) > 0) && body?.booking?.id) {
+        const dep = (body?.depositCents ?? 0) > 0;
+        setOnlineDue({ bookingId: String(body.booking.id), cents: dep ? body.depositCents : body.payNowCents, kind: dep ? 'deposit' : 'full', phase: 'starting' });
         void payDepositOnline(String(body.booking.id));
+      } else {
+        setOnlineDue(null);
       }
     } catch { setError(bt('Network error. Please try again.')); }
     finally { setSubmitting(false); }
@@ -867,10 +894,13 @@ export default function PublicBookingPage() {
     setVisitCart((c) => c.filter((_, k) => k !== i));
   }
 
+  // Something is still owed online for the booking just made.
+  const duePending = !!onlineDue && onlineDue.phase !== 'paid' && result?.paymentStatus !== 'PAID';
+
   function reset() {
     setStep(1); setSelectedDate(null); setServiceId(''); setExtraServiceIds([]); setAddonIds([]); setStaffId(''); setSlot(null);
     setAvail(null); setForm({ firstName: '', lastName: '', email: '', phone: '', birthDate: '', partySize: '1' }); setAddress('');
-    setPaymentType('PAY_LATER'); setResult(null); setError(null);
+    setPaymentType('PAY_LATER'); setResult(null); setError(null); setOnlineDue(null);
     setVisitCart([]); setBookedVisits([]);
     setExtraGuests([]); setActiveGuest(0);
   }
@@ -1184,8 +1214,12 @@ export default function PublicBookingPage() {
         {step === 5 ? (
           <div style={{ background: '#fff', borderRadius: embedded ? 12 : '0 0 14px 14px', padding: 32, marginTop: embedded ? 0 : 0 }}>
             <div style={{ textAlign: 'center', maxWidth: 380, margin: '0 auto' }}>
-              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: 34, display: 'grid', placeItems: 'center', margin: '0 auto 12px' }}>✓</div>
-              <h2 style={{ color: '#16a34a', margin: '4px 0' }}>{bookedVisits.length > 1 ? btf('{n} bookings received', { n: bookedVisits.length }) : bt('Booking received')}</h2>
+              {duePending ? (
+                <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fef3c7', color: '#b45309', fontSize: 30, display: 'grid', placeItems: 'center', margin: '0 auto 12px' }}>⏳</div>
+              ) : (
+                <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: 34, display: 'grid', placeItems: 'center', margin: '0 auto 12px' }}>✓</div>
+              )}
+              <h2 style={{ color: duePending ? '#b45309' : '#16a34a', margin: '4px 0' }}>{duePending ? (onlineDue?.kind === 'deposit' ? bt('Almost done — pay the deposit') : bt('Almost done — complete the payment')) : bookedVisits.length > 1 ? btf('{n} bookings received', { n: bookedVisits.length }) : bt('Booking received')}</h2>
               {bookedVisits.length > 1 ? (
                 <div style={{ textAlign: 'left', margin: '10px 0 6px', border: '1px solid #e9edf4', borderRadius: 12, overflow: 'hidden' }}>
                   {bookedVisits.map((label, i) => (
@@ -1206,7 +1240,28 @@ export default function PublicBookingPage() {
                   {bt('Each visit has its own confirmation and its own cancel link, so you can change one without touching the others.')}
                 </p>
               )}
-              <p style={{ color: 'var(--c475569)' }}>{bt("Payment: ")}<strong>{result?.paymentStatus === 'PAID' ? bt('Paid online ✓') : bt('Pay at the salon')}</strong></p>
+              {duePending && onlineDue ? (
+                <div role="status" aria-live="polite" style={{ textAlign: 'left', margin: '12px 0 4px', border: '1.5px solid #f59e0b', background: '#fffbeb', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <strong style={{ color: '#92400e', fontSize: 15 }}>
+                    {onlineDue.kind === 'deposit' ? btf('Deposit {amount} not paid yet', { amount: fmt(onlineDue.cents) }) : btf('Payment {amount} not paid yet', { amount: fmt(onlineDue.cents) })}
+                  </strong>
+                  {(salon?.deposit?.holdMinutes ?? 30) > 0 && onlineDue.kind === 'deposit' && (
+                    <span style={{ color: '#78350f', fontSize: 13, lineHeight: 1.5 }}>
+                      {btf('Your time is held for {minutes} minutes. If the deposit is not paid by then, the booking is cancelled automatically.', { minutes: salon?.deposit?.holdMinutes ?? 30 })}
+                    </span>
+                  )}
+                  {onlineDue.phase === 'failed' && onlineDue.error && (
+                    <span style={{ color: '#b91c1c', fontSize: 13, lineHeight: 1.5 }}>{onlineDue.error}</span>
+                  )}
+                  <button type="button" onClick={() => void payDepositOnline(onlineDue.bookingId)}
+                    disabled={onlineDue.phase === 'starting' || onlineDue.phase === 'checking'}
+                    style={{ ...primaryBtn, marginTop: 2, opacity: onlineDue.phase === 'starting' || onlineDue.phase === 'checking' ? 0.65 : 1 }}>
+                    {onlineDue.phase === 'starting' ? bt('Opening secure payment…') : onlineDue.phase === 'checking' ? bt('Checking payment…') : onlineDue.phase === 'open' ? bt('Payment window open — reopen it') : btf('Pay {amount} now', { amount: fmt(onlineDue.cents) })}
+                  </button>
+                </div>
+              ) : (
+                <p style={{ color: 'var(--c475569)' }}>{bt("Payment: ")}<strong>{result?.paymentStatus === 'PAID' || onlineDue?.phase === 'paid' ? bt('Paid online ✓') : bt('Pay at the salon')}</strong></p>
+              )}
               <button onClick={reset} style={{ ...primaryBtn, marginTop: 8 }}>{bt("Book another")}</button>
             </div>
           </div>

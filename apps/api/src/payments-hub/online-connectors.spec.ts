@@ -2,6 +2,7 @@ import { createHmac } from 'crypto';
 import { packPair, pairOf } from './connectors/pair-secret';
 import { CloverConnector } from './connectors/clover.connector';
 import { PaypalConnector } from './connectors/paypal.connector';
+import { HelcimConnector } from './connectors/helcim.connector';
 import { ONLINE_PROVIDERS, isOnlineProvider } from './online-providers';
 
 describe('two-part credentials in one secret', () => {
@@ -58,5 +59,32 @@ describe('which providers can take a card online', () => {
     expect([...ONLINE_PROVIDERS].sort()).toEqual(['clover', 'helcim', 'paypal', 'square', 'stripe']);
     expect(isOnlineProvider('mock')).toBe(false);
     expect(isOnlineProvider('dejavoo')).toBe(false);
+  });
+});
+
+describe('Helcim online deposit: the checkout creates its own invoice', () => {
+  const real = (globalThis as any).fetch;
+  afterEach(() => { (globalThis as any).fetch = real; });
+  const res = (status: number, json: unknown) => ({ ok: status < 300, status, json: async () => json, text: async () => JSON.stringify(json) });
+
+  it('sends invoiceRequest (not a bare invoiceNumber) with one line equal to the amount', async () => {
+    const bodies: any[] = [];
+    (globalThis as any).fetch = async (_url: string, init: { body: string }) => { bodies.push(JSON.parse(init.body)); return res(200, { checkoutToken: 'CT', secretToken: 'ST' }); };
+    const r = await new HelcimConnector().startOnlineCheckout('tok', 300, 'usd', 'appt-123', { description: 'Booking deposit' });
+    expect(r.checkoutToken).toBe('CT');
+    expect(bodies).toHaveLength(1);
+    const b = bodies[0];
+    expect(b).toMatchObject({ paymentType: 'purchase', amount: 3, currency: 'USD' });
+    expect(b.invoiceNumber).toBeUndefined();
+    expect(b.invoiceRequest.invoiceNumber).toBe('LUMAPPT123');
+    expect(b.invoiceRequest.lineItems).toEqual([{ sku: 'DEPOSIT', description: 'Booking deposit', quantity: 1, price: 3, total: 3 }]);
+  });
+
+  it('falls back to the plain shape once, then reports Helcim\'s own error', async () => {
+    const bodies: any[] = [];
+    (globalThis as any).fetch = async (_url: string, init: { body: string }) => { bodies.push(JSON.parse(init.body)); return res(400, { errors: 'Invalid invoice' }); };
+    await expect(new HelcimConnector().startOnlineCheckout('tok', 300, 'USD', 'appt-123')).rejects.toThrow('Invalid invoice');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].invoiceNumber).toBe('LUMAPPT123');
   });
 });

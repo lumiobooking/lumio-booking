@@ -684,7 +684,16 @@ export class PaymentOrchestrator {
     const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
     const connector: any = this.registry.get(provider);
     const { preferred: _p, ...pass } = opts;
-    const session = await connector.startOnlineCheckout(cred.secret, amountCents, currency, reference, { locationId: (cred as any).locationId, ...pass });
+    let session: any;
+    try {
+      session = await connector.startOnlineCheckout(cred.secret, amountCents, currency, reference, { locationId: (cred as any).locationId, ...pass });
+    } catch (e: any) {
+      // Surface the provider's own words (e.g. a Helcim validation error) so
+      // the customer and the salon see WHY the deposit could not start,
+      // instead of a bare 500 the booking page cannot explain.
+      this.logger?.warn?.(`online checkout ${provider} failed for ${tenantId}: ${e?.message ?? e}`);
+      throw new BadRequestException(`${provider}: ${String(e?.message ?? 'could not start the online payment').slice(0, 300)}`);
+    }
     // Providers that cannot search by our reference (Square, Stripe, PayPal,
     // Clover) hand back their own id. Persist the mapping so onlineLookup can
     // verify later — UPSERT, because a customer who closes the page and tries

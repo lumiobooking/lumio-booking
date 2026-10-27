@@ -8,6 +8,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useLiveTopics } from '../../../lib/useLiveEvents';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { usePaged, Pager } from '../../../components/ListFilter';
@@ -46,6 +47,7 @@ function Inner() {
   }, [token]);
   useEffect(() => { load(); }, [load]);
   useLiveRefresh(load);
+  useLiveTopics(['waitlist'], token, load);
 
   async function notify(e: Entry) {
     if (!e.phone && !e.email) { setError(t('wl.noContact')); return; }

@@ -123,6 +123,11 @@ describe('live screens never answer from memory', () => {
     }
   });
   it('the catalog and settings still do', () => {
-    for (const p of ['/services', '/settings', '/me/tenant', '/messenger/settings', '/walkins/w1']) expect(cacheable('GET', p)).toBe(true);
+    for (const p of ['/services', '/settings', '/me/tenant', '/messenger/settings', '/staff']) expect(cacheable('GET', p)).toBe(true);
+  });
+  it('the customer display, the calendar, the chair and the restaurant are live too — never from memory', () => {
+    for (const p of ['/display/state/tok', '/bookings?from=2026-10-27', '/bookings/my', '/my-chair/today', '/walkins/w1', '/restaurant/tables', '/orders?status=open', '/waitlist']) {
+      expect(cacheable('GET', p)).toBe(false);
+    }
   });
 });

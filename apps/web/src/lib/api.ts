@@ -264,6 +264,17 @@ export function apiUploadForm<T = unknown>(
   });
 }
 
+/**
+ * A live refresh is happening: for the next moment every GET reads the
+ * server, not the 15-second memory. A screen refreshes on a timer or a nudge
+ * BECAUSE something may have changed — answering it from memory is exactly
+ * how a booking made at the desk reached the calendar thirty seconds later,
+ * and how the customer's iPad trailed the register by ten. Called by
+ * useLive / useLiveRefresh / useLiveEvents before they run the screen's load.
+ */
+let liveUntil = 0;
+export function liveRead(ms = 2_000): void { liveUntil = Math.max(liveUntil, Date.now() + ms); }
+
 export async function apiFetch<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', token, body } = options;
 
@@ -272,7 +283,7 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
   // Serve a fresh-enough GET from memory: hopping between two screens stops
   // re-downloading a world that is seconds old from a server an ocean away.
   const key = cacheKey(path, token, branch);
-  if (cacheable(method, path)) {
+  if (cacheable(method, path) && Date.now() > liveUntil) {
     const hit = getCache.get(key);
     if (hit.hit) return hit.data as T;
     // The same GET already on the wire: share it. The shell asks for

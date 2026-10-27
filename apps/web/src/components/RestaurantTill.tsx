@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch, ApiError } from '../lib/api';
+import { useLiveTopics } from '../lib/useLiveEvents';
 import { useAuth, useCan } from '../lib/auth';
 import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
@@ -108,6 +109,14 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const vi = lang === 'vi';
   const L = (v: string, e: string) => (vi ? v : e);
   const mobile = useIsMobile(900);
+  // Menu and bill side by side from tablet width up (an iPad held upright is
+  // 768–834 px — it used to get the phone's two tabs and lose the bill every
+  // time a dish was tapped). Only a phone switches between them.
+  const phone = useIsMobile(767);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const billRef = useRef<HTMLElement | null>(null);
+  useFitBelow(billRef, !phone);
   const isOwner = user?.role === 'SALON_ADMIN';
   const canVoid = can('pos.void');
 
@@ -197,6 +206,10 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     }, 10000);
     return () => clearInterval(t);
   }, [check, loadCheck, loadFloor, loadMenu]);
+  // …and at once when another phone, iPad or the kitchen changes a table or a bill.
+  const liveTill = useRef(() => {});
+  liveTill.current = () => { if (check) void loadCheck(check.id); else void loadFloor(); };
+  useLiveTopics(['restaurant', 'orders', 'payments'], token, () => liveTill.current());
 
   const checksByTable = useMemo(() => {
     const m = new Map<string, FloorCheck[]>();
@@ -230,14 +243,14 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     if (c) { setCheck(c); setTab('menu'); setQ(''); }
     else void loadFloor();
   }
-  function openBill(c: FloorCheck) { setChoose(null); void loadCheck(c.id); setTab(mobile ? 'bill' : 'menu'); setQ(''); }
+  function openBill(c: FloorCheck) { setChoose(null); setMoreOpen(false); void loadCheck(c.id); setTab(phone ? 'bill' : 'menu'); setQ(''); }
   function tapTable(t: Table) {
     const cs = checksByTable.get(t.id) ?? [];
     if (cs.length === 1) openBill(cs[0]);
     else if (cs.length > 1) setChoose(cs);
     else setOpenFor(t);
   }
-  function backToFloor() { setCheck(null); void loadFloor(); }
+  function backToFloor() { setCheck(null); setMoreOpen(false); void loadFloor(); }
 
   async function addDish(d: Dish, options?: { groupId: string; choiceIds: string[] }[]) {
     if (!check) return;
@@ -359,7 +372,8 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     };
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, color: C.text }}>
-        <TillHeader vi={vi} cashier={user?.firstName ?? ''} shiftOpen={!!shiftCtl.state?.shift} failed={failed.length} canPay={canPay}
+        <TillHeader vi={vi} cashier={user?.firstName ?? ''} shiftOpen={!!shiftCtl.state?.shift} failed={failed.length} canPay={canPay} compact={phone}
+          busyTables={(floor?.checks ?? []).length}
           onShift={() => setShowShift(true)} onPrints={() => setShowPrints(true)} onTakeaway={() => void openTable(null, 1)} onRetail={onQuickSale}
           onSoldOut={() => setShowSoldOut(true)} onSettings={isOwner ? () => setShowSettings(true) : undefined} onDrawer={() => void openDrawer()} />
         {msg && <Toast {...msg} />}
@@ -377,14 +391,23 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
             ))}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button type="button" onClick={() => setArea('')} style={chip(!area)}>{L('Tất cả', 'All')} · {floor?.tables.length ?? 0}</button>
+        {/* Areas: one swipeable row on a phone (they wrapped onto two or three
+            lines and pushed the first table below the fold). */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: phone ? 'nowrap' : 'wrap', overflowX: phone ? 'auto' : undefined, scrollbarWidth: 'none', alignItems: 'center', margin: phone ? '0 -4px' : undefined, padding: phone ? '0 4px' : undefined }}>
+          <button type="button" onClick={() => setArea('')} style={{ ...chip(!area), flexShrink: 0 }}>{L('Tất cả', 'All')} · {floor?.tables.length ?? 0}</button>
           {areas.filter(Boolean).map((a) => (
-            <button key={a} type="button" onClick={() => setArea(a)} style={chip(area === a)}>{a}</button>
+            <button key={a} type="button" onClick={() => setArea(a)} style={{ ...chip(area === a), flexShrink: 0 }}>{a}</button>
           ))}
-          <span style={{ marginLeft: 'auto', fontSize: 12.5, color: C.muted }}>{L(`${floor?.checks.length ?? 0} bill đang mở`, `${floor?.checks.length ?? 0} open bills`)}</span>
+          {!phone && <span style={{ marginLeft: 'auto', fontSize: 12.5, color: C.muted }}>{L(`${floor?.checks.length ?? 0} bill đang mở`, `${floor?.checks.length ?? 0} open bills`)}</span>}
         </div>
-        <Legend vi={vi} />
+        {phone ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.muted }}>{floorSummary(floor?.checks ?? [], vi)}</span>
+            <button type="button" aria-expanded={legendOpen} aria-label={L('Chú thích màu bàn', 'Table colours')} onClick={() => setLegendOpen((v) => !v)}
+              style={{ ...btn, width: 40, minHeight: 40, padding: 0, borderRadius: 999 }}>?</button>
+          </div>
+        ) : null}
+        {(!phone || legendOpen) && <Legend vi={vi} />}
         {!floor && <p style={{ color: C.muted }}>{L('Đang tải sơ đồ bàn…', 'Loading tables…')}</p>}
         {floor && floor.tables.length === 0 && (
           <div style={{ ...card, padding: 20 }}>
@@ -451,7 +474,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const otherBills = (floor?.checks ?? []).filter((c) => c.id !== check.id && c.status === 'OPEN');
   const lineText = (l: CheckLine) => [...(l.options ?? []), ...(l.note ? [l.note] : [])].join(' · ');
   const menuPane = (
-    <section aria-label={L('Thực đơn', 'Menu')} style={{ flex: '999 1 520px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <section aria-label={L('Thực đơn', 'Menu')} style={{ flex: phone ? '1 1 100%' : '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 48, padding: '0 14px', ...card, borderRadius: 14 }}>
         <span style={{ position: 'absolute', left: -9999 }}>{L('Tìm món', 'Search dishes')}</span>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={L('Tìm món (gõ “pho”, “bia”…)', 'Search dishes')} style={{ flex: 1, border: 0, outline: 0, background: 'transparent', color: C.text, fontSize: 15, fontFamily: 'inherit' }} />
@@ -479,17 +502,20 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   );
 
   const billPane = (
-    <aside aria-label="Bill" style={{
-      flex: '1 1 360px', minWidth: 0, maxWidth: mobile ? undefined : 460, ...card, display: 'flex', flexDirection: 'column',
-      // A long order scrolls inside the bill; the total and the buttons stay on screen.
-      ...(mobile ? {} : { position: 'sticky', top: 80, alignSelf: 'flex-start', maxHeight: 'calc(100dvh - 96px)' }),
+    <aside ref={billRef} aria-label="Bill" style={{
+      flex: phone ? '1 1 100%' : `0 0 ${mobile ? 340 : 380}px`, minWidth: 0, ...card, display: 'flex', flexDirection: 'column',
+      // Tablet and desktop: a long order scrolls inside the bill and the total
+      // and buttons stay on screen — the height is fitted to what is left of the
+      // window below the bill (useFitBelow), so on an iPad the Pay button is no
+      // longer cut off at the bottom edge.
+      ...(phone ? {} : { position: 'sticky', top: 80, alignSelf: 'flex-start' }),
     }}>
       <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.line}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <b style={{ fontSize: 12.5, letterSpacing: '.06em', color: C.muted }}>BILL #{check.number} · {check.itemCount} {L('MÓN', 'ITEMS')}</b>
         {check.changedAfterPrebill && <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-warn)' }}>{L('Sửa sau tạm tính', 'Changed after check printed')}</span>}
         {check.payRequestedAt && <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-bad)' }}>{L('Khách gọi thanh toán', 'Wants to pay')}</span>}
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain', padding: 12, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 200 }}>
+      <div style={{ flex: 1, overflowY: phone ? 'visible' : 'auto', overscrollBehavior: 'contain', padding: 12, display: 'flex', flexDirection: 'column', gap: 12, minHeight: phone ? 120 : 160 }}>
         {check.callReason && (
           <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 10, borderRadius: 14, border: '2px solid #f59e0b' }}>
             <b style={{ flex: 1, color: 'var(--ink-warn)' }}>{callText(check.callReason, vi)}{check.callAt ? ` · ${minutesOpen(check.callAt, now)}′` : ''}</b>
@@ -565,7 +591,9 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
           </section>
         ))}
       </div>
-      <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Phone: total + send + pay stick to the bottom (above the tab bar) while the order scrolls. */}
+      <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', gap: 8,
+        ...(phone ? { position: 'sticky', bottom: STICKY_BOTTOM, zIndex: 5, background: C.panel, borderRadius: '0 0 16px 16px', boxShadow: '0 -8px 24px rgba(0,0,0,.25)' } : {}) }}>
         {(check.serviceCents ?? 0) > 0 && row(L('Tiền món', 'Dishes'), fmt(check.subtotalCents))}
         {(check.serviceCents ?? 0) > 0 && row(`${L('Phí phục vụ', 'Service charge')} ${check.serviceChargePercent ?? 0}%`, fmt(check.serviceCents ?? 0))}
         {taxCents > 0 && row(`${L('Thuế', 'Tax')} ${taxRate}%`, fmt(taxCents))}
@@ -587,40 +615,62 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
             ? <button type="button" disabled={busy || check.itemCount === 0} onClick={startPay} style={{ ...primary, minHeight: 50, opacity: check.itemCount === 0 ? 0.55 : 1 }}>{L('Thanh toán', 'Pay')}</button>
             : <button type="button" disabled={busy || check.itemCount === 0} onClick={() => void askPay()} style={{ ...btn, minHeight: 50, border: 'none', background: '#be185d', color: '#fff' }}>{check.payRequestedAt ? L('Đã báo thu ngân', 'Cashier told') : L('Yêu cầu thanh toán', 'Ask to pay')}</button>}
         </div>
-        <span style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>{L('Món đã báo bếp bị khoá. Bỏ món đó = huỷ món, cần lý do.', 'Sent dishes are locked. Removing one means cancelling it, with a reason.')}</span>
+        {!phone && <span style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>{L('Món đã báo bếp bị khoá. Bỏ món đó = huỷ món, cần lý do.', 'Sent dishes are locked. Removing one means cancelling it, with a reason.')}</span>}
       </div>
     </aside>
   );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, color: C.text }}>
-      <div style={{ ...card, padding: '10px 12px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-        <button type="button" onClick={backToFloor} style={btn}>‹ {L('Sơ đồ bàn', 'Tables')}</button>
-        <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+      <div style={{ ...card, padding: phone ? '8px 10px' : '10px 12px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <button type="button" onClick={backToFloor} aria-label={L('Về sơ đồ bàn', 'Back to tables')} style={phone ? { ...btn, width: 44, padding: 0, fontSize: 20 } : btn}>‹{phone ? '' : ` ${L('Sơ đồ bàn', 'Tables')}`}</button>
+        <div style={{ flex: phone ? '1 1 0' : '1 1 160px', minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 18, color: C.strong }}>{check.takeaway ? check.tables : `${L('Bàn', 'Table')} ${check.tables}`}</div>
           <div style={{ fontSize: 12.5, color: C.muted }}>{L('Mở', 'Opened')} {new Date(check.openedAt).toLocaleTimeString(vi ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })} · {minutesOpen(check.openedAt, now)}′{check.serverName ? ` · ${check.serverName}` : ''}</div>
         </div>
-        <button type="button" onClick={() => setShowGuests(true)} style={btn}>{check.guests} {L('khách', 'guests')} ▾</button>
-        {!check.takeaway && <button type="button" onClick={() => setShowMove(true)} style={btn}>{L('Chuyển bàn', 'Move')}</button>}
-        <button type="button" onClick={() => setShowMerge(true)} style={btn}>{L('Gộp bill', 'Merge')}</button>
-        <button type="button" onClick={() => setShowSplit(true)} disabled={check.itemCount < 2} style={{ ...btn, opacity: check.itemCount < 2 ? 0.5 : 1 }}>{L('Tách bill', 'Split')}</button>
-        <button type="button" onClick={() => setShowVoidCheck(true)} style={{ ...btn, color: 'var(--ink-bad)' }}>{L('Huỷ bill', 'Void')}</button>
+        {/* On a phone the five table actions fold behind one button — they
+            took two rows above the order. */}
+        {phone && (
+          <button type="button" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)} style={btn}>{check.guests} {L('khách', 'guests')} · {L('Thêm', 'More')} ▾</button>
+        )}
+        {(!phone || moreOpen) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, ...(phone ? { flexBasis: '100%' } : {}) }}>
+            <button type="button" onClick={() => setShowGuests(true)} style={btn}>{check.guests} {L('khách', 'guests')} ▾</button>
+            {!check.takeaway && <button type="button" onClick={() => setShowMove(true)} style={btn}>{L('Chuyển bàn', 'Move')}</button>}
+            <button type="button" onClick={() => setShowMerge(true)} style={btn}>{L('Gộp bill', 'Merge')}</button>
+            <button type="button" onClick={() => setShowSplit(true)} disabled={check.itemCount < 2} style={{ ...btn, opacity: check.itemCount < 2 ? 0.5 : 1 }}>{L('Tách bill', 'Split')}</button>
+            <button type="button" onClick={() => setShowVoidCheck(true)} style={{ ...btn, color: 'var(--ink-bad)' }}>{L('Huỷ bill', 'Void')}</button>
+          </div>
+        )}
       </div>
       {msg && <Toast {...msg} />}
-      {mobile && (
+      {phone && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 6 }}>
           <button type="button" onClick={() => setTab('menu')} style={chip(tab === 'menu')}>{L('Thực đơn', 'Menu')}</button>
           <button type="button" onClick={() => setTab('bill')} style={chip(tab === 'bill')}>Bill · {check.itemCount}{check.unsentCount ? ` (${check.unsentCount} ${L('mới', 'new')})` : ''}</button>
         </div>
       )}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'stretch' }}>
-        {(!mobile || tab === 'menu') && menuPane}
-        {(!mobile || tab === 'bill') && billPane}
+      <div style={{ display: 'flex', flexWrap: phone ? 'wrap' : 'nowrap', gap: 12, alignItems: 'stretch' }}>
+        {(!phone || tab === 'menu') && menuPane}
+        {(!phone || tab === 'bill') && billPane}
       </div>
-      {mobile && tab === 'menu' && check.unsentCount > 0 && (
-        <button type="button" onClick={() => setTab('bill')} style={{ position: 'sticky', bottom: 12, minHeight: 52, borderRadius: 14, border: 'none', background: '#ea580c', color: '#fff', fontWeight: 800, fontSize: 15, fontFamily: 'inherit' }}>
-          {L(`Xem bill · ${check.unsentCount} món chưa báo bếp`, `View bill · ${check.unsentCount} not sent`)}
-        </button>
+      {/* Phone, menu tab: the total and the two things a server does next stay
+          on screen above the tab bar — "send to kitchen" and "to the bill". */}
+      {phone && tab === 'menu' && (
+        <div style={{ position: 'sticky', bottom: STICKY_BOTTOM, zIndex: 5, ...card, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '0 -8px 24px rgba(0,0,0,.25)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontSize: 13, color: C.muted }}>{check.itemCount} {L('món', 'items')}{check.unsentCount ? <> · <b style={{ color: 'var(--ink-warn)' }}>{check.unsentCount} {L('chưa báo bếp', 'not sent')}</b></> : null}</span>
+            <b style={{ fontSize: 18, color: C.strong }}>{fmt(dueCents)}</b>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: check.unsentCount > 0 ? '2fr 1fr' : '1fr', gap: 8 }}>
+            {check.unsentCount > 0 && (
+              <button type="button" disabled={busy} onClick={() => void send()} style={{ ...btn, minHeight: 50, border: 'none', background: '#c2410c', color: '#fff', fontSize: 15 }}>
+                {L(`Báo bếp · ${check.unsentCount} món`, `Send · ${check.unsentCount} new`)}
+              </button>
+            )}
+            <button type="button" onClick={() => setTab('bill')} style={{ ...primary, minHeight: 50 }}>{L('Xem bill', 'View bill')}</button>
+          </div>
+        </div>
       )}
 
       {optionsFor && <OptionsModal vi={vi} dish={optionsFor} fmt={fmt} busy={busy} onClose={() => setOptionsFor(null)}
@@ -697,26 +747,102 @@ function Toast({ ok, text }: { ok: boolean; text: string }) {
   );
 }
 
-function TillHeader({ vi, cashier, shiftOpen, failed, canPay, onShift, onPrints, onTakeaway, onRetail, onSoldOut, onSettings, onDrawer }: {
-  vi: boolean; cashier: string; shiftOpen: boolean; failed: number; canPay: boolean; onDrawer: () => void; onShift: () => void; onPrints: () => void; onTakeaway: () => void; onRetail: () => void; onSoldOut: () => void; onSettings?: () => void;
+function TillHeader({ vi, cashier, shiftOpen, failed, canPay, compact, busyTables, onShift, onPrints, onTakeaway, onRetail, onSoldOut, onSettings, onDrawer }: {
+  vi: boolean; cashier: string; shiftOpen: boolean; failed: number; canPay: boolean; compact?: boolean; busyTables?: number; onDrawer: () => void; onShift: () => void; onPrints: () => void; onTakeaway: () => void; onRetail: () => void; onSoldOut: () => void; onSettings?: () => void;
 }) {
   const L = (v: string, e: string) => (vi ? v : e);
+  const [open, setOpen] = useState(false);
+  const shiftBtn = canPay && <button type="button" onClick={onShift} style={{ ...btn, ...(shiftOpen ? { color: 'var(--ink-good)' } : { color: 'var(--ink-warn)' }) }}>{shiftOpen ? L('Ca đang mở', 'Shift open') : L('Chưa mở ca', 'No shift')}</button>;
+  const failedBtn = failed > 0 && <button type="button" onClick={onPrints} style={{ ...btn, color: 'var(--ink-bad)' }}>⚠ {L(`${failed} phiếu in lỗi`, `${failed} print failed`)}</button>;
+  const rest = (
+    <>
+      {canPay && <button type="button" onClick={onDrawer} style={btn}>💵 {L('Mở két', 'Open drawer')}</button>}
+      <button type="button" onClick={onSoldOut} style={btn}>{L('Hết món', 'Sold out')}</button>
+      {canPay && <button type="button" onClick={onRetail} style={btn}>{L('Bán lẻ', 'Retail')}</button>}
+      <a href="/kitchen" style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>{L('Màn hình bếp', 'Kitchen screen')}</a>
+      {onSettings && <button type="button" onClick={onSettings} style={btn}>{L('Cài đặt nhà hàng', 'Restaurant settings')}</button>}
+    </>
+  );
+  if (compact) {
+    // Phone: one line — title, To go, More. Seven buttons used to wrap onto
+    // four rows and push every table below the fold.
+    return (
+      <div style={{ ...card, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 17, color: C.strong }}>{L('Sơ đồ bàn', 'Tables')}</div>
+            <div style={{ fontSize: 12.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {cashier || (canPay ? L('Quầy thu ngân', 'Checkout') : L('Phục vụ', 'Server'))}{busyTables ? ` · ${L(`${busyTables} bill đang mở`, `${busyTables} open`)}` : ''}
+              {canPay && !shiftOpen ? <b style={{ color: 'var(--ink-warn)' }}> · {L('chưa mở ca', 'no shift')}</b> : null}
+            </div>
+          </div>
+          <button type="button" onClick={onTakeaway} style={primary}>+ {L('Mang về', 'To go')}</button>
+          <button type="button" aria-expanded={open} aria-label={L('Thêm: mở két, hết món, bán lẻ, bếp, cài đặt', 'More: drawer, sold out, retail, kitchen, settings')} onClick={() => setOpen((v) => !v)}
+            style={{ ...btn, width: 44, padding: 0, fontSize: 18 }}>⋯</button>
+        </div>
+        {failedBtn}
+        {open && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{shiftBtn}{rest}</div>}
+      </div>
+    );
+  }
   return (
     <div style={{ ...card, padding: '10px 12px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
       <div style={{ flex: '1 1 180px', minWidth: 0 }}>
         <div style={{ fontWeight: 800, fontSize: 17, color: C.strong }}>{L('Sơ đồ bàn', 'Tables')}</div>
         <div style={{ fontSize: 12.5, color: C.muted }}>{canPay ? L('Quầy thu ngân', 'Checkout') : L('Phục vụ', 'Server')}{cashier ? ` · ${cashier}` : ''}</div>
       </div>
-      {canPay && <button type="button" onClick={onShift} style={{ ...btn, ...(shiftOpen ? { color: 'var(--ink-good)' } : { color: 'var(--ink-warn)' }) }}>{shiftOpen ? L('Ca đang mở', 'Shift open') : L('Chưa mở ca', 'No shift')}</button>}
-      {failed > 0 && <button type="button" onClick={onPrints} style={{ ...btn, color: 'var(--ink-bad)' }}>⚠ {L(`${failed} phiếu in lỗi`, `${failed} print failed`)}</button>}
+      {shiftBtn}
+      {failedBtn}
       <button type="button" onClick={onTakeaway} style={primary}>+ {L('Mang về', 'To go')}</button>
-      {canPay && <button type="button" onClick={onDrawer} style={btn}>💵 {L('Mở két', 'Open drawer')}</button>}
-      <button type="button" onClick={onSoldOut} style={btn}>{L('Hết món', 'Sold out')}</button>
-      {canPay && <button type="button" onClick={onRetail} style={btn}>{L('Bán lẻ', 'Retail')}</button>}
-      <a href="/kitchen" style={{ ...btn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>{L('Màn hình bếp', 'Kitchen screen')}</a>
-      {onSettings && <button type="button" onClick={onSettings} style={btn}>{L('Cài đặt nhà hàng', 'Restaurant settings')}</button>}
+      {rest}
     </div>
   );
+}
+
+/** "2 chưa báo bếp · 1 gọi tính tiền" — what needs a server, in one line. */
+function floorSummary(checks: FloorCheck[], vi: boolean): string {
+  const unsent = checks.filter((c) => c.unsentCount > 0).length;
+  const pay = checks.filter((c) => c.payRequestedAt).length;
+  const calls = checks.filter((c) => (c.pendingCount ?? 0) > 0 || c.callReason).length;
+  const parts = [
+    unsent ? (vi ? `${unsent} bàn chưa báo bếp` : `${unsent} not sent`) : '',
+    pay ? (vi ? `${pay} gọi tính tiền` : `${pay} want to pay`) : '',
+    calls ? (vi ? `${calls} đang gọi` : `${calls} calling`) : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : (vi ? `${checks.length} bill đang mở` : `${checks.length} open bills`);
+}
+
+/** Space the phone tab bar takes at the bottom (MobileTabBar sets --tabbar-h). */
+const STICKY_BOTTOM = 'calc(var(--tabbar-h, 0px) + 8px)';
+
+/**
+ * Keeps a sticky panel no taller than the window below its top edge, so its
+ * last row (the bill's Pay button) is never under the bottom of the screen.
+ */
+function useFitBelow(ref: { current: HTMLElement | null }, on: boolean) {
+  useEffect(() => {
+    if (!on || typeof window === 'undefined') return;
+    let raf = 0;
+    const fit = () => {
+      raf = 0;
+      const el = ref.current;
+      if (!el) return;
+      const top = Math.max(el.getBoundingClientRect().top, 0);
+      el.style.maxHeight = `${Math.max(320, window.innerHeight - top - 12)}px`;
+    };
+    const ask = () => { if (!raf) raf = window.requestAnimationFrame(fit); };
+    fit();
+    const iv = window.setInterval(ask, 1000); // the bill mounts after the first paint
+    window.addEventListener('scroll', ask, { passive: true });
+    window.addEventListener('resize', ask);
+    return () => {
+      window.clearInterval(iv);
+      if (raf) window.cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', ask);
+      window.removeEventListener('resize', ask);
+      if (ref.current) ref.current.style.maxHeight = '';
+    };
+  }, [ref, on]);
 }
 
 function Legend({ vi }: { vi: boolean }) {

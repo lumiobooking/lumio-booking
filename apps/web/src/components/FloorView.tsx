@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { apiFetch } from '../lib/api';
 import { ui, formatPrice } from '../lib/ui';
 import { useLiveRefresh } from '../lib/useLiveRefresh';
+import { useLiveTopics } from '../lib/useLiveEvents';
 import { uiLocale } from '../lib/datetime';
 import { PartyChip, type PartyInfo } from './PartyChip';
 import { ind } from '../lib/ui-industry';
@@ -65,6 +66,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
   }, [token]);
   useEffect(() => { load(); }, [load]);
   useLiveRefresh(load, 12000);
+  useLiveTopics(['walkins', 'bookings'], token, load);
 
   async function call(path: string, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', body?: unknown) {
     setError(null);

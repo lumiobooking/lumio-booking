@@ -668,6 +668,8 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {inboxAlerts(true)}
             <NotificationBell />
+            {/* Light / dark, one tap — the desktop has it in its top bar; the phone had no way to switch. */}
+            <ThemeToggle size={42} />
             <button onClick={() => setDrawerOpen(true)} aria-label="Menu"
               style={{ width: 42, height: 42, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 20, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
               ☰
@@ -690,6 +692,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
                 <button onClick={() => setDrawerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>✕</button>
               </div>
               <BranchSwitcher />
+              <div style={{ padding: '0 0 10px' }}><ThemeToggle labelled /></div>
               <div style={{ padding: '0 0 10px' }}>{tryNew}</div>
               {navList}
               {footer}

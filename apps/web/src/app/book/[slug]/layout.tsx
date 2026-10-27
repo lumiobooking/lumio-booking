@@ -1,13 +1,14 @@
 // Server component layout for the public booking page. Adds crawler- & AI-visible
 // SEO: server-rendered <title>/description/Open Graph (generateMetadata) plus
-// schema.org JSON-LD structured data (NailSalon or Restaurant depending on the
-// tenant's businessType). This is what lets a salon or restaurant show up in
+// schema.org JSON-LD structured data (NailSalon, HairSalon, DaySpa, Restaurant…
+// by the shop's trade — lib/booking-seo.ts). This is what lets a salon or restaurant show up in
 // Google rich results and in AI assistants (ChatGPT/Gemini) — something the
 // generic booking competitors don't do.
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { adsInlineSnippet } from '../../../lib/ads-tag';
 import { cancelLine, hoursRows, priceLabel, uses12h, type SeoPolicy } from '../../../lib/static-menu';
+import { seoText } from '../../../lib/booking-seo';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 /** Just the scheme + host of the API, for the preconnect hint. */
@@ -20,6 +21,8 @@ interface Seo {
   name: string;
   slug: string;
   businessType?: string;
+  /** The trade the link preview names (api public/seo-trade.ts; older API builds do not send it). */
+  trade?: string | null;
   timezone: string;
   contactPhone: string | null;
   contactEmail: string | null;
@@ -65,17 +68,14 @@ function money(minorUnits: number, currency: string): string {
 }
 
 function buildDescription(s: Seo): string {
-  if (s.businessType === 'RESTAURANT') {
-    const parts: string[] = [`Reserve a table at ${s.name} online`];
-    if (s.address) parts.push(`Located in ${s.address}`);
-    parts.push('Fast, easy 24/7 online reservations — pick your party size, date and time.');
-    return parts.join('. ').slice(0, 300);
-  }
-  const parts: string[] = [`Book your nail appointment at ${s.name} online`];
-  if (s.address) parts.push(`Located in ${s.address}`);
-  if (s.priceFromCents) parts.push(`Services from ${money(s.priceFromCents, s.currency)}`);
-  parts.push('Fast, easy 24/7 online booking — pick your service, technician and time.');
-  return parts.join('. ').slice(0, 300);
+  // The words follow the shop's trade (lib/booking-seo.ts) — a hair salon's
+  // link no longer previews as "Book your nail appointment".
+  const t = seoText(s);
+  const parts: string[] = [t.lead];
+  if (s.address) parts.push(`${t.vi ? 'Địa chỉ' : 'Located in'} ${s.address}`);
+  if (s.priceFromCents && !t.table) parts.push(`${t.vi ? 'Dịch vụ từ' : 'Services from'} ${money(s.priceFromCents, s.currency)}`);
+  parts.push(t.how);
+  return parts.join('. ').replace(/\.\./g, '.').slice(0, 300);
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -83,6 +83,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 function buildJsonLd(s: Seo): Record<string, unknown> {
   const url = `${WEB_URL}/${s.slug}`;
   const isRestaurant = s.businessType === 'RESTAURANT';
+  const words = seoText(s);
   const openingHoursSpecification = (s.hours ?? [])
     .filter((h) => !h.closed)
     .flatMap((h) => {
@@ -91,7 +92,7 @@ function buildJsonLd(s: Seo): Record<string, unknown> {
     });
   return {
     '@context': 'https://schema.org',
-    '@type': isRestaurant ? 'Restaurant' : 'NailSalon',
+    '@type': words.schema,
     name: s.name,
     url,
     ...(s.contactPhone ? { telephone: s.contactPhone } : {}),
@@ -118,9 +119,7 @@ function buildJsonLd(s: Seo): Record<string, unknown> {
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const s = await getSeo(params.slug);
   if (!s) return { title: 'Book online' };
-  const title = s.businessType === 'RESTAURANT'
-    ? `${s.name} — Book a Table Online`
-    : `${s.name} — Book a Nail Appointment Online`;
+  const title = seoText(s).title;
   const description = buildDescription(s);
   const url = `${WEB_URL}/${s.slug}`;
   return {

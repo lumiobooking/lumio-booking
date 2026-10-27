@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
+import { useLiveTopics } from '../../../lib/useLiveEvents';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
@@ -77,6 +78,8 @@ function FrontDesk() {
   // The turn board is out of the menu for some trades (a clinic, a restaurant,
   // an office): no link to it either. Checking a booking in still works here.
   const walkinsPage = may('walkins') && !hiddenHrefsFor(uiIndustry()).includes('/salon/walkins');
+  // A restaurant's guests sit at a table, not in a chair.
+  const atTable = ['RESTAURANT', 'FAST_FOOD', 'CAFE'].includes(uiIndustry());
   const [board, setBoard] = useState<Board | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -95,6 +98,7 @@ function FrontDesk() {
     const b = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => { window.clearInterval(a); window.clearInterval(b); };
   }, [load]);
+  useLiveTopics(['walkins', 'bookings', 'payments', 'waitlist'], token, load);
   // ⚠ allergies / dietary needs / sensitivities from the customer records on this board.
   const alertIds = useMemo(() => [...(board?.booked ?? []).map((b) => b.customerId), ...(board?.waiting ?? []).map((w) => w.customerId), ...(board?.serving ?? []).map((w) => w.customerId)], [board]);
   const alerts = useRecordAlerts(token, alertIds, may('bookings'));
@@ -282,8 +286,8 @@ function FrontDesk() {
         </div>
 
         <div style={col}>
-          {head(L('Đang làm', 'In a chair'), inChair.length, '#22c55e')}
-          {board && !inChair.length && empty(L('Chưa có khách nào đang làm.', 'Nobody in a chair.'))}
+          {head(atTable ? L('Đang ngồi bàn', 'At a table') : L('Đang làm', 'In a chair'), inChair.length, '#22c55e')}
+          {board && !inChair.length && empty(atTable ? L('Chưa có bàn nào đang có khách.', 'No table is seated.') : L('Chưa có khách nào đang làm.', 'Nobody in a chair.'))}
           {inChair.map((w) => (
             <div key={w.id} style={row}>
               <span style={{ flex: 1, minWidth: 0 }}>

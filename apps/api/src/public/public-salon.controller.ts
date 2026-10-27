@@ -16,6 +16,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { verifyCaptcha } from '../common/security/turnstile';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
+import { seoTrade } from './seo-trade';
 import { appliesOn, dateRulesFor, programFor } from '../settings/promo-channel';
 import { partyGuests } from './party-guests';
 
@@ -261,13 +262,14 @@ export class PublicSalonController {
     });
     if (!tenant || !this.isOpen(tenant)) throw new NotFoundException('Salon not found');
 
-    const [extra, booking, services, agg, analytics, categories] = await Promise.all([
+    const [extra, booking, services, agg, analytics, categories, industryRow] = await Promise.all([
       this.settings.getCompanyExtra(tenant.id),
       this.settings.getBookingRules(tenant.id),
       this.bookings.publicServices(tenant.id).catch(() => [] as Array<{ id?: string; name?: string; priceCents?: number; priceFrom?: boolean; durationMinutes?: number; categoryId?: string | null }>),
       this.prisma.feedback.aggregate({ where: { tenantId: tenant.id }, _avg: { rating: true }, _count: { _all: true } }).catch(() => null),
       this.settings.getAnalyticsSettings(tenant.id),
       this.bookings.publicCategories(tenant.id).catch(() => [] as { id: string; name: string }[]),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId: tenant.id, key: INDUSTRY_KEY } }, select: { value: true } }).catch(() => null),
     ]);
     // The menu, server-rendered on the booking page so a crawler that runs no
     // JavaScript (Google's business-link check, the Actions Center review) still
@@ -291,6 +293,15 @@ export class PublicSalonController {
       name: tenant.name,
       slug: tenant.slug,
       businessType: tenant.businessType,
+      // The trade the link preview names (public/seo-trade.ts) — "Book a hair
+      // appointment", "Reserve a table", never "nail" for a shop that is not one.
+      trade: seoTrade({
+        businessType: tenant.businessType,
+        storedIndustry: industryRow?.value ?? null,
+        tenantName: tenant.name,
+        serviceNames: (services ?? []).map((sv) => sv.name),
+        website: extra.website || null,
+      }),
       timezone: tenant.timezone,
       contactPhone: tenant.contactPhone ?? null,
       contactEmail: tenant.contactEmail ?? null,

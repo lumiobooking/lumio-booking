@@ -64,6 +64,7 @@ function nouns(o: { staffVi: string; venueVi: string; staffEn: string; staffsEn:
 const food = (venueVi: string, venueEn: string, venuesEn: string): Pair[] => [
   ...nouns({ staffVi: 'nhân viên', venueVi, staffEn: 'staff member', staffsEn: 'staff', venueEn, venuesEn }),
   ['đặt lịch', 'đặt bàn'], ['lịch hẹn', 'lịch đặt bàn'], ['appointments', 'reservations'], ['appointment', 'reservation'],
+  ['clients', 'guests'], ['client', 'guest'],
 ];
 
 const RULES: Record<IndustryKey, Pair[]> = {

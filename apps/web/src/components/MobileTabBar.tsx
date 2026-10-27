@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
-import { ind } from '../lib/ui-industry';
+import { ind, uiIndustry } from '../lib/ui-industry';
 
 // Icon paths (stroke, 24x24). Kept inline so the tab bar has no extra deps.
 const IC: Record<string, string> = {
@@ -18,7 +18,13 @@ const IC: Record<string, string> = {
   users: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   check: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+  tables: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
+  kitchen: 'M6 13h12v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2zM6 13a4 4 0 1 1 3-6.6A4 4 0 0 1 18 9a3 3 0 0 1 0 4',
+  receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
 };
+
+/** Restaurants, cafés and eateries run tables, a kitchen and orders — not chairs and posts. */
+const FOOD = new Set(['RESTAURANT', 'FAST_FOOD', 'CAFE']);
 
 function Icon({ d, active }: { d: string; active: boolean }) {
   return (
@@ -48,7 +54,30 @@ export function MobileTabBar() {
 
   const pos = typeof window !== 'undefined' && window.localStorage.getItem('lumio_pos_enabled') === '1';
 
-  const tabs = [
+  const food = FOOD.has(uiIndustry());
+  const navRef = useRef<HTMLElement | null>(null);
+
+  // Pages that pin something to the bottom of the screen (the restaurant
+  // bill's Send / Pay bar) sit above this bar: its real height, safe area
+  // included, is published as --tabbar-h.
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el || typeof window === 'undefined') return;
+    const root = document.documentElement;
+    const put = () => root.style.setProperty('--tabbar-h', `${el.offsetHeight}px`);
+    put();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(put) : null;
+    ro?.observe(el);
+    return () => { ro?.disconnect(); root.style.removeProperty('--tabbar-h'); };
+  }, []);
+
+  const tabs = food ? [
+    { href: '/salon/pos', label: L('Bàn', 'Tables'), icon: IC.tables, exact: true },
+    { href: '/salon/calendar', label: L('Đặt bàn', 'Bookings'), icon: IC.cal },
+    { href: '/kitchen', label: L('Bếp', 'Kitchen'), icon: IC.kitchen },
+    { href: '/salon/orders', label: L('Đơn', 'Orders'), icon: IC.receipt },
+    { href: '/salon/pos/report', label: L('Báo cáo', 'Reports'), icon: IC.chart },
+  ] as { href: string; label: string; icon: string; exact?: boolean; badge?: boolean }[] : [
     { href: '/salon', label: L('Tổng quan', 'Home'), icon: IC.home, exact: true },
     { href: '/salon/calendar', label: L('Lịch', 'Calendar'), icon: IC.cal },
     pos
@@ -58,7 +87,7 @@ export function MobileTabBar() {
     pos
       ? { href: '/salon/pos/report', label: L('Báo cáo', 'Reports'), icon: IC.chart }
       : { href: '/salon/customers', label: L('Khách', 'Clients'), icon: IC.users },
-  ];
+  ] as { href: string; label: string; icon: string; exact?: boolean; badge?: boolean }[];
 
   // Posts waiting for the owner's yes — the same count the tab header shows.
   useEffect(() => {
@@ -77,7 +106,7 @@ export function MobileTabBar() {
   const onAlerts = pathname === '/salon/approve-posts';
 
   return (
-    <nav style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60, display: 'flex', background: 'var(--c111827)', borderTop: '1px solid var(--c1f2937)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <nav ref={navRef} style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60, display: 'flex', background: 'var(--c111827)', borderTop: '1px solid var(--c1f2937)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       {tabs.map((t) => {
         const active = t.exact ? pathname === t.href : pathname === t.href || pathname.startsWith(t.href + '/');
         return (

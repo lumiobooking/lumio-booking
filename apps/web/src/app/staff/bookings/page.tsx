@@ -20,6 +20,7 @@ import { apiFetch } from '../../../lib/api';
 import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useLiveTopics } from '../../../lib/useLiveEvents';
 import { uiLocale, dayKeyInTz, fmtInTz } from '../../../lib/datetime';
 import { fmtPhone } from '../../../lib/cal-card';
 import { IC, Icon, L, Pill, Toast, st, useToast } from '../../../components/staff/kit';
@@ -74,6 +75,7 @@ function Inner() {
   }, [token]);
   useEffect(() => { void load(); }, [load]);
   useLiveRefresh(load, 30000);
+  useLiveTopics(['bookings'], token, load);
   // The week on screen (a day either side, for the salon's own midnight).
   const weekKey = ymd(mondayOf(picked));
   const loadVisits = useCallback(async () => {
@@ -87,6 +89,7 @@ function Inner() {
   }, [token, weekKey]);
   useEffect(() => { void loadVisits(); }, [loadVisits]);
   useLiveRefresh(loadVisits, 30000);
+  useLiveTopics(['walkins', 'payments'], token, loadVisits);
   const visitsByDay = useMemo(() => {
     const m = new Map<string, StaffVisit[]>();
     for (const v of visits) {

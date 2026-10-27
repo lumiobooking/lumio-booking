@@ -10,6 +10,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { MeModule } from './me/me.module';
 import { SearchModule } from './search/search.module';
+import { LiveModule } from './live/live.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { ServicesModule } from './services/services.module';
@@ -75,6 +76,7 @@ import { AiUsageModule } from './common/ai-usage.module';
     MeModule,
     // The header search box (Ctrl+K), tenant-scoped and role-filtered.
     SearchModule,
+    LiveModule,
     PayrollModule,
     // Super Admin tenant management.
     TenantsModule,

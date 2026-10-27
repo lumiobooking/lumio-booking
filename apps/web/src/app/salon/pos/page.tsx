@@ -9,6 +9,7 @@ import { payLabel, tillMethodsFrom, type PayMethod } from '../../../lib/payment-
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth, useCan } from '../../../lib/auth';
 import { apiFetch, ApiError } from '../../../lib/api';
+import { useLiveTopics } from '../../../lib/useLiveEvents';
 import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, syncQueue } from '../../../lib/offlinePos';
 import { ui, formatPrice, toMinorUnits, fromMinorUnits } from '../../../lib/ui';
 import { useHorizontalScroll } from '../../../lib/useHorizontalScroll';
@@ -1543,6 +1544,10 @@ function Register() {
     const h = setInterval(loadWaiting, 30000);
     return () => clearInterval(h);
   }, [loadWaiting, step, done]);
+  // A client checked in or finished at another device: the waiting list updates now.
+  const liveWaiting = useRef(() => {});
+  liveWaiting.current = () => { if (step === 'register' && !done) void loadWaiting(); };
+  useLiveTopics(['walkins', 'bookings'], token, () => liveWaiting.current());
 
   // The till's methods decide the default: a salon without cash starts on its first method.
   useEffect(() => {

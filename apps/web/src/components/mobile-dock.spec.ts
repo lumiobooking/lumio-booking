@@ -32,7 +32,7 @@ const read = (f: string) => fs.readFileSync(path.join(HERE, f), 'utf8');
 /** The bar every floating control on a phone has to get out of the way of. */
 function tabBar() {
   const src = read('MobileTabBar.tsx');
-  const nav = /<nav style=\{\{([^]*?)\}\}>/.exec(src);
+  const nav = /<nav(?: ref=\{navRef\})? style=\{\{([^]*?)\}\}>/.exec(src);
   expect(nav).toBeTruthy();
   const z = /zIndex:\s*(\d+)/.exec(nav![1]);
   expect(z).toBeTruthy();

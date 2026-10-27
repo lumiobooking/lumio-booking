@@ -9,6 +9,7 @@ import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { missedMinutes } from '../../../lib/missed';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useLiveTopics } from '../../../lib/useLiveEvents';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { CreateBookingForm } from '../../../components/CreateBookingForm';
@@ -168,6 +169,7 @@ function BookingsInner() {
     load();
   }, [load]);
   useLiveRefresh(load);
+  useLiveTopics(['bookings', 'payments'], token, load);
 
   async function action(id: string, path: string, body?: unknown) {
     try {

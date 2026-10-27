@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
+import { useLiveTopics } from '../lib/useLiveEvents';
 import { clockIn } from '../lib/desk-time';
 import { instantToWall, salonTz, wallToInstantISO } from '../lib/datetime';
 import { DateTimeField } from './DateTimeField';
@@ -66,6 +67,9 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
   }, [at, arrange, load]);
+  const liveFloor = useRef(() => {});
+  liveFloor.current = () => { if (!at && !arrange) void load(); };
+  useLiveTopics(['restaurant', 'bookings', 'walkins'], token, () => liveFloor.current());
 
   function onDown(e: React.PointerEvent<HTMLDivElement>, id: string) {
     if (!arrange || !box.current) return;

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { useRouter } from 'next/navigation';
 import { useAuth, useCan } from '../../lib/auth';
 import { apiFetch, ApiError } from '../../lib/api';
+import { useLiveTopics } from '../../lib/useLiveEvents';
 import { useLang } from '../../lib/i18n';
 import { ticketTone, tillError } from '../../lib/restaurant-till';
 
@@ -88,6 +89,8 @@ function Kitchen() {
     const t = setInterval(() => { setNow(new Date()); void load(); }, 5000);
     return () => clearInterval(t);
   }, [load]);
+  // A ticket fired from the floor shows here at once, not on the next poll.
+  useLiveTopics(['restaurant', 'orders'], token, () => { void load(); });
 
   function pickStation(k: string) {
     setStation(k);

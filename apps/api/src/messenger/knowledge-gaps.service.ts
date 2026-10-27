@@ -100,19 +100,23 @@ export class KnowledgeGapsService {
     if (answer.length > 1000) throw new BadRequestException('Keep the answer under 1000 characters.');
     const gap = await this.gaps.findFirst({ where: { id, tenantId } });
     if (!gap) throw new NotFoundException('Question not found.');
-    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
-    if (!conn) throw new BadRequestException('Connect Messenger first — the answer is saved to the bot.');
-
     const label = factLabel(gap.question);
-    const facts = (Array.isArray(conn.botFacts) ? conn.botFacts : []) as { label: string; value: string; on: boolean }[];
-    const at = facts.findIndex((f) => f && String(f.label).trim().toLowerCase() === label.toLowerCase());
-    const next = at >= 0
-      ? facts.map((f, i) => (i === at ? { ...f, value: answer, on: true } : f))
-      : [...facts, { label, value: answer, on: true }];
-    await this.prisma.messengerConnection.update({
-      where: { tenantId },
-      data: { botFacts: next as unknown as Prisma.InputJsonValue },
-    });
+    // The answer reaches every assistant as an owner's instruction (below).
+    // A salon on the hotline alone has no Messenger connection — that used to
+    // refuse the answer outright. Only a sales-mode Messenger bot, which still
+    // reads its own fact list, also gets it there.
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+    if (conn && (conn as unknown as { botMode?: string }).botMode === 'sales') {
+      const facts = (Array.isArray(conn.botFacts) ? conn.botFacts : []) as { label: string; value: string; on: boolean }[];
+      const at = facts.findIndex((f) => f && String(f.label).trim().toLowerCase() === label.toLowerCase());
+      const next = at >= 0
+        ? facts.map((f, i) => (i === at ? { ...f, value: answer, on: true } : f))
+        : [...facts, { label, value: answer, on: true }];
+      await this.prisma.messengerConnection.update({
+        where: { tenantId },
+        data: { botFacts: next as unknown as Prisma.InputJsonValue },
+      });
+    }
     await this.gaps.update({
       where: { id: gap.id },
       data: { status: 'answered', answer, answeredBy: user.userId ?? null, answeredAt: new Date() },

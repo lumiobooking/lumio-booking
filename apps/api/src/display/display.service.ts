@@ -356,6 +356,11 @@ export class DisplayService {
     return { token: s.token };
   }
 
+  /** Public: which salon's nudges a paired device may hear (its token's tenant only), or 404. */
+  async streamTenant(token: string): Promise<string> {
+    return this.tenantOfToken(token);
+  }
+
   /** Public: the paired device polls the current customer-facing state (no secrets). */
   async stateByToken(token: string) {
     const s = await this.prisma.displaySession.findUnique({ where: { token }, select: { state: true, updatedAt: true } });

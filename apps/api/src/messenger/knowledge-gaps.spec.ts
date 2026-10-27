@@ -90,6 +90,8 @@ describe('the owner answers once, the bot knows from then on', () => {
 
   it('answering writes a bot fact for THIS salon and marks the question answered (audited)', async () => {
     const { svc, gaps, conns, audits } = makeDb();
+    // A sales-mode bot still reads its own fact list; a booking salon's answer reaches every assistant as an owner instruction.
+    conns.t1.botMode = 'sales';
     await svc.record({ tenantId: 't1', question: 'when is your grand opening', source: 'bot' });
     const r = await svc.answer(owner('t1'), gaps[0].id, 'Our grand opening is Friday, October 9.');
     expect(r.label).toBe('when is your grand opening');
@@ -104,6 +106,7 @@ describe('the owner answers once, the bot knows from then on', () => {
 
   it('answering the same question again updates the fact rather than adding a second one', async () => {
     const { svc, gaps, conns } = makeDb();
+    conns.t1.botMode = 'sales';
     await svc.record({ tenantId: 't1', question: 'do you do lash lifts?', source: 'bot' });
     const { label } = await svc.answer(owner('t1'), gaps[0].id, 'Not yet.');
     gaps[0].status = 'open';
@@ -112,7 +115,19 @@ describe('the owner answers once, the bot knows from then on', () => {
     expect(conns.t1.botFacts).toHaveLength(2);
   });
 
-  it('an empty answer is refused; dismiss hides the question', async () => {
+  it('a booking salon — or one with the hotline only, no Messenger at all — can answer; nothing lands on a Messenger fact list nobody reads', async () => {
+    const { svc, gaps, conns } = makeDb();
+    await svc.record({ tenantId: 't1', question: 'do you take walk-ins?', source: 'bot' });
+    await svc.answer(owner('t1'), gaps[0].id, 'Yes, until 6pm.');
+    expect(conns.t1.botFacts).toEqual([{ label: 'Parking', value: 'Behind the building', on: true }]);
+    expect(gaps[0]).toMatchObject({ status: 'answered' });
+    delete conns.t1;
+    await svc.record({ tenantId: 't1', question: 'is there parking?', source: 'bot' });
+    const open = gaps.find((g) => g.status === 'open')!;
+    await expect(svc.answer(owner('t1'), open.id, 'Behind the shop.')).resolves.toMatchObject({ ok: true });
+  });
+
+    it('an empty answer is refused; dismiss hides the question', async () => {
     const { svc, gaps } = makeDb();
     await svc.record({ tenantId: 't1', question: 'is there parking for trucks?', source: 'bot' });
     await expect(svc.answer(owner('t1'), gaps[0].id, '  ')).rejects.toThrow(/Type the answer/);

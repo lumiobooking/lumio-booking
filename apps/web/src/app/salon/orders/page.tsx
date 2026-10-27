@@ -8,6 +8,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useLiveTopics } from '../../../lib/useLiveEvents';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
@@ -99,6 +100,7 @@ function Inner() {
   }, [token, range.from, range.to, range.cmp?.from, range.cmp?.to]);
   useEffect(() => { setLoading(true); void load(); }, [load]);
   useLiveRefresh(load);
+  useLiveTopics(['orders', 'payments'], token, load);
 
   const staffName = useCallback((id: string | null) => {
     if (!id) return '';

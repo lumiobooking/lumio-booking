@@ -113,6 +113,12 @@ const NEVER_CACHE: RegExp[] = [
   /^\/(tiktok|google-reviews|messenger)$/,               // connection status — must show a connect the moment it lands
   /^\/print-devices(\/|\?|$)/,                          // printers: a computer that just paired must show up
   /^\/restaurant\/(floor|checks|kitchen)(\/|\?|$)/,      // the floor, an open bill (bank transfer landing), the kitchen screen
+  /^\/restaurant\//,                                      // every restaurant screen is live (tables, tickets, the till)
+  /^\/display\//,                                         // the customer's iPad polls this every second — 15 s of memory was the 10 s lag
+  /^\/bookings(\/|\?|$)/,                                // the calendar, the day list, "my" bookings on a technician's phone
+  /^\/my-chair(\/|\?|$)/,                                // the technician's chair
+  /^\/walkins(\/|\?|$)/,                                 // all of the floor, not only the board
+  /^\/(orders|waitlist|front-desk|kitchen)(\/|\?|$)/,    // live lists
 ];
 
 export function cacheable(method: string, path: string): boolean {

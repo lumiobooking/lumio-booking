@@ -13,6 +13,7 @@ import { fmtPhone } from '../../../lib/cal-card';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { missedMinutes } from '../../../lib/missed';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useLiveTopics } from '../../../lib/useLiveEvents';
 import { useIsMobile } from '../../../lib/responsive';
 import { StaffDayView } from './StaffDayView';
 import { wallToInstantISO, instantToWall } from '../../../lib/datetime';
@@ -261,6 +262,8 @@ function Inner() {
     return () => { alive = false; window.clearInterval(iv); };
   }, [token]);
   useLiveRefresh(load, 15000); // new bookings appear within ~15s, no reload needed
+  // …and at once when another device books, checks in or takes a payment.
+  useLiveTopics(['bookings', 'walkins', 'payments'], token, load);
 
   const toggleFull = useCallback(() => {
     setFullscreen((f) => {

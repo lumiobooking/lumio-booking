@@ -46,6 +46,17 @@ export class AiBrainController {
   @Patch('settings')
   save(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.brain.updateBrain(user, dto); }
 
+  /** Move the notes typed on the old Messenger / Hotline screens into the brain (once, with Undo). */
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('aiBrain')
+  @Post('legacy/merge')
+  mergeLegacy(@CurrentUser() user: AuthenticatedUser) { return this.brain.mergeLegacyNotes(user); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('aiBrain')
+  @Post('legacy/undo')
+  undoLegacy(@CurrentUser() user: AuthenticatedUser) { return this.brain.undoLegacyMerge(user); }
+
   @Get('health')
   health(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string) { return this.brain.health(user, Number(days) || 7); }
 

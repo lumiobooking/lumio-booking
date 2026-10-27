@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { liveRead } from './api';
 
 /**
  * Keeps a page live without a manual reload.
@@ -19,7 +20,7 @@ export function useLiveRefresh(refresh: () => void, intervalMs = 20000) {
   useEffect(() => {
     if (typeof document === 'undefined') return; // SSR guard
     let timer: ReturnType<typeof setInterval> | null = null;
-    const run = () => ref.current();
+    const run = () => { liveRead(); ref.current(); };
     const start = () => { if (timer == null) timer = setInterval(() => { if (!document.hidden) run(); }, intervalMs); };
     const stop = () => { if (timer != null) { clearInterval(timer); timer = null; } };
 

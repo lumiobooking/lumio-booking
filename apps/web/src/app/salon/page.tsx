@@ -11,6 +11,7 @@ import { SourceChip } from '../../components/SourceChip';
 import { ui, formatPrice } from '../../lib/ui';
 import { useLang, tr } from '../../lib/i18n';
 import { useLiveRefresh } from '../../lib/useLiveRefresh';
+import { useLiveTopics } from '../../lib/useLiveEvents';
 import { useIsMobile } from '../../lib/responsive';
 import { uiCurrency } from '../../lib/ui-currency';
 import { hiddenHrefsFor, ind, uiIndustry } from '../../lib/ui-industry';
@@ -138,6 +139,7 @@ function Inner() {
 
   useEffect(() => { load(); }, [load]);
   useLiveRefresh(load, 30000);
+  useLiveTopics(['bookings', 'walkins', 'payments'], token, load);
 
   /* ------------------------------------------------------------ helpers */
   const money = (c: number) => formatPrice(c);

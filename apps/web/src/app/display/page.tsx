@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState, CSSProperties } from 'react';
 import { DisplayFeedback } from '../../components/feedback/DisplayFeedback';
 import { OrderScreen, type TotalRow } from '../../components/display/OrderScreen';
 import { apiFetch, ApiError } from '../../lib/api';
+import { useLiveEvents } from '../../lib/useLiveEvents';
 import { uiLocale } from '../../lib/datetime';
 
 const TOKEN_KEY = 'lumio_display_token';
@@ -148,6 +149,10 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
 
   // Poll the salon's current state ~1s. A new paid sale (saleRef change) — or any
   // move away from the paid screen — resets the optional tip UI.
+  // …and the register's push NUDGES this screen over a stream, so the change
+  // shows at once (the 1 s poll stays as the safety net if the stream drops).
+  const pollNow = useRef<() => void>(() => {});
+  useLiveEvents(`/display/stream/${token}`, null, () => pollNow.current(), { anonymous: true });
   useEffect(() => {
     let alive = true;
     const poll = async () => {
@@ -171,9 +176,10 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
         if (e instanceof ApiError && e.status === 404) setNotLinked(true);
       }
     };
+    pollNow.current = () => { void poll(); };
     poll();
     const id = setInterval(poll, 1000);
-    return () => { alive = false; clearInterval(id); };
+    return () => { alive = false; pollNow.current = () => {}; clearInterval(id); };
   }, [token]);
 
   useEffect(() => {

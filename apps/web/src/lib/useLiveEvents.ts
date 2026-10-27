@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ACTIVE_BRANCH_KEY } from './api';
+import { ACTIVE_BRANCH_KEY, liveRead } from './api';
 
 /**
  * Listen to a server nudge stream and run `onEvent` for each line.
@@ -20,12 +20,14 @@ export function useLiveEvents(
   path: string | null,
   token: string | null | undefined,
   onEvent: (e: { topic: string; id?: string; at?: number }) => void,
+  opts: { anonymous?: boolean } = {},
 ) {
+  const anonymous = Boolean(opts.anonymous);
   const cb = useRef(onEvent);
   cb.current = onEvent;
 
   useEffect(() => {
-    if (!path || !token || typeof window === 'undefined' || typeof ReadableStream === 'undefined') return;
+    if (!path || (!token && !anonymous) || typeof window === 'undefined' || typeof ReadableStream === 'undefined') return;
     const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
     let stopped = false;
     let ctrl: AbortController | null = null;
@@ -40,7 +42,7 @@ export function useLiveEvents(
       try {
         const b = branch();
         const res = await fetch(`${base}${path}`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream', ...(b ? { 'X-Branch-Id': b } : {}) },
+          headers: { ...(anonymous ? {} : { Authorization: `Bearer ${token}` }), Accept: 'text/event-stream', ...(b && !anonymous ? { 'X-Branch-Id': b } : {}) },
           signal: ctrl.signal,
           cache: 'no-store',
         });
@@ -61,7 +63,7 @@ export function useLiveEvents(
             if (!data) continue;
             try {
               const e = JSON.parse(data) as { topic?: string; id?: string; at?: number };
-              if (e && typeof e.topic === 'string' && e.topic !== 'ping') cb.current({ topic: e.topic, id: e.id, at: e.at });
+              if (e && typeof e.topic === 'string' && e.topic !== 'ping') { liveRead(); cb.current({ topic: e.topic, id: e.id, at: e.at }); }
             } catch { /* not ours */ }
           }
         }
@@ -86,5 +88,26 @@ export function useLiveEvents(
       if (timer != null) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [path, token]);
+  }, [path, token, anonymous]);
+}
+
+/**
+ * The salon-wide nudge stream (api live/live.controller.ts): run `onChange`
+ * when one of `topics` changes — "bookings", "payments", "walkins",
+ * "waitlist", "orders", "restaurant", "display". Bursts (a sale writes a
+ * payment, an order and a booking in one go) collapse into one reload 150 ms
+ * after the last nudge.
+ */
+export function useLiveTopics(topics: string[], token: string | null | undefined, onChange: () => void) {
+  const cb = useRef(onChange);
+  cb.current = onChange;
+  const want = useRef(topics);
+  want.current = topics;
+  const timer = useRef<number | null>(null);
+  useEffect(() => () => { if (timer.current != null) window.clearTimeout(timer.current); }, []);
+  useLiveEvents('/live/events', token, (e) => {
+    if (!want.current.includes(e.topic)) return;
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => { timer.current = null; liveRead(); cb.current(); }, 150);
+  });
 }

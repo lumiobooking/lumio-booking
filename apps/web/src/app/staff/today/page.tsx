@@ -20,7 +20,7 @@ import { apiFetch } from '../../../lib/api';
 import { formatPrice } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
-import { useLiveEvents } from '../../../lib/useLiveEvents';
+import { useLiveEvents, useLiveTopics } from '../../../lib/useLiveEvents';
 import { dayKeyInTz, fmtInTz } from '../../../lib/datetime';
 import { fmtPhone } from '../../../lib/cal-card';
 import { BOTTOM_SAFE, IC, Icon, L, SectionLabel, Sheet, TAB_H, Toast, fmtTurns, minsSince, st, useToast } from '../../../components/staff/kit';
@@ -123,6 +123,7 @@ function Inner() {
 
   useEffect(() => { void load(); }, [load]);
   useLiveRefresh(load, 15000);
+  useLiveTopics(['bookings', 'walkins'], token, load);
   useLiveEvents('/my-chair/events', token, () => { void load(); });
 
   // The menu and the chairs only matter once a sheet asks for them.

@@ -13,7 +13,6 @@ import { ui } from '../../../lib/ui';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { useLang } from '../../../lib/i18n';
 import { TeachAiPanel, canTeachAi } from '../../../components/TeachAiPanel';
-import { AiNotesBox } from '../../../components/AiNotesBox';
 import { VoicePicker, type VoiceOpt } from '../../../components/VoicePicker';
 import { uiLocale } from '../../../lib/datetime';
 
@@ -596,9 +595,13 @@ function Inner() {
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('behaviorTitle')}</div>
 
-        <label style={ui.label}>{t('greeting')}</label>
-        <input value={c.greeting} onChange={(e) => setC({ ...c, greeting: e.target.value })} placeholder={t('greetingPh')} style={{ ...ui.input, marginBottom: 6 }} />
-        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 14 }}>{t('greetingHint')}</div>
+        {/* What the assistant SAYS (greeting, notes, transfer rules) is taught in
+            one place, /salon/ai › Phone; this page keeps the line itself. */}
+        <a href="/salon/ai?tab=voice" style={{ display: 'block', padding: '14px 16px', marginBottom: 14, borderRadius: 12, background: 'var(--wash-blue)', border: '1px solid var(--line)', textDecoration: 'none', color: 'inherit', fontSize: 13.5, lineHeight: 1.5 }}>
+          <b style={{ fontSize: 15 }}>{lang === 'vi' ? 'Dạy AI cách nói trên điện thoại' : 'Teach the AI how to talk on the phone'}</b><br />
+          {lang === 'vi' ? 'Lời chào, dặn thêm, kiến thức, lời dặn của chủ tiệm — sửa ở Trợ lý AI, một chỗ cho cả hotline lẫn chat.' : 'Greeting, extra notes, knowledge and instructions — set in the AI assistant, one place for the hotline and chat.'}{' '}
+          <span style={{ color: 'var(--ink-link)', fontWeight: 700 }}>{lang === 'vi' ? 'Mở →' : 'Open →'}</span>
+        </a>
 
         <label style={ui.label}>{t('language')}</label>
         <select value={c.language} onChange={(e) => setC({ ...c, language: e.target.value })} style={{ ...ui.input, marginBottom: 14 }}>
@@ -615,16 +618,6 @@ function Inner() {
           </>
         )}
 
-        {/* Persona, facts, rules, booking policy and languages now live in the salon's one AI brain (/salon/ai); the notes below stay as this channel's extra. */}
-        <a href="/salon/ai" style={{ display: 'block', padding: '10px 12px', marginBottom: 12, borderRadius: 10, background: 'var(--wash-blue)', border: '1px solid var(--line)', textDecoration: 'none', color: 'inherit', fontSize: 13, lineHeight: 1.45 }}>
-          <b>{lang === 'vi' ? 'Bộ não AI' : 'AI brain'}</b> — {lang === 'vi' ? 'Tên, giọng, thông tin tiệm, quy tắc, chính sách booking và ngôn ngữ của cả tổng đài lẫn chat được chỉnh ở một nơi.' : 'Name, tone, salon facts, rules, booking policy and languages for both the hotline and chat are set in one place.'} <span style={{ color: 'var(--ink-link)' }}>{lang === 'vi' ? 'Mở →' : 'Open →'}</span>
-        </a>
-        <AiNotesBox token={token} vi={lang === 'vi'} />
-        <label style={ui.label}>{t('aiInstruction')}</label>
-        <textarea value={c.aiInstruction} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} placeholder={t('aiInstructionPh')}
-          rows={3} style={{ ...ui.input, marginBottom: 10, resize: 'vertical' }} />
-
-        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 14 }}>{t('faqReuse')}</div>
 
         <button onClick={() => save({})} disabled={saving} style={{ ...ui.primaryBtn, opacity: saving ? 0.6 : 1 }}>
           {saving ? t('saving') : saved ? t('saved') : t('save')}

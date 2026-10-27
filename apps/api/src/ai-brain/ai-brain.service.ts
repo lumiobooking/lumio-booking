@@ -10,9 +10,12 @@ import { personaFor, chosenIndustry } from '../common/business-persona';
 import { serviceCode, type MenuItem } from '../bookings/group-booking';
 import { formatMoneyShort } from '../common/money';
 import {
-  AI_BRAIN_KEY, brainFromLegacy, brainPromptBlocks, defaultBrain, sanitizeBrain,
-  type AiBrain, type Lang,
+  AI_BRAIN_KEY, brainFromLegacy, brainPromptBlocks, defaultBrain, legacyNotes, mergeLegacy, sanitizeBrain,
+  type AiBrain, type Lang, type LegacySources,
 } from './brain-settings';
+
+/** The day the old notes were moved into the brain (and the brain before it, for Undo). */
+export const AI_LEGACY_MERGED_KEY = 'ai_legacy_merged';
 import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLanguage, type EndReason } from './brain-rules';
 import { AiInstructionsService, instructionChannel } from './instructions.service';
 import { checkingLine, cleanInstruction, correctionFor, lastResort, type Instruction, type InstructionChannel } from './instructions';
@@ -108,8 +111,24 @@ export class AiBrainService {
     // Messenger connection's humanActiveMins is what the bot actually obeys
     // (messenger.service yield rules). The brain screen used to keep its own
     // copy that nothing read, so changing it there changed nothing.
-    const quiet = await Promise.resolve().then(() => this.db.messengerConnection.findUnique({ where: { tenantId }, select: { humanActiveMins: true } as never })).catch(() => null) as { humanActiveMins?: number } | null;
+    // The same for every value whose real home is a channel's own record —
+    // ONE value each, shown here and on the channel page alike:
+    //  - the chat greeting is the Messenger connection's (what the Page's
+    //    welcome screen and "Get started" send);
+    //  - "yield to a human" minutes are its graceMins;
+    //  - the hotline's transfer number and greeting are the line's (routing
+    //    and the keypad-menu path read them there).
+    const [quiet, line] = await Promise.all([
+      Promise.resolve().then(() => this.db.messengerConnection.findUnique({ where: { tenantId }, select: { humanActiveMins: true, graceMins: true, greeting: true } as never })).catch(() => null) as Promise<{ humanActiveMins?: number; graceMins?: number; greeting?: string | null } | null>,
+      Promise.resolve().then(() => this.db.voiceLine.findUnique({ where: { tenantId }, select: { transferNumber: true, greeting: true } })).catch(() => null) as Promise<{ transferNumber?: string | null; greeting?: string | null } | null>,
+    ]);
     if (quiet && Number.isInteger(quiet.humanActiveMins)) brain.handoff.staffQuietMins = quiet.humanActiveMins as number;
+    if (quiet && Number.isInteger(quiet.graceMins)) brain.channels.chat.yieldMins = quiet.graceMins as number;
+    if (quiet) brain.channels.chat.greeting = String(quiet.greeting ?? '').trim();
+    if (line) {
+      brain.handoff.transferNumber = String(line.transferNumber ?? '').trim();
+      if (!brain.channels.voice.greeting.trim()) brain.channels.voice.greeting = String(line.greeting ?? '').trim() || brain.persona.greeting;
+    }
     this.cache.set(tenantId, { at: Date.now(), brain, legacy });
     return { brain, legacy };
   }
@@ -124,8 +143,9 @@ export class AiBrainService {
       this.db.messengerConnection.findUnique({ where: { tenantId }, select: { enabled: true, pageName: true, igId: true } }).catch(() => null),
       this.db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, market: true } }).catch(() => null),
     ]);
+    const old = await this.legacyView(tenantId).catch(() => ({ notes: [], mergedAt: null, canUndo: false }));
     return {
-      brain, legacy, canEdit: this.canEdit(user),
+      brain, legacy, canEdit: this.canEdit(user), oldNotes: old,
       salon: { name: tenant?.name ?? '', market: tenant?.market ?? 'US' },
       channels: {
         voice: { provisioned: !!line?.lumioNumber, enabled: !!line?.enabled, number: line?.lumioNumber ?? null, mode: line?.mode ?? 'ai', schedule: line?.schedule ?? 'always' },
@@ -151,10 +171,20 @@ export class AiBrainService {
     if (next.handoff.staffQuietMins !== current.handoff.staffQuietMins) {
       await Promise.resolve().then(() => this.db.messengerConnection.updateMany({ where: { tenantId }, data: { humanActiveMins: next.handoff.staffQuietMins } as never })).catch(() => undefined);
     }
+    if (next.channels.chat.yieldMins !== current.channels.chat.yieldMins) {
+      await Promise.resolve().then(() => this.db.messengerConnection.updateMany({ where: { tenantId }, data: { graceMins: next.channels.chat.yieldMins } as never })).catch(() => undefined);
+    }
     // The hotline's transfer number lives on the line (routing): keep the two in step.
     if (next.handoff.transferNumber !== current.handoff.transferNumber) {
       await this.db.voiceLine.updateMany({ where: { tenantId }, data: { transferNumber: next.handoff.transferNumber || null } }).catch(() => undefined);
     }
+    // One phone greeting: the keypad-menu path reads the line's own greeting,
+    // so the line carries the same words.
+    if (next.channels.voice.greeting !== current.channels.voice.greeting) {
+      await this.db.voiceLine.updateMany({ where: { tenantId }, data: { greeting: next.channels.voice.greeting || null } }).catch(() => undefined);
+    }
+    // (The chat greeting is written through /messenger/settings by the screen,
+    // which also pushes it to the Page's welcome screen.)
     this.cache.delete(tenantId);
     await this.audit.log({ tenantId, userId: user.userId, action: 'ai_brain.updated', resourceType: 'setting', resourceId: AI_BRAIN_KEY, metadata: { version: next.version } });
     return next;
@@ -164,12 +194,67 @@ export class AiBrainService {
   async promptBlocks(tenantId: string, channel: 'voice' | 'chat', lang: Lang) {
     const [brain, tenant, tradeRow, industryRow] = await Promise.all([
       this.getBrain(tenantId),
-      this.db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, businessType: true } }).catch(() => null),
+      this.db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, businessType: true, timezone: true } }).catch(() => null),
       this.db.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } }).catch(() => null),
       this.db.setting.findFirst({ where: { tenantId, key: 'industry' }, select: { value: true } }).catch(() => null),
     ]);
     const persona = personaFor(tenant?.businessType, (tradeRow?.value as { trade?: string } | null)?.trade ?? null, chosenIndustry(industryRow?.value));
-    return { brain, blocks: brainPromptBlocks(brain, { channel, salonName: tenant?.name ?? 'our salon', venueNoun: persona.venueNoun, lang }) };
+    return { brain, blocks: brainPromptBlocks(brain, { channel, salonName: tenant?.name ?? 'our salon', venueNoun: persona.venueNoun, lang, today: salonToday(tenant?.timezone) }) };
+  }
+
+  // ---------------------------------------------------------------- the old notes, moved in once
+
+  private async legacySources(tenantId: string): Promise<LegacySources> {
+    const [conn, line, notes] = await Promise.all([
+      this.db.messengerConnection.findUnique({ where: { tenantId }, select: { greeting: true, closing: true, agentName: true, bizIntro: true, aiInstruction: true, botFacts: true, botMode: true } }).catch(() => null),
+      this.db.voiceLine.findUnique({ where: { tenantId }, select: { greeting: true, language: true, aiInstruction: true, transferNumber: true } }).catch(() => null),
+      this.settings ? this.settings.getAiNotes(tenantId).catch(() => null) : Promise.resolve(null),
+    ]);
+    // A sales bot (Lumio's own page) still reads its Messenger fields: those are not "old notes".
+    const messenger = conn && conn.botMode === 'sales' ? null : conn;
+    return { messenger, voice: line, aiNotes: notes?.text ?? '' };
+  }
+
+  /** Notes on the old screens that the brain does not hold — what the owner is asked to move in. */
+  async legacyView(tenantId: string) {
+    const { brain } = await this.getBrainFor(tenantId);
+    const [src, mark] = await Promise.all([
+      this.legacySources(tenantId),
+      this.db.setting.findUnique({ where: { tenantId_key: { tenantId, key: AI_LEGACY_MERGED_KEY } } }).catch(() => null),
+    ]);
+    const merged = mark?.value && typeof mark.value === 'object' ? (mark.value as Row) : null;
+    return { notes: legacyNotes(brain, src), mergedAt: merged?.at ?? null, canUndo: !!merged?.before };
+  }
+
+  /** Move every old note into the brain (appended, never overwriting); the brain before is kept for Undo. */
+  async mergeLegacyNotes(user: AuthenticatedUser) {
+    if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can change the AI brain');
+    const tenantId = this.tenantId(user);
+    const { brain } = await this.getBrainFor(tenantId);
+    const src = await this.legacySources(tenantId);
+    const moved = legacyNotes(brain, src);
+    if (!moved.length) return { moved: 0, brain };
+    const next = await this.updateBrain(user, mergeLegacy(brain, src));
+    await this.db.setting.upsert({
+      where: { tenantId_key: { tenantId, key: AI_LEGACY_MERGED_KEY } },
+      update: { value: { at: new Date().toISOString(), by: user.email || user.userId, before: brain, moved: moved.length } },
+      create: { tenantId, key: AI_LEGACY_MERGED_KEY, value: { at: new Date().toISOString(), by: user.email || user.userId, before: brain, moved: moved.length } },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'ai_brain.legacy_merged', resourceType: 'setting', resourceId: AI_BRAIN_KEY, metadata: { moved: moved.length, sources: [...new Set(moved.map((m) => m.source))] } });
+    return { moved: moved.length, brain: next };
+  }
+
+  /** Undo the move: the brain as it was just before. */
+  async undoLegacyMerge(user: AuthenticatedUser) {
+    if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can change the AI brain');
+    const tenantId = this.tenantId(user);
+    const mark = await this.db.setting.findUnique({ where: { tenantId_key: { tenantId, key: AI_LEGACY_MERGED_KEY } } }).catch(() => null);
+    const before = mark?.value && typeof mark.value === 'object' ? (mark.value as Row).before : null;
+    if (!before) throw new BadRequestException('Nothing to undo.');
+    const next = await this.updateBrain(user, before);
+    await this.db.setting.update({ where: { tenantId_key: { tenantId, key: AI_LEGACY_MERGED_KEY } }, data: { value: { ...(mark.value as Row), before: null, undoneAt: new Date().toISOString() } } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'ai_brain.legacy_merge_undone', resourceType: 'setting', resourceId: AI_BRAIN_KEY });
+    return { brain: next };
   }
 
   // ---------------------------------------------------------------- customers & memory
@@ -604,5 +689,14 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
     const r = await this.createCallback({ tenantId, channel, reason: 'owner', summary, phone: s(dto.phone, 40), name: s(dto.name, 120), customerId: s(dto.customerId, 64), threadId: s(dto.threadId, 64) });
     await this.audit.log({ tenantId, userId: user.userId, action: 'ai_callback.created_by_owner', resourceType: 'ai_callback', resourceId: r?.id ?? 'none' });
     return { ok: !!r, id: r?.id ?? null };
+  }
+}
+
+/** Today's date where the salon is (YYYY-MM-DD) — dated facts switch on and off by the salon's own calendar. */
+export function salonToday(tz?: string | null, now: Date = new Date()): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  } catch {
+    return now.toISOString().slice(0, 10);
   }
 }

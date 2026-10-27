@@ -299,6 +299,8 @@ export function ShellV2({ children, banner, visible, screenVisible, go, menuLabe
                 <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', flex: 1 }}>{L('Ngôn ngữ', 'Language')}</span>
                 {langToggle}
               </div>
+              {/* Light / dark on the phone too — it was only in the desktop top bar. */}
+              <div style={{ padding: '0 14px 10px' }}><ThemeToggle labelled /></div>
               <div style={{ padding: '0 10px' }}>{branchSwitcher}</div>
               {/* Areas as tabs across the top of the sheet: one tap to switch, the
                   list underneath stays short enough to reach with a thumb. */}

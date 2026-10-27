@@ -633,6 +633,11 @@ function Inner() {
   const unclaimed = threads.filter((th) => th.state === 'unclaimed').length;
   const newLeads = leads.filter((l) => l.status === 'NEW').length;
   const showLeads = c.botMode === 'sales' || leads.length > 0;
+  // A booking salon teaches its AI in ONE place (/salon/ai): the name,
+  // greeting, notes and facts boxes that used to sit here were read by
+  // nobody once that page was saved. Only a sales bot (Lumio's own page)
+  // still reads them, so only a sales bot still shows them.
+  const salesBot = c.botMode === 'sales';
   const igPage = (c.pages || []).find((p) => p.igId);
   // Only the API's verdict decides "not receiving" — and it says why.
   const igSubBad = wh?.instagram?.state === 'not_receiving';
@@ -675,8 +680,8 @@ function Inner() {
 
   const tabs: { key: TabKey; label: string; count: number; tone: Tone }[] = [
     { key: 'overview', label: L('Tổng quan', 'Overview'), count: 0, tone: 'idle' },
-    { key: 'reply', label: L('Cách trả lời', 'How it replies'), count: 0, tone: 'idle' },
-    { key: 'know', label: L('Kiến thức', 'Knowledge'), count: gapsOpen, tone: 'warn' },
+    { key: 'reply', label: salesBot ? L('Cách trả lời', 'How it replies') : L('Chia turn & chế độ', 'Turns & mode'), count: 0, tone: 'idle' },
+    ...(salesBot ? [{ key: 'know' as TabKey, label: L('Kiến thức', 'Knowledge'), count: gapsOpen, tone: 'warn' as Tone }] : []),
     ...(showLeads ? [{ key: 'leads' as TabKey, label: L('Khách tiềm năng', 'Leads'), count: newLeads, tone: 'ok' as Tone }] : []),
     { key: 'log', label: L('Nhật ký', 'Log'), count: failed24, tone: 'bad' },
     { key: 'connect', label: L('Kết nối', 'Connections'), count: 0, tone: 'idle' },
@@ -686,7 +691,7 @@ function Inner() {
     ...(failed24 > 0 ? [{ key: 'failed', n: String(failed24), tone: 'bad' as Tone, title: L('Tin của bot chưa tới khách (24 giờ qua)', 'Bot replies that never reached the customer (24h)'), why: wh?.lastSend?.error || L('Xem lý do Meta trả về trong Nhật ký.', 'See Meta\u2019s reason in the Log.'), cta: L('Xem', 'View'), go: () => goTab('log') }] : []),
     ...(fbConnected && !c.enabled ? [{ key: 'off', n: '!', tone: 'warn' as Tone, title: L('Trợ lý AI đang tắt', 'The AI is off'), why: L('Khách nhắn tới sẽ không ai tự trả lời — chỉ nhân viên trả lời trong Hộp thư.', 'Nobody answers automatically — only staff, in the Inbox.'), cta: L('Bật', 'Turn on'), go: () => { void save({ enabled: true }); } }] : []),
     ...(unclaimed > 0 ? [{ key: 'waiting', n: String(unclaimed), tone: 'warn' as Tone, title: L('Khách đang chờ người trả lời', 'Customers waiting for a person'), why: L('Hội thoại đã giao cho nhân viên nhưng chưa ai nhận.', 'Given to staff but nobody has picked them up.'), cta: L('Mở Hộp thư', 'Open the Inbox'), href: '/salon/inbox' }] : []),
-    ...(gapsOpen > 0 ? [{ key: 'gaps', n: String(gapsOpen), tone: 'warn' as Tone, title: L('Câu bot chưa trả lời được', 'Questions the bot could not answer'), why: L('Trả lời một lần — bot dùng cho mọi khách sau.', 'Answer once — the bot uses it for every customer after.'), cta: L('Trả lời', 'Answer'), go: () => goTab('know') }] : []),
+    ...(gapsOpen > 0 ? [{ key: 'gaps', n: String(gapsOpen), tone: 'warn' as Tone, title: L('Câu bot chưa trả lời được', 'Questions the bot could not answer'), why: L('Trả lời một lần — bot dùng cho mọi khách sau.', 'Answer once — the bot uses it for every customer after.'), cta: L('Trả lời', 'Answer'), ...(salesBot ? { go: () => goTab('know') } : { href: '/salon/ai?tab=teach' }) }] : []),
     ...(newLeads > 0 ? [{ key: 'leads', n: String(newLeads), tone: 'ok' as Tone, title: L('Khách tiềm năng mới', 'New leads'), why: L('Khách đã để lại tên và số điện thoại.', 'Customers who left a name and phone.'), cta: L('Xem', 'View'), go: () => goTab('leads') }] : []),
   ];
 
@@ -937,7 +942,7 @@ function Inner() {
         </>
       )}
       {/* ============ CÁCH TRẢ LỜI / HOW IT REPLIES ============ */}
-      {tab === 'reply' && (
+      {(tab === 'reply' || (tab === 'know' && !salesBot)) && (
         <>
       {/* Behaviour */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
@@ -986,6 +991,7 @@ function Inner() {
             )}
           </>
         )}
+        {salesBot && (<>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 10, marginBottom: 12 }}>
           <div>
             <label style={ui.label}>{lang === 'vi' ? 'Tên nhân viên (bot xưng tên này)' : 'Staff name (the bot goes by it)'}</label>
@@ -1018,6 +1024,14 @@ function Inner() {
               onBlur={() => save({})} style={ui.input} />
           </div>
         </div>
+        </>)}
+        {!salesBot && (
+          <a href="/salon/ai?tab=chat" style={{ display: 'block', padding: '14px 16px', marginBottom: 12, borderRadius: 12, background: 'var(--wash-blue)', border: '1px solid var(--line)', textDecoration: 'none', color: 'inherit', fontSize: 13.5, lineHeight: 1.5 }}>
+            <b style={{ fontSize: 15 }}>{lang === 'vi' ? 'Dạy AI cách trả lời tin nhắn' : 'Teach the AI how to answer messages'}</b><br />
+            {lang === 'vi' ? 'Tên, lời chào, kiến thức, lời dặn, thời gian AI im khi nhân viên trả lời — sửa ở Trợ lý AI, một chỗ cho cả chat lẫn hotline.' : 'Name, greeting, knowledge, instructions and how long the AI stays quiet — set in the AI assistant, one place for chat and the hotline.'}{' '}
+            <span style={{ color: 'var(--ink-link)', fontWeight: 700 }}>{lang === 'vi' ? 'Mở →' : 'Open →'}</span>
+          </a>
+        )}
         {/* Chat turns ("chia turn"): the rules for handing each new
             conversation to one person. Its own panel and its own endpoint —
             see components/ChatTurnsPanel. */}
@@ -1028,6 +1042,7 @@ function Inner() {
           <ChatTurnsPanel token={token} vi={lang === 'vi'} />
         </div>
 
+        {salesBot && (<>
         <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
           {lang === 'vi'
             ? 'Nhân viên vừa nhắn trong X phút thì mỗi tin mới của khách được nhường Y phút cho người thật; hết Y phút bot trả lời. Nhân viên im quá X phút thì bot trực lại ngay. Y = 0 nghĩa là bot không chờ.'
@@ -1091,12 +1106,13 @@ function Inner() {
         <textarea value={c.aiInstruction} placeholder={t('extraNotesPh')} rows={3} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
         {/* Follow-up for quiet booking chats — each salon's own switch, off by default. */}
         {c.botMode !== 'sales' && <FollowUpBox token={token} vi={lang === 'vi'} />}
+        </>)}
       </div>
         </>
       )}
 
       {/* ============ KIẾN THỨC / KNOWLEDGE ============ */}
-      {tab === 'know' && (
+      {tab === 'know' && salesBot && (
         <>
         {/* What the bot could not answer — answered once here, known to the bot from then on. */}
         <KnowledgeGapsBox token={token} vi={lang === 'vi'} onTaught={(label, value) => setFacts((rows) => {

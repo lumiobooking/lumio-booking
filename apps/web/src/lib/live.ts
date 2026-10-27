@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { liveRead } from './api';
 
 /**
  * Keep a screen current without anyone pressing reload.
@@ -17,7 +18,7 @@ export function useLive(fn: () => void | Promise<void>, everyMs = 30_000, enable
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
     let timer: ReturnType<typeof setInterval> | null = null;
-    const tick = () => { if (document.visibilityState === 'visible') void fn(); };
+    const tick = () => { if (document.visibilityState === 'visible') { liveRead(); void fn(); } };
     const start = () => { if (!timer) timer = setInterval(tick, everyMs); };
     const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
     const onVis = () => { if (document.visibilityState === 'visible') { tick(); start(); } else stop(); };

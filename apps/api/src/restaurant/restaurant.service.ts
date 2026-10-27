@@ -867,6 +867,28 @@ export class RestaurantService {
     return this.prisma.tableCheck.findFirst({ where: { tenantId, status: 'OPEN', tableIds: { has: tableId } }, orderBy: { openedAt: 'desc' }, select: { id: true, number: true } });
   }
 
+  /** The restaurant behind a table QR — for the guest's live stream (nothing else leaves here). */
+  async guestStreamTenant(token: string): Promise<string> {
+    return (await this.tableByToken(token)).tenantId;
+  }
+
+  /**
+   * A short fingerprint of what THIS table's guest screen shows that can
+   * change while they look at it: each dish's state (waiting / cooking /
+   * ready) and how many dishes are sold out. The guest's stream sends a
+   * nudge only when it changes — a restaurant's other tables never make
+   * this phone refetch.
+   */
+  async guestStamp(token: string): Promise<string> {
+    const { table, tenantId } = await this.tableByToken(token);
+    const [open, soldOut] = await Promise.all([
+      this.openCheckOn(tenantId, table.id),
+      this.prisma.menuItem.count({ where: { tenantId, isActive: true, soldOutAt: { not: null } } }),
+    ]);
+    const lines = open ? await this.prisma.tableCheckLine.findMany({ where: { tenantId, checkId: open.id }, select: { id: true, state: true, quantity: true, readyAt: true }, orderBy: { createdAt: 'asc' } }) : [];
+    return [open?.id ?? '-', soldOut, ...lines.map((l) => `${l.id.slice(-6)}${l.state[0]}${l.quantity}${l.readyAt ? 'r' : ''}`)].join('|');
+  }
+
   /** What a guest sees after scanning: the restaurant, the table, the menu, and what this table has ordered. */
   async guestMenu(token: string) {
     const { table, settings, tenantId } = await this.tableByToken(token);

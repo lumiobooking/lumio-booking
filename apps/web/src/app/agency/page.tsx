@@ -36,6 +36,7 @@ import { fresh } from '../../lib/live';
 import { useIsMobile } from '../../lib/responsive';
 import { groupInbox, groupSummary, type InboxItem } from '../../lib/inbox-groups';
 import { LumioLogo } from '../../components/LumioLogo';
+import { ThemeToggle } from '../../components/ThemeToggle';
 import { TeamBell, noticesByTenant, noticeSummary, ago as agoShort, type RowNotice, type TeamNotice } from '../../components/TeamBell';
 import {
   activeGroups, applyFilters, clearGroup, facetCounts, NO_FILTERS, rememberedFilters, REMEMBERED, toggleValue,
@@ -698,6 +699,7 @@ export default function AgencyPage() {
           )}
           <h1 style={{ fontSize: 22, margin: 0 }}><LumioLogo size={phone ? 30 : 34} sub="Support" /></h1>
           <span style={{ marginLeft: 'auto' }} />
+          <ThemeToggle size={38} />
           <TeamBell items={notices} onOpen={openNotice} busy={Boolean(busy)} />
           <button onClick={() => { logout(); router.replace('/login'); }}
             style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.sub, borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>

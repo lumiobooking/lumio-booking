@@ -22,12 +22,14 @@ export const LIVE_TOPIC_OF_MODEL: Record<string, string> = {
   TableCheck: 'restaurant',
   TableCheckLine: 'restaurant',
   RestaurantTable: 'restaurant',
+  // A dish sold out (or back) — the floor, the till and the guests' QR menus.
+  MenuItem: 'restaurant',
   DisplaySession: 'display',
 };
 
 const WRITES = new Set(['create', 'createMany', 'update', 'updateMany', 'upsert', 'delete', 'deleteMany']);
 
-type Params = { model?: string; action?: string; args?: { where?: Record<string, unknown>; data?: unknown; create?: Record<string, unknown> } };
+type Params = { model?: string; action?: string; runInTransaction?: boolean; args?: { where?: Record<string, unknown>; data?: unknown; create?: Record<string, unknown> } };
 
 /** The topic a write belongs to, or null when no live screen shows it. */
 export function liveTopicOf(params: Params): string | null {

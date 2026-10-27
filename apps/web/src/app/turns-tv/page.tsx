@@ -7,9 +7,10 @@
 // next client. Polls every 10 s. The front desk or the owner signs in once on
 // the TV's browser (or the iPad on the wall); technicians only read.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
+import { useLiveTopics } from '../../lib/useLiveEvents';
 import { uiLocale } from '../../lib/datetime';
 import { fmtTurns } from '../../lib/walkin-floor';
 import { formatPrice } from '../../lib/ui';
@@ -35,6 +36,7 @@ export default function TurnsTvPage() {
   const [err, setErr] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
 
+  const tickRef = useRef<() => void>(() => {});
   useEffect(() => {
     if (!token) return;
     let alive = true;
@@ -46,9 +48,13 @@ export default function TurnsTvPage() {
       } catch (e) { if (alive) setErr(e instanceof Error ? e.message : 'Failed'); }
     };
     void tick();
-    const id = setInterval(tick, 10_000);
-    return () => { alive = false; clearInterval(id); };
+    tickRef.current = () => { void tick(); };
+    // The poll is only the safety net now: a check-in, a call or a finished
+    // service anywhere in the salon refreshes the TV at once.
+    const id = setInterval(tick, 30_000);
+    return () => { alive = false; tickRef.current = () => {}; clearInterval(id); };
   }, [token]);
+  useLiveTopics(['walkins', 'bookings', 'payments'], token, () => tickRef.current());
 
   const T = (v: string, e: string) => (vi ? v : e);
   if (!ready) return <main style={{ minHeight: '100vh', background: 'var(--c0b1120)' }} />;

@@ -1,4 +1,5 @@
 'use client';
+import { ThemeToggle } from '../../../components/ThemeToggle';
 
 import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
 import MarketBadge from '../../../components/MarketBadge';
@@ -204,7 +205,8 @@ export default function TenantsPage() {
             Super Admin · {user.email}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <ThemeToggle size={38} />
           <button onClick={() => setShowAccount((s) => !s)} style={ghostBtn}>
             {showAccount ? 'Close' : 'My account'}
           </button>

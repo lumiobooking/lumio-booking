@@ -6,6 +6,7 @@ import {
   addToCart, cartToOrder, cartTotal, formatMoney, optionsReady, priceWith,
   type CartLine, type OptionGroup,
 } from '../../../lib/restaurant-till';
+import { useLiveEvents } from '../../../lib/useLiveEvents';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 
@@ -85,9 +86,13 @@ export default function TablePage() {
   }, [token]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    const t = setInterval(() => { void load(); }, 20000);
+    const t = setInterval(() => { void load(); }, 60000);
     return () => clearInterval(t);
   }, [load]);
+  // Live: the server nudges this phone the moment THIS table changes — the
+  // staff accepted the order, the kitchen started or finished a dish, a dish
+  // sold out. The minute poll above is only the safety net.
+  useLiveEvents(token ? `/public/table/${encodeURIComponent(token)}/stream` : null, null, () => { void load(); }, { anonymous: true });
 
   const vi = (lang ?? (data?.lang === 'en' ? 'en' : 'vi')) === 'vi';
   const t = vi ? T.vi : T.en;

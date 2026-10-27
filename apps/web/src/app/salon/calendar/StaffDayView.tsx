@@ -51,6 +51,9 @@ const BAR_COLOR: Record<string, string> = {
 };
 const barColor = (status: string) => BAR_COLOR[status] ?? '#b45309';
 const isGone = (status: string) => status === 'CANCELLED' || status === 'NO_SHOW';
+/** Not shown in the columns unless asked: cancelled and declined. (A no-show stays — the desk needs to see it.) */
+const hiddenByDefault = (status: string) => status === 'CANCELLED' || status === 'REJECTED';
+const SHOW_GONE_KEY = 'lumio_cal_show_cancelled';
 const PHONE_AVATAR = ['#be185d', '#1d4ed8', '#0f766e', '#7c3aed', '#c2410c', '#a16207', '#0e7490', '#4338ca'];
 
 const STATUS_COLOR: Record<string, string> = {
@@ -108,14 +111,30 @@ function srcMeta(s: string | null | undefined, t: (k: string) => string): { icon
 // or down to change the time, sideways to change the tech (one POST /move, so a
 // clash leaves the booking where it was; "Hoàn tác" puts it back). Hours
 // outside a tech's shift, and breaks between split shifts, are hatched.
-export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChanged, onBook }: {
+export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, today, onChanged, onBook, onCtx }: {
   date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onChanged?: () => void;
   /** An empty slot was clicked: open the booking form in place (staffId null = unassigned column). Without it the page changes. */
   onBook?: (staffId: string | null, startLocal: string) => void;
+  /** Right-click on a card: the same menu as the month (view, arrive, complete, cancel, delete). */
+  onCtx?: (b: Booking, x: number, y: number) => void;
 }) {
   const { token, user } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  // A cancelled booking used to stay in its technician's column, struck
+  // through — so a visit moved to someone else (cancelled and booked again)
+  // still showed on the old technician. Cancelled and declined bookings are
+  // hidden from the columns unless the desk asks to see them (chip "Đã huỷ").
+  const [showGone, setShowGone] = useState(() => { try { return localStorage.getItem(SHOW_GONE_KEY) === '1'; } catch { return false; } });
+  const goneCount = useMemo(() => allItems.filter((b) => hiddenByDefault(b.status)).length, [allItems]);
+  const items = useMemo(() => (showGone ? allItems : allItems.filter((b) => !hiddenByDefault(b.status))), [allItems, showGone]);
+  const toggleGone = () => setShowGone((v) => { const n = !v; try { localStorage.setItem(SHOW_GONE_KEY, n ? '1' : '0'); } catch { /* private mode */ } return n; });
+  const goneChip = goneCount > 0 ? (
+    <button type="button" aria-pressed={showGone} onClick={toggleGone} title={lang === 'vi' ? 'Hiện / ẩn lịch đã huỷ' : 'Show / hide cancelled bookings'}
+      style={{ ...chip(showGone), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {showGone ? '✓ ' : ''}{lang === 'vi' ? `Đã huỷ · ${goneCount}` : `Cancelled · ${goneCount}`}
+    </button>
+  ) : null;
   const [staff, setStaff] = useState<StaffLite[]>([]);
   const [focus, setFocus] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -460,7 +479,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
               <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{workingNow} {vi ? 'đang làm' : 'busy'} · <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{freeNow} {vi ? 'trống' : 'free'}</span></span>
             )}
           </div>
-          {onShift.length > 0 && <div style={{ display: 'flex', justifyContent: 'flex-end' }}><CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></div>}
+          {onShift.length > 0 && <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{goneChip}<CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></div>}
           {onShift.length === 0 && unassigned.length === 0 && (
             <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '36px 0', fontSize: 14 }}>{items.length === 0 ? t('cal.noAppts') : (vi ? 'Chưa có thợ nào làm hôm nay.' : 'No technician on shift today.')}</div>
           )}
@@ -535,7 +554,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                               const face: CardFace = { ...faceOf(b, s, e, vi, t), source: <SourceDot b={b} vi={vi} /> };
                               const look = cardLook(face, colorMode, barColor(b.status));
                               return (
-                                <button key={b.id} type="button" onClick={() => onOpen(b)} aria-label={[face.name, face.service, face.phone, face.range].filter(Boolean).join(', ')}
+                                <button key={b.id} type="button" onClick={() => onOpen(b)} onContextMenu={onCtx ? (ev) => { ev.preventDefault(); onCtx(b, ev.clientX, ev.clientY); } : undefined} aria-label={[face.name, face.service, face.phone, face.range].filter(Boolean).join(', ')}
                                   style={{ position: 'absolute', top: gy(s) + 2, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', padding: cardPad(tier, 'sm'), borderRadius: 10,
                                     background: look.background, border: look.border, display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', alignItems: 'stretch', gap: 2, overflow: 'hidden', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
                                   <CardBody f={face} tier={tier} size="sm" look={look} />
@@ -711,7 +730,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                 const face: CardFace = { ...faceOf(b, s, e, vi, t), tag: statusTag(b.status, vi), source: <SourceChip b={b} vi={vi} /> };
                 const look = cardLook(face, colorMode, barColor(b.status));
                 return (
-                  <button key={b.id} type="button" onClick={() => onOpen(b)} aria-label={[face.name, face.service, face.phone, face.range, face.price, face.tag].filter(Boolean).join(', ')}
+                  <button key={b.id} type="button" onClick={() => onOpen(b)} onContextMenu={onCtx ? (ev) => { ev.preventDefault(); onCtx(b, ev.clientX, ev.clientY); } : undefined} aria-label={[face.name, face.service, face.phone, face.range, face.price, face.tag].filter(Boolean).join(', ')}
                     style={{ position: 'absolute', top: y(s) + 2, height: h, left: `calc(${col * w}% + 8px)`, width: `calc(${w}% - 16px)`, boxSizing: 'border-box', padding: cardPad(tier, 'lg'), borderRadius: 10,
                       background: look.background, border: look.border, display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', alignItems: 'stretch', gap: 2, overflow: 'hidden', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
                     <CardBody f={face} tier={tier} size="lg" look={look} />
@@ -758,7 +777,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
             <button key={s.id} onClick={() => setFocus(focus === s.id ? null : s.id)} style={chip(focus === s.id)}>{s.firstName}</button>
           ))}
           <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 6 }}>{t('cal.dragHint')}</span>
-          <span style={{ marginLeft: 'auto' }}><CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></span>
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>{goneChip}<CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></span>
         </div>
       )}
 
@@ -868,8 +887,9 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                       const look = cardLook(face, colorMode, cc);
                       return (
                         <div key={b.id} data-card="1" draggable={!dim} onDragStart={(ev) => { setDragId(b.id); setGhost(null); grab.current = ((ev.clientY - ev.currentTarget.getBoundingClientRect().top) / HP) * 60; ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', b.id); }} onDragEnd={() => { setDragId(null); setOverCol(null); setGhost(null); }}
-                          onClick={() => onOpen(b)} title={[face.name, face.service, face.phone, face.range].filter(Boolean).join(' · ')}
-                          style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: look.background, border: look.border, borderRadius: 8, padding: cardPad(tier, 'sm'), display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', gap: 2, overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dim ? 0.7 : dragId === b.id ? 0.4 : 1 }}>
+                          onClick={() => onOpen(b)} onContextMenu={onCtx ? (ev) => { ev.preventDefault(); onCtx(b, ev.clientX, ev.clientY); } : undefined}
+                          title={[face.name, face.service, face.phone, face.range].filter(Boolean).join(' · ')}
+                          style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: look.background, border: look.border, borderRadius: 8, padding: cardPad(tier, 'sm'), display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', gap: 2, overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dragId === b.id ? 0.4 : 1 }}>
                           <CardBody f={face} tier={tier} size="sm" look={look} />
                         </div>
                       );

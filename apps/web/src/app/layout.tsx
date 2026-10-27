@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Be_Vietnam_Pro } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '../lib/auth';
+import { ThemeSync } from '../components/ThemeToggle';
 import { LangProvider } from '../lib/i18n';
 import { PwaRegister } from '../components/PwaRegister';
 import { themeCss } from '../lib/theme';
@@ -98,7 +99,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           color: 'var(--ce2e8f0)',
         }}
       >
-        <AuthProvider><LangProvider>{children}<PwaRegister /><NativeBridge /><ChatHeartbeat /></LangProvider></AuthProvider>
+        <AuthProvider><LangProvider>{children}<PwaRegister /><NativeBridge /><ChatHeartbeat /><ThemeSync /></LangProvider></AuthProvider>
         <NavProgress />
         <FeedbackToasts />
       </body>

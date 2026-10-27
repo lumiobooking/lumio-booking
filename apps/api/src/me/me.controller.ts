@@ -92,6 +92,25 @@ export class MeController {
   }
 
   // PATCH /api/me/account -> the signed-in user changes their OWN login email
+  /**
+   * GET/PATCH /api/me/preferences — this person's light/dark choice, for every
+   * kind of account (owner, technician, manager, Lumio support, Super Admin).
+   * Only the caller's own row is ever read or written; nothing tenant-wide.
+   */
+  @Get('preferences')
+  async preferences(@CurrentUser() user: AuthenticatedUser) {
+    const u = await this.prisma.user.findUnique({ where: { id: user.userId }, select: { theme: true } }).catch(() => null);
+    return { theme: themeOf(u?.theme) };
+  }
+
+  @Patch('preferences')
+  async setPreferences(@CurrentUser() user: AuthenticatedUser, @Body() dto: { theme?: unknown }) {
+    const theme = themeOf(dto?.theme);
+    if (!theme) throw new BadRequestException('theme must be "light" or "dark"');
+    await this.prisma.user.update({ where: { id: user.userId }, data: { theme } });
+    return { theme };
+  }
+
   // and/or password. Works for any role (Super Admin, Salon Admin, Staff).
   // Current password is required to authorise the change.
   @Patch('account')
@@ -190,4 +209,9 @@ export class MeController {
     }).catch(() => undefined);
     return { ok: true, deleted: true };
   }
+}
+
+/** 'light' | 'dark', or null for anything else. */
+export function themeOf(v: unknown): 'light' | 'dark' | null {
+  return v === 'light' || v === 'dark' ? v : null;
 }

@@ -97,6 +97,8 @@ export function StaffShell({ children, title = 'My Bookings', subtitle, right, w
             <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: 'var(--ce2e8f0)', lineHeight: 1.2 }}>{title}</h1>
             {subtitle && <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 2 }}>{subtitle}</div>}
           </div>
+          {/* Light / dark for technicians too, one tap from every screen of their app. */}
+          <ThemeToggle size={40} />
           {right}
         </header>
         <main style={{ padding: '4px 16px 0', paddingBottom: `calc(${TAB_H + 24}px + ${BOTTOM_SAFE})` }}>

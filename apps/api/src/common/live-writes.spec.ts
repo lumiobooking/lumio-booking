@@ -5,6 +5,7 @@ describe('which writes nudge which screens', () => {
     expect(liveTopicOf({ model: 'Appointment', action: 'update' })).toBe('bookings');
     expect(liveTopicOf({ model: 'TableCheckLine', action: 'createMany' })).toBe('restaurant');
     expect(liveTopicOf({ model: 'DisplaySession', action: 'update' })).toBe('display');
+    expect(liveTopicOf({ model: 'MenuItem', action: 'update' })).toBe('restaurant'); // sold out → guests' QR menus
     expect(liveTopicOf({ model: 'Appointment', action: 'findMany' })).toBeNull();
     expect(liveTopicOf({ model: 'AuditLog', action: 'create' })).toBeNull();
   });

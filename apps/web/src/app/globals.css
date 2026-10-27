@@ -298,3 +298,13 @@ a:active { opacity: 0.6; }
     grid-column: 1 / -1;
   }
 }
+
+/* ---- calendar cards: the source chip must read on any card ----
+   On a card painted in a service colour (white text) the chip and its icon
+   turn white on a translucent white pill. On a tinted card in LIGHT mode the
+   brand colours (lilac, sky, pink) are too pale on white: darken them, keep
+   the hue. */
+.cal-src-solid span, .cal-src-solid svg, .cal-src-solid b { color: #fff !important; }
+.cal-src-solid > span { background: rgba(255, 255, 255, 0.22) !important; border-color: rgba(255, 255, 255, 0.45) !important; }
+.cal-src-solid > span > span:empty { background: #fff !important; }
+html[data-theme='light'] .cal-src-tint > span { filter: brightness(0.62) saturate(1.35); }

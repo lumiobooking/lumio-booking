@@ -33,7 +33,8 @@ export interface CardFace {
   cancelled?: boolean;
 }
 
-export interface CardLook { background: string; border: string; main: string; sub: string; ink: string; chip: string }
+/** `solid`: the card is painted in a service colour with white text (the source chip turns white on it). */
+export interface CardLook { background: string; border: string; main: string; sub: string; ink: string; chip: string; solid?: boolean }
 
 /**
  * The colours of one block. By status: the status hue mixed into the card
@@ -47,7 +48,7 @@ export function cardLook(f: Pick<CardFace, 'status' | 'serviceKey' | 'cancelled'
   }
   if (mode === 'service') {
     const c = serviceColor(f.serviceKey);
-    return { background: c, border: `1px solid ${c}`, main: '#ffffff', sub: 'rgba(255,255,255,0.92)', ink: '#ffffff', chip: 'rgba(255,255,255,0.2)' };
+    return { background: c, border: `1px solid ${c}`, main: '#ffffff', sub: 'rgba(255,255,255,0.92)', ink: '#ffffff', chip: 'rgba(255,255,255,0.2)', solid: true };
   }
   return {
     background: `color-mix(in srgb, ${statusHue} 16%, var(--c111827))`,
@@ -120,7 +121,10 @@ export function CardBody({ f, tier, size, look }: { f: CardFace; tier: 1 | 2 | 3
       {f.phone ? subLine(f.phone) : null}
       <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, lineHeight: nameLh }}>
         <span style={{ flexShrink: 0, fontSize: timeFs, fontWeight: 700, color: look.ink, whiteSpace: 'nowrap' }}>{f.range}</span>
-        {f.source ? <span style={{ display: 'inline-flex', minWidth: 0, overflow: 'hidden' }}>{f.source}</span> : null}
+        {/* The source chip keeps its brand colour on a tinted card; on a solid
+            service colour it turns white, and in light mode it is darkened —
+            a lilac label on a purple card could not be read (globals.css). */}
+        {f.source ? <span className={look.solid ? 'cal-src-solid' : 'cal-src-tint'} style={{ display: 'inline-flex', minWidth: 0, overflow: 'hidden' }}>{f.source}</span> : null}
         {lg && f.tag ? <span style={{ flexShrink: 0, height: 18, padding: '0 7px', borderRadius: 999, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', background: look.chip, color: look.ink, whiteSpace: 'nowrap' }}>{f.tag}</span> : null}
         <span style={{ flex: 1 }} />
         {dot}

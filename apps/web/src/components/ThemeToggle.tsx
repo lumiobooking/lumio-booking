@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { useLang } from '../lib/i18n';
+import { useAuth } from '../lib/auth';
+import { apiFetch } from '../lib/api';
 
 /**
  * The light/dark switch.
@@ -15,8 +17,18 @@ import { useLang } from '../lib/i18n';
  */
 /** Every switch on the page shows the same state (the phone header and the menu sheet both carry one). */
 const EVT = 'lumio-theme';
+const KEY = 'lumio.theme';
+
+/** Paint the page in one theme and remember it on this device. Dark is the default (no attribute). */
+export function applyTheme(light: boolean) {
+  if (light) document.documentElement.dataset.theme = 'light';
+  else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem(KEY, light ? 'light' : 'dark'); } catch { /* private mode */ }
+  try { window.dispatchEvent(new Event(EVT)); } catch { /* old browsers */ }
+}
 
 function useTheme(): [boolean, () => void] {
+  const { token } = useAuth();
   const [light, setLight] = useState(false);
   useEffect(() => {
     const read = () => setLight(document.documentElement.dataset.theme === 'light');
@@ -26,13 +38,37 @@ function useTheme(): [boolean, () => void] {
   }, []);
   const flip = () => {
     const next = document.documentElement.dataset.theme !== 'light';
-    if (next) document.documentElement.dataset.theme = 'light';
-    else delete document.documentElement.dataset.theme;
-    try { localStorage.setItem('lumio.theme', next ? 'light' : 'dark'); } catch { /* private mode */ }
+    applyTheme(next);
     setLight(next);
-    try { window.dispatchEvent(new Event(EVT)); } catch { /* old browsers */ }
+    // Kept on the ACCOUNT too, so the choice follows the person to their
+    // phone, the salon iPad, a reinstalled app or a cleared browser.
+    if (token) apiFetch('/me/preferences', { method: 'PATCH', token, body: { theme: next ? 'light' : 'dark' } }).catch(() => undefined);
   };
   return [light, flip];
+}
+
+/**
+ * On sign-in (and on every load while signed in) the account's choice wins
+ * over whatever this device last showed. An account that never chose takes
+ * this device's choice, so nobody's existing setting is lost. Renders nothing.
+ */
+export function ThemeSync() {
+  const { token } = useAuth();
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    apiFetch<{ theme: 'light' | 'dark' | null }>('/me/preferences', { token })
+      .then((r) => {
+        if (!alive || !r) return;
+        if (r.theme) { applyTheme(r.theme === 'light'); return; }
+        let local: string | null = null;
+        try { local = localStorage.getItem(KEY); } catch { /* private mode */ }
+        if (local === 'light' || local === 'dark') apiFetch('/me/preferences', { method: 'PATCH', token, body: { theme: local } }).catch(() => undefined);
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [token]);
+  return null;
 }
 
 const Sun = () => (

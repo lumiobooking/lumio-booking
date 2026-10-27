@@ -25,7 +25,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       const result = await next(params);
       try {
         const topic = liveTopicOf(params as never);
-        if (topic) liveEvents.emit(tenantOfWrite(params as never, result), topic);
+        if (topic) {
+          const tenant = tenantOfWrite(params as never, result);
+          // Inside a transaction the write is not visible to other readers
+          // until it commits: a screen nudged now could read the old state.
+          // Give the commit a moment; outside one, nudge at once.
+          if ((params as { runInTransaction?: boolean }).runInTransaction) setTimeout(() => liveEvents.emit(tenant, topic), 400);
+          else liveEvents.emit(tenant, topic);
+        }
       } catch { /* a nudge is best-effort */ }
       return result;
     });

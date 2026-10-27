@@ -455,6 +455,10 @@ model User {
   /// A 4–6 digit PIN (hashed) this owner / manager types at a cashier's till to
   /// approve a refund or a void the cashier may not do alone.
   approvalPinHash String?
+  /// The light/dark choice this person made ('light' | 'dark'; null = never
+  /// chose → dark). Kept on the account so it follows them to every device
+  /// and survives a cleared browser or a reinstalled app.
+  theme String?
 
   @@map("users")
 }

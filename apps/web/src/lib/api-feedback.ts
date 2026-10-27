@@ -104,6 +104,7 @@ export function preservesCache(method: string, path: string): boolean {
 const NEVER_CACHE: RegExp[] = [
   /\/stream/,           // SSE — not a JSON GET, but belt and braces
   /\/healthz/,
+  /^\/me\/preferences/,  // the light/dark choice: another device may just have changed it
   /\/export|\/download/, // files
   /^\/feedback\/orders\//, // the till polls this while the customer answers
   /^\/messenger\/(threads|activity|turns|leads)(\/|$)/, // the inbox: list, one conversation, turns

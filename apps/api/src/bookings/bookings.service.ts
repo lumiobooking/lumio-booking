@@ -58,6 +58,7 @@ import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc, planLineT
 import { clashMessage, stretchMayOverlap, type Lang as StretchLang } from './stretch-policy';
 import { matchMissedToVisits, pairTicketWithBooking } from '../walkins/booking-link';
 import { WalkinsService } from '../walkins/walkins.service';
+import { deskUserIds } from '../walkins/overdue-alert';
 import { repairTillLinks } from './till-repair';
 import { dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { openTimesFor, type BusyBlock } from './open-times';
@@ -3544,6 +3545,38 @@ export class BookingsService {
   }
 
   /** Bookings assigned to the signed-in staff member (their work queue). */
+  /**
+   * "Nhờ quầy liên hệ khách": a technician who cannot see a client's number
+   * (common/contact-privacy) asks the front desk to call or text them. Her own
+   * booking only; the desk's phones get a push, the audit log keeps the ask.
+   */
+  async askDeskToContact(user: AuthenticatedUser, id: string, message?: string) {
+    const tenantId = this.tenantId(user);
+    const staffId = await this.staffMemberIdForUser(user);
+    const b = await this.prisma.appointment.findFirst({
+      where: { id, tenantId, assignedStaffId: staffId },
+      select: { id: true, startTime: true, customer: { select: { firstName: true, lastName: true } }, assignedStaff: { select: { firstName: true } } },
+    });
+    if (!b) throw new NotFoundException('Booking not found');
+    const text = typeof message === 'string' ? message.trim().slice(0, 200) : '';
+    const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null))?.timezone || 'UTC';
+    const when = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(b.startTime);
+    const who = [b.customer?.firstName, b.customer?.lastName].filter(Boolean).join(' ') || 'Client';
+    const [admins, staff] = await Promise.all([
+      this.prisma.user.findMany({ where: { tenantId, role: UserRole.SALON_ADMIN, isActive: true }, select: { id: true } }),
+      this.prisma.staffMember.findMany({ where: { tenantId, userId: { not: null } }, select: { userId: true, staffRole: true, permissions: true } as never }) as unknown as Promise<{ userId: string | null; staffRole: string | null; permissions?: unknown }[]>,
+    ]);
+    const to = deskUserIds(admins, staff);
+    await this.push.sendToTenant(tenantId, {
+      title: `📞 ${b.assignedStaff?.firstName ?? 'Tech'}: contact ${who}`,
+      body: `${when}${text ? ` — ${text}` : ''}`,
+      url: '/salon/calendar',
+      tag: `desk-contact-${b.id}`,
+    }, { onlyUserIds: to }).catch(() => undefined);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'booking.desk_contact_requested', resourceType: 'appointment', resourceId: b.id, metadata: { message: text || null, notified: to.length } });
+    return { ok: true, notified: to.length };
+  }
+
   async listMyAssignments(user: AuthenticatedUser, filters: ListBookingsDto) {
     const tenantId = this.tenantId(user);
     const staffId = await this.staffMemberIdForUser(user);

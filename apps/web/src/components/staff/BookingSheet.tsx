@@ -16,6 +16,8 @@ import { fmtInTz } from '../../lib/datetime';
 import { formatPrice } from '../../lib/ui';
 import { IC, Icon, L, Pill, Sheet, st } from './kit';
 import { ClientCard } from './ClientCard';
+import { apiFetch } from '../../lib/api';
+import { isMaskedContact } from '../../lib/contact-mask';
 import { useAuth } from '../../lib/auth';
 
 export interface StaffBooking {
@@ -90,6 +92,10 @@ export function BookingSheet({ booking, vi, currency, onClose, onAccept, onRejec
   const [step, setStep] = useState<'view' | 'reject'>('view');
   const [reason, setReason] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // "Nhờ quầy liên hệ khách": the ask box and what happened to it.
+  const [askOpen, setAskOpen] = useState(false);
+  const [askText, setAskText] = useState('');
+  const [asked, setAsked] = useState<string | null>(null);
   useEffect(() => { setStep(startReject ? 'reject' : 'view'); setReason(null); setBusy(false); }, [booking?.id, startReject]);
 
   const run = async (fn: () => Promise<void> | void) => {
@@ -124,10 +130,38 @@ export function BookingSheet({ booking, vi, currency, onClose, onAccept, onRejec
           )}
           {/* the client, close up — hers only (bookings/client-card) */}
           {b.customer && <ClientCard bookingId={b.id} token={token} vi={vi} />}
-          {phone && (
+          {/* Full number (the salon allows it): call / text. Otherwise the desk does it for her. */}
+          {phone && !isMaskedContact(phone) ? (
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
               <a href={`tel:${phone}`} style={{ ...st.ghost, flex: 1 }}><Icon d={IC.phone} size={18} />{L(vi, 'Gọi khách', 'Call')}</a>
               <a href={`sms:${phone}`} style={{ ...st.ghost, flex: 1 }}><Icon d={IC.message} size={18} />{L(vi, 'Nhắn tin', 'Text')}</a>
+            </div>
+          ) : (
+            <div style={{ marginTop: 14 }}>
+              {phone && <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginBottom: 8 }}>{L(vi, 'SĐT khách', 'Client phone')}: {phone}</div>}
+              {asked ? (
+                <div style={{ fontSize: 14, color: 'var(--ink-good)', fontWeight: 600, padding: '10px 0' }}>{asked}</div>
+              ) : askOpen ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <label style={{ fontSize: 13, color: 'var(--c94a3b8)' }} htmlFor="ask-desk">{L(vi, 'Nhắn quầy (không bắt buộc)', 'Note for the desk (optional)')}</label>
+                  <input id="ask-desk" value={askText} maxLength={200} onChange={(e) => setAskText(e.target.value)}
+                    placeholder={L(vi, 'VD: báo khách tôi trễ 10 phút', 'e.g. tell her I am running 10 min late')}
+                    style={{ height: 46, borderRadius: 12, border: '1px solid var(--line-strong)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', padding: '0 12px', fontSize: 16 }} />
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button type="button" onClick={() => setAskOpen(false)} style={{ ...st.ghost, flex: 1 }}>{L(vi, 'Huỷ', 'Cancel')}</button>
+                    <button type="button" disabled={busy} style={{ ...st.primary, flex: 2 }} onClick={() => run(async () => {
+                      try {
+                        await apiFetch(`/bookings/${b.id}/ask-desk`, { method: 'POST', token, body: { message: askText.trim() || undefined } });
+                        setAsked(L(vi, '✓ Đã báo quầy — quầy sẽ liên hệ khách.', '✓ The desk has been asked to contact the client.'));
+                      } catch (e) { setAsked(e instanceof Error ? e.message : 'Error'); }
+                    })}>{L(vi, 'Gửi cho quầy', 'Send to desk')}</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setAskOpen(true)} style={{ ...st.ghost, width: '100%' }}>
+                  <Icon d={IC.message} size={18} />{L(vi, 'Nhờ quầy liên hệ khách', 'Ask the desk to contact client')}
+                </button>
+              )}
             </div>
           )}
           {b.status === 'ASSIGNED' && (

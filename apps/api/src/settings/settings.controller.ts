@@ -178,6 +178,12 @@ export class SettingsController {
     return this.settings.updatePartyDeposit(user, dto);
   }
 
+  // How the technician app shows client phones / emails. Owner only (class @Roles).
+  @Patch('staff-privacy')
+  updateStaffPrivacy(@CurrentUser() user: AuthenticatedUser, @Body() dto: { contact?: string }) {
+    return this.settings.updateStaffPrivacy(user, dto);
+  }
+
   @Patch('deposit')
   updateDeposit(
     @CurrentUser() user: AuthenticatedUser,

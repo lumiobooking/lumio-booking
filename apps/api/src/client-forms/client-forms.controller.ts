@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, Ip, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Ip, Param, Patch, Post, Query, UseInterceptors } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -9,6 +9,7 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { ClientFormsService } from './client-forms.service';
 import { INTAKE_STYLES, type IntakeStyle } from './form-templates';
+import { ContactPrivacyInterceptor } from '../common/contact-privacy.interceptor';
 
 /** A built-in client form, or one of the salon's own ("c_…"). */
 const CLIENT_KIND_RE = /^(intake|cupping|hot_stone|c_[a-z0-9]{6,16})$/;
@@ -108,6 +109,8 @@ export class PublicClientFormsController {
  * (accessOf): owner and managers everything, a technician their own clients,
  * the front desk only signed / missing.
  */
+// A technician reads a client's forms without their phone / email (common/contact-privacy).
+@UseInterceptors(ContactPrivacyInterceptor)
 @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
 @Controller('client-forms')
 export class ClientFormsController {

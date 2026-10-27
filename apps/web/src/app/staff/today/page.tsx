@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
+import { isMaskedContact } from '../../../lib/contact-mask';
 import { apiFetch } from '../../../lib/api';
 import { formatPrice } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
@@ -483,7 +484,10 @@ function NowCard({ w, me, vi, currency, techNames, busy, inlineFinish, onFinish,
             <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)', lineHeight: 1.2 }}>{w.customerName || 'Walk-in'}</span>
             {fresh && <span style={{ fontSize: 11, fontWeight: 800, background: '#15803d', color: '#fff', borderRadius: 999, padding: '3px 8px' }}>{L(vi, 'MỚI GIAO', 'NEW')}</span>}
           </div>
-          {w.phone && <a href={`tel:${w.phone}`} style={{ display: 'inline-block', fontSize: 13, color: 'var(--ink-link)', marginTop: 4, textDecoration: 'none', padding: '4px 0' }}>{w.phone}</a>}
+          {/* The salon decides how much of the number a technician sees (common/contact-privacy): "••• 2832" is shown, never dialled. */}
+          {w.phone && (isMaskedContact(w.phone)
+            ? <span style={{ display: 'inline-block', fontSize: 13, color: 'var(--c94a3b8)', marginTop: 4, padding: '4px 0' }}>{w.phone}</span>
+            : <a href={`tel:${w.phone}`} style={{ display: 'inline-block', fontSize: 13, color: 'var(--ink-link)', marginTop: 4, textDecoration: 'none', padding: '4px 0' }}>{w.phone}</a>)}
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink-good)', lineHeight: 1 }}>{minsSince(v.startedAt)}′</div>

@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   HttpCode,
+  UseInterceptors,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { BookingsService } from './bookings.service';
@@ -27,6 +28,7 @@ import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { ContactPrivacyInterceptor } from '../common/contact-privacy.interceptor';
 
 /** The desk corrects who a booking is for. */
 class BookingContactDto {
@@ -35,6 +37,10 @@ class BookingContactDto {
   @IsOptional() @IsString() @MaxLength(40) phone?: string;
   @IsOptional() @IsString() @MaxLength(160) email?: string;
   @IsOptional() @IsString() @MaxLength(10) birthDate?: string;
+}
+
+class AskDeskDto {
+  @IsOptional() @IsString() @MaxLength(200) message?: string;
 }
 
 /**
@@ -49,6 +55,7 @@ export class BookingsController {
   // ---- Staff: their own work queue + accept/reject -----------------------
 
   // GET /api/bookings/my -> bookings assigned to the signed-in staff member.
+  @UseInterceptors(ContactPrivacyInterceptor)
   @Roles(UserRole.STAFF)
   @Get('my')
   myBookings(@CurrentUser() user: AuthenticatedUser, @Query() filters: ListBookingsDto) {
@@ -63,6 +70,15 @@ export class BookingsController {
     return this.bookings.myOpenTimes(user, { date, minutes: m !== undefined && Number.isFinite(m) ? m : undefined });
   }
 
+  @UseInterceptors(ContactPrivacyInterceptor)
+  // "Nhờ quầy liên hệ khách" — her own booking only. Declared before ':id' routes.
+  @Roles(UserRole.STAFF)
+  @Post(':id/ask-desk')
+  @HttpCode(200)
+  askDesk(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AskDeskDto) {
+    return this.bookings.askDeskToContact(user, id, dto.message);
+  }
+
   @Roles(UserRole.STAFF)
   @Post('my-rebook')
   myRebook(@CurrentUser() user: AuthenticatedUser, @Body() dto: MyRebookDto) {
@@ -71,6 +87,7 @@ export class BookingsController {
 
   // GET /api/bookings/:id/client-card -> what the technician should know
   // about this client before they sit down. Hers only; the desk sees any.
+  @UseInterceptors(ContactPrivacyInterceptor)
   @Roles(UserRole.STAFF, UserRole.SALON_ADMIN)
   @Get(':id/client-card')
   clientCard(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
+import { isMaskedContact } from '../../../lib/contact-mask';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
@@ -229,7 +230,9 @@ function ChairCard({ w, services, chairs, currency, t, vi, me, techNames, busy, 
           </div>
           {mins > 0 && <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 2 }}>{mins}m {t('sc.inChair')}</div>}
         </div>
-        {w.phone && <a href={`tel:${w.phone}`} style={{ color: 'var(--c818cf8)', fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap' }}>{w.phone}</a>}
+        {w.phone && (isMaskedContact(w.phone)
+          ? <span style={{ color: 'var(--c94a3b8)', fontSize: 13, whiteSpace: 'nowrap' }}>{w.phone}</span>
+          : <a href={`tel:${w.phone}`} style={{ color: 'var(--c818cf8)', fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap' }}>{w.phone}</a>)}
       </div>
 
       {legs.length > 0 && (

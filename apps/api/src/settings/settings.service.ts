@@ -4,6 +4,7 @@ import { CHAT_FOLLOWUP_KEY, followUpSettingsFrom, type FollowUpSettings } from '
 import { BadRequestException, Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { brandsOnly, holdsKeys } from './legacy-gateways';
 import { holdMinutesOf } from '../payments/deposit-hold';
+import { contactModeOf, STAFF_PRIVACY_KEY, type ContactMode } from '../common/contact-privacy';
 import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { INDUSTRIES, INDUSTRY_KEY, isIndustry, resolveIndustry, writeIndustry } from '../common/industry';
@@ -1239,7 +1240,7 @@ export class SettingsService implements OnApplicationBootstrap {
     const [
       extra, booking, gateways, notifications, notificationTemplates, pos, loyalty, review,
       weekdayDiscounts, googleReviewLink, firstVisitDiscount, groupDiscount, dateDiscounts, reminders, deposit,
-      analytics, businessProfile, rebooking, receipt,
+      analytics, businessProfile, rebooking, receipt, staffPrivacy,
     ] = await Promise.all([
       this.readKey<CompanyExtra>(tenantId, COMPANY_EXTRA_KEY, DEFAULT_COMPANY_EXTRA),
       this.getBookingRules(tenantId),
@@ -1260,6 +1261,7 @@ export class SettingsService implements OnApplicationBootstrap {
       this.getBusinessProfile(tenantId),
       this.getRebookingSettings(tenantId),
       this.getReceiptDesign(tenantId),
+      this.getStaffPrivacy(tenantId),
     ]);
     return {
       // The salon's real market, straight from the tenant row.
@@ -1306,6 +1308,7 @@ export class SettingsService implements OnApplicationBootstrap {
       dateDiscounts,
       reminders,
       deposit,
+      staffPrivacy,
       analytics,
       businessProfile,
       rebooking,
@@ -1434,6 +1437,21 @@ export class SettingsService implements OnApplicationBootstrap {
     };
     await this.writeKey(tenantId, DEPOSIT_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.deposit_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
+  }
+
+  /** How a technician's app shows client phones / emails (common/contact-privacy.ts). Default: last 4 digits. */
+  async getStaffPrivacy(tenantId: string): Promise<{ contact: ContactMode }> {
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: STAFF_PRIVACY_KEY } } }).catch(() => null);
+    return { contact: contactModeOf(row?.value ?? null) };
+  }
+
+  async updateStaffPrivacy(user: AuthenticatedUser, dto: { contact?: unknown }) {
+    const tenantId = this.tenantId(user);
+    const contact = contactModeOf({ contact: dto.contact });
+    if (dto.contact !== contact) throw new BadRequestException('contact must be hidden, last4 or full');
+    await this.writeKey(tenantId, STAFF_PRIVACY_KEY, { contact });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.staff_privacy_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { contact } });
     return this.get(user);
   }
 

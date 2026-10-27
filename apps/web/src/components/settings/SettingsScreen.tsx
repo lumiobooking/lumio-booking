@@ -48,6 +48,8 @@ interface SettingsData {
   booking: Booking;
   branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; priceListImageUrl?: string; storefrontImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number; cartArt?: string; cartTitle?: string; cartHint?: string };
   rebooking?: { enabled: boolean; daysAfter: number; email: boolean; sms: boolean };
+  /** How the technician app shows client phones / emails (server-side masking). */
+  staffPrivacy?: { contact: 'hidden' | 'last4' | 'full' };
   gateways: Record<string, GatewayView>;
   notifications: {
     mailService: 'auto' | 'off' | 'smtp' | 'brevo' | 'gmail'; replyTo: string;
@@ -199,7 +201,7 @@ export function SettingsScreen({ only, exclude, bare }: { only?: string[]; exclu
           {tab === 'company' && <><IndustryPicker /><CompanySection data={data} onSave={save} /></>}
           {tab === 'hours' && <HoursSection data={data} onSave={save} />}
           {tab === 'daysoff' && <DaysOffSection data={data} onSave={save} />}
-          {tab === 'rules' && <RulesSection data={data} onSave={save} />}
+          {tab === 'rules' && <><RulesSection data={data} onSave={save} /><StaffPrivacyCard data={data} onSave={save} /></>}
           {tab === 'payments' && <PaymentsSection data={data} onSave={save} />}
           {tab === 'receipt' && <PrintersPanel />}
           {tab === 'receipt' && (
@@ -1158,6 +1160,54 @@ function RemindersSection({ data, onSave }: { data: SettingsData; onSave: SaveFn
         {t('se.rem.tip')}
       </p>
       <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={() => onSave('reminders', f, 'Reminders')}>{t('se.rem.save')}</button>
+    </Card>
+  );
+}
+
+/**
+ * What a technician's phone may show about a client. The masking itself is done
+ * by the API (common/contact-privacy.ts) so the number never reaches the tech's
+ * device; this card only picks the level. Owners, managers and the desk always
+ * see everything.
+ */
+function StaffPrivacyCard({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const { lang } = useLang();
+  const vi = lang === 'vi';
+  const [mode, setMode] = useState<'hidden' | 'last4' | 'full'>(data.staffPrivacy?.contact ?? 'last4');
+  const opts: { id: 'hidden' | 'last4' | 'full'; title: string; desc: string }[] = [
+    { id: 'last4', title: vi ? 'Chỉ 4 số cuối (mặc định)' : 'Last 4 digits only (default)',
+      desc: vi ? 'Hiện “••• 2832” để phân biệt khách trùng tên. Không có nút Gọi / Nhắn tin, email bị ẩn.' : 'Shows “••• 2832” to tell same-name clients apart. No Call / Text buttons; email hidden.' },
+    { id: 'hidden', title: vi ? 'Ẩn hoàn toàn' : 'Hide completely',
+      desc: vi ? 'Không có số, không email. Số lẫn trong ghi chú cũng bị che.' : 'No number, no email. Numbers inside notes are hidden too.' },
+    { id: 'full', title: vi ? 'Hiện đầy đủ' : 'Show in full',
+      desc: vi ? 'Như trước: thợ thấy số và gọi / nhắn khách trực tiếp.' : 'As before: technicians see the number and can call / text the client.' },
+  ];
+  return (
+    <Card
+      title={vi ? 'Thông tin khách trên app thợ' : 'Client info on the technician app'}
+      desc={vi ? 'Thợ luôn thấy tên khách, dịch vụ, ghi chú và phiếu SOAP. Chọn thợ được xem cách liên hệ khách tới mức nào.' : 'Technicians always see the client name, service, notes and SOAP forms. Choose how much contact info they get.'}
+    >
+      <div role="radiogroup" aria-label={vi ? 'Số điện thoại và email của khách' : 'Client phone and email'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {opts.map((o) => {
+          const on = mode === o.id;
+          return (
+            <label key={o.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 13px', borderRadius: 10, cursor: 'pointer',
+              border: on ? '2px solid #6366f1' : '1px solid var(--c334155)', background: on ? 'rgba(99,102,241,.12)' : 'transparent' }}>
+              <input type="radio" name="staff-privacy" checked={on} onChange={() => setMode(o.id)} style={{ marginTop: 3, width: 17, height: 17, accentColor: '#6366f1', flexShrink: 0 }} />
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{o.title}</span>
+                <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{o.desc}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 12, lineHeight: 1.55 }}>
+        {vi
+          ? 'Áp dụng cho tài khoản Thợ. Chủ tiệm, Quản lý và Lễ tân vẫn thấy đầy đủ. Việc che làm trên máy chủ — dữ liệu gửi về điện thoại thợ không chứa số. Thợ cần báo khách thì bấm “Nhờ quầy liên hệ khách”.'
+          : 'Applies to Technician accounts. Owners, managers and the front desk still see everything. Masking happens on the server, so the number never reaches the technician\'s phone. Techs use “Ask the desk to contact client” instead.'}
+      </p>
+      <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={() => onSave('staff-privacy', { contact: mode }, 'Staff privacy')}>{vi ? 'Lưu' : 'Save'}</button>
     </Card>
   );
 }

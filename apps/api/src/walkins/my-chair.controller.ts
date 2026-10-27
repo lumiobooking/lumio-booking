@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, MessageEvent, Param, Patch, Post, Query, Sse } from '@nestjs/common';
+import { Body, Controller, Delete, Get, MessageEvent, Param, Patch, Post, Query, Sse, UseInterceptors } from '@nestjs/common';
 import { Observable, interval, merge } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { liveEvents } from '../common/live-events';
@@ -8,6 +8,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { WalkinsService } from './walkins.service';
+import { ContactPrivacyInterceptor } from '../common/contact-privacy.interceptor';
 
 class AddServiceDto {
   @IsString() serviceId!: string;
@@ -33,6 +34,8 @@ class SkipReasonDto {
  * signed-in technician (never to someone else).
  */
 @Roles(UserRole.STAFF, UserRole.SALON_ADMIN)
+// Client phones / emails reach a technician's phone only as the salon allows (common/contact-privacy).
+@UseInterceptors(ContactPrivacyInterceptor)
 @Controller('my-chair')
 export class MyChairController {
   constructor(private readonly walkins: WalkinsService) {}

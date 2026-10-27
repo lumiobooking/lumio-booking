@@ -58,4 +58,6 @@ export interface OnlineCheckoutOpts {
   description?: string;
   customerName?: string;
   brandName?: string;
+  /** The salon's accent colour (#rrggbb) for providers whose payment window can wear it. */
+  brandColor?: string;
 }

@@ -157,11 +157,16 @@ export class HelcimConnector implements PaymentConnector {
    * payments — e.g. booking deposits. The frontend renders the returned
    * checkoutToken in the HelcimPay modal; no card data touches Lumio.
    */
-  async startOnlineCheckout(secret: string, amountCents: number, currency: string, reference: string, opts?: { description?: string }) {
+  async startOnlineCheckout(secret: string, amountCents: number, currency: string, reference: string, opts?: { description?: string; brandColor?: string }) {
     const description = opts?.description || 'Booking deposit';
     const amount = this.money(amountCents);
     const invoiceNumber = this.invoiceNo(reference);
-    const base = { paymentType: 'purchase', amount, currency: currency.toUpperCase() };
+    // The card window wears the salon's colour. Helcim wants the hex WITHOUT
+    // '#'; anything that is not a clean 3/6-digit hex is left out.
+    const hex = String(opts?.brandColor ?? '').replace(/^#/, '');
+    const customStyling = /^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex) ? { brandColor: hex, cornerRadius: 'rounded', ctaButtonText: 'pay' } : undefined;
+    const plain = { paymentType: 'purchase', amount, currency: currency.toUpperCase() };
+    const base = { ...plain, ...(customStyling ? { customStyling } : {}) };
     // `invoiceNumber` on its own must name an invoice that ALREADY exists in
     // Helcim; ours never does. `invoiceRequest` creates the invoice when the
     // card is approved, under the number we later poll by.
@@ -173,9 +178,9 @@ export class HelcimConnector implements PaymentConnector {
       },
     });
     if (r.ok && r.json?.checkoutToken) return { checkoutToken: r.json.checkoutToken, secretToken: r.json?.secretToken };
-    // Older accounts accept the plain shape; try it once before giving up so
-    // a schema difference never silently blocks deposits.
-    const legacy = await httpJson('POST', `${BASE}/helcim-pay/initialize`, this.headers(secret), { ...base, invoiceNumber });
+    // Try the bare shape once (no styling, plain invoice number) before giving
+    // up, so a schema difference never silently blocks deposits.
+    const legacy = await httpJson('POST', `${BASE}/helcim-pay/initialize`, this.headers(secret), { ...plain, invoiceNumber });
     if (legacy.ok && legacy.json?.checkoutToken) return { checkoutToken: legacy.json.checkoutToken, secretToken: legacy.json?.secretToken };
     throw new Error(this.err(r.ok ? legacy : r));
   }

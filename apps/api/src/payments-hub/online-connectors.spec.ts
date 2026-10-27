@@ -80,11 +80,21 @@ describe('Helcim online deposit: the checkout creates its own invoice', () => {
     expect(b.invoiceRequest.lineItems).toEqual([{ sku: 'DEPOSIT', description: 'Booking deposit', quantity: 1, price: 3, total: 3 }]);
   });
 
+  it('wears the salon colour (hex without #); junk colours are left out', async () => {
+    const bodies: any[] = [];
+    (globalThis as any).fetch = async (_url: string, init: { body: string }) => { bodies.push(JSON.parse(init.body)); return res(200, { checkoutToken: 'CT' }); };
+    await new HelcimConnector().startOnlineCheckout('tok', 300, 'USD', 'a1', { brandColor: '#6366F1' });
+    await new HelcimConnector().startOnlineCheckout('tok', 300, 'USD', 'a1', { brandColor: 'red;}' });
+    expect(bodies[0].customStyling).toEqual({ brandColor: '6366F1', cornerRadius: 'rounded', ctaButtonText: 'pay' });
+    expect(bodies[1].customStyling).toBeUndefined();
+  });
+
   it('falls back to the plain shape once, then reports Helcim\'s own error', async () => {
     const bodies: any[] = [];
     (globalThis as any).fetch = async (_url: string, init: { body: string }) => { bodies.push(JSON.parse(init.body)); return res(400, { errors: 'Invalid invoice' }); };
     await expect(new HelcimConnector().startOnlineCheckout('tok', 300, 'USD', 'appt-123')).rejects.toThrow('Invalid invoice');
     expect(bodies).toHaveLength(2);
     expect(bodies[1].invoiceNumber).toBe('LUMAPPT123');
+    expect(bodies[1].customStyling).toBeUndefined();
   });
 });

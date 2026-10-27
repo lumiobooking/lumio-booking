@@ -479,7 +479,7 @@ export class PublicSalonController {
     const tenantId = await this.resolveTenantId(slug);
     const appt = await this.prisma.appointment.findFirst({
       where: { id, tenantId },
-      select: { id: true, priceCents: true, currency: true, customerId: true, partySize: true, customer: { select: { firstName: true } }, tenant: { select: { name: true } } },
+      select: { id: true, priceCents: true, currency: true, customerId: true, partySize: true, customer: { select: { firstName: true } }, tenant: { select: { name: true, branding: true } } },
     });
     if (!appt) throw new NotFoundException('Booking not found');
 
@@ -498,6 +498,7 @@ export class PublicSalonController {
       description: kind === 'deposit' ? 'Booking deposit' : 'Booking payment',
       customerName: appt.customer?.firstName ?? undefined,
       brandName: appt.tenant?.name ?? undefined,
+      brandColor: this.settings.brandingFrom(appt.tenant?.branding).accentColor ?? undefined,
     });
   }
 

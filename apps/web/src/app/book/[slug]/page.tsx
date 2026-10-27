@@ -408,8 +408,24 @@ export default function PublicBookingPage() {
   // Money due online right after booking (deposit or "pay now"). Until the
   // provider confirms it, the result screen says so — with the reason when it
   // failed and a button to try again — never "Pay at the salon".
-  const [onlineDue, setOnlineDue] = useState<{ bookingId: string; cents: number; kind: 'deposit' | 'full'; phase: 'starting' | 'open' | 'checking' | 'failed' | 'paid'; error?: string } | null>(null);
+  const [onlineDue, setOnlineDue] = useState<{
+    bookingId: string; cents: number; kind: 'deposit' | 'full';
+    /** What is still paid at the salon after this online payment. */
+    restCents: number;
+    /** When the unpaid hold releases the time (ms), or null when nothing is held. */
+    heldUntil: number | null;
+    phase: 'starting' | 'open' | 'checking' | 'failed' | 'paid'; error?: string;
+  } | null>(null);
   const patchDue = (p: Partial<NonNullable<typeof onlineDue>>) => setOnlineDue((d) => (d ? { ...d, ...p } : d));
+  // A one-second clock for the "time held" countdown — only while money is owed.
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  const holdTicking = !!onlineDue?.heldUntil && onlineDue.phase !== 'paid';
+  useEffect(() => {
+    if (!holdTicking) return;
+    setNowTs(Date.now());
+    const t = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [holdTicking]);
   // The visit cart. A customer who wants two different times books TWO visits:
   // finish one, press "add another", pick again. Saved visits sit here as chips
   // until one final Book creates them all. Contact details are shared.
@@ -550,6 +566,9 @@ export default function PublicBookingPage() {
   const partyCount = isGroup ? extraGuests.length + 1 : partyN;
   const pd = salon?.partyDeposit;
   const depositCents = Math.max(salonDepCents, pd?.enabled && partyCount >= pd.fromParty ? partyCount * pd.perPersonCents : 0);
+  // What the card is charged today: the deposit plus the salon's card fee
+  // (the server adds the same surcharge when it starts the checkout).
+  const depositDueCents = depositCents + (depositCents > 0 && salon?.cardFee?.enabled ? Math.round((depositCents * salon.cardFee.percent) / 100) : 0);
 
   const removeLine = (id: string) => {
     if (addonIds.includes(id)) { setAddonIds((p) => p.filter((x) => x !== id)); return; }
@@ -681,33 +700,43 @@ export default function PublicBookingPage() {
       if (typeof w.appendHelcimPayIframe !== 'function') return fail(bt('The secure payment window could not load. Check your connection or turn off ad blockers, then try again.'));
 
       patchDue({ phase: 'open' });
-      // Wait for the modal to finish (success or cancel), with a safety timeout.
-      await new Promise<void>((resolve) => {
+      // HelcimPay posts `helcim-pay-js-<token>` with SUCCESS (approved),
+      // ABORTED (declined — the window stays open so she can try another card)
+      // or HIDE (closed). Only SUCCESS or HIDE ends the wait.
+      let declined = '';
+      const outcome = await new Promise<'success' | 'closed' | 'timeout'>((resolve) => {
         let done = false;
-        const finish = () => { if (!done) { done = true; window.removeEventListener('message', onMsg); resolve(); } };
+        const finish = (o: 'success' | 'closed' | 'timeout') => { if (!done) { done = true; window.removeEventListener('message', onMsg); resolve(o); } };
         const onMsg = (ev: MessageEvent) => {
           const d: any = ev.data;
-          if (d && typeof d === 'object' && String(d.eventName || '').includes(String(j.checkoutToken))) {
-            // HelcimPay posts SUCCESS / ABORTED / HIDE for its modal.
-            const st = String(d.eventStatus || '').toUpperCase();
-            if (st === 'SUCCESS' || st === 'ABORTED' || st === 'HIDE') finish();
+          if (!d || typeof d !== 'object' || String(d.eventName || '') !== `helcim-pay-js-${j.checkoutToken}`) return;
+          const st = String(d.eventStatus || '').toUpperCase();
+          if (st === 'SUCCESS') finish('success');
+          else if (st === 'HIDE') finish('closed');
+          else if (st === 'ABORTED') {
+            const m = typeof d.eventMessage === 'string' && d.eventMessage.length < 140 && !d.eventMessage.trim().startsWith('{') ? d.eventMessage.trim() : '';
+            declined = bt('The card was declined. Nothing was charged — try again or use another card.') + (m ? ` (${m})` : '');
+            patchDue({ error: declined });
           }
         };
         window.addEventListener('message', onMsg);
         w.appendHelcimPayIframe(j.checkoutToken);
-        setTimeout(finish, 5 * 60_000);
+        setTimeout(() => finish('timeout'), 15 * 60_000);
       });
-      try { w.removeHelcimPayIframe?.(); } catch { /* modal already gone */ }
+      try { document.getElementById('helcimPayIframe')?.remove(); } catch { /* already gone */ }
 
-      // Server-side verification (settlement can lag a moment, so retry briefly).
+      // Server-side verification — never the browser's word. Settlement can lag
+      // a moment after SUCCESS, so retry briefly; a closed window is checked once
+      // (she may have paid and then closed the receipt).
       patchDue({ phase: 'checking' });
-      for (let i = 0; i < 5; i++) {
+      const tries = outcome === 'success' ? 6 : 1;
+      for (let i = 0; i < tries; i++) {
         const c = await fetch(`${base}/bookings/${bookingId}/online-confirm`, { method: 'POST' });
         const cj = await c.json().catch(() => null);
         if (cj?.ok) { setResult({ paymentStatus: 'PAID' }); patchDue({ phase: 'paid', error: undefined }); return; }
-        await new Promise((s2) => setTimeout(s2, 2000));
+        if (i < tries - 1) await new Promise((s2) => setTimeout(s2, 2000));
       }
-      fail(bt('The payment was not completed.'));
+      fail(declined || (outcome === 'closed' ? bt('The payment window was closed before paying.') : bt('The payment was not completed.')));
     } catch {
       fail(bt('Network error. Please try again.'));
     }
@@ -863,7 +892,14 @@ export default function PublicBookingPage() {
       // now") is due -> collect it now, in the provider's own page.
       if (body?.onlineProvider && ((body?.depositCents ?? 0) > 0 || (body?.payNowCents ?? 0) > 0) && body?.booking?.id) {
         const dep = (body?.depositCents ?? 0) > 0;
-        setOnlineDue({ bookingId: String(body.booking.id), cents: dep ? body.depositCents : body.payNowCents, kind: dep ? 'deposit' : 'full', phase: 'starting' });
+        const price = typeof body?.booking?.priceCents === 'number' ? body.booking.priceCents : totalCents;
+        const holdMin = dep ? (salon?.deposit?.holdMinutes ?? 30) : 0;
+        setOnlineDue({
+          bookingId: String(body.booking.id), cents: dep ? body.depositCents : body.payNowCents, kind: dep ? 'deposit' : 'full',
+          restCents: dep ? Math.max(0, price - body.depositCents) : 0,
+          heldUntil: holdMin > 0 ? Date.now() + holdMin * 60_000 : null,
+          phase: 'starting',
+        });
         void payDepositOnline(String(body.booking.id));
       } else {
         setOnlineDue(null);
@@ -1076,7 +1112,7 @@ export default function PublicBookingPage() {
   };
 
   const ctaLabel =
-    step === 4 ? (submitting ? bt("Booking\u2026") : isGroup ? btf('Book for {n}', { n: extraGuests.length + 1 }) : visitCart.length > 0 ? btf('Book {n} visits', { n: visitCart.length + 1 }) : bt("Book")) :
+    step === 4 ? (submitting ? (depositCents > 0 ? bt('Holding your time\u2026') : bt("Booking\u2026")) : depositCents > 0 ? btf('Continue to payment · {amount}', { amount: fmt(depositDueCents) }) : isGroup ? btf('Book for {n}', { n: extraGuests.length + 1 }) : visitCart.length > 0 ? btf('Book {n} visits', { n: visitCart.length + 1 }) : bt("Book")) :
     step === 1 ? (pickedServiceIds.length > 0 ? (isGroup ? btf('Book for {n}', { n: extraGuests.length + 1 }) : bt('Book for Me')) : bt("Select a service")) : bt("Continue");
 
   const goNext = () => {
@@ -1212,59 +1248,16 @@ export default function PublicBookingPage() {
         </div>
 
         {step === 5 ? (
-          <div style={{ background: '#fff', borderRadius: embedded ? 12 : '0 0 14px 14px', padding: 32, marginTop: embedded ? 0 : 0 }}>
-            <div style={{ textAlign: 'center', maxWidth: 380, margin: '0 auto' }}>
-              {duePending ? (
-                <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fef3c7', color: '#b45309', fontSize: 30, display: 'grid', placeItems: 'center', margin: '0 auto 12px' }}>⏳</div>
-              ) : (
-                <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: 34, display: 'grid', placeItems: 'center', margin: '0 auto 12px' }}>✓</div>
-              )}
-              <h2 style={{ color: duePending ? '#b45309' : '#16a34a', margin: '4px 0' }}>{duePending ? (onlineDue?.kind === 'deposit' ? bt('Almost done — pay the deposit') : bt('Almost done — complete the payment')) : bookedVisits.length > 1 ? btf('{n} bookings received', { n: bookedVisits.length }) : bt('Booking received')}</h2>
-              {bookedVisits.length > 1 ? (
-                <div style={{ textAlign: 'left', margin: '10px 0 6px', border: '1px solid #e9edf4', borderRadius: 12, overflow: 'hidden' }}>
-                  {bookedVisits.map((label, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 13px', borderTop: i ? '1px solid #eef1f6' : 'none', fontSize: 13.5, color: 'var(--c334155)' }}>
-                      <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>
-                      <span>{label}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ color: 'var(--c475569)', lineHeight: 1.6 }}>
-                  Thanks {form.firstName}! Your booking for <strong>{service?.name}</strong>
-                  {slot && <> on <strong>{slot.start.toLocaleDateString(bookLocale())} at {fmtTime(slot.start)}</strong></>} is received.
-                </p>
-              )}
-              {bookedVisits.length > 1 && (
-                <p style={{ color: 'var(--c64748b)', fontSize: 13, lineHeight: 1.6 }}>
-                  {bt('Each visit has its own confirmation and its own cancel link, so you can change one without touching the others.')}
-                </p>
-              )}
-              {duePending && onlineDue ? (
-                <div role="status" aria-live="polite" style={{ textAlign: 'left', margin: '12px 0 4px', border: '1.5px solid #f59e0b', background: '#fffbeb', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <strong style={{ color: '#92400e', fontSize: 15 }}>
-                    {onlineDue.kind === 'deposit' ? btf('Deposit {amount} not paid yet', { amount: fmt(onlineDue.cents) }) : btf('Payment {amount} not paid yet', { amount: fmt(onlineDue.cents) })}
-                  </strong>
-                  {(salon?.deposit?.holdMinutes ?? 30) > 0 && onlineDue.kind === 'deposit' && (
-                    <span style={{ color: '#78350f', fontSize: 13, lineHeight: 1.5 }}>
-                      {btf('Your time is held for {minutes} minutes. If the deposit is not paid by then, the booking is cancelled automatically.', { minutes: salon?.deposit?.holdMinutes ?? 30 })}
-                    </span>
-                  )}
-                  {onlineDue.phase === 'failed' && onlineDue.error && (
-                    <span style={{ color: '#b91c1c', fontSize: 13, lineHeight: 1.5 }}>{onlineDue.error}</span>
-                  )}
-                  <button type="button" onClick={() => void payDepositOnline(onlineDue.bookingId)}
-                    disabled={onlineDue.phase === 'starting' || onlineDue.phase === 'checking'}
-                    style={{ ...primaryBtn, marginTop: 2, opacity: onlineDue.phase === 'starting' || onlineDue.phase === 'checking' ? 0.65 : 1 }}>
-                    {onlineDue.phase === 'starting' ? bt('Opening secure payment…') : onlineDue.phase === 'checking' ? bt('Checking payment…') : onlineDue.phase === 'open' ? bt('Payment window open — reopen it') : btf('Pay {amount} now', { amount: fmt(onlineDue.cents) })}
-                  </button>
-                </div>
-              ) : (
-                <p style={{ color: 'var(--c475569)' }}>{bt("Payment: ")}<strong>{result?.paymentStatus === 'PAID' || onlineDue?.phase === 'paid' ? bt('Paid online ✓') : bt('Pay at the salon')}</strong></p>
-              )}
-              <button onClick={reset} style={{ ...primaryBtn, marginTop: 8 }}>{bt("Book another")}</button>
-            </div>
-          </div>
+          <AfterBooking
+            embedded={embedded} accent={accent} fmt={fmt} salonName={salon?.name ?? ''} salonAddress={salon?.address ?? ''}
+            firstName={form.firstName} serviceName={service?.name ?? ''}
+            when={slot ? `${slot.start.toLocaleDateString(bookLocale(), { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}` : ''}
+            bookedVisits={bookedVisits} paidOnline={result?.paymentStatus === 'PAID' || onlineDue?.phase === 'paid'}
+            due={onlineDue} pending={duePending} now={nowTs} refundHours={salon?.deposit?.refundHours ?? 24} holdMinutes={salon?.deposit?.holdMinutes ?? 30}
+            onPay={() => { if (onlineDue) void payDepositOnline(onlineDue.bookingId); }}
+            onPickTime={() => { setOnlineDue(null); setResult(null); setBookedVisits([]); setSlot(null); setAvail(null); setSelectedDate(null); setStep(3); }}
+            onReset={reset}
+          />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 360px', gap: isMobile ? 0 : 18, alignItems: 'start' }}>
             {/* -------- left: the actual picking (this is the scroller in an embed) -------- */}
@@ -2609,28 +2602,6 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
             🎁 Visit reward: we check your visit count automatically (by phone/email) and the matching discount is applied to your booking price.
           </div>
         )}
-        {depositCents > 0 && (() => {
-          const feePct = cardFee?.enabled ? cardFee.percent : 0;
-          const fee = feePct > 0 ? Math.round((depositCents * feePct) / 100) : 0;
-          return (
-            <div style={{ marginTop: 8, fontSize: 13, color: accent, fontWeight: 600 }}>
-              {bt('Deposit due today: ')}{fmt(depositCents + fee)}
-              {fee > 0 && <span style={{ display: 'block', fontWeight: 500, color: 'var(--c64748b)', fontSize: 12, marginTop: 2 }}>{btf('Paid online by card — includes {percent}% card fee ({amount}). Pay at the salon in cash to avoid it.', { percent: feePct, amount: fmt(fee) })}</span>}
-              {/* The salon's cancellation rule, said before she pays — not discovered after. */}
-              <span style={{ display: 'block', fontWeight: 500, color: 'var(--c64748b)', fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
-                {(salon?.deposit?.refundHours ?? 24) > 0
-                  ? btf('Cancel at least {hours} hours before and the deposit goes back to your card. Later, or if you don’t come, the deposit is not refunded.', { hours: salon?.deposit?.refundHours ?? 24 })
-                  : bt('Cancel any time before your appointment and the deposit goes back to your card. If you don’t come, it is not refunded.')}
-              </span>
-              {/* The hold, said up front: pay within the window or the time is released. */}
-              {(salon?.deposit?.holdMinutes ?? 30) > 0 && (
-                <span style={{ display: 'block', fontWeight: 600, color: 'var(--c64748b)', fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
-                  {btf('Your time is held for {minutes} minutes while you pay the deposit. If it is not paid by then, the booking is cancelled and the time released.', { minutes: salon?.deposit?.holdMinutes ?? 30 })}
-                </span>
-              )}
-            </div>
-          );
-        })()}
       </Card>
 
       <Card title={bt("YOUR DETAILS")}>
@@ -2672,7 +2643,57 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
         </div>
       </Card>
 
-      {(rules.onlinePaymentEnabled || rules.payLaterEnabled) && (
+      {depositCents > 0 && (() => {
+        // The salon asks a deposit: there is no "pay at the salon" choice to
+        // make — the card is taken now, the rest at the visit. Said in numbers.
+        const feePct = cardFee?.enabled ? cardFee.percent : 0;
+        const fee = feePct > 0 ? Math.round((depositCents * feePct) / 100) : 0;
+        const dep = salon?.deposit;
+        const pctLabel = dep?.type === 'percent' && Math.round((totalCents * dep.percent) / 100) === depositCents
+          ? btf('Deposit · {percent}% of {total}', { percent: dep.percent, total: fmt(totalCents) })
+          : bt('Deposit');
+        const rest = Math.max(0, totalCents - depositCents);
+        const hold = dep?.holdMinutes ?? 30;
+        const refund = dep?.refundHours ?? 24;
+        return (
+          <section aria-label={bt('Deposit')} style={{ border: `2px solid ${accent}`, borderRadius: 18, padding: '14px 16px', marginBottom: 14, background: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ width: 38, height: 38, borderRadius: 11, background: tint(accent, 0.1), color: accent, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z" /><path d="M9 12l2 2 4-4" /></svg>
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <b style={{ fontSize: 15, color: INK }}>{bt('A deposit secures your time')}</b>
+                <span style={{ fontSize: 12.5, color: '#64748b' }}>{bt('Required by the salon for online bookings')}</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, background: tint(accent, 0.07), borderRadius: 12, padding: '10px 12px' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{bt('Due today')}</span>
+              <b style={{ fontSize: 26, letterSpacing: '-0.02em', color: INK }}>{fmt(depositCents + fee)}</b>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 13.5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span style={{ color: '#475569' }}>{pctLabel}</span><b style={{ color: INK }}>{fmt(depositCents)}</b></div>
+              {fee > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span style={{ color: '#475569' }}>{btf('Card fee · {percent}%', { percent: feePct })}</span><b style={{ color: INK }}>{fmt(fee)}</b></div>}
+              {rest > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, paddingTop: 7, borderTop: '1px dashed #dbe2ee' }}><span style={{ color: '#475569' }}>{bt('Pay at the salon after your visit')}</span><b style={{ color: INK }}>{fmt(rest)}</b></div>}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12.5, lineHeight: 1.5, color: '#475569' }}>
+              <span style={{ display: 'flex', gap: 8 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}><path d="M5 12l5 5 9-10" /></svg>
+                <span>{refund > 0
+                  ? btf('Cancel {hours}+ hours before and the deposit goes back to your card. Later, or if you don’t come, it is not refunded.', { hours: refund })
+                  : bt('Cancel any time before your appointment and the deposit goes back to your card. If you don’t come, it is not refunded.')}</span>
+              </span>
+              {hold > 0 && (
+                <span style={{ display: 'flex', gap: 8 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth={2.2} strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                  <span>{btf('We hold this time for {minutes} minutes while you pay.', { minutes: hold })}</span>
+                </span>
+              )}
+            </div>
+          </section>
+        );
+      })()}
+
+      {depositCents <= 0 && (rules.onlinePaymentEnabled || rules.payLaterEnabled) && (
         <Card title={bt("PAYMENT")}>
           <div style={{ display: 'grid', gap: 10 }}>
             {rules.onlinePaymentEnabled && (
@@ -2690,6 +2711,176 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
 
       {error && <div style={{ background: '#fef2f2', border: '1px solid var(--cfecaca)', color: '#b91c1c', borderRadius: 10, padding: '10px 12px', fontSize: 13.5, marginBottom: 12 }}>{error}</div>}
       {!infoOk && <div style={{ color: 'var(--c94a3b8)', fontSize: 12.5, marginBottom: 8 }}>{bt('Enter your first name and phone number to confirm. Email is optional.')}</div>}
+    </div>
+  );
+}
+
+type OnlineDue = {
+  bookingId: string; cents: number; kind: 'deposit' | 'full'; restCents: number; heldUntil: number | null;
+  phase: 'starting' | 'open' | 'checking' | 'failed' | 'paid'; error?: string;
+};
+
+const svgLock = (size = 18) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+);
+const svgCheck = (size = 18) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10" /></svg>
+);
+
+/**
+ * Step 5. While money is owed online (deposit / pay-now) this is the PAYMENT
+ * screen: what is due, how long the time is held, why a try failed and a way
+ * to try again. Only a payment our server has verified turns it into
+ * "You're booked". Nothing owed → the plain confirmation.
+ */
+function AfterBooking({ embedded, accent, fmt, salonName, salonAddress, firstName, serviceName, when, bookedVisits, paidOnline, due, pending, now, refundHours, holdMinutes, onPay, onPickTime, onReset }: {
+  embedded: boolean; accent: string; fmt: (c: number) => string; salonName: string; salonAddress: string;
+  firstName: string; serviceName: string; when: string; bookedVisits: string[]; paidOnline: boolean;
+  due: OnlineDue | null; pending: boolean; now: number; refundHours: number; holdMinutes: number;
+  onPay: () => void; onPickTime: () => void; onReset: () => void;
+}) {
+  const shell: React.CSSProperties = { background: '#fff', borderRadius: embedded ? 12 : '0 0 14px 14px', padding: 'clamp(18px, 4vw, 32px) clamp(14px, 4vw, 32px)' };
+  const col: React.CSSProperties = { maxWidth: 460, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 };
+  const box: React.CSSProperties = { border: '1px solid #e6eaf2', borderRadius: 16, padding: '12px 14px', background: '#fff' };
+  const row: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14 };
+  const big: React.CSSProperties = { ...ctaBtn, minHeight: 54, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontSize: 16, fontWeight: 800, background: accent, boxShadow: 'none' };
+
+  if (pending && due) {
+    const left = due.heldUntil ? Math.max(0, due.heldUntil - now) : null;
+    const expired = left !== null && left <= 0;
+    const mm = left !== null ? Math.floor(left / 60000) : 0;
+    const ss = left !== null ? Math.floor((left % 60000) / 1000) : 0;
+    const busy = due.phase === 'starting' || due.phase === 'checking';
+    const title = expired ? bt('Your held time was released')
+      : due.phase === 'failed' ? bt('The payment didn’t go through')
+      : due.phase === 'checking' ? bt('Checking your payment…')
+      : due.phase === 'open' ? bt('Complete the payment in the secure window')
+      : bt('Opening secure payment…');
+    const warn = expired || due.phase === 'failed';
+    return (
+      <div style={shell}>
+        <div style={col}>
+          <div role={warn ? 'alert' : 'status'} aria-live="polite" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 14, borderRadius: 16, background: warn ? '#fff7ed' : '#f5f6ff', border: `1.5px solid ${warn ? '#fdba74' : tint(accent, 0.35)}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', background: warn ? '#ffedd5' : '#eef2ff', color: warn ? '#c2410c' : accent }}>
+                {warn
+                  ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 17h.01" /></svg>
+                  : svgLock(18)}
+              </span>
+              <b style={{ fontSize: 16, color: warn ? '#9a3412' : INK, lineHeight: 1.35 }}>{title}</b>
+            </div>
+            {expired ? (
+              <span style={{ fontSize: 13.5, lineHeight: 1.5, color: '#7c2d12' }}>{bt('The deposit was not paid in time, so the booking was cancelled and nothing was charged. Pick a time again to book.')}</span>
+            ) : due.phase === 'failed' && due.error ? (
+              <span style={{ fontSize: 13.5, lineHeight: 1.5, color: '#7c2d12' }}>{due.error}</span>
+            ) : due.phase === 'open' ? (
+              <span style={{ fontSize: 13.5, lineHeight: 1.5, color: '#475569' }}>{bt('Enter your card in the payment window. Your booking is confirmed the moment the payment goes through.')}</span>
+            ) : null}
+          </div>
+
+          {left !== null && !expired && (
+            <div style={{ ...box, display: 'flex', alignItems: 'center', gap: 14 }}>
+              <span aria-hidden="true" style={{ width: 62, height: 62, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 800, color: mm < 2 ? '#b91c1c' : '#92400e', background: `conic-gradient(${mm < 2 ? '#dc2626' : '#d97706'} ${Math.round(Math.min(1, left / Math.max(1, holdMinutes * 60_000)) * 360)}deg, #eef1f6 0)` }}>
+                <span style={{ width: 50, height: 50, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center' }}>{mm}:{String(ss).padStart(2, '0')}</span>
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                <b style={{ fontSize: 14.5, color: INK }}>{bt('Your time is held for you')}</b>
+                <span style={{ fontSize: 13, lineHeight: 1.5, color: '#475569' }}>
+                  {when ? `${when}. ` : ''}{btf('Pay within {m} min {s} s or the time is released.', { m: mm, s: ss })}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div style={{ ...box, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ ...row, alignItems: 'baseline' }}>
+              <span style={{ color: '#475569' }}>{due.kind === 'deposit' ? bt('Deposit due today') : bt('Due now')}</span>
+              <b style={{ fontSize: 20, color: INK }}>{fmt(due.cents)}</b>
+            </div>
+            {due.kind === 'deposit' && due.restCents > 0 && (
+              <div style={row}><span style={{ color: '#475569' }}>{bt('Pay at the salon after your visit')}</span><b style={{ color: INK }}>{fmt(due.restCents)}</b></div>
+            )}
+            {serviceName && <span style={{ fontSize: 12.5, color: '#64748b' }}>{serviceName}{when ? ` · ${when}` : ''}</span>}
+          </div>
+
+          {expired ? (
+            <button type="button" onClick={onPickTime} className="lumio-cta" style={big}>{bt('Pick a time again')}</button>
+          ) : (
+            <button type="button" onClick={onPay} disabled={busy} className="lumio-cta" style={{ ...big, opacity: busy ? 0.65 : 1, cursor: busy ? 'default' : 'pointer' }}>
+              {svgLock(18)}
+              {due.phase === 'starting' ? bt('Opening secure payment…')
+                : due.phase === 'checking' ? bt('Checking payment…')
+                : due.phase === 'failed' ? btf('Try again · {amount}', { amount: fmt(due.cents) })
+                : btf('Pay {amount} now', { amount: fmt(due.cents) })}
+            </button>
+          )}
+          {!expired && (
+            <button type="button" onClick={onPickTime} style={{ minHeight: 44, border: 'none', background: 'none', color: '#475569', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{bt('Pick a different time')}</button>
+          )}
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+            {svgLock(13)}{bt('Card payment is secure — we never see your card number.')}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const many = bookedVisits.length > 1;
+  return (
+    <div style={shell}>
+      <div style={col}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
+          <span style={{ width: 66, height: 66, borderRadius: '50%', background: '#dcfce7', color: '#15803d', display: 'grid', placeItems: 'center' }}>{svgCheck(34)}</span>
+          <h2 style={{ margin: '4px 0 0', fontSize: 23, color: INK }}>
+            {many ? btf('{n} bookings received', { n: bookedVisits.length }) : paidOnline ? (firstName ? btf('You’re booked, {name}!', { name: firstName }) : bt('You’re booked!')) : bt('Booking received')}
+          </h2>
+          <p style={{ margin: 0, fontSize: 14, color: '#475569', lineHeight: 1.55 }}>
+            {paidOnline ? bt('Payment received. A confirmation is on its way.') : bt('A confirmation is on its way.')}
+          </p>
+        </div>
+
+        {many ? (
+          <div style={{ ...box, padding: 0, overflow: 'hidden' }}>
+            {bookedVisits.map((label, i) => (
+              <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 13px', borderTop: i ? '1px solid #eef1f6' : 'none', fontSize: 13.5, color: '#334155' }}>
+                <span style={{ color: '#16a34a', flexShrink: 0, marginTop: 1 }}>{svgCheck(15)}</span><span>{label}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ ...box, padding: '2px 14px' }}>
+            {serviceName && <div style={{ ...row, padding: '11px 0', borderBottom: '1px solid #eef1f6' }}><span style={{ color: '#475569' }}>{bt('Service')}</span><b style={{ color: INK, textAlign: 'right' }}>{serviceName}</b></div>}
+            {when && <div style={{ ...row, padding: '11px 0', borderBottom: salonAddress ? '1px solid #eef1f6' : 'none' }}><span style={{ color: '#475569' }}>{bt('When')}</span><b style={{ color: INK, textAlign: 'right' }}>{when}</b></div>}
+            {salonAddress && <div style={{ ...row, padding: '11px 0' }}><span style={{ color: '#475569' }}>{bt('Where')}</span><b style={{ color: INK, textAlign: 'right' }}>{salonName ? `${salonName} · ` : ''}{salonAddress}</b></div>}
+          </div>
+        )}
+
+        {paidOnline && due ? (
+          <div style={{ ...box, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ ...row, alignItems: 'center' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontWeight: 700, color: '#15803d' }}>{svgCheck(16)}{due.kind === 'deposit' ? bt('Deposit paid') : bt('Paid online')}</span>
+              <b style={{ color: INK }}>{fmt(due.cents)}</b>
+            </div>
+            {due.kind === 'deposit' && due.restCents > 0 && (
+              <div style={{ ...row, paddingTop: 8, borderTop: '1px dashed #dbe2ee' }}><span style={{ color: '#475569' }}>{bt('Due at the salon')}</span><b style={{ color: INK }}>{fmt(due.restCents)}</b></div>
+            )}
+            {due.kind === 'deposit' && (
+              <span style={{ fontSize: 12.5, lineHeight: 1.5, color: '#475569' }}>
+                {refundHours > 0 ? btf('Need to cancel? Do it at least {hours} hours before and the deposit goes back to your card.', { hours: refundHours }) : bt('Need to cancel? Do it any time before your appointment and the deposit goes back to your card.')}
+              </span>
+            )}
+          </div>
+        ) : (
+          <p style={{ margin: 0, textAlign: 'center', color: '#475569', fontSize: 14 }}>{bt('Payment: ')}<strong>{paidOnline ? bt('Paid online ✓') : bt('Pay at the salon')}</strong></p>
+        )}
+
+        {many && (
+          <p style={{ margin: 0, color: '#64748b', fontSize: 13, lineHeight: 1.6, textAlign: 'center' }}>
+            {bt('Each visit has its own confirmation and its own cancel link, so you can change one without touching the others.')}
+          </p>
+        )}
+        <button type="button" onClick={onReset} style={{ ...primaryBtn, alignSelf: 'center', minHeight: 46, padding: '0 26px', background: accent }}>{bt('Book another')}</button>
+      </div>
     </div>
   );
 }

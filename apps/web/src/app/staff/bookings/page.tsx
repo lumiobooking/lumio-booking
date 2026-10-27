@@ -21,6 +21,7 @@ import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { uiLocale, dayKeyInTz, fmtInTz } from '../../../lib/datetime';
+import { fmtPhone } from '../../../lib/cal-card';
 import { IC, Icon, L, Pill, Toast, st, useToast } from '../../../components/staff/kit';
 import { BookingSheet, StaffBooking, bookingName, bookingServices, bookingMinutes, bookingStatus } from '../../../components/staff/BookingSheet';
 import { StaffVisit, VisitRow } from '../../../components/staff/VisitRow';
@@ -255,7 +256,7 @@ function AgendaRow({ b, vi, busy, onOpen, onAccept, onReject }: {
     <div style={{ display: 'flex', gap: 12, opacity: dead ? 0.6 : 1 }}>
       <div style={{ width: 54, flexShrink: 0, paddingTop: 14, textAlign: 'right' }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{fmtInTz(b.startTime, { hour: 'numeric', minute: '2-digit' })}</div>
-        {mins > 0 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 2 }}>{mins} {L(vi, 'phút', 'min')}</div>}
+        {mins > 0 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 2, whiteSpace: 'nowrap' }}>{b.endTime ? `– ${fmtInTz(b.endTime, { hour: 'numeric', minute: '2-digit' })}` : `${mins} ${L(vi, 'phút', 'min')}`}</div>}
       </div>
       <div style={{ ...st.card, flex: 1, minWidth: 0, padding: 0, overflow: 'hidden', borderColor: b.status === 'ASSIGNED' ? 'var(--ink-warn)' : 'var(--line)' }}>
         <button type="button" onClick={onOpen}
@@ -265,6 +266,7 @@ function AgendaRow({ b, vi, busy, onOpen, onAccept, onReject }: {
             <Pill text={s.text} tone={s.tone} />
           </div>
           <div style={{ fontSize: 14, color: 'var(--ccbd5e1)', marginTop: 3 }}>{bookingServices(b)}</div>
+          {b.customer?.phone && <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', marginTop: 2 }}>{fmtPhone(b.customer.phone)}</div>}
           {b.notes && <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.notes}</div>}
         </button>
         {b.status === 'ASSIGNED' && (

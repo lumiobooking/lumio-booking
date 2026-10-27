@@ -9,6 +9,7 @@ import { FloorView } from '../../../components/FloorView';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
+import { fmtPhone } from '../../../lib/cal-card';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { missedMinutes } from '../../../lib/missed';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
@@ -723,13 +724,17 @@ function Inner() {
                       <div key={b.id} onClick={() => setSelected(b)}
                         onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, b }); }}
                         style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '8px 10px', borderRadius: 9, background: 'var(--c1e293b)', borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: struck ? 0.75 : 1 }}>
-                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--cf1f5f9)', fontSize: 14 }}>{fmtT(b.startTime)}</span>
+                        <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25, flexShrink: 0 }}>
+                          <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--cf1f5f9)', fontSize: 14 }}>{fmtT(b.startTime)}</span>
+                          <span style={{ whiteSpace: 'nowrap', color: 'var(--c94a3b8)', fontSize: 11.5 }}>– {fmtT(b.endTime)}</span>
+                        </span>
                         <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--cf1f5f9)', fontWeight: 600, fontSize: 14, textDecoration: struck ? 'line-through' : 'none' }}>{name(b.customer)}</span>
                             <SourceDot b={b} vi={lang === 'vi'} />
                           </span>
                           {svcLabel(b) && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--c94a3b8)', fontSize: 12.5 }}>{svcLabel(b)}</span>}
+                          {b.customer?.phone && <span style={{ whiteSpace: 'nowrap', color: 'var(--c94a3b8)', fontSize: 12.5 }}>{fmtPhone(b.customer.phone)}</span>}
                         </span>
                         <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 600, color: m.color, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
                       </div>

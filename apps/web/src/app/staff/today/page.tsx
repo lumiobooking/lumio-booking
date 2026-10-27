@@ -22,6 +22,7 @@ import { useLang } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useLiveEvents } from '../../../lib/useLiveEvents';
 import { dayKeyInTz, fmtInTz } from '../../../lib/datetime';
+import { fmtPhone } from '../../../lib/cal-card';
 import { BOTTOM_SAFE, IC, Icon, L, SectionLabel, Sheet, TAB_H, Toast, fmtTurns, minsSince, st, useToast } from '../../../components/staff/kit';
 import { ClockCard } from '../../../components/staff/ClockCard';
 import { NextVisitClient, NextVisitSheet } from '../../../components/staff/NextVisitSheet';
@@ -569,6 +570,9 @@ function NextCard({ b, vi, busy, onOpen, onStart }: { b: StaffBooking; vi: boole
         <div style={{ minWidth: 0, flex: 1, borderLeft: '1px solid var(--line)', paddingLeft: 14 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>{bookingName(b)}</div>
           <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 2 }}>{bookingServices(b)}{mins ? ` · ${mins} ${L(vi, 'phút', 'min')}` : ''}</div>
+          <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 2 }}>
+            {[b.customer?.phone ? fmtPhone(b.customer.phone) : '', `${fmtInTz(b.startTime, { hour: 'numeric', minute: '2-digit' })}${b.endTime ? ` – ${fmtInTz(b.endTime, { hour: 'numeric', minute: '2-digit' })}` : ''}`].filter(Boolean).join(' · ')}
+          </div>
           {b.notes && <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.notes}</div>}
         </div>
         <Icon d={IC.chevron} size={20} color="var(--c94a3b8)" />

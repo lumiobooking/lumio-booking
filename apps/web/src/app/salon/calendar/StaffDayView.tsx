@@ -10,7 +10,9 @@ import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { uiLocale, wallToInstantISO } from '../../../lib/datetime';
 import { ind } from '../../../lib/ui-industry';
-import { cardInk, cardLines, statusTag } from '../../../lib/cal-day';
+import { statusTag } from '../../../lib/cal-day';
+import { HOUR_PX, cardTier, fmtPhone, timeRange, useCardColor } from '../../../lib/cal-card';
+import { CardBody, CardColorSwitch, cardLook, cardPad, type CardFace } from './CalCard';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -62,6 +64,26 @@ const AVATAR_BG = ['#f472b6', 'var(--c60a5fa)', '#34d399', '#fbbf24', '#a78bfa',
 // Paid amount (deposit or full) — same rule the detail drawer uses.
 const paidOf = (b: Booking) => (b.payments ?? []).filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
 
+/** What a block on the calendar says (CalCard.tsx): name, service, phone, from–to, price. */
+function faceOf(b: Booking, s: number, e: number, vi: boolean, t: (k: string) => string): CardFace {
+  const paid = paidOf(b);
+  const extra = (b.addons ?? []).length;
+  return {
+    name: b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : (vi ? 'Khách' : 'Guest'),
+    partySize: b.partySize ?? null,
+    price: formatPrice(b.priceCents, b.currency).replace(/[.,]00(?=\D*$)/, ''),
+    service: `${b.service?.name ?? ''}${extra ? ` +${extra}` : ''}`,
+    phone: fmtPhone(b.customer?.phone),
+    range: timeRange(s, e, vi),
+    start: timeRange(s, s, vi).split(' – ')[0],
+    status: b.status,
+    serviceKey: b.service?.id ?? b.service?.name ?? null,
+    paid: paid > 0,
+    paidTitle: paid > 0 ? `${paid >= b.priceCents && b.priceCents > 0 ? t('cal.paidFull') : t('cal.deposit')} · ${formatPrice(paid, b.currency)}` : undefined,
+    cancelled: isGone(b.status),
+  };
+}
+
 // Booking channel → compact 1-letter badge + tooltip. Older bookings have no
 // source (null) and simply show nothing.
 function srcMeta(s: string | null | undefined, t: (k: string) => string): { icon: React.ReactNode; full: string } | null {
@@ -106,6 +128,22 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
   const chipsRef = useRef<HTMLDivElement | null>(null);
   const [chipEdge, setChipEdge] = useState({ l: false, r: false });
   const [slide, setSlide] = useState<0 | 1 | -1>(0);
+  // Status colours or one colour per service — the owner's choice, on every view.
+  const [colorMode, setColorMode] = useCardColor();
+  // Phone, everyone: technicians side by side, swiped sideways; an arrow at an
+  // edge while more columns are hidden there.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [gridEdge, setGridEdge] = useState({ l: false, r: false });
+  const gridEdges = () => {
+    const el = gridRef.current; if (!el) return;
+    const l = el.scrollLeft > 4, r = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setGridEdge((p) => (p.l === l && p.r === r ? p : { l, r }));
+  };
+  useEffect(() => {
+    gridEdges();
+    window.addEventListener('resize', gridEdges);
+    return () => window.removeEventListener('resize', gridEdges);
+  }, [items, staff.length, focus]);
   const chipEdges = () => {
     const el = chipsRef.current; if (!el) return;
     const l = el.scrollLeft > 4, r = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
@@ -200,7 +238,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
   }
   startH = Math.max(7, startH); endH = Math.min(21, Math.max(endH, startH + 4));
   const gStart = startH * 60;
-  const HP = isMobile ? 52 : 62;
+  const HP = isMobile ? 52 : HOUR_PX.desk;
   const railW = 50;
   const colW = isMobile ? 138 : 172;
   const headH = 46;
@@ -371,7 +409,6 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
     const aSpan = Math.max(60, aE - aS);
     const pct = (m: number) => Math.max(0, Math.min(100, ((m - aS) / aSpan) * 100));
     const hours = Array.from({ length: aSpan / 60 + 1 }, (_, i) => aS + i * 60);
-    const labelStep = aSpan > 8 * 60 ? 2 : 1;
     const nowPct = nowMin >= aS && nowMin <= aE ? pct(nowMin) : -1;
 
     // What each technician is doing right now (only meaningful today).
@@ -408,21 +445,6 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
       ? <img src={r.avatar} alt="" style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} />
       : <span style={{ width: size, height: size, flexShrink: 0, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: font, fontWeight: 700, ...onHue(r.hue) }}>{r.name.charAt(0).toUpperCase()}</span>;
 
-    const dayBar = (r: Row) => (
-      <div style={{ position: 'relative', height: 24, borderRadius: 5, overflow: 'hidden', background: 'var(--c0b1120)', border: '1px solid var(--c1f2937)' }}>
-        {r.shift && <span style={{ position: 'absolute', left: `${pct(r.shift.s)}%`, width: `${pct(r.shift.e) - pct(r.shift.s)}%`, top: 0, bottom: 0, background: 'rgba(148,163,184,0.2)' }} />}
-        {hours.slice(1, -1).map((h) => <span key={h} style={{ position: 'absolute', left: `${pct(h)}%`, top: 0, bottom: 0, width: 1, background: 'var(--c243044)' }} />)}
-        {r.live.map((b) => {
-          const { s, e } = span(b);
-          const w = Math.max(pct(e) - pct(s), 3);
-          return (
-            <span key={b.id} style={{ position: 'absolute', left: `${pct(s)}%`, width: `${w}%`, top: 2, bottom: 2, borderRadius: 4, fontSize: 10, fontWeight: 700, lineHeight: '20px', paddingLeft: 4, boxSizing: 'border-box', whiteSpace: 'nowrap', overflow: 'hidden', ...onHue(barColor(b.status)) }}>{hm(s)}</span>
-          );
-        })}
-        {nowPct >= 0 && <span style={{ position: 'absolute', left: `${nowPct}%`, top: -3, bottom: -3, width: 2, background: '#f43f5e' }} />}
-      </div>
-    );
-
     const card: React.CSSProperties = { boxSizing: 'border-box', padding: '10px 12px', borderRadius: 14, background: 'var(--c111827)', border: '1px solid var(--c1f2937)', display: 'flex', flexDirection: 'column', gap: 8, width: '100%', textAlign: 'left', cursor: 'pointer', color: 'var(--ce2e8f0)' };
     const focusRow = focus ? rows.find((r) => r.id === focus) ?? null : null;
 
@@ -438,14 +460,9 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
               <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{workingNow} {vi ? 'đang làm' : 'busy'} · <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{freeNow} {vi ? 'trống' : 'free'}</span></span>
             )}
           </div>
-          {onShift.length === 0 && unassigned.length === 0 ? (
+          {onShift.length > 0 && <div style={{ display: 'flex', justifyContent: 'flex-end' }}><CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></div>}
+          {onShift.length === 0 && unassigned.length === 0 && (
             <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '36px 0', fontSize: 14 }}>{items.length === 0 ? t('cal.noAppts') : (vi ? 'Chưa có thợ nào làm hôm nay.' : 'No technician on shift today.')}</div>
-          ) : (
-            <div style={{ position: 'relative', height: 14, margin: '0 12px 0 58px', fontSize: 10.5, color: 'var(--c64748b)' }}>
-              {hours.filter((h, i) => i % labelStep === 0 && (i === hours.length - 1 || i + labelStep <= hours.length - 1 || labelStep === 1)).map((h, i, arr) => (
-                <span key={h} style={{ position: 'absolute', left: `${pct(h)}%`, transform: i === 0 ? 'none' : i === arr.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)', whiteSpace: 'nowrap' }}>{hm(h)}</span>
-              ))}
-            </div>
           )}
           {unassigned.length > 0 && (
             <div style={{ ...card, cursor: 'default', border: '1px dashed var(--c7c5c22)' }}>
@@ -466,41 +483,83 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
               </div>
             </div>
           )}
-          {onShift.map((r) => {
-            const st = statusLine(r);
-            return (
-              <button key={r.id} type="button" onClick={() => setFocus(r.id)} style={card}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {avatar(r, 36, 14)}
-                  <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {r.name}{r.shift && <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--c94a3b8)' }}> · {vi ? 'ca' : 'shift'} {hm(r.shift.s)}–{hm(r.shift.e)}</span>}
-                    </span>
-                    <span style={{ fontSize: 12.5, color: toneColor(st.tone), fontWeight: st.tone === 'good' ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{st.text}</span>
-                  </span>
-                  <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{r.live.length} {t('cal.apptWord')}</span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c64748b)" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
-                </div>
-                {dayBar(r)}
+          {onShift.length > 0 && (() => {
+            // Board 2 of "Lịch — thẻ đủ thông tin": every technician a column,
+            // two on screen, swiped sideways; each block says who, what,
+            // which number and from when to when. Tap a name for that
+            // technician alone (board 3).
+            const HG = HOUR_PX.phoneColumns;
+            const COLW = 160;
+            const gy = (m: number) => ((m - aS) / 60) * HG;
+            const gH = (aSpan / 60) * HG;
+            const hatchBg = 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(148,163,184,0.10) 6px 7px)';
+            const arrow = (side: 'l' | 'r') => (
+              <button type="button" onClick={() => gridRef.current?.scrollBy({ left: side === 'r' ? COLW : -COLW, behavior: 'smooth' })}
+                aria-label={side === 'r' ? (vi ? 'Xem thợ tiếp theo' : 'Next technicians') : (vi ? 'Xem thợ trước' : 'Previous technicians')}
+                style={{ position: 'absolute', top: 8, [side === 'r' ? 'right' : 'left']: side === 'r' ? 6 : 50, zIndex: 5, width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ink-link)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.18)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={side === 'r' ? 'M9 18l6-6-6-6' : 'M15 18l-6-6 6-6'} /></svg>
               </button>
             );
-          })}
+            return (
+              <div style={{ position: 'relative' }}>
+                <style>{'.lumio-cols::-webkit-scrollbar{display:none}'}</style>
+                <div ref={gridRef} className="lumio-cols" onScroll={gridEdges}
+                  style={{ overflowX: 'auto', scrollSnapType: 'x proximity', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', borderRadius: 14, border: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
+                  <div style={{ display: 'flex', width: 'max-content' }}>
+                    <div style={{ position: 'sticky', left: 0, zIndex: 4, width: 44, flexShrink: 0, background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)' }}>
+                      <div style={{ height: 52, borderBottom: '1px solid var(--c1f2937)' }} />
+                      <div style={{ position: 'relative', height: gH }}>
+                        {hours.slice(0, -1).map((hh) => <span key={hh} style={{ position: 'absolute', top: gy(hh) + 5, left: 6, fontSize: 11, fontWeight: 600, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{hm(hh)}</span>)}
+                      </div>
+                    </div>
+                    {onShift.map((r) => {
+                      const lanes = place(r.live);
+                      return (
+                        <div key={r.id} style={{ width: COLW, flexShrink: 0, borderRight: '1px solid var(--c1f2937)', scrollSnapAlign: 'start' }}>
+                          <button type="button" onClick={() => setFocus(r.id)} aria-label={vi ? `Chỉ xem lịch của ${r.name}` : `Show ${r.name} only`}
+                            style={{ height: 52, width: '100%', boxSizing: 'border-box', border: 0, borderBottom: '1px solid var(--c1f2937)', background: 'transparent', display: 'flex', alignItems: 'center', gap: 8, padding: '0 8px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                            {avatar(r, 28, 12)}
+                            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+                              <span style={{ fontSize: 11.5, color: toneColor(statusLine(r).tone), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusLine(r).text}</span>
+                            </span>
+                          </button>
+                          <div style={{ position: 'relative', height: gH }}>
+                            {r.shift && r.shift.s > aS && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: gy(r.shift.s), background: hatchBg }} />}
+                            {r.shift && r.shift.e < aE && <div style={{ position: 'absolute', left: 0, right: 0, top: gy(r.shift.e), bottom: 0, background: hatchBg }} />}
+                            {hours.slice(1, -1).map((hh) => <div key={hh} style={{ position: 'absolute', top: gy(hh), left: 0, right: 0, borderTop: '1px solid var(--c1f2937)' }} />)}
+                            {lanes.map(({ b, s, e, col, cols }) => {
+                              const w = 100 / cols;
+                              const h = Math.max(20, gy(e) - gy(s) - 4);
+                              const tier = cardTier(h, 'sm');
+                              const face: CardFace = { ...faceOf(b, s, e, vi, t), source: <SourceDot b={b} vi={vi} /> };
+                              const look = cardLook(face, colorMode, barColor(b.status));
+                              return (
+                                <button key={b.id} type="button" onClick={() => onOpen(b)} aria-label={[face.name, face.service, face.phone, face.range].filter(Boolean).join(', ')}
+                                  style={{ position: 'absolute', top: gy(s) + 2, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', padding: cardPad(tier, 'sm'), borderRadius: 10,
+                                    background: look.background, border: look.border, display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', alignItems: 'stretch', gap: 2, overflow: 'hidden', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                                  <CardBody f={face} tier={tier} size="sm" look={look} />
+                                </button>
+                              );
+                            })}
+                            {nowPct >= 0 && <div style={{ position: 'absolute', left: 0, right: 0, top: gy(nowMin), borderTop: '2px solid #f43f5e', pointerEvents: 'none', zIndex: 2 }} />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                {gridEdge.l && arrow('l')}
+                {gridEdge.r && arrow('r')}
+              </div>
+            );
+          })()}
           {offToday.map((r) => (
             <button key={r.id} type="button" onClick={() => setFocus(r.id)} style={{ boxSizing: 'border-box', padding: '10px 12px', borderRadius: 14, border: '1px dashed var(--c243044)', background: 'transparent', display: 'flex', alignItems: 'center', gap: 10, opacity: 0.7, width: '100%', textAlign: 'left', cursor: 'pointer' }}>
               <span style={{ width: 36, height: 36, flexShrink: 0, borderRadius: '50%', background: 'var(--c1e293b)', color: 'var(--c94a3b8)', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{r.name.charAt(0).toUpperCase()}</span>
               <span style={{ flex: 1, fontSize: 14, color: 'var(--c94a3b8)' }}>{r.name} · {vi ? 'nghỉ hôm nay' : 'off today'}</span>
             </button>
           ))}
-          {onShift.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', padding: '2px 2px 8px', fontSize: 11.5, color: 'var(--c94a3b8)' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 18, height: 10, borderRadius: 3, background: 'rgba(148,163,184,0.2)', border: '1px solid var(--c243044)' }} />{vi ? 'Ca làm' : 'Shift'}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 18, height: 10, borderRadius: 3, background: '#4f46e5' }} />{vi ? 'Đang làm' : 'In progress'}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 18, height: 10, borderRadius: 3, background: '#3b82f6' }} />{vi ? 'Đã đặt' : 'Booked'}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 18, height: 10, borderRadius: 3, background: '#b45309' }} />{vi ? 'Chờ xác nhận' : 'Pending'}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 18, height: 10, borderRadius: 3, background: '#0f766e' }} />{vi ? 'Xong' : 'Done'}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 2, height: 12, background: '#f43f5e' }} />{vi ? 'Bây giờ' : 'Now'}</span>
-            </div>
-          )}
         </div>
       );
     }
@@ -514,7 +573,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
     let cS = r.shift?.s ?? aS, cE = r.shift?.e ?? aE;
     for (const b of r.live) { const { s, e } = span(b); cS = Math.min(cS, s); cE = Math.max(cE, e); }
     cS = Math.floor(cS / 60) * 60; cE = Math.ceil(cE / 60) * 60; if (cE - cS < 4 * 60) cE = cS + 4 * 60;
-    const H = 84; // px per hour: a 60-min card holds its three lines (time · name · service)
+    const H = HOUR_PX.phoneOne; // px per hour: a 60-min card holds name · service · phone · time (lib/cal-card)
     const y = (m: number) => ((m - cS) / 60) * H;
     const colH = ((cE - cS) / 60) * H;
     // Free gaps (≥ 45 min) inside the column, after now if today.
@@ -645,43 +704,17 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                 </a>
               ))}
               {lanes.map(({ b, s, e, col, cols }) => {
-                const cc = barColor(b.status);
-                const ink = cardInk(b.status);
                 const w = 100 / cols;
                 // Height decides how many lines fit — never more lines than room (no text on text).
                 const h = Math.max(30, y(e) - y(s) - 4);
-                const lines = cardLines(h);
-                const tag = statusTag(b.status, vi);
-                const price = formatPrice(b.priceCents, b.currency).replace(/[.,]00(?=\D*$)/, '');
-                const who = `${custName(b)}${b.partySize != null && b.partySize > 1 ? ` ×${b.partySize}` : ''}`;
+                const tier = cardTier(h, 'lg');
+                const face: CardFace = { ...faceOf(b, s, e, vi, t), tag: statusTag(b.status, vi), source: <SourceChip b={b} vi={vi} /> };
+                const look = cardLook(face, colorMode, barColor(b.status));
                 return (
-                  <button key={b.id} type="button" onClick={() => onOpen(b)} aria-label={`${who}, ${hm(s)}–${hm(e)}, ${price}${tag ? `, ${tag}` : ''}`}
-                    style={{ position: 'absolute', top: y(s) + 2, height: h, left: `calc(${col * w}% + 8px)`, width: `calc(${w}% - 16px)`, boxSizing: 'border-box', padding: lines === 1 ? '0 10px' : '7px 10px', borderRadius: 10,
-                      background: `color-mix(in srgb, ${cc} 16%, var(--c111827))`, border: `1px solid ${cc}`, display: 'flex', flexDirection: 'column', justifyContent: lines === 1 ? 'center' : 'flex-start', gap: 3, overflow: 'hidden', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--cf1f5f9)' }}>
-                    {lines === 1 ? (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0 }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: ink, whiteSpace: 'nowrap' }}>{hm(s)}</span>
-                        <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{who}</span>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: ink, whiteSpace: 'nowrap' }}>{price}</span>
-                      </span>
-                    ) : (
-                      <>
-                        <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', lineHeight: '16px' }}>
-                          <span style={{ fontSize: 12.5, fontWeight: 700, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hm(s)} – {hm(e)}</span>
-                          <span style={{ fontSize: 12.5, fontWeight: 700, color: ink, whiteSpace: 'nowrap' }}>{price}</span>
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0, lineHeight: '20px' }}>
-                          <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{who}</span>
-                          {tag && <span style={{ flexShrink: 0, height: 18, padding: '0 7px', borderRadius: 999, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', background: `color-mix(in srgb, ${cc} 26%, transparent)`, color: ink }}>{tag}</span>}
-                        </span>
-                        {lines === 3 && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, lineHeight: '20px' }}>
-                            <span style={{ flexShrink: 0, display: 'inline-flex' }}><SourceChip b={b} vi={vi} /></span>
-                            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}</span>
-                          </span>
-                        )}
-                      </>
-                    )}
+                  <button key={b.id} type="button" onClick={() => onOpen(b)} aria-label={[face.name, face.service, face.phone, face.range, face.price, face.tag].filter(Boolean).join(', ')}
+                    style={{ position: 'absolute', top: y(s) + 2, height: h, left: `calc(${col * w}% + 8px)`, width: `calc(${w}% - 16px)`, boxSizing: 'border-box', padding: cardPad(tier, 'lg'), borderRadius: 10,
+                      background: look.background, border: look.border, display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', alignItems: 'stretch', gap: 2, overflow: 'hidden', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                    <CardBody f={face} tier={tier} size="lg" look={look} />
                   </button>
                 );
               })}
@@ -725,6 +758,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
             <button key={s.id} onClick={() => setFocus(focus === s.id ? null : s.id)} style={chip(focus === s.id)}>{s.firstName}</button>
           ))}
           <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 6 }}>{t('cal.dragHint')}</span>
+          <span style={{ marginLeft: 'auto' }}><CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></span>
         </div>
       )}
 
@@ -826,33 +860,17 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                     {pos.map(({ b, s, e, col, cols }) => {
                       const cc = sc(b.status);
                       const topPx = (s - gStart) / 60 * HP;
-                      const h = Math.max(38, (e - s) / 60 * HP - 3);
+                      const h = Math.max(20, (e - s) / 60 * HP - 3);
                       const dim = b.status === 'CANCELLED' || b.status === 'NO_SHOW';
                       const w = 100 / cols;
-                      const paid = paidOf(b);
-                      const sm = srcMeta(b.source, t);
-                      const dep = paid > 0 ? (paid >= b.priceCents && b.priceCents > 0 ? t('cal.paidFull') : t('cal.deposit')) : '';
+                      const tier = cardTier(h, 'sm');
+                      const face: CardFace = { ...faceOf(b, s, e, vi, t), source: <MiniSrc b={b} vi={vi} /> };
+                      const look = cardLook(face, colorMode, cc);
                       return (
                         <div key={b.id} data-card="1" draggable={!dim} onDragStart={(ev) => { setDragId(b.id); setGhost(null); grab.current = ((ev.clientY - ev.currentTarget.getBoundingClientRect().top) / HP) * 60; ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', b.id); }} onDragEnd={() => { setDragId(null); setOverCol(null); setGhost(null); }}
-                          onClick={() => onOpen(b)} title={`${fmtT(b.startTime)} · ${b.customer?.firstName ?? ''} · ${b.service?.name ?? ''}`}
-                          style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: dim ? 'var(--c18202f)' : `${cc}22`, border: `1px solid ${cc}66`, borderRadius: 8, padding: '3px 7px', overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dim ? 0.7 : dragId === b.id ? 0.4 : 1 }}>
-                          {/* Time · where the booking came from · price — the source is
-                              named on every card, short or tall (owner's request). */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-                            <span style={{ fontSize: 10.5, fontWeight: 600, color: cc, whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtT(b.startTime)}</span>
-                            <MiniSrc b={b} vi={vi} />
-                            <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 600, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', flexShrink: 0 }}>{formatPrice(b.priceCents, b.currency).replace(/[.,]00(?=\D*$)/, '')}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
-                              {b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—'}
-                            </span>
-                            <span style={{ display: 'flex', gap: 3, alignItems: 'center', flexShrink: 0 }}>
-                              {b.partySize != null && b.partySize > 1 && <span title={t('cal.dParty')} style={{ fontSize: 9, fontWeight: 600, color: 'var(--ce2e8f0)', background: 'var(--c475569)', borderRadius: 4, padding: '0 3px', lineHeight: '13px' }}>×{b.partySize}</span>}
-                              {paid > 0 && <span title={`${dep} · ${formatPrice(paid, b.currency)}`} style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />}
-                            </span>
-                          </div>
-                          {h > 48 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}</div>}
+                          onClick={() => onOpen(b)} title={[face.name, face.service, face.phone, face.range].filter(Boolean).join(' · ')}
+                          style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: look.background, border: look.border, borderRadius: 8, padding: cardPad(tier, 'sm'), display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', gap: 2, overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dim ? 0.7 : dragId === b.id ? 0.4 : 1 }}>
+                          <CardBody f={face} tier={tier} size="sm" look={look} />
                         </div>
                       );
                     })}

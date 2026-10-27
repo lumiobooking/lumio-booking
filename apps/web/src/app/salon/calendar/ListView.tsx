@@ -21,10 +21,11 @@
  */
 import { useMemo, useState, type CSSProperties } from 'react';
 import { formatPrice } from '../../../lib/ui';
+import { fmtPhone } from '../../../lib/cal-card';
 import { ind } from '../../../lib/ui-industry';
 import { sourceCounts } from '../../../lib/booking-sources';
 import {
-  activeFilterCount, attentionOf, facetCounts, bookedMinutes, durationMin, isGone, isOpen, lateMinutes, listKey, periodOf, shiftMinutes, summarize, hhmm,
+  activeFilterCount, attentionOf, facetCounts, bookedMinutes, isGone, isOpen, lateMinutes, listKey, periodOf, shiftMinutes, summarize, hhmm,
   type CalFilters, type DayBooking, type FacetCounts,
 } from '../../../lib/cal-day';
 import { ActiveChips, Avatar, C, Icon, SourceTabs, SrcPill, ST, StatusChip, btn, onIndigo, type StaffOpt } from './CalParts';
@@ -132,11 +133,13 @@ function Row({ b, now, tz, fmtT, vi, staff, onOpen, onAction, onCtx, narrow }: {
         background: k === 'late' ? 'var(--wash-amber)' : 'transparent', opacity: k === 'noshow' || k === 'cancelled' ? 0.62 : 1 }}>
       <div style={{ width: narrow ? 74 : 86, flexShrink: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
         <span style={{ fontSize: 13.5, fontWeight: 700, color: past ? C.muted : C.ink, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-        <span style={{ fontSize: 11.5, color: C.muted }}>{late !== null && k === 'late' ? (vi ? `trễ ${late}′` : `${late}m late`) : fmtDur(durationMin(b))}</span>
+        <span style={{ fontSize: 11.5, color: C.muted, whiteSpace: 'nowrap' }}>{late !== null && k === 'late' ? (vi ? `trễ ${late}′` : `${late}m late`) : `– ${fmtT(b.endTime)}`}</span>
       </div>
       <span style={{ width: 4, alignSelf: 'stretch', borderRadius: 3, background: ST[k].bar, flexShrink: 0, margin: '2px 0' }} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3, lineHeight: 1.3 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: past ? C.muted : C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: k === 'cancelled' ? 'line-through' : 'none' }}>{name}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: past ? C.muted : C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: k === 'cancelled' ? 'line-through' : 'none' }}>
+          {name}{b.customer?.phone ? <span style={{ fontWeight: 400, color: C.sub, textDecoration: 'none' }}> · {fmtPhone(b.customer.phone)}</span> : null}
+        </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
           <span style={{ flexShrink: 0, display: 'inline-flex' }}><SrcPill b={b} vi={vi} /></span>
           <span style={{ fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcText(b, vi)}</span>
@@ -185,7 +188,7 @@ function PhoneRow({ b, now, fmtT, vi, staff, onOpen, onAction, onCtx }: {
       style={{ display: 'flex', gap: 10, padding: '11px 14px', borderBottom: `1px solid ${C.line}`, cursor: 'pointer', background: k === 'late' ? 'var(--wash-amber)' : 'transparent', opacity: k === 'noshow' || k === 'cancelled' ? 0.62 : 1 }}>
       <div style={{ width: 62, flexShrink: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
         <span style={{ fontSize: 13.5, fontWeight: 700, color: past ? C.muted : C.ink, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-        <span style={{ fontSize: 11, color: C.muted }}>{late !== null && k === 'late' ? (vi ? `trễ ${late}′` : `${late}m late`) : fmtDur(durationMin(b))}</span>
+        <span style={{ fontSize: 11, color: C.muted, whiteSpace: 'nowrap' }}>{late !== null && k === 'late' ? (vi ? `trễ ${late}′` : `${late}m late`) : `– ${fmtT(b.endTime)}`}</span>
       </div>
       <span style={{ width: 4, borderRadius: 3, background: ST[k].bar, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -194,6 +197,7 @@ function PhoneRow({ b, now, fmtT, vi, staff, onOpen, onAction, onCtx }: {
           <span style={{ fontSize: 14, fontWeight: 700, color: past ? C.muted : C.ink }}>{formatPrice(b.priceCents, b.currency)}</span>
         </div>
         <span style={{ fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcText(b, vi)}</span>
+        {b.customer?.phone && <span style={{ fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap' }}>{fmtPhone(b.customer.phone)}</span>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 1, flexWrap: 'wrap' }}>
           <span style={{ flexShrink: 0, display: 'inline-flex' }}><SrcPill b={b} vi={vi} /></span>
           {b.assignedStaff

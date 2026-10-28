@@ -147,9 +147,10 @@ export default function PosDisplayPage() {
       if (sig === lastSig) return;
       lastSig = sig;
       const stt = d.state.status;
-      // Check-in owns the screen while it is up: the register keeps heartbeating
-      // its own idle state from another tab and would otherwise steal it back.
-      if (stt === 'checkin') { mode = 'checkin'; setS({ ...EMPTY, ...d.state }); return; }
+      // This is the CHECKOUT screen. Check-in has a screen of its own now
+      // (/checkin, opened from the walk-in board), so a check-in message — from
+      // a walk-in tab still running the old page — never takes this one over.
+      if (stt === 'checkin') return;
       // Remember the register's own view so check-in can hand it straight back.
       lastRegister = { ...EMPTY, ...d.state };
       if (mode === 'checkin') {

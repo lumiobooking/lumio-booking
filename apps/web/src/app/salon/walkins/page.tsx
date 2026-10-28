@@ -179,19 +179,6 @@ function Inner() {
   // The form is a drawer, not a permanent header: reception looks at the board
   // all day and only needs the form when someone walks in.
   const [formOpen, setFormOpen] = useState(false);
-  // Second monitor facing the customer. Same browser, so BroadcastChannel keeps
-  // both screens in step with no pairing, no login and no network.
-  const [screenOn, setScreenOn] = useState(false);
-  const chRef = useRef<BroadcastChannel | null>(null);
-  // Every message carries this salon's id: the channel is shared by every tab
-  // of the browser, and an agency keeps several salons open at once — the
-  // screen opened here for one salon used to greet customers as another.
-  const tenantRef = useRef(user?.tenantId ?? '');
-  tenantRef.current = user?.tenantId ?? '';
-  const post = useCallback((msg: Record<string, unknown>) => {
-    chRef.current?.postMessage(tenantRef.current ? { ...msg, tenant: tenantRef.current } : msg);
-  }, []);
-  const winRef = useRef<Window | null>(null);
   const [pick, setPick] = useState<Record<string, string>>({});
   // Which waiting row is showing its full ticket (one at a time — a list, not a wall).
   const [openWait, setOpenWait] = useState<string | null>(null);
@@ -256,212 +243,24 @@ function Inner() {
   // poll above stays as the safety net when the stream is down.
   useLiveEvents('/walkins/events', token, () => { void load(); });
 
-  // Keep the newest form state in a ref so the channel handler (registered once)
-  // always reads current values instead of the ones captured at mount.
-  const liveRef = useRef({ form, pickedIds, formOpen, qrOn: false, addonPick: [] as string[] });
-
-  const addRef = useRef<() => void>(() => undefined);
-  const checkinUrlRef = useRef('');
-  const qrTextRef = useRef({ title: '', hint: '' });
-  const thanksNameRef = useRef<string | null>(null);
-  const salonNameRef = useRef('');
-  const salonLogoRef = useRef('');
-  const salonWelcomeRef = useRef('');
-  const reviewUrlRef = useRef<string | null>(null);
-
-  /** The salon's real welcome: cover image, logo, name and the review QR. */
-  const sendWelcome = useCallback(() => {
-    post({
-      type: 'state',
-      state: {
-        status: 'idle', checkinExit: true, currency: 'USD', lines: [],
-        subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0,
-        salonName: salonNameRef.current || undefined,
-        salonLogo: salonLogoRef.current || undefined,
-        salonWelcome: salonWelcomeRef.current || undefined,
-        reviewUrl: reviewUrlRef.current || undefined,
-      },
-    });
-  }, [post]);
-  // True while this page is the one driving the customer screen, so it only
-  // hands the screen back when it actually had it.
-  const ownsScreenRef = useRef(false);
-  // Walk-ins already waiting when the QR went up — anything new after that is a
-  // customer who just checked themselves in on their phone.
-  const knownWaitingRef = useRef<Set<string>>(new Set());
-
-  const [qrOn, setQrOn] = useState(false);
-  // Name to greet on the display after a self check-in lands (the customer used
-  // their own phone, so it is not in the desk's form).
-  const [thanksName, setThanksName] = useState<string | null>(null);
+  // CHECK-IN AND CHECKOUT ARE TWO SCREENS.
+  //
+  // This page used to drive the customer display — the checkout screen the
+  // register shows totals and tips on — and switch it to a check-in QR and a
+  // live copy of the intake form. One screen doing two jobs: the cashier's
+  // total vanished under a check-in form, and the door had no screen of its
+  // own. Now the walk-in board never touches the checkout screen. The door
+  // gets its own: the self check-in page (/checkin, design v3), opened here on
+  // a second monitor or paired on a tablet with the shop code.
   const [pairCode, setPairCode] = useState('');
   const checkinUrl = pairCode && typeof window !== 'undefined' ? `${window.location.origin}/checkin?c=${pairCode}` : '';
 
-  const pushToScreen = useCallback((mode: 'idle' | 'form' | 'thanks' | 'qr') => {
-    // Handing the screen back must NOT push a stripped-down idle state — that
-    // wiped the salon's welcome image and the Google review QR. Tell the display
-    // to restore the register's own view instead.
-    if (mode === 'idle') {
-      post({
-        type: 'checkinRelease',
-        // What to show if no register is open to replay its own state: the real
-        // welcome screen, with the salon's image and the review QR — not the
-        // bare fallback the display uses when it knows nothing.
-        fallback: {
-          status: 'idle', currency: 'USD', lines: [],
-          subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0,
-          salonName: salonNameRef.current || undefined,
-          salonLogo: salonLogoRef.current || undefined,
-          salonWelcome: salonWelcomeRef.current || undefined,
-          reviewUrl: reviewUrlRef.current || undefined,
-        },
-      });
-      return;
-    }
-    const { form: f, pickedIds: p } = liveRef.current;
-    post({
-      type: 'state',
-      // Same envelope the register uses, so the customer display it is already
-      // showing simply switches mode — no second window to open.
-      state: {
-        status: 'checkin',
-        currency: 'USD',
-        salonName: salonName || '',
-        salonLogo: salonLogo || undefined,
-        lines: [],
-        subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0,
-        checkin: {
-          done: mode === 'thanks',
-          qr: mode === 'qr' ? checkinUrlRef.current : undefined,
-          qrTitle: mode === 'qr' ? qrTextRef.current.title : undefined,
-          qrHint: mode === 'qr' ? qrTextRef.current.hint : undefined,
-          services: services.map((x) => ({ id: x.id, name: x.name, priceCents: x.priceCents ?? 0, durationMinutes: x.durationMinutes ?? 0, category: x.category ?? null })),
-          // The add-ons of what she picked, and the ones already ticked (her screen shows them under her picks).
-          addons: addonsFor(p).map((a) => ({ id: a.id, name: a.name, priceCents: a.priceCents, durationMinutes: a.durationMinutes, askAtBooking: !!a.askAtBooking })),
-          addonPicked: liveRef.current.addonPick ?? [],
-          form: {
-            firstName: mode === 'thanks' && thanksNameRef.current ? thanksNameRef.current : f.customerName,
-            lastName: f.lastName, phone: f.phone,
-            email: f.email, birthDate: f.birthDate, partySize: parseInt(f.partySize, 10) || 1,
-          },
-          picked: p,
-        },
-      },
-    });
-  }, [salonName, salonLogo, services, deskAddons, post]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
-    const ch = new BroadcastChannel('lumio-pos-display');
-    chRef.current = ch;
-    ch.onmessage = (e: MessageEvent) => {
-      const msg = e.data as { type: string; payload?: unknown; tenant?: string };
-      // A screen or register of another salon in this same browser — not ours.
-      if (msg?.tenant && tenantRef.current && msg.tenant !== tenantRef.current) return;
-      // The display asks for state when it loads (and the register answers the
-      // same message) — only reply while our form is actually open.
-      // A display that just loaded asks whoever is around for something to show.
-      // The register answers when it is open; when it is NOT (staff opened the
-      // screen straight from this page) nobody replied and it sat on the bare
-      // fallback welcome — no cover image, no review QR. Answer it ourselves.
-      if (msg?.type === 'request') {
-        setScreenOn(true);
-        if (liveRef.current.formOpen) pushToScreen('form');
-        else if (liveRef.current.qrOn) pushToScreen('qr');
-        else sendWelcome();
-        return;
-      }
-      if (msg?.type === 'form') {
-        // The customer is typing on the other monitor.
-        const p = (msg.payload ?? {}) as Partial<{ firstName: string; lastName: string; phone: string; email: string; birthDate: string; partySize: number }>;
-        setForm((f) => ({
-          ...f,
-          ...(p.firstName !== undefined ? { customerName: p.firstName } : {}),
-          ...(p.lastName !== undefined ? { lastName: p.lastName } : {}),
-          ...(p.phone !== undefined ? { phone: p.phone } : {}),
-          ...(p.email !== undefined ? { email: p.email } : {}),
-          ...(p.birthDate !== undefined ? { birthDate: p.birthDate } : {}),
-          ...(p.partySize !== undefined ? { partySize: String(p.partySize) } : {}),
-        }));
-        setFormOpen(true);
-      }
-      if (msg?.type === 'toggleService') {
-        const id = String(msg.payload ?? '');
-        setPickedIds((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]));
-      }
-      if (msg?.type === 'toggleAddon') {
-        const id = String(msg.payload ?? '');
-        setAddonPick((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]));
-      }
-      // The customer pressed "I'm done" — the desk owns the token, so the desk saves.
-      if (msg?.type === 'submit') void addRef.current();
-    };
-    return () => { ch.close(); chRef.current = null; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pushToScreen]);
-
-  // Mirror every desk keystroke onto the customer screen while the form is open.
-  useEffect(() => { liveRef.current = { form, pickedIds, formOpen, qrOn, addonPick }; }, [form, pickedIds, formOpen, qrOn, addonPick]);
-  useEffect(() => { thanksNameRef.current = thanksName; }, [thanksName]);
   // "+ Tạo mới → Khách vãng lai" from the header (?new=1) opens the intake form at once.
   useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') startNew(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // "/salon/walkins?focus=<id>" — from the dashboard's long-wait alert: ring the card.
   useEffect(() => { const f = new URLSearchParams(window.location.search).get('focus'); if (f) { setFocusId(f); setOpenWait(f); } }, []);
-  useEffect(() => {
-    salonNameRef.current = salonName; salonLogoRef.current = salonLogo;
-    salonWelcomeRef.current = salonWelcome; reviewUrlRef.current = reviewUrl;
-  }, [salonName, salonLogo, salonWelcome, reviewUrl]);
 
-  useEffect(() => {
-    if (thanksName) { ownsScreenRef.current = true; pushToScreen('thanks'); }
-    else if (qrOn) { ownsScreenRef.current = true; pushToScreen('qr'); }
-    else if (formOpen) { ownsScreenRef.current = true; pushToScreen('form'); }
-    else if (ownsScreenRef.current) { ownsScreenRef.current = false; pushToScreen('idle'); }
-  }, [form, pickedIds, addonPick, formOpen, qrOn, thanksName, pushToScreen]);
-
-  // While the QR is up, watch the queue: the phone posts straight to the API, so
-  // the arrival of a new waiting ticket IS the signal that the customer is done.
-  // Both lists: a phone check-in now lands straight on a free technician
-  // (SERVING), so watching only the waiting queue would miss it and the
-  // customer's thank-you would never show.
-  useEffect(() => {
-    const all = [...(board?.waiting ?? []), ...(board?.serving ?? [])];
-    if (!qrOn) { knownWaitingRef.current = new Set(all.map((x) => x.id)); return; }
-    const fresh = all.filter((x) => !knownWaitingRef.current.has(x.id));
-    if (fresh.length === 0) return;
-    knownWaitingRef.current = new Set(all.map((x) => x.id));
-    setThanksName((fresh[0].customerName || '').split(' ')[0] || '');
-  }, [board, qrOn]);
-
-  // Thank-you sits for a moment, then the QR comes straight back for the next
-  // customer in line — no staff action. (It used to drop back to the welcome
-  // picture, so the second customer had nothing to scan until someone at the
-  // desk pressed the button again.)
-  useEffect(() => {
-    if (thanksName === null) return;
-    const id = window.setTimeout(() => setThanksName(null), 6000);
-    return () => window.clearTimeout(id);
-  }, [thanksName]);
-
-  // A phone check-in should show up in seconds, not on the 15s board tick.
-  useEffect(() => {
-    if (!qrOn) return;
-    const id = window.setInterval(() => { void load(); }, 2000);
-    return () => window.clearInterval(id);
-  }, [qrOn, load]);
-
-  // Say hello on mount too: a display window opened before this page has already
-  // sent its own 'request' and would otherwise never hear from us.
-  useEffect(() => { post({ type: 'request' }); }, [post]);
-  useEffect(() => { checkinUrlRef.current = checkinUrl; }, [checkinUrl]);
-  useEffect(() => { qrTextRef.current = { title: t('wi.qrScanTitle'), hint: t('wi.qrScanHint') }; }, [t]);
-
-  // Leaving this page (to POS, calendar, anywhere) hands the customer screen
-  // back to whoever else drives it. Without this the monitor would sit on the
-  // check-in form while the cashier is ringing someone up.
-  useEffect(() => () => { post({ type: 'checkinRelease' }); }, [post]);
-
-  // The QR the customer scans comes from the salon's own display pairing code.
+  // The check-in screen's link carries the salon's own display pairing code.
   useEffect(() => {
     if (!token || pairCode) return;
     apiFetch<{ pairCode: string }>('/display/session', { token })
@@ -469,29 +268,13 @@ function Inner() {
       .catch(() => undefined);
   }, [token, pairCode]);
 
-  // Same window name the register uses, so this focuses the display that is
-  // already open on the second monitor instead of spawning another one.
-  function openCustomerScreen() {
-    if (typeof window === 'undefined') return;
-    // `?t=` binds the screen to THIS salon; same window name as the register,
-    // so an open screen is re-used (and re-bound) instead of a second one.
-    const q = tenantRef.current ? `?t=${encodeURIComponent(tenantRef.current)}` : '';
-    winRef.current = window.open(`/pos-display${q}`, 'lumioCustomerDisplay', 'width=1100,height=760');
-    setScreenOn(true);
-    // Opened from the walk-in board, the screen is there for customers to
-    // check themselves in — so it opens ON the check-in QR, not on a welcome
-    // picture the owner then has to click past ("I opened the customer
-    // screen and saw nothing"). The form, when open, keeps priority.
-    if (!liveRef.current.formOpen && checkinUrl) setQrOn(true);
-    // If the window was already open, window.open only focuses it and no
-    // 'request' is sent — push the welcome so it is never left on the fallback.
-    window.setTimeout(() => { if (!liveRef.current.formOpen && !liveRef.current.qrOn) sendWelcome(); }, 500);
+  /** The check-in screen, in its own window (drag it to the monitor at the door). */
+  function openCheckinScreen() {
+    if (typeof window === 'undefined' || !checkinUrl) return;
+    window.open(checkinUrl, 'lumioCheckinScreen', 'width=1280,height=800');
   }
   function startNew() {
-    setQrOn(false);
     setForm(BLANK_FORM); setPickedIds([]); setGuests([]); setAddonPick([]); setFormOpen(true);
-    // Push immediately: the customer should see the form the moment it opens.
-    setTimeout(() => pushToScreen('form'), 0);
   }
 
   /** The add-ons offered on these services (own, category's, whole menu's), once each. */
@@ -552,15 +335,10 @@ function Inner() {
       if (form.staffChoice === 'auto') body.autoAssign = true;
       else if (form.staffChoice !== 'wait') body.assignedStaffId = form.staffChoice;
       await apiFetch('/walkins', { method: 'POST', token, body });
-      pushToScreen('thanks');
-      setQrOn(false);
       setForm(BLANK_FORM); setPickedIds([]); setGuests([]); setAddonPick([]); setCustomerId(null); setHist(null); setFormOpen(false);
-      // Leave the thank-you up for a moment, then reset the customer screen.
-      setTimeout(() => pushToScreen('idle'), 6000);
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not add'); }
   }
-  addRef.current = () => { void add(); };
 
   async function act(path: string, body?: unknown) {
     setError(null);
@@ -628,7 +406,7 @@ function Inner() {
 
   const staff = board?.staff ?? [];
   const nextUp = board?.nextUpStaffId ?? null;
-  const closeForm = () => { setFormOpen(false); pushToScreen('idle'); };
+  const closeForm = () => { setFormOpen(false); };
   const formEl = (
       <form onSubmit={add} style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -759,19 +537,14 @@ function Inner() {
             </button>
           ))}
         </div>
-        <KioskInline
-          t={t}
-          qrOn={qrOn}
-          canShow={!!checkinUrl}
-          onToggleQr={() => { const next = !qrOn; setQrOn(next); if (next) { setFormOpen(false); pushToScreen('qr'); } else pushToScreen('idle'); }}
-        />
-        <button type="button" onClick={openCustomerScreen} title={t('wi.custScreenHint')}
-          style={{ ...deskBtn, ...(screenOn ? { border: '1px solid #4f46e5' } : null) }}>
-          <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: screenOn ? '#22c55e' : 'var(--c94a3b8)' }} />
-          {screenOn ? t('wi.custScreenOn') : t('wi.custScreen')}
+        <KioskInline t={t} />
+        <button type="button" onClick={openCheckinScreen} disabled={!checkinUrl} title={t('wi.checkinScreenHint')}
+          style={{ ...deskBtn, opacity: checkinUrl ? 1 : 0.55 }}>
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+          {t('wi.checkinScreen')}
         </button>
         <button type="button"
-          onClick={() => { if (formOpen) { setFormOpen(false); pushToScreen('idle'); } else startNew(); }}
+          onClick={() => { if (formOpen) setFormOpen(false); else startNew(); }}
           style={{ ...ui.primaryBtn, background: '#4f46e5', height: 40, padding: '0 16px', borderRadius: 11, fontSize: 14, fontWeight: 700 }}
         >{formOpen ? t('wi.closeForm') : t('wi.newWalkin')}</button>
       </header>
@@ -1804,9 +1577,7 @@ function LineRow({ it, w, staff, services, t, currency, techLabel, onUpdateLine,
  * for the person standing here, on paper at the counter, or on a tablet by the
  * door. Splitting that into two buttons only made staff wonder which was which.
  */
-function KioskInline({ t, qrOn, canShow, onToggleQr }: {
-  t: (k: string) => string; qrOn: boolean; canShow: boolean; onToggleQr: () => void;
-}) {
+function KioskInline({ t }: { t: (k: string) => string }) {
   const { token } = useAuth();
   const [open, setOpen] = useState(false);
   const [s, setS] = useState<{ pairCode: string; displayUrl: string } | null>(null);
@@ -1835,17 +1606,14 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
       <button
         onClick={() => setOpen((v) => !v)}
         style={{
-          background: qrOn ? 'rgba(79,70,229,0.14)' : 'var(--raised)',
-          border: `1px solid ${qrOn ? '#4f46e5' : 'var(--line-strong)'}`, borderRadius: 11, height: 40, boxSizing: 'border-box',
-          color: qrOn ? 'var(--ink-link)' : 'var(--ce2e8f0)', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+          background: 'var(--raised)',
+          border: '1px solid var(--line-strong)', borderRadius: 11, height: 40, boxSizing: 'border-box',
+          color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
           padding: '0 14px', display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
         }}
       >
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h3v3h-3z M20 14v6h-3" /></svg>
         {t('wi.kiosk')}
-        {qrOn && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600 }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />{t('wi.qrLive')}
-        </span>}
         <span style={{ color: 'var(--c64748b)' }}>{open ? '▴' : '▾'}</span>
       </button>
       {open && (
@@ -1874,17 +1642,6 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: 3, color: 'var(--cc7d2fe)', marginBottom: 8 }}>{s?.pairCode ?? '······'}</div>
             <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginBottom: 10 }}>{t('wi.kioskHow')}</div>
             {url && <div style={{ fontSize: 12, color: 'var(--c818cf8)', wordBreak: 'break-all', fontWeight: 600, marginBottom: 10 }}>{url}</div>}
-            <button
-              onClick={onToggleQr}
-              disabled={!canShow}
-              style={{
-                width: '100%', marginBottom: 8, borderRadius: 8, padding: '10px 12px', fontSize: 12.5, fontWeight: 600,
-                cursor: canShow ? 'pointer' : 'not-allowed', opacity: canShow ? 1 : 0.5,
-                border: `1px solid ${qrOn ? '#4f46e5' : 'var(--c334155)'}`,
-                background: qrOn ? '#4f46e5' : 'transparent', color: qrOn ? '#fff' : 'var(--ccbd5e1)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-              }}
-            >🖥️ {qrOn ? t('wi.qrHide') : t('wi.qrOnScreen')}</button>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button
                 onClick={() => { if (url) printQr(url, t('wi.kioskScan'), { hint: t('wi.qrScanHint'), print: t('wi.kioskPrint'), close: t('wi.printClose') }); }}

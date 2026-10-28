@@ -50,7 +50,9 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId }: {
       const q = appointmentId ? `appointmentId=${encodeURIComponent(appointmentId)}` : `walkInId=${encodeURIComponent(walkInId as string)}`;
       apiFetch<VisitForms>(`/client-forms/visit?${q}&lang=${vi ? 'vi' : 'en'}`, { token })
         .then((v) => { setVisit(v); setLoadErr(null); })
-        .catch((e) => { setVisit({ enabled: false }); setLoadErr(e instanceof Error ? e.message : String(e)); });
+        // A failed REFRESH keeps what was shown: dropping to "not enabled" would
+        // also unmount an open signing popup and lose what the client typed.
+        .catch((e) => { setVisit((prev) => (prev?.enabled ? prev : { enabled: false })); setLoadErr(e instanceof Error ? e.message : String(e)); });
     } else if (customerId) {
       apiFetch<CustomerForms>(`/client-forms/customers/${customerId}?lang=${vi ? 'vi' : 'en'}`, { token }).then(setFile).catch(() => setFile(null));
     }
@@ -193,7 +195,7 @@ export function ClientFormsPanel({ appointmentId, walkInId, customerId }: {
         <FormModal title={vi ? 'Khách ký phiếu' : 'Client signs'} onClose={() => { setSigning(null); setTick((x) => x + 1); }}>
           {/* Paper, whatever the theme: this is the client's page, handed across the counter. */}
           <div style={{ background: PAPER_GROUND, borderRadius: 12, padding: '14px 12px' }}>
-            <SignFlow token={signing} embedded onFinished={onSigned} />
+            <SignFlow token={signing} embedded onFinished={onSigned} onSaved={onSigned} />
           </div>
           <button type="button" onClick={() => { setSigning(null); setTick((x) => x + 1); }}
             style={{ marginTop: 12, width: '100%', minHeight: 44, borderRadius: 12, border: '1px solid var(--line-strong)', background: 'transparent', color: 'var(--ce2e8f0)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>

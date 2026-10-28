@@ -26,11 +26,13 @@ export interface SignCtx {
   allDone: boolean;
 }
 
-export function SignFlow({ token, embedded, onFinished, finishedExtra, langHint }: {
+export function SignFlow({ token, embedded, onFinished, onSaved, finishedExtra, langHint }: {
   token: string;
   /** In a popup: no page chrome; tells the opener as soon as everything is signed. */
   embedded?: boolean;
   onFinished?: () => void;
+  /** Each form as it is saved — the opener turns its pill ✓ behind the popup. */
+  onSaved?: (kind: string) => void;
   /** Extra content on the "all signed" card (the iPad's "hand it back" button). */
   finishedExtra?: React.ReactNode;
   langHint?: FormLang;
@@ -39,6 +41,12 @@ export function SignFlow({ token, embedded, onFinished, finishedExtra, langHint 
   const [missing, setMissing] = useState(false);
   const [lang, setLang] = useState<FormLang>(langHint ?? 'en');
   const [done, setDone] = useState<string[]>([]);
+  // The form just saved, shown above the next one. Without it the next form
+  // opened at the same scroll spot — and every form ends with the same
+  // acknowledgements, name and signature box — so it looked like the form had
+  // wiped itself without saving.
+  const [saved, setSaved] = useState<string | null>(null);
+  const top = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -107,7 +115,7 @@ export function SignFlow({ token, embedded, onFinished, finishedExtra, langHint 
 
   if (finished) {
     return (
-      <div>
+      <div ref={top}>
         {head}
         <div style={{ textAlign: 'center', background: PAPER.card, border: `1px solid ${PAPER.line}`, borderRadius: 18, padding: '32px 20px', color: INK }}>
           <div style={{ fontSize: 48 }}>✅</div>
@@ -121,8 +129,17 @@ export function SignFlow({ token, embedded, onFinished, finishedExtra, langHint 
 
   const tpl = current![lang];
   return (
-    <div>
+    <div ref={top} style={{ scrollMarginTop: 12 }}>
       {head}
+      {saved && (
+        <div role="status" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#dcfce7', border: '1px solid #86efac', color: '#14532d', borderRadius: 12, padding: '10px 12px', marginBottom: 14, fontSize: 14.5, lineHeight: 1.45 }}>
+          <span style={{ fontSize: 18, lineHeight: 1.2 }}>✓</span>
+          <span>
+            <b>{vi ? `Đã lưu “${saved}”.` : `“${saved}” is saved.`}</b>{' '}
+            {vi ? `Còn ${todo.length} phiếu — vui lòng điền tiếp phiếu bên dưới.` : `${todo.length} more to go — please fill in the form below.`}
+          </span>
+        </div>
+      )}
       <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 6px', color: INK }}>{tpl.title}</h1>
       {tpl.intro && <p style={{ fontSize: 15, color: SUB, lineHeight: 1.5, margin: '0 0 14px' }}>{tpl.intro}</p>}
       <SignForm key={`${current!.kind}:${lang}`} tpl={tpl} initial={initial} palette={PAPER} vi={vi}
@@ -143,8 +160,16 @@ export function SignFlow({ token, embedded, onFinished, finishedExtra, langHint 
             const m = j && typeof j.message === 'string' ? j.message : Array.isArray(j?.message) ? (j!.message as string[]).join(', ') : '';
             throw new Error(`${vi ? 'Chưa lưu được' : 'Not saved'}${m ? `: ${m}` : ''} (${r.status})`);
           }
-          setDone((d) => [...d, current!.kind]);
-          if (!embedded) window.scrollTo({ top: 0, behavior: 'smooth' });
+          const kind = current!.kind;
+          setSaved(tpl.title);
+          setDone((d) => [...d, kind]);
+          onSaved?.(kind);
+          // Back to the top of the next form (or the thank-you card): in the
+          // popup the scrolling box is the popup, not the window.
+          window.setTimeout(() => {
+            if (embedded) { try { top.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* old browser */ } }
+            else window.scrollTo({ top: 0, behavior: 'smooth' });
+          }, 30);
         }} />
     </div>
   );

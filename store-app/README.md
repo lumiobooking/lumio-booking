@@ -18,6 +18,6 @@ Files:
 - Phía web: `apps/web/src/lib/native.ts`, `components/NativeBridge.tsx` (push token, back button, splash).
 - Phía API: `apps/api/src/push/fcm.ts` — cần `FCM_SERVICE_ACCOUNT_JSON` trên Render.
 
-**iPad:** giữ iPad trong Supported Destinations và cho iPad xoay đủ 4 hướng (iPhone chỉ dọc) — màn check-in / màn hình khách trên iPad đặt nằm ngang. Chi tiết: `docs/app-store/submission-guide.md`.
+**iPad:** `npm run sync` (hoặc `npm run ios:ipad`) tự sửa project iOS: bật iPad, iPad xoay đủ 4 hướng, iPhone chỉ dọc, cho chia đôi màn hình (`scripts/ios-ipad.mjs`). Màn check-in / màn hình khách trên iPad đặt nằm ngang. Sau đó build lại trong Xcode và nộp bản mới (TestFlight / App Store) — iPad chỉ xoay được khi đã cài bản mới. Chi tiết: `docs/app-store/submission-guide.md`.
 
 Không commit: `google-services.json`, `GoogleService-Info.plist`, keystore, `.p8`.

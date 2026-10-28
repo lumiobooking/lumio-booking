@@ -41,6 +41,7 @@ Sau lệnh này có 2 thư mục `ios/` và `android/` — **commit chúng vào 
     ở chế độ "app iPhone": cửa sổ nhỏ, kẹt **dọc**, không xoay — và trang check-in tưởng là điện thoại.
   - *General* → Deployment Info → iPad: tick đủ **Portrait, Upside Down, Landscape Left, Landscape Right**;
     iPhone: chỉ **Portrait**. Bỏ tick *Requires full screen* (để iPad chia đôi màn hình được).
+  - **Tự động:** `npm run sync` (hoặc `npm run ios:ipad`) trong `store-app/` làm đúng các mục trên (`scripts/ios-ipad.mjs`); chạy xong mở Xcode kiểm lại rồi build. Đã cài bản cũ (chỉ dọc) thì phải nộp bản mới, iPad mới xoay được.
   - Tương đương trong `ios/App/App/Info.plist`:
     ```xml
     <key>UISupportedInterfaceOrientations</key>

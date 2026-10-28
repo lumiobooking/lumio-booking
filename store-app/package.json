@@ -6,7 +6,8 @@
   "scripts": {
     "add:ios": "cap add ios",
     "add:android": "cap add android",
-    "sync": "cap sync",
+    "sync": "cap sync && node scripts/ios-ipad.mjs",
+    "ios:ipad": "node scripts/ios-ipad.mjs",
     "open:ios": "cap open ios",
     "open:android": "cap open android",
     "icons": "capacitor-assets generate --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#0b1120' --splashBackgroundColor '#0b1120' --splashBackgroundColorDark '#0b1120'",

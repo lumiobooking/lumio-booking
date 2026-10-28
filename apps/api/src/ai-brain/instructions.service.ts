@@ -119,8 +119,10 @@ export class AiInstructionsService {
   /** Row+wording → when it was last tried: a note the model cannot read is not asked about again for hours. */
   private readonly tried = new Map<string, number>();
   private backfill(tenantId: string, rows: Row[]): void {
-    // Tests drive the model call by call; a background call would take one of theirs.
-    if (process.env.NODE_ENV === 'test') return;
+    // Tests drive the model call by call; a background call would take one of
+    // theirs. Jest's own marker, not NODE_ENV: the Render build runs the tests
+    // with NODE_ENV=production, and that is how this broke a deploy.
+    if (process.env.JEST_WORKER_ID !== undefined || process.env.NODE_ENV === 'test') return;
     if (!rows.length || this.filling.has(tenantId) || !(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY)) return;
     const now = Date.now();
     const due = rows.filter((r) => {

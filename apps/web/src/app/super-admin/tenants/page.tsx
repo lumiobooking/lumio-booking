@@ -540,6 +540,17 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not change login email'); } finally { setBusy(false); }
   }
+  // App Store reviewer / screenshots / sales demos: invented services, technicians,
+  // customers and three days of bookings (api tenants/demo-salon.ts). The API only
+  // allows it on a salon named "…Demo…" that is new and empty, or already the demo.
+  async function loadDemo() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await apiFetch<{ services: number; staff: number; customers: number; bookingsCreated: number }>(`/tenants/${tenant.id}/demo-data`, { method: 'POST', token });
+      setMsg(`✓ Demo data ready: ${r.services} services, ${r.staff} technicians, ${r.customers} customers, ${r.bookingsCreated} new bookings (today + next 2 days). Notifications and reminders are off for this salon.`);
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not load demo data'); } finally { setBusy(false); }
+  }
   async function resetPw() {
     if (pw.length < 8) { setErr('Password must be at least 8 characters'); return; }
     setBusy(true); setErr(null); setMsg(null);
@@ -555,6 +566,16 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
       <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)' }}>Edit {tenant.name}</div>
       {err && <Banner>{err}</Banner>}
       {msg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '8px 12px', borderRadius: 8, fontSize: 13 }}>{msg}</div>}
+
+      {/demo/i.test(tenant.name) && (
+        <div style={{ border: '1px dashed var(--c475569)', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ flex: '1 1 260px', fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+            <b style={{ color: 'var(--ce2e8f0)' }}>Demo salon</b> — invented services, technicians, customers (@example.com, 555 numbers) and bookings for today + the next 2 days.
+            For the App Store reviewer login, store screenshots and sales demos. Run again any day for fresh bookings. Notifications and reminders are switched off; billing exempt.
+          </span>
+          <button type="button" onClick={loadDemo} disabled={busy} style={{ ...primaryBtn, whiteSpace: 'nowrap' }}>{busy ? 'Loading…' : 'Load demo data'}</button>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <Field label="Salon name"><input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>

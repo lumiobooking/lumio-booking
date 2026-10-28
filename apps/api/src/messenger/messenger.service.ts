@@ -1768,7 +1768,7 @@ export class MessengerService implements OnModuleInit {
     // allow the one-step version. The dev sandbox's generated client is stale
     // and types it loosely, so a direct cast compiles here and fails on the
     // real build — which is exactly how this reached Render.
-    const facts = (Array.isArray(conn?.botFacts) ? conn?.botFacts : []) as unknown as BotFact[];
+    const facts = await this.factsOf(tenantId, conn);
     const todayKey = dayKeyTz(new Date(), await this.tzOf(tenantId));
     const canned = facts
       .filter((f) => f && factLiveOn(f, todayKey) && String(f.label ?? '').trim() && String(f.value ?? '').trim())
@@ -3658,7 +3658,14 @@ export class MessengerService implements OnModuleInit {
     // their own below — after the customer's message, before the reply.
     let agentCtx: Parameters<MessengerService['runAgent']>[4] | null = null;
     try {
-      const instruction = [this.factsText(conn.botFacts, await this.tzOf(conn.tenantId)), conn.aiInstruction || ''].filter(Boolean).join('\n');
+      // Booking mode reads the AI brain on its own (runAgent); a SALES page
+      // gets the brain's facts and rules here — the same list the owner edits.
+      const salesPage = (conn as unknown as { botMode?: string }).botMode === 'sales';
+      const instruction = [
+        this.factsText(await this.factsOf(conn.tenantId, conn), await this.tzOf(conn.tenantId)),
+        conn.aiInstruction || '',
+        salesPage ? await this.brainRules(conn.tenantId) : '',
+      ].filter(Boolean).join('\n');
       const cx = conn as unknown as { botMode?: string; leadEmail?: string | null };
       // Hard deadline over the WHOLE agent run (model + tools + card images).
       // Whatever stalls, the customer still gets an answer instead of silence.
@@ -5417,6 +5424,29 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     return promoKnowledge(inputs, { today: dayKeyTz(new Date(), await this.tzOf(tenantId)), categoryName: (id) => names.get(id) }, 'online');
   }
 
+  /**
+   * The facts this salon's chat answers from — ONE list. Once the salon has
+   * saved its AI brain with facts in it, that is the list for every mode, a
+   * SALES page included (Lumio's own agency page). Before, a sales page kept
+   * reading the Messenger connection's older copy, so a fact the owner fixed
+   * in the AI brain ("Social Care: no Shorts, no Yelp") never reached the
+   * chat. No saved brain, or none with facts → the connection's list, as before.
+   * Read by this tenantId only.
+   */
+  private async factsOf(tenantId: string, conn: { botFacts?: unknown } | null | undefined): Promise<BotFact[]> {
+    const own = Array.isArray(conn?.botFacts) ? (conn!.botFacts as unknown as BotFact[]) : [];
+    const b = this.brain ? await this.brain.getBrainFor(tenantId).catch(() => null) : null;
+    if (!b || b.legacy || !(b.brain.version > 0) || !b.brain.knowledge.facts.length) return own;
+    return b.brain.knowledge.facts.map((f) => ({ label: f.label, value: f.value, on: f.on, from: f.from ?? null, until: f.until ?? null }));
+  }
+
+  /** The AI brain's "how the salon runs" rules, for a sales page (booking mode reads them through the brain). */
+  private async brainRules(tenantId: string): Promise<string> {
+    const b = this.brain ? await this.brain.getBrainFor(tenantId).catch(() => null) : null;
+    const rules = b && !b.legacy && b.brain.version > 0 ? b.brain.knowledge.rules.trim() : '';
+    return rules ? `HOW WE WORK (the owner's rules):\n${rules}` : '';
+  }
+
   private factsText(botFacts: unknown, tz: string): string {
     if (!Array.isArray(botFacts)) return '';
     const today = dayKeyTz(new Date(), tz);
@@ -5493,7 +5523,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }
       if (name === 'get_pricing') {
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
-        return this.factsText(conn?.botFacts, await this.tzOf(tenantId)) || 'No facts configured yet — do not state any price.';
+        return this.factsText(await this.factsOf(tenantId, conn), await this.tzOf(tenantId)) || 'No facts configured yet — do not state any price.';
       }
       if (name === 'quote_price') {
         // Website-matched maths. Fixed rates, half-up rounding to WHOLE units,
@@ -5542,7 +5572,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (name === 'send_price_cards') {
         if (!ctx?.pageToken || !ctx?.senderId) return 'ERROR: cards unavailable in this context — answer in short text instead.';
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
-        const facts = (Array.isArray(conn?.botFacts) ? (conn!.botFacts as unknown as BotFact[]) : []).filter((f) => f && f.on);
+        const facts = (await this.factsOf(tenantId, conn)).filter((f) => f && f.on);
         const cat = String(input.category || 'all');
         // Facts are grouped by how their label STARTS, which is how the owner
         // keeps three price lists apart in one box. "Phần mềm …" is the product

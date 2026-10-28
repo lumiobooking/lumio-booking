@@ -6,12 +6,13 @@
   "scripts": {
     "add:ios": "cap add ios",
     "add:android": "cap add android",
-    "sync": "cap sync && node scripts/ios-ipad.mjs",
-    "ios:ipad": "node scripts/ios-ipad.mjs",
+    "sync": "node scripts/ios-prepare.mjs && cap sync",
     "open:ios": "cap open ios",
     "open:android": "cap open android",
     "icons": "capacitor-assets generate --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#0b1120' --splashBackgroundColor '#0b1120' --splashBackgroundColorDark '#0b1120'",
-    "doctor": "cap doctor"
+    "doctor": "cap doctor",
+    "ios:prepare": "node scripts/ios-prepare.mjs",
+    "ios:cert": "bash scripts/ios-cert.sh"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
@@ -25,6 +26,8 @@
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^7.0.0"
+    "@capacitor/cli": "^7.0.0",
+    "plist": "^3.1.0",
+    "xcode": "^3.0.1"
   }
 }

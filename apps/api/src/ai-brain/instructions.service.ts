@@ -8,8 +8,9 @@ import { AiUsageService } from '../common/ai-usage.service';
 import { detectLanguage } from './brain-rules';
 import { LANG_NAME, type Lang } from './brain-settings';
 import {
-  CHANNELS, MAX_PER_SALON, cleanInstruction, instructionsBlock, judgePrompt, keepsWords, labelOf, matchInstructions,
-  matchedBlock, parseJudge, toCheck, type Instruction, type InstructionChannel, type Match,
+  CHANNELS, MAX_PER_SALON, cleanInstruction, instructionsBlock, interpretPrompt, judgePrompt, keepsWords, labelOf, matchInstructions,
+  matchedBlock, meaningKey, needsMeaning, parseInterpret, parseJudge, toCheck,
+  type Instruction, type InstructionChannel, type InstructionInput, type Interpretation, type Match,
 } from './instructions';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -45,6 +46,13 @@ export function instructionChannel(ch: string | null | undefined): InstructionCh
   return (CHANNELS as string[]).includes(String(ch)) ? (ch as InstructionChannel) : 'messenger';
 }
 
+/** Was this row's stored meaning written for its current words? */
+function fresh(r: Row): boolean {
+  if (!r || typeof r.meaning !== 'string' || r.meaning.trim().length < 8 || !r.meaningKey) return false;
+  const triggers = Array.isArray(r.triggers) ? r.triggers.map(String) : [];
+  return r.meaningKey === meaningKey({ kind: r.kind, mode: r.mode, text: String(r.text ?? ''), triggers });
+}
+
 /**
  * The owner's instructions to the salon's AI (instructions.ts): kept per
  * salon, served to every assistant, checked against every reply. Reads are by
@@ -77,13 +85,16 @@ export class AiInstructionsService {
   }
 
   private toInstruction(r: Row): Instruction {
-    return {
+    const base: Instruction = {
       id: String(r.id), kind: r.kind, text: String(r.text ?? ''),
       triggers: Array.isArray(r.triggers) ? r.triggers.map(String) : [],
       mode: r.mode === 'verbatim' ? 'verbatim' : 'meaning',
       channels: Array.isArray(r.channels) ? r.channels.filter((c: unknown) => (CHANNELS as unknown[]).includes(c)) : [],
       on: r.on !== false, usedCount: Number(r.usedCount) || 0,
     };
+    // A meaning written for other words is never applied to these.
+    base.meaning = fresh(r) ? String(r.meaning) : null;
+    return base;
   }
 
   // ---------------------------------------------------------------- the assistants' side
@@ -95,9 +106,91 @@ export class AiInstructionsService {
     const rows: Row[] = await Promise.resolve()
       .then(() => this.db.aiInstruction.findMany({ where: { tenantId }, orderBy: { createdAt: 'asc' }, take: MAX_PER_SALON }))
       .catch(() => []);
-    const list = (rows ?? []).filter((r) => r.tenantId === tenantId).map((r) => this.toInstruction(r));
+    const mine = (rows ?? []).filter((r) => r.tenantId === tenantId);
+    const list = mine.map((r) => this.toInstruction(r));
     this.cache.set(tenantId, { at: Date.now(), list });
+    // Instructions saved before meanings existed (or while the model was
+    // down) get theirs in the background — never on a customer's time.
+    this.backfill(tenantId, mine.filter((r) => r.on !== false && needsMeaning({ kind: r.kind, mode: r.mode }) && !fresh(r)));
     return list;
+  }
+
+  private readonly filling = new Set<string>();
+  /** Row+wording → when it was last tried: a note the model cannot read is not asked about again for hours. */
+  private readonly tried = new Map<string, number>();
+  private backfill(tenantId: string, rows: Row[]): void {
+    // Tests drive the model call by call; a background call would take one of theirs.
+    if (process.env.NODE_ENV === 'test') return;
+    if (!rows.length || this.filling.has(tenantId) || !(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY)) return;
+    const now = Date.now();
+    const due = rows.filter((r) => {
+      const k = `${r.id}:${meaningKey({ kind: r.kind, mode: r.mode, text: String(r.text ?? ''), triggers: Array.isArray(r.triggers) ? r.triggers.map(String) : [] })}`;
+      if ((this.tried.get(k) ?? 0) > now - 6 * 3600_000) return false;
+      this.tried.set(k, now);
+      return true;
+    });
+    if (!due.length) return;
+    this.filling.add(tenantId);
+    void Promise.resolve().then(async () => {
+      for (const r of due.slice(0, 5)) {
+        const it = await this.interpret(tenantId, { kind: r.kind, text: String(r.text ?? ''), triggers: Array.isArray(r.triggers) ? r.triggers.map(String) : [], mode: r.mode, sourceQuestion: r.sourceQuestion, sourceReply: r.sourceReply }, 'vi').catch(() => null);
+        if (!it) continue;
+        await this.db.aiInstruction.updateMany({ where: { id: r.id, tenantId }, data: { meaning: it.rule, meaningNote: it.explain || null, meaningKey: meaningKey({ kind: r.kind, mode: r.mode, text: String(r.text ?? ''), triggers: Array.isArray(r.triggers) ? r.triggers.map(String) : [] }) } });
+      }
+      this.invalidate(tenantId);
+    }).catch(() => undefined).finally(() => this.filling.delete(tenantId));
+  }
+
+  /**
+   * What the owner means by these words — the rule the assistants follow and
+   * the sentence the owner reads back ("AI sẽ …"). Null when no model answers
+   * or the words are said as written (a word-for-word answer); the owner's own
+   * words are then used exactly as before.
+   */
+  async interpret(tenantId: string, o: { kind: string; text: string; triggers: string[]; mode?: string; sourceQuestion?: string | null; sourceReply?: string | null }, ownerLang: 'vi' | 'en'): Promise<Interpretation | null> {
+    const kind = (['answer', 'always', 'never'] as const).find((k) => k === o.kind);
+    const text = String(o.text ?? '').trim();
+    if (!kind || text.length < 3 || !needsMeaning({ kind, mode: o.mode })) return null;
+    if (!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY)) return null;
+    const p = interpretPrompt({ kind, text, triggers: o.triggers ?? [], sourceQuestion: o.sourceQuestion ?? null, sourceReply: o.sourceReply ?? null, ownerLang });
+    const out = await llmChat({ system: p.system, messages: [{ role: 'user', content: p.user }], max_tokens: 500, timeoutMs: 9000 }).catch(() => null);
+    if (!out || !out.ok) return null;
+    this.usage?.record({
+      feature: 'messenger', tenantId, model: out.reply.usage?.model ?? 'unknown',
+      input: out.reply.usage?.input ?? 0, output: out.reply.usage?.output ?? 0,
+      cacheRead: out.reply.usage?.cacheRead ?? 0, cacheWrite: out.reply.usage?.cacheWrite ?? 0, failed: false,
+    });
+    return parseInterpret(out.reply.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' '));
+  }
+
+  /** The owner's screen asks before saving: "this is how the AI reads it". */
+  async preview(user: AuthenticatedUser, dto: unknown) {
+    if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can teach the AI');
+    const tenantId = this.tenantId(user);
+    const r = (dto && typeof dto === 'object' ? dto : {}) as Row;
+    const c = cleanInstruction({ ...r, triggers: Array.isArray(r.triggers) && r.triggers.length ? r.triggers : ['_'] });
+    if (!c.ok) throw new BadRequestException(c.error);
+    const triggers = Array.isArray(r.triggers) ? c.value.triggers : [];
+    const lang = r.lang === 'en' ? 'en' : 'vi';
+    const it = await this.interpret(tenantId, { ...c.value, triggers, sourceQuestion: typeof r.sourceQuestion === 'string' ? r.sourceQuestion.slice(0, 600) : null, sourceReply: typeof r.sourceReply === 'string' ? r.sourceReply.slice(0, 1200) : null }, lang);
+    return { ...(it ?? { rule: '', explain: '', fixes: [], suggestKind: null }), ok: !!it, key: meaningKey({ ...c.value, triggers }) };
+  }
+
+  /**
+   * The meaning stored with a save: the one the owner was shown, when it was
+   * made for exactly these words, else a fresh one. Null keeps the words as
+   * they are (no model, or a word-for-word answer).
+   */
+  private async meaningFor(tenantId: string, v: InstructionInput, dto: Row, source: Row, lang: 'vi' | 'en'): Promise<{ meaning: string | null; meaningNote: string | null; meaningKey: string | null }> {
+    if (!needsMeaning(v)) return { meaning: null, meaningNote: null, meaningKey: null };
+    const key = meaningKey(v);
+    const shown = typeof dto.meaning === 'string' ? dto.meaning.replace(/\s+/g, ' ').trim().slice(0, 600) : '';
+    if (shown.length >= 8 && dto.meaningKey === key) {
+      const note = typeof dto.meaningNote === 'string' ? dto.meaningNote.replace(/\s+/g, ' ').trim().slice(0, 500) : '';
+      return { meaning: shown, meaningNote: note || null, meaningKey: key };
+    }
+    const it = await this.interpret(tenantId, { ...v, sourceQuestion: source.sourceQuestion ?? null, sourceReply: source.sourceReply ?? null }, lang).catch(() => null);
+    return it ? { meaning: it.rule, meaningNote: it.explain || null, meaningKey: key } : { meaning: null, meaningNote: null, meaningKey: null };
   }
 
   invalidate(tenantId: string): void { this.cache.delete(tenantId); }
@@ -176,6 +269,8 @@ export class AiInstructionsService {
       on: r.on !== false, reason: r.reason ?? null, sourceKind: r.sourceKind ?? null, sourceId: r.sourceId ?? null,
       sourceQuestion: r.sourceQuestion ?? null, sourceReply: r.sourceReply ?? null,
       usedCount: Number(r.usedCount) || 0, blockedCount: Number(r.blockedCount) || 0, lastUsedAt: r.lastUsedAt ?? null,
+      // The owner reads back how the AI understood the note.
+      meaningNote: fresh(r) ? (r.meaningNote ?? null) : null,
       createdBy: r.createdBy ?? null, updatedBy: r.updatedBy ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt ?? null,
     };
   }
@@ -207,10 +302,12 @@ export class AiInstructionsService {
     const n: number = await this.db.aiInstruction.count({ where: { tenantId } });
     if (n >= MAX_PER_SALON) throw new BadRequestException(`A salon can keep up to ${MAX_PER_SALON} instructions — turn off or delete old ones first`);
     const who = user.email || user.userId;
+    const src = this.source((dto ?? {}) as Row);
+    const m = await this.meaningFor(tenantId, c.value, (dto ?? {}) as Row, src, ((dto ?? {}) as Row).lang === 'en' ? 'en' : 'vi');
     const row = await this.db.aiInstruction.create({
       data: {
         tenantId, kind: c.value.kind, text: c.value.text, triggers: c.value.triggers, mode: c.value.mode, channels: c.value.channels,
-        on: c.value.on, reason: c.value.reason, ...this.source((dto ?? {}) as Row), createdBy: who, updatedBy: who,
+        on: c.value.on, reason: c.value.reason, ...src, ...m, createdBy: who, updatedBy: who,
       },
     });
     this.invalidate(tenantId);
@@ -225,9 +322,12 @@ export class AiInstructionsService {
     if (!cur) throw new NotFoundException('Instruction not found');
     const c = cleanInstruction(dto, { kind: cur.kind, text: cur.text, triggers: cur.triggers, mode: cur.mode, channels: cur.channels, on: cur.on, reason: cur.reason });
     if (!c.ok) throw new BadRequestException(c.error);
+    // Same words, same meaning: an on/off or a channel change keeps it. New words get a new one.
+    const keep = fresh(cur) && meaningKey(c.value) === cur.meaningKey;
+    const m = keep ? {} : await this.meaningFor(tenantId, c.value, (dto ?? {}) as Row, cur, ((dto ?? {}) as Row).lang === 'en' ? 'en' : 'vi');
     await this.db.aiInstruction.updateMany({
       where: { id, tenantId },
-      data: { kind: c.value.kind, text: c.value.text, triggers: c.value.triggers, mode: c.value.mode, channels: c.value.channels, on: c.value.on, reason: c.value.reason, updatedBy: user.email || user.userId },
+      data: { kind: c.value.kind, text: c.value.text, triggers: c.value.triggers, mode: c.value.mode, channels: c.value.channels, on: c.value.on, reason: c.value.reason, ...m, updatedBy: user.email || user.userId },
     });
     this.invalidate(tenantId);
     await this.audit.log({ tenantId, userId: user.userId, action: c.value.on === (cur.on !== false) ? 'ai_instruction.updated' : (c.value.on ? 'ai_instruction.enabled' : 'ai_instruction.disabled'), resourceType: 'ai_instruction', resourceId: id });

@@ -22,6 +22,9 @@ bao giờ cầm những thứ đó.
 
 ## Bước 1 — Dựng dự án native (Mac, 20 phút)
 
+> **Không có Mac?** Bỏ qua phần iOS của Bước 1–3: làm theo `cloud-build-ios.md` — GitHub build và gửi lên TestFlight,
+> mọi cài đặt Xcode dưới đây (tên app, iPad xoay, push, quyền, ký app) do `store-app/scripts/ios-prepare.mjs` làm tự động.
+
 ```bash
 cd "Booking/store-app"
 npm install
@@ -41,7 +44,7 @@ Sau lệnh này có 2 thư mục `ios/` và `android/` — **commit chúng vào 
     ở chế độ "app iPhone": cửa sổ nhỏ, kẹt **dọc**, không xoay — và trang check-in tưởng là điện thoại.
   - *General* → Deployment Info → iPad: tick đủ **Portrait, Upside Down, Landscape Left, Landscape Right**;
     iPhone: chỉ **Portrait**. Bỏ tick *Requires full screen* (để iPad chia đôi màn hình được).
-  - **Tự động:** `npm run sync` (hoặc `npm run ios:ipad`) trong `store-app/` làm đúng các mục trên (`scripts/ios-ipad.mjs`); chạy xong mở Xcode kiểm lại rồi build. Đã cài bản cũ (chỉ dọc) thì phải nộp bản mới, iPad mới xoay được.
+  - **Tự động:** `npm run sync` (hoặc `npm run ios:prepare`) trong `store-app/` làm đúng các mục trên và cả mục *Info* bên dưới (`scripts/ios-prepare.mjs`); chạy xong mở Xcode kiểm lại rồi build. Đã cài bản cũ (chỉ dọc) thì phải nộp bản mới, iPad mới xoay được.
   - Tương đương trong `ios/App/App/Info.plist`:
     ```xml
     <key>UISupportedInterfaceOrientations</key>

@@ -4012,6 +4012,9 @@ model AiInstruction {
   sourceId     String?
   sourceQuestion String? // the customer's words the owner corrected
   sourceReply  String?   // what the AI said
+  meaning      String?   // what the owner MEANS, spelled out for the model (instructions.ts interpretPrompt)
+  meaningNote  String?   // the same, in the owner's language, read back to them ("AI sẽ …")
+  meaningKey   String?   // the wording the meaning was written for (meaningKey); stale → ignored
   usedCount    Int       @default(0)
   blockedCount Int       @default(0)
   lastUsedAt   DateTime?

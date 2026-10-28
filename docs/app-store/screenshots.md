@@ -1,45 +1,52 @@
 # Ảnh màn hình cho store
 
-## Kích thước bắt buộc
+## Bộ ảnh đã làm sẵn — `docs/app-store/screenshots/`
 
-**App Store** (iPhone + iPad — iPad cần để màn check-in / màn hình khách xoay ngang, xem `submission-guide.md`):
-- iPhone 6.9" — **1320 × 2868** (bắt buộc; 3–10 ảnh). Apple tự co cho các cỡ nhỏ hơn.
-- (tuỳ chọn) iPhone 6.5" — 1284 × 2778.
-- iPad 13" — **2064 × 2752** dọc hoặc **2752 × 2064** ngang (bắt buộc khi app có iPad; 3–10 ảnh). Nên chụp lịch, màn check-in ngang, màn hình khách ngang.
+Chụp từ đúng giao diện thật của app (cùng component), dữ liệu tiệm demo "Lumio Demo Nails" (tên khách, số
+`555-01xx`, email `@example.com` đều giả), tiếng Anh, 1:10 PM giờ Chicago. Đúng kích thước Apple yêu cầu,
+kéo thả thẳng vào App Store Connect theo thứ tự số.
 
-**Google Play**:
-- Điện thoại: tối thiểu 2, tối đa 8; tỉ lệ 9:16, mỗi cạnh 320–3840 px → dùng **1080 × 1920** hoặc **1320 × 2868** như iOS.
-- Feature graphic: **1024 × 500** — đã có ở `assets/play-feature-1024x500.png`.
-- Tablet 7"/10": không bắt buộc nếu chỉ chọn Phone.
+**iPhone 6.9" — 1320 × 2868** (ô "iPhone 6.9\" Display"):
 
-## 6 màn hình cần chụp (thứ tự này)
+| # | File | Chú thích |
+|---|---|---|
+| 1 | `iphone-1-calendar.png` | Your whole day, by technician |
+| 2 | `iphone-2-confirm.png` | Confirm new bookings in one tap |
+| 3 | `iphone-3-checkin.png` | Clients check in from their phone |
+| 4 | `iphone-4-returning.png` | Regulars check in in seconds |
+| 5 | `iphone-5-solo.png` | Made for solo techs too |
 
-Ảnh 1–3 là thứ người ta thấy mà không cuộn → phải nói được app làm gì.
+**iPad 13" — 2752 × 2064, ngang** (ô "iPad 13\" Display"):
 
-| # | Màn hình | Chú thích in phía trên ảnh (EN) | (VI) |
-|---|---|---|---|
-| 1 | Lịch hôm nay (`/salon/calendar`, ngày có 6–8 lịch, nhiều thợ) | **Your whole day, by technician** | **Cả ngày, theo từng thợ** |
-| 2 | Inbox với hội thoại AI đang đặt lịch (`/salon/messenger`) | **AI books for you on Messenger & Instagram** | **AI đặt lịch thay bạn trên Messenger** |
-| 3 | Queue bài đăng tháng (`/salon/content?tab=queue`, view calendar) | **A month of social posts, ready to approve** | **Cả tháng bài đăng, chỉ việc duyệt** |
-| 4 | Walk-in queue (`/salon/walkins`) | **Walk-ins seated in seconds** | **Khách walk-in xếp chỗ trong vài giây** |
-| 5 | Hồ sơ khách (`/salon/customers/<id>`) | **Every client, every visit, every photo** | **Mỗi khách, mỗi lần ghé, mỗi tấm ảnh** |
-| 6 | POS thanh toán có tip (`/salon/pos`) | **Checkout with tips and receipts** | **Thanh toán, tip, biên lai** |
+| # | File | Chú thích |
+|---|---|---|
+| 1 | `ipad-1-calendar.png` | Your whole salon on one calendar |
+| 2 | `ipad-2-confirm.png` | Confirm online bookings in one tap |
+| 3 | `ipad-3-kiosk.png` | A check-in kiosk for your front desk |
+| 4 | `ipad-4-returning.png` | Regulars check in in seconds |
+| 5 | `ipad-5-display.png` | A customer display at checkout |
 
-Dùng **tiệm demo** (dữ liệu giả, tên khách giả) — không chụp tiệm khách thật.
+Apple tự co ảnh 6.9" cho các iPhone nhỏ hơn và ảnh 13" cho các iPad nhỏ hơn — không cần bộ khác.
 
-## Cách chụp (Chrome trên Mac/Windows, không cần điện thoại)
+**Google Play** dùng lại 5 ảnh iPhone (mỗi cạnh ≤ 3840 px: hợp lệ). Feature graphic 1024 × 500:
+`assets/play-feature-1024x500.png`.
 
-1. Đăng nhập tiệm demo tại `https://lumiobooking.com/salon`.
-2. F12 → bật Device toolbar (Ctrl/Cmd+Shift+M) → Dimensions: **Responsive**, nhập `440 × 956`, DPR = **3**
-   (→ ảnh 1320 × 2868). Zoom 100 %.
-3. Mở đúng màn hình, đợi tải xong, ẩn thanh cuộn.
-4. Menu ⋮ của DevTools → **Capture screenshot** (không phải full size). File PNG ra đúng 1320 × 2868.
-5. Lặp cho 6 màn hình, hai ngôn ngữ nếu muốn (chuyển EN/VI ở góc app).
+## Khi giao diện đổi nhiều — chụp lại
 
-Ghép chú thích: mở `tools/screenshot-frame.html` (bên dưới), kéo ảnh vào, gõ chú thích, bấm Tải về —
-ra ảnh cùng kích thước có dải chữ trên nền tối và viền bo. Hoặc dùng Figma/Canva với khổ 1320 × 2868.
+Ảnh phải giống app thật (Apple 2.3.3). Đổi giao diện lịch, check-in hay màn hình khách thì chụp lại:
 
-## Video preview (tuỳ chọn, nên có với Apple)
+1. Đăng nhập tiệm demo tại `https://lumiobooking.com/salon` (tạo tiệm demo: `listing.md` mục D — nút
+   "Load demo data" trong Super Admin), chuyển ngôn ngữ sang English.
+2. Chrome → F12 → Device toolbar (Ctrl/Cmd+Shift+M) → Responsive:
+   - iPhone: `440 × 956`, DPR **3** → 1320 × 2868
+   - iPad: `1376 × 1032`, DPR **2** → 2752 × 2064
+3. Mở màn hình, đợi tải xong → menu ⋮ của DevTools → **Capture screenshot**.
+4. Ghép chú thích bằng Figma/Canva cùng khổ (nền tím đậm, chữ trắng Poppins Bold, ảnh bo góc phía dưới) —
+   hoặc nhờ Claude ghép lại như bộ hiện tại.
 
-15–30 giây, quay màn hình iPhone (Cài đặt → Trung tâm điều khiển → Ghi màn hình), cắt bằng iMovie,
-xuất đúng 886 × 1920 (6.9") — Apple tự nhận. Không nhạc có bản quyền, không tay/người.
+Không chụp tiệm khách thật. Không để lộ số điện thoại/email thật.
+
+## Video preview (tuỳ chọn)
+
+15–30 giây quay màn hình trên iPhone/iPad (Trung tâm điều khiển → Ghi màn hình), cắt gọn. Không nhạc có
+bản quyền.

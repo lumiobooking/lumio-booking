@@ -15,9 +15,12 @@ import { ListTenantsDto } from './dto/list-tenants.dto';
 import { uniqueSlug } from './slug.util';
 import { INDUSTRY_KEY, industryDef, resolveIndustry, writeIndustry } from '../common/industry';
 import { presetFor } from '../common/markets';
+import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
+import { buildDemoBookings, demoAllowed, DEMO_CUSTOMERS, DEMO_SERVICES, DEMO_STAFF, DEMO_TENANT_KEY } from './demo-salon';
 import {
   BOOKING_RULES_KEY, COMPANY_EXTRA_KEY, POS_SETTINGS_KEY,
   DEFAULT_BOOKING_RULES, DEFAULT_COMPANY_EXTRA, DEFAULT_POS_SETTINGS,
+  NOTIFICATION_SETTINGS_KEY, REMINDER_SETTINGS_KEY, DEFAULT_REMINDER_SETTINGS,
 } from '../settings/settings.constants';
 
 const TENANT_PUBLIC_SELECT = {
@@ -463,6 +466,102 @@ export class TenantsService {
    *  - accessUntil: lock the salon after this date (null = no expiry).
    * Status is recalculated immediately so the change takes effect at once.
    */
+  /**
+   * Fill a DEMO salon with invented services, technicians, customers and three
+   * days of bookings (demo-salon.ts) — for the App Store reviewer's login, the
+   * store screenshots and sales demos. Only into a demo salon (demoAllowed);
+   * every row carries this salon's tenantId. Its notifications and reminders
+   * are switched off, so a reviewer clicking around never messages anyone.
+   * Run again any day: missing catalogue is added, and days that already have
+   * bookings are left alone (no doubles).
+   */
+  async loadDemoData(id: string, actor: AuthenticatedUser, now = new Date()) {
+    const t = await this.prisma.tenant.findFirst({ where: { id, deletedAt: null }, select: { id: true, name: true, timezone: true } });
+    if (!t) throw new NotFoundException('Tenant not found');
+    const [mark, customers, appointments] = await Promise.all([
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId: id, key: DEMO_TENANT_KEY } } }),
+      this.prisma.customer.count({ where: { tenantId: id } }),
+      this.prisma.appointment.count({ where: { tenantId: id } }),
+    ]);
+    const allowed = demoAllowed({ name: t.name, marked: !!mark, customers, appointments });
+    if (!allowed.ok) throw new BadRequestException(allowed.reason);
+    const tz = t.timezone || 'America/Chicago';
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Mark it, and keep it quiet: no booking emails / texts, no reminders.
+      await tx.setting.upsert({
+        where: { tenantId_key: { tenantId: id, key: DEMO_TENANT_KEY } },
+        update: { value: { demo: true, refreshedAt: now.toISOString() } },
+        create: { tenantId: id, key: DEMO_TENANT_KEY, value: { demo: true, createdAt: now.toISOString() } },
+      });
+      const notif = await tx.setting.findUnique({ where: { tenantId_key: { tenantId: id, key: NOTIFICATION_SETTINGS_KEY } } });
+      const quiet = { ...((notif?.value as object) ?? {}), emailCustomerOnBooking: false, emailAdminOnBooking: false, smsCustomerOnBooking: false, smsAdminOnBooking: false };
+      await tx.setting.upsert({ where: { tenantId_key: { tenantId: id, key: NOTIFICATION_SETTINGS_KEY } }, update: { value: quiet }, create: { tenantId: id, key: NOTIFICATION_SETTINGS_KEY, value: quiet } });
+      const rem = { ...DEFAULT_REMINDER_SETTINGS, enabled: false };
+      await tx.setting.upsert({ where: { tenantId_key: { tenantId: id, key: REMINDER_SETTINGS_KEY } }, update: { value: rem }, create: { tenantId: id, key: REMINDER_SETTINGS_KEY, value: rem } });
+
+      // Catalogue: added once (matched by name), never duplicated.
+      const serviceId = new Map<string, string>();
+      for (const s of DEMO_SERVICES) {
+        const found = await tx.service.findFirst({ where: { tenantId: id, name: s.name }, select: { id: true } });
+        const row = found ?? await tx.service.create({ data: { tenantId: id, name: s.name, durationMinutes: s.durationMinutes, priceCents: s.priceCents, currency: 'USD', isActive: true }, select: { id: true } });
+        serviceId.set(s.key, row.id);
+      }
+      const staffId = new Map<string, string>();
+      for (const st of DEMO_STAFF) {
+        let row = await tx.staffMember.findFirst({ where: { tenantId: id, firstName: st.firstName, lastName: st.lastName }, select: { id: true } });
+        if (!row) {
+          row = await tx.staffMember.create({ data: { tenantId: id, firstName: st.firstName, lastName: st.lastName, isActive: true, takesAppointments: true } as never, select: { id: true } });
+          await tx.staffWorkingHour.createMany({ data: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({ tenantId: id, staffMemberId: row!.id, dayOfWeek, startTime: '09:00', endTime: '19:00', isActive: true })) });
+          await tx.staffService.createMany({ data: [...serviceId.values()].map((sid) => ({ tenantId: id, staffMemberId: row!.id, serviceId: sid })), skipDuplicates: true });
+        }
+        staffId.set(st.key, row.id);
+      }
+      const customerId = new Map<string, string>();
+      for (const c of DEMO_CUSTOMERS) {
+        const row = await tx.customer.upsert({
+          where: { tenantId_email: { tenantId: id, email: c.email } },
+          update: {},
+          create: { tenantId: id, firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone },
+          select: { id: true },
+        });
+        customerId.set(c.key, row.id);
+      }
+
+      // Bookings for today and the next two days — skipping days that already have some.
+      const today = dayKeyTz(now, tz);
+      const from = startOfDayTz(today, tz);
+      const to = startOfDayTz(addDaysToKey(today, 3), tz);
+      const have = await tx.appointment.findMany({ where: { tenantId: id, startTime: { gte: from, lt: to } }, select: { startTime: true } });
+      const busy = new Set(have.map((a) => dayKeyTz(a.startTime, tz)));
+      const rows = buildDemoBookings(now, tz, busy);
+      if (rows.length) {
+        await tx.appointment.createMany({
+          data: rows.map((r) => ({
+            tenantId: id,
+            customerId: customerId.get(r.customerKey)!,
+            serviceId: serviceId.get(r.serviceKey)!,
+            assignedStaffId: r.staffKey ? staffId.get(r.staffKey) ?? null : null,
+            status: r.status as never,
+            startTime: r.startTime, endTime: r.endTime,
+            priceCents: r.priceCents, currency: 'USD',
+            source: r.source, notes: r.notes,
+            confirmedAt: r.confirmedAt, completedAt: r.completedAt, arrivedAt: r.arrivedAt,
+            cancelledAt: r.cancelledAt, cancelledBy: r.cancelledBy,
+            assignedAt: r.staffKey ? r.createdAt : null,
+            createdAt: r.createdAt,
+          })),
+        });
+      }
+      return { services: serviceId.size, staff: staffId.size, customers: customerId.size, bookingsCreated: rows.length, daysSkipped: [...busy] };
+    }, { timeout: 30_000 });
+
+    // A demo salon never runs out of trial.
+    await this.prisma.tenant.update({ where: { id }, data: { billingExempt: true, status: TenantStatus.ACTIVE } });
+    await this.audit.log({ tenantId: id, userId: actor.userId, action: 'tenant.demo_data_loaded', resourceType: 'tenant', resourceId: id, metadata: result });
+    return result;
+  }
+
   async setAccess(id: string, dto: { billingExempt?: boolean; accessUntil?: string | null }, actor: AuthenticatedUser) {
     const tenant = await this.prisma.tenant.findFirst({ where: { id, deletedAt: null }, select: { id: true, billingExempt: true, accessUntil: true } });
     if (!tenant) throw new NotFoundException('Tenant not found');

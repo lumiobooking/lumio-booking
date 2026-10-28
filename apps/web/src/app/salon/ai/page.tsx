@@ -29,6 +29,8 @@ import { useIsMobile } from '../../../lib/responsive';
 import { FollowUpBox } from '../../../components/FollowUpBox';
 import { AiInstructionsTab } from '../../../components/AiInstructionsTab';
 import { TeachAiPanel, canTeachAi, type InsChannel } from '../../../components/TeachAiPanel';
+import { usePaged } from '../../../components/ListFilter';
+import { Empty, PageBar, Search, SubTabs, Switch, ghostBtn as kitGhost, primaryBtn as kitPrimary } from '../../../components/ai/aiKit';
 
 type Lang = 'en' | 'vi' | 'es' | 'zh' | 'ko' | 'fr' | 'ja';
 type Tab = 'overview' | 'teach' | 'persona' | 'knowledge' | 'booking' | 'chat' | 'voice' | 'memory' | 'sandbox';
@@ -40,6 +42,8 @@ const GROUPS: { id: 'shared' | 'chat' | 'voice' | 'check'; vi: string; en: strin
   { id: 'voice', vi: 'CHỈ HOTLINE', en: 'HOTLINE ONLY', color: 'var(--cfbbf24)', tabs: ['voice'] },
   { id: 'check', vi: 'KIỂM TRA', en: 'CHECKING', color: 'var(--c94a3b8)', tabs: ['overview', 'sandbox'] },
 ];
+/** One small picture per section, so the list reads at a glance. */
+const TAB_ICON: Record<Tab, string> = { persona: '🙂', knowledge: '📚', teach: '✍️', booking: '📅', memory: '🗂️', chat: '💬', voice: '📞', overview: '🩺', sandbox: '🧪' };
 /** Old links (?tab=channels) land on the messages section. */
 const ALIAS: Record<string, Tab> = { channels: 'chat' };
 const LANGS: { id: Lang; label: string }[] = [
@@ -152,8 +156,10 @@ function Inner() {
             const on = !listOnly && tab === t;
             return (
               <button key={t} type="button" aria-current={on ? 'page' : undefined} onClick={() => setTab(t)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: phone ? 56 : 40, padding: '6px 10px', borderRadius: 10, border: phone ? '1px solid var(--line)' : 'none', marginBottom: phone ? 6 : 0,
-                  background: on ? 'var(--c1e293b)' : phone ? 'var(--c111827)' : 'transparent', color: on ? 'var(--cf1f5f9)' : 'var(--ccbd5e1)', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: phone ? 56 : 42, padding: '6px 10px', borderRadius: 10, border: phone ? '1px solid var(--line)' : 'none', marginBottom: phone ? 6 : 0,
+                  boxShadow: on ? 'inset 3px 0 0 #4f46e5' : 'none',
+                  background: on ? 'var(--wash-blue)' : phone ? 'var(--c111827)' : 'transparent', color: on ? 'var(--ink-link)' : 'var(--ccbd5e1)', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                <span aria-hidden style={{ width: 22, textAlign: 'center', fontSize: 16, lineHeight: 1 }}>{TAB_ICON[t]}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: 14, fontWeight: on || phone ? 700 : 600 }}>{tabLabel[t]}</span>
                   {phone && tabSub[t] && <span style={{ display: 'block', fontSize: 12.5, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tabSub[t]}</span>}
@@ -262,6 +268,7 @@ function Pill({ on, label, onClick, disabled }: { on: boolean; label: string; on
 }
 const field = (vi: boolean) => ({ label: { ...ui.label }, input: { ...ui.input }, hint: { fontSize: 12, color: 'var(--c94a3b8)', marginTop: 4 } as React.CSSProperties, L: (v: string, e: string) => L(vi, v, e) });
 const ghost: React.CSSProperties = { ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--line-strong)', color: 'var(--ce2e8f0)' };
+const fmtDay = (day: string, vi: boolean) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { day: 'numeric', month: 'numeric' }); };
 const fmtWhen = (iso: string | null | undefined, vi: boolean) => (iso ? new Date(iso).toLocaleString(vi ? 'vi-VN' : undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
 // ---------------------------------------------------------------- 1 · overview
@@ -392,6 +399,11 @@ function Persona({ brain, patch, vi, canEdit }: { brain: Brain; patch: (fn: (b: 
 // ---------------------------------------------------------------- 3 · knowledge & rules
 
 function Knowledge({ brain, patch, vi, canEdit, token, pageConnected }: { brain: Brain; patch: (fn: (b: Brain) => Brain) => void; vi: boolean; canEdit: boolean; token: string | null; pageConnected: boolean }) {
+  // Two pages instead of one endless one: the FAQ list (short rows, one opened
+  // at a time to edit) and the free-text rules.
+  const [page, setPage] = useState<'faq' | 'rules'>('faq');
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState<number | null>(null);
   const f = field(vi);
   const facts = brain.knowledge.facts;
   const today = new Date().toISOString().slice(0, 10);
@@ -401,58 +413,124 @@ function Knowledge({ brain, patch, vi, canEdit, token, pageConnected }: { brain:
     if ((k === 'from' || k === 'until') && !v) delete (next as Record<string, unknown>)[k];
     return next;
   }) } }));
+  const removeFact = (i: number) => { patch((b) => ({ ...b, knowledge: { ...b.knowledge, facts: b.knowledge.facts.filter((_, j) => j !== i) } })); setOpen(null); };
+  const addFact = () => {
+    patch((b) => ({ ...b, knowledge: { ...b.knowledge, facts: [{ label: '', value: '', on: true }, ...b.knowledge.facts] } }));
+    setQ(''); setOpen(0); pg.setPage(1);
+  };
   const ruleLines = brain.knowledge.rules.split('\n').map((l) => l.trim()).filter(Boolean).length;
+  const needle = q.trim().toLowerCase();
+  // Indexes into the real list, so edits land on the right row whatever the page or search.
+  const rows = facts.map((x, i) => ({ x, i })).filter(({ x }) => !needle || `${x.label} ${x.value}`.toLowerCase().includes(needle));
+  const pg = usePaged(rows, 10);
+  const dateChip = (x: Brain['knowledge']['facts'][number]) => {
+    if (x.until && x.until < today) return { t: L(vi, 'Hết hạn', 'Expired'), bg: 'var(--wash-amber-3)', ink: 'var(--ink-warn)' };
+    if (x.from && x.from > today) return { t: L(vi, `Từ ${fmtDay(x.from, vi)}`, `From ${fmtDay(x.from, vi)}`), bg: 'var(--wash-blue)', ink: 'var(--ink-link)' };
+    if (x.until) return { t: L(vi, `Đến ${fmtDay(x.until, vi)}`, `Until ${fmtDay(x.until, vi)}`), bg: 'var(--wash-blue)', ink: 'var(--ink-link)' };
+    return null;
+  };
   return (
-    <div>
-      <div style={{ ...ui.card, marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '12px 20px' }}>
-        <span style={{ fontWeight: 800, color: 'var(--ce2e8f0)', marginRight: 6 }}>{L(vi, 'AI tự đọc từ hệ thống (không cần nhập lại):', 'Read from the system by itself (nothing to retype):')}</span>
-        {[L(vi, 'Dịch vụ & giá', 'Services & prices'), L(vi, 'Giờ mở cửa & ngày nghỉ', 'Hours & days off'), L(vi, 'Thợ & kỹ năng', 'Staff & skills'), L(vi, 'Khuyến mãi theo kênh', 'Promotions by channel'), L(vi, 'Địa chỉ, SĐT, chính sách huỷ', 'Address, phone, cancellation policy'), L(vi, 'Add-on "hỏi trước khi đặt"', '"Ask before booking" add-ons')].map((t) => (
-          <span key={t} style={{ minHeight: 30, display: 'inline-flex', alignItems: 'center', padding: '0 10px', borderRadius: 999, background: 'var(--raised)', color: 'var(--ccbd5e1)', fontSize: 12, fontWeight: 600, border: '1px solid var(--line)' }}>{t}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+        <span style={{ fontWeight: 700, marginRight: 4 }}>{L(vi, 'AI tự đọc, không cần nhập lại:', 'Read by itself, nothing to retype:')}</span>
+        {[L(vi, 'Dịch vụ & giá', 'Services & prices'), L(vi, 'Giờ mở cửa', 'Hours'), L(vi, 'Thợ & kỹ năng', 'Staff & skills'), L(vi, 'Khuyến mãi', 'Promotions'), L(vi, 'Địa chỉ, SĐT, chính sách huỷ', 'Address, phone, cancellation')].map((t) => (
+          <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 999, background: 'var(--raised)', border: '1px solid var(--line)', color: 'var(--ccbd5e1)', fontWeight: 600 }}><span aria-hidden style={{ color: 'var(--ink-good)' }}>✓</span>{t}</span>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 14 }}>
-        <Card title={L(vi, 'Kiến thức riêng của tiệm (FAQ)', 'The salon\'s own knowledge (FAQ)')} hint={L(vi, 'Dùng cho cả hotline lẫn chat. Trước đây hotline không thấy phần này nếu tiệm chưa nối Messenger.', 'Used by the hotline and every chat. The hotline used to miss it when Messenger was not connected.')}>
-          {facts.map((x, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: 10, border: '1px solid var(--line)', borderRadius: 10, marginBottom: 8, opacity: x.on ? 1 : 0.6 }}>
-              <input type="checkbox" checked={x.on} disabled={!canEdit} aria-label={L(vi, 'Bật', 'On')} onChange={(e) => setFact(i, 'on', e.target.checked)} style={{ width: 18, height: 18, marginTop: 10 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <input value={x.label} disabled={!canEdit} maxLength={80} placeholder={L(vi, 'Chủ đề (vd: Đậu xe)', 'Topic (e.g. Parking)')} onChange={(e) => setFact(i, 'label', e.target.value)} style={{ ...f.input, fontWeight: 700, marginBottom: 6 }} />
-                <textarea value={x.value} disabled={!canEdit} rows={2} maxLength={600} placeholder={L(vi, 'Câu trả lời cho khách', 'What to tell the customer')} onChange={(e) => setFact(i, 'value', e.target.value)} style={{ ...f.input, resize: 'vertical' }} />
-                {/* A seasonal fact (holiday hours, an opening offer) is told only between these days and drops out on its own. */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6, fontSize: 12, color: 'var(--c94a3b8)' }}>
-                  <span>{L(vi, 'Chỉ áp dụng từ', 'Only from')}</span>
-                  <input type="date" value={x.from ?? ''} disabled={!canEdit} aria-label={L(vi, 'Từ ngày', 'From')} onChange={(e) => setFact(i, 'from', e.target.value || undefined)} style={{ ...f.input, width: 150, padding: '5px 8px', fontSize: 12.5 }} />
-                  <span>{L(vi, 'đến', 'to')}</span>
-                  <input type="date" value={x.until ?? ''} disabled={!canEdit} aria-label={L(vi, 'Đến ngày', 'Until')} onChange={(e) => setFact(i, 'until', e.target.value || undefined)} style={{ ...f.input, width: 150, padding: '5px 8px', fontSize: 12.5 }} />
-                  {!x.from && !x.until && <span>{L(vi, '(trống = luôn đúng)', '(blank = always)')}</span>}
-                  {x.until && x.until < today && <b style={{ color: 'var(--ink-warn)' }}>{L(vi, 'Hết hạn — AI không dùng nữa', 'Expired — no longer used')}</b>}
+
+      <SubTabs label={L(vi, 'Các trang kiến thức', 'Knowledge pages')} value={page} onChange={(v) => { setPage(v); setOpen(null); }}
+        tabs={[{ id: 'faq', label: L(vi, 'Câu hỏi thường gặp', 'FAQ'), count: facts.length }, { id: 'rules', label: L(vi, 'Quy tắc', 'Rules'), count: ruleLines }]} />
+
+      {page === 'faq' && (
+        <>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Search id="faq-find" value={q} onChange={(v) => { setQ(v); setOpen(null); }} label={L(vi, 'Tìm', 'Find')} placeholder={L(vi, 'Tìm chủ đề hoặc nội dung…', 'Find a topic or text…')} />
+            {canEdit && facts.length < 80 && <button type="button" onClick={addFact} style={kitPrimary}>+ {L(vi, 'Thêm điều AI cần biết', 'Add a fact')}</button>}
+          </div>
+          <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{L(vi, 'Mỗi dòng là một điều AI nói với khách — hotline lẫn mọi kênh chat. Bấm vào một dòng để sửa.', 'Each row is something the AI tells customers — on the hotline and every chat. Click a row to edit it.')}</p>
+          {!facts.length ? <Empty>{L(vi, 'Chưa có gì. Thêm giá gói, chính sách, câu khách hay hỏi…', 'Nothing yet. Add packages, policies, frequent questions…')}</Empty>
+            : !rows.length ? <Empty>{L(vi, 'Không có dòng nào khớp.', 'Nothing matches.')}</Empty>
+              : (
+                <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden' }}>
+                  {pg.paged.map(({ x, i }, n) => {
+                    const chip = dateChip(x);
+                    const isOpen = open === i;
+                    return (
+                      <div key={i} style={{ borderTop: n ? '1px solid var(--line)' : 0, background: isOpen ? 'var(--row-on)' : 'transparent' }}>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', opacity: x.on ? 1 : 0.55 }}>
+                          <Switch on={x.on} disabled={!canEdit} onChange={() => setFact(i, 'on', !x.on)} label={L(vi, `Bật “${x.label || 'dòng mới'}”`, `“${x.label || 'new row'}” on`)} />
+                          <button type="button" onClick={() => setOpen(isOpen ? null : i)} aria-expanded={isOpen}
+                            style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2, background: 'transparent', border: 0, padding: 0, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{x.label || <i style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>{L(vi, 'Dòng mới — điền chủ đề', 'New row — add a topic')}</i>}</span>
+                            {!isOpen && <span style={{ fontSize: 13, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.value}</span>}
+                          </button>
+                          {chip && <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: chip.bg, color: chip.ink }}>{chip.t}</span>}
+                          <button type="button" onClick={() => setOpen(isOpen ? null : i)} aria-label={isOpen ? L(vi, 'Đóng', 'Close') : L(vi, 'Sửa', 'Edit')}
+                            style={{ ...kitGhost, minHeight: 34, padding: '0 12px', fontSize: 13 }}>{isOpen ? L(vi, 'Xong', 'Done') : canEdit ? L(vi, 'Sửa', 'Edit') : L(vi, 'Xem', 'View')}</button>
+                        </div>
+                        {isOpen && (
+                          <div style={{ padding: '0 14px 14px 70px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12.5, color: 'var(--c94a3b8)', fontWeight: 600 }}>
+                              {L(vi, 'Chủ đề', 'Topic')}
+                              <input value={x.label} disabled={!canEdit} maxLength={80} autoFocus={!x.label} placeholder={L(vi, 'VD: Gói Social Care $45/th', 'e.g. Social Care $45/mo')} onChange={(e) => setFact(i, 'label', e.target.value)} style={{ ...f.input, fontWeight: 700 }} />
+                            </label>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12.5, color: 'var(--c94a3b8)', fontWeight: 600 }}>
+                              {L(vi, 'AI nói với khách', 'What the AI tells customers')}
+                              <textarea value={x.value} disabled={!canEdit} rows={4} maxLength={600} onChange={(e) => setFact(i, 'value', e.target.value)} style={{ ...f.input, resize: 'vertical', lineHeight: 1.55 }} />
+                            </label>
+                            <details open={!!(x.from || x.until)} style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>
+                              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{L(vi, 'Chỉ đúng trong một khoảng ngày (khuyến mãi, giờ lễ…)', 'Only true for some dates (offers, holiday hours…)')}</summary>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                                <span>{L(vi, 'Từ', 'From')}</span>
+                                <input type="date" value={x.from ?? ''} disabled={!canEdit} aria-label={L(vi, 'Từ ngày', 'From')} onChange={(e) => setFact(i, 'from', e.target.value || undefined)} style={{ ...f.input, width: 160 }} />
+                                <span>{L(vi, 'đến', 'to')}</span>
+                                <input type="date" value={x.until ?? ''} disabled={!canEdit} aria-label={L(vi, 'Đến ngày', 'Until')} onChange={(e) => setFact(i, 'until', e.target.value || undefined)} style={{ ...f.input, width: 160 }} />
+                                {x.until && x.until < today && <b style={{ color: 'var(--ink-warn)' }}>{L(vi, 'Đã hết hạn — AI không nói nữa', 'Expired — no longer said')}</b>}
+                              </div>
+                            </details>
+                            {canEdit && (
+                              <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                                <button type="button" onClick={() => removeFact(i)} style={{ ...kitGhost, color: 'var(--ink-bad)' }}>{L(vi, 'Xoá dòng này', 'Remove this row')}</button>
+                                <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', alignSelf: 'center' }}>{L(vi, 'Nhớ bấm “Lưu — áp dụng cho mọi kênh” ở trên.', 'Remember “Save — apply to every channel” at the top.')}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-              {canEdit && <button type="button" onClick={() => patch((b) => ({ ...b, knowledge: { ...b.knowledge, facts: b.knowledge.facts.filter((_, j) => j !== i) } }))} style={ui.dangerBtn}>{L(vi, 'Xoá', 'Remove')}</button>}
-            </div>
-          ))}
-          {canEdit && facts.length < 80 && (
-            <button type="button" onClick={() => patch((b) => ({ ...b, knowledge: { ...b.knowledge, facts: [...b.knowledge.facts, { label: '', value: '', on: true }] } }))}
-              style={{ background: 'transparent', border: '1px dashed var(--line-strong)', color: 'var(--ink-link)', borderRadius: 10, padding: '9px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', width: '100%' }}>
-              + {L(vi, 'Thêm điều AI cần biết', 'Add something the AI should know')}
-            </button>
-          )}
+              )}
+          <PageBar page={pg.page} pages={pg.totalPages} setPage={(p) => { pg.setPage(p); setOpen(null); }} start={pg.start} end={pg.end} total={pg.total} vi={vi} />
           {canEdit && <KnowledgeImport token={token} vi={vi} pageConnected={pageConnected} patch={patch} />}
-        </Card>
-        <Card title={L(vi, 'Cách tiệm vận hành — quy tắc cho AI', 'How the salon runs — rules for the assistant')} hint={L(vi, 'Viết như dặn nhân viên mới. Tiếng Việt hay tiếng Anh đều được. Một ô duy nhất, mọi kênh đọc.', 'Write it like briefing a new employee, in Vietnamese or English. One box, every channel reads it.')}>
-          <textarea value={brain.knowledge.rules} disabled={!canEdit} rows={12} maxLength={4000} onChange={(e) => patch((b) => ({ ...b, knowledge: { ...b.knowledge, rules: e.target.value } }))}
-            placeholder={L(vi, '- Khách hỏi full set: báo "từ $60", rồi hỏi vẽ design hay màu trơn.\n- Kim chỉ làm pedicure.\n- Cuối tuần đông: hết chỗ thứ 7 thì mời sáng Chủ nhật.', '- Full set: quote "from $60", then ask design or solid colour.\n- Kim only does pedicures.\n- Saturdays are busy: when full, offer Sunday morning.')}
-            style={{ ...f.input, resize: 'vertical', lineHeight: 1.5 }} />
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
-            <span style={{ minHeight: 28, display: 'inline-flex', alignItems: 'center', padding: '0 10px', borderRadius: 999, border: '1px solid var(--line)', color: 'var(--ink-good)', fontSize: 12, fontWeight: 700 }}>✓ {L(vi, `${ruleLines} dòng quy tắc`, `${ruleLines} rule lines`)}</span>
-            <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{brain.knowledge.rules.length}/4000</span>
+        </>
+      )}
+
+      {page === 'rules' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
+          <Card title={L(vi, 'Cách tiệm vận hành — quy tắc cho AI', 'How the salon runs — rules for the assistant')} hint={L(vi, 'Viết như dặn nhân viên mới, mỗi dòng một ý. Tiếng Việt hay tiếng Anh đều được. Mọi kênh đọc.', 'Write it like briefing a new employee, one point per line, in Vietnamese or English. Every channel reads it.')}>
+            <textarea value={brain.knowledge.rules} disabled={!canEdit} rows={14} maxLength={4000} onChange={(e) => patch((b) => ({ ...b, knowledge: { ...b.knowledge, rules: e.target.value } }))}
+              placeholder={L(vi, '- Khách hỏi full set: báo "từ $60", rồi hỏi vẽ design hay màu trơn.\n- Kim chỉ làm pedicure.\n- Cuối tuần đông: hết chỗ thứ 7 thì mời sáng Chủ nhật.', '- Full set: quote "from $60", then ask design or solid colour.\n- Kim only does pedicures.\n- Saturdays are busy: when full, offer Sunday morning.')}
+              style={{ ...f.input, resize: 'vertical', lineHeight: 1.55 }} />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+              <span style={{ minHeight: 28, display: 'inline-flex', alignItems: 'center', padding: '0 10px', borderRadius: 999, border: '1px solid var(--line)', color: 'var(--ink-good)', fontSize: 12, fontWeight: 700 }}>✓ {L(vi, `${ruleLines} dòng quy tắc`, `${ruleLines} rule lines`)}</span>
+              <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{brain.knowledge.rules.length}/4000</span>
+            </div>
+          </Card>
+          <div style={{ padding: 16, borderRadius: 14, background: 'var(--raised)', border: '1px solid var(--line)', fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>
+            <b style={{ color: 'var(--ce2e8f0)', fontSize: 14 }}>{L(vi, 'Khi các nguồn nói khác nhau, AI theo thứ tự:', 'When sources disagree, the AI follows:')}</b>
+            <ol style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+              <li><b>{L(vi, 'Lời dặn của chủ tiệm', 'Your instructions')}</b></li>
+              <li>{L(vi, 'Lịch thật (giờ trống, giờ mở cửa)', 'The real book (open times, hours)')}</li>
+              <li>{L(vi, 'Quy tắc ở ô này', 'The rules here')}</li>
+              <li>{L(vi, 'Menu & giá', 'Menu & prices')}</li>
+              <li>{L(vi, 'Câu hỏi thường gặp', 'FAQ')}</li>
+              <li>{L(vi, 'Trí nhớ khách', 'Customer memory')}</li>
+            </ol>
+            <div style={{ marginTop: 8, color: 'var(--c94a3b8)' }}>{L(vi, 'AI không hứa điều nằm ngoài những nguồn này.', 'Nothing outside these is promised.')}</div>
           </div>
-          <div style={{ padding: 12, borderRadius: 10, background: 'var(--raised)', border: '1px solid var(--line)', fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 12, lineHeight: 1.5 }}>
-            <b style={{ color: 'var(--ce2e8f0)' }}>{L(vi, 'Thứ tự ưu tiên khi mâu thuẫn', 'Priority when things conflict')}</b><br />
-            {L(vi, '1. Lịch thật (giờ trống, giờ mở cửa) · 2. Quy tắc ở ô này · 3. Menu & giá · 4. FAQ · 5. Trí nhớ khách. AI không hứa điều nằm ngoài 5 thứ này.', '1. The real book (open times, hours) · 2. The rules here · 3. Menu & prices · 4. FAQ · 5. Customer memory. Nothing outside these five is promised.')}
-          </div>
-        </Card>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

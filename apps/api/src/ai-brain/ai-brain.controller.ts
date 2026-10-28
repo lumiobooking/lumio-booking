@@ -116,6 +116,13 @@ export class AiBrainController {
   @Post('instructions')
   createInstruction(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.instructions.create(user, dto); }
 
+  /** "This is how the AI reads your note" — before the owner saves it. Nothing stored. */
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature(...TEACH_KEYS)
+  @RateLimit(30, 60_000)
+  @Post('instructions/interpret')
+  interpretInstruction(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.instructions.preview(user, dto); }
+
   @UseGuards(FeaturePolicyGuard)
   @RequiresFeature(...TEACH_KEYS)
   @RateLimit(30, 60_000)

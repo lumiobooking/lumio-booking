@@ -7,7 +7,7 @@
  * line in a hotline call, a conversation in the AI log, or the "Lời dặn" tab.
  * Mockup: artifact "AI — Chủ tiệm dạy AI".
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 import { useIsMobile } from '../lib/responsive';
@@ -27,6 +27,8 @@ export interface InstructionRow {
   id: string; kind: InsKind; text: string; triggers: string[]; mode: InsMode; channels: InsChannel[]; on: boolean;
   reason: string | null; sourceKind: string | null; sourceId: string | null; sourceQuestion: string | null; sourceReply: string | null;
   usedCount: number; blockedCount: number; lastUsedAt: string | null; createdBy: string | null; updatedBy: string | null; createdAt: string; updatedAt: string | null;
+  /** How the AI understood the note, in the owner's language ("AI sẽ …"); null until it has been read. */
+  meaningNote?: string | null;
 }
 
 const REASONS: { id: string; vi: string; en: string }[] = [
@@ -81,6 +83,10 @@ export function TeachAiPanel(p: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // "This is how the AI reads your note" — asked as the owner types, shown before saving.
+  type Meaning = { busy: boolean; for: string; explain?: string; rule?: string; key?: string; fixes?: string[]; suggestKind?: InsKind | null; failed?: boolean };
+  const [meaning, setMeaning] = useState<Meaning | null>(ed?.meaningNote ? { busy: false, for: '', explain: ed.meaningNote } : null);
+  const reqId = useRef(0);
 
   const triggers = kind === 'answer' ? answerTrig : ruleTrig;
   const setTriggers = kind === 'answer' ? setAnswerTrig : setRuleTrig;
@@ -89,6 +95,32 @@ export function TeachAiPanel(p: Props) {
     kind, text: text.trim(), triggers, mode: kind === 'answer' ? mode : 'meaning',
     channels: allCh ? [] : [...chans], reason,
   }), [kind, text, triggers, mode, allCh, chans, reason]);
+  // What the note is, as words: a new one is read again; the same one keeps its reading.
+  const sig = JSON.stringify([kind, kind === 'answer' ? mode : 'meaning', text.trim(), kind === 'answer' ? triggers : ruleTrig]);
+  const readable = text.trim().length >= 3 && !(kind === 'answer' && mode === 'verbatim');
+  const untouched = !!ed && text.trim() === ed.text && kind === ed.kind && (kind !== 'answer' || mode === ed.mode);
+  useEffect(() => {
+    if (!p.token || !readable) { setMeaning(null); return; }
+    if (untouched && ed?.meaningNote) { setMeaning({ busy: false, for: sig, explain: ed.meaningNote }); return; }
+    const id = ++reqId.current;
+    setMeaning((m) => ({ ...(m ?? {}), busy: true, for: sig }));
+    const t = window.setTimeout(async () => {
+      try {
+        const r = await apiFetch<{ ok: boolean; rule: string; explain: string; key: string; fixes: string[]; suggestKind: InsKind | null }>('/ai-brain/instructions/interpret', {
+          method: 'POST', token: p.token,
+          body: { kind, text: text.trim(), triggers: kind === 'answer' ? triggers : ruleTrig, mode: kind === 'answer' ? mode : 'meaning', sourceQuestion: p.question ?? null, sourceReply: p.reply ?? null, lang: vi ? 'vi' : 'en' },
+        });
+        if (id !== reqId.current) return;
+        setMeaning(r.ok ? { busy: false, for: sig, explain: r.explain, rule: r.rule, key: r.key, fixes: r.fixes, suggestKind: r.suggestKind } : { busy: false, for: sig, failed: true });
+      } catch {
+        if (id === reqId.current) setMeaning({ busy: false, for: sig, failed: true });
+      }
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [sig, readable, p.token]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Sent with a save or a try only when it was read for exactly these words.
+  const shownMeaning = meaning && !meaning.busy && meaning.for === sig && meaning.rule && meaning.key
+    ? { meaning: meaning.rule, meaningNote: meaning.explain ?? null, meaningKey: meaning.key } : {};
   const canSave = text.trim().length >= 3 && (kind !== 'answer' || triggers.length > 0) && chans.size > 0 && !busy && !done
     && (!fix.on || fix.text.trim().length > 0);
 
@@ -112,7 +144,7 @@ export function TeachAiPanel(p: Props) {
     try {
       const r = await apiFetch<{ reply: string; followed: boolean; corrected: boolean }>('/ai-brain/instructions/try', {
         method: 'POST', token: p.token,
-        body: { ...body, triggers: kind === 'answer' && !triggers.length ? [tryQ.trim().slice(0, 200)] : triggers, question: tryQ.trim(), channel: p.channel ?? 'messenger', context: p.context ?? [], editingId: ed?.id ?? null },
+        body: { ...body, ...(kind === 'answer' && !triggers.length ? {} : shownMeaning), triggers: kind === 'answer' && !triggers.length ? [tryQ.trim().slice(0, 200)] : triggers, question: tryQ.trim(), channel: p.channel ?? 'messenger', context: p.context ?? [], editingId: ed?.id ?? null },
       });
       setTrial({ busy: false, reply: r.reply, followed: r.followed, corrected: r.corrected });
       if (p.onSendCorrection && !fix.text.trim() && r.reply) setFix((f) => ({ ...f, text: r.reply }));
@@ -126,10 +158,10 @@ export function TeachAiPanel(p: Props) {
     setBusy(true); setErr(null);
     try {
       const row = ed
-        ? await apiFetch<InstructionRow>(`/ai-brain/instructions/${ed.id}`, { method: 'PATCH', token: p.token, body })
+        ? await apiFetch<InstructionRow>(`/ai-brain/instructions/${ed.id}`, { method: 'PATCH', token: p.token, body: { ...body, ...shownMeaning, lang: vi ? 'vi' : 'en' } })
         : await apiFetch<InstructionRow>('/ai-brain/instructions', {
           method: 'POST', token: p.token,
-          body: { ...body, sourceKind: p.source?.kind ?? 'manual', sourceId: p.source?.id ?? null, sourceQuestion: p.question ?? null, sourceReply: p.reply ?? null },
+          body: { ...body, ...shownMeaning, lang: vi ? 'vi' : 'en', sourceKind: p.source?.kind ?? 'manual', sourceId: p.source?.id ?? null, sourceQuestion: p.question ?? null, sourceReply: p.reply ?? null },
         });
       const after: string[] = [];
       if (fix.on && p.onSendCorrection) {
@@ -213,7 +245,32 @@ export function TeachAiPanel(p: Props) {
                 : kind === 'always' ? L(vi, 'VD: Hỏi khách có đau lưng hay đang mang thai không trước khi đặt Deep Tissue', 'e.g. Ask about back pain or pregnancy before booking Deep Tissue')
                   : L(vi, 'VD: Hứa giảm giá không có trong bảng khuyến mãi', 'e.g. Promise a discount that is not on the promo list')}
               style={{ ...ui.input, minHeight: 96, lineHeight: 1.55, resize: 'vertical', fontFamily: 'inherit', borderColor: '#6366f1' }} />
-            <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L(vi, 'Bạn viết tiếng Việt — AI trả lời khách bằng tiếng của khách.', 'Write in your language — the AI answers in the customer’s.')}</span>
+            <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L(vi, 'Viết ngắn, viết tắt cũng được — AI hiểu ý bạn và trả lời khách bằng tiếng của khách.', 'Short is fine, shorthand too — the AI works out what you mean and answers in the customer’s language.')}</span>
+            {readable && meaning && (
+              <div aria-live="polite" style={{ borderRadius: 12, border: '1px solid #818cf8', background: 'var(--wash-blue)', padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.03em', color: 'var(--ink-link)' }}>✦ {L(vi, 'AI HIỂU LỜI DẶN CỦA BẠN LÀ', 'HOW THE AI READS YOUR NOTE')}</span>
+                {meaning.busy && !meaning.explain && <span style={{ fontSize: 13.5, color: 'var(--c94a3b8)' }}>{L(vi, 'AI đang đọc…', 'Reading…')}</span>}
+                {meaning.explain && <span style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--ce2e8f0)', opacity: meaning.busy ? 0.55 : 1 }}>{meaning.explain}</span>}
+                {meaning.failed && !meaning.explain && <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L(vi, 'Chưa đọc được lúc này — AI sẽ dùng đúng câu bạn viết, và đọc lại sau khi lưu.', 'Could not read it right now — the AI uses your words as written and reads them again after saving.')}</span>}
+                {!!meaning.fixes?.length && !meaning.busy && (
+                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {meaning.fixes.map((x) => <span key={x} style={{ fontSize: 12, fontWeight: 600, color: 'var(--ccbd5e1)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 999, padding: '3px 9px' }}>{L(vi, 'Đã hiểu: ', 'Read as: ')}{x}</span>)}
+                  </span>
+                )}
+                {meaning.suggestKind && meaning.suggestKind !== kind && !meaning.busy && (
+                  <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13, color: 'var(--ccbd5e1)' }}>
+                    {meaning.suggestKind === 'answer'
+                      ? L(vi, 'Lời dặn này giống một câu trả lời cho câu hỏi cụ thể.', 'This reads like the answer to one question.')
+                      : L(vi, 'Lời dặn này là quy tắc chung — nên áp dụng cho mọi câu hỏi tương tự.', 'This is a general rule — it should apply to every similar question.')}
+                    <button type="button" onClick={() => setKind(meaning.suggestKind as InsKind)}
+                      style={{ minHeight: 32, padding: '0 10px', borderRadius: 8, border: '1px solid #4f46e5', background: 'transparent', color: 'var(--ink-link)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      {L(vi, `Đổi sang “${meaning.suggestKind === 'never' ? 'Không bao giờ' : meaning.suggestKind === 'always' ? 'Luôn làm' : 'Câu trả lời đúng'}”`, `Switch to “${meaning.suggestKind === 'never' ? 'Never' : meaning.suggestKind === 'always' ? 'Always' : 'Right answer'}”`)}
+                    </button>
+                  </span>
+                )}
+                {meaning.explain && !meaning.busy && <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L(vi, 'Chưa đúng ý? Viết thêm một chút — AI đọc lại ngay.', 'Not quite? Add a few words — the AI reads it again.')}</span>}
+              </div>
+            )}
           </div>
 
           {kind === 'answer' && (

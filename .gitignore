@@ -68,3 +68,11 @@ tsconfig.scoped-check.tsbuildinfo
 
 # VAPID keys written by scripts/vapid-keys.cjs --save (never commit)
 vapid-keys.txt
+
+# App Store signing (store-app/scripts/ios-cert.sh) — private keys and secrets, never commit
+store-app/.signing/
+store-app/**/GoogleService-Info.plist
+store-app/**/google-services.json
+*.p8
+*.p12
+*.mobileprovision

@@ -277,6 +277,16 @@ function Inner() {
   const [gapsOpen, setGapsOpen] = useState(0);                       // questions the bot could not answer
   const [zaloSt, setZaloSt] = useState<{ market?: string; connected: boolean; oaName?: string; lastSend?: { ok: boolean } | null } | null>(null);
   const [webSt, setWebSt] = useState<{ enabled: boolean } | null>(null);
+  // A sales page answers from the AI brain's facts once the brain holds some
+  // (api messenger factsOf) — this tab then points there instead of looking
+  // like the list the bot reads.
+  const [brainFacts, setBrainFacts] = useState<number | null>(null);
+  useEffect(() => {
+    if (!token || c?.botMode !== 'sales') return;
+    apiFetch<{ legacy: boolean; brain: { version: number; knowledge: { facts: unknown[] } } }>('/ai-brain/settings', { token })
+      .then((v) => setBrainFacts(!v.legacy && v.brain.version > 0 ? v.brain.knowledge.facts.length : 0))
+      .catch(() => setBrainFacts(null));
+  }, [token, c?.botMode]);
 
   // Seed the checklist from stored facts once the config loads: every predefined
   // row shows (ticked/filled if saved), plus any custom rows the salon added.
@@ -1120,6 +1130,15 @@ function Inner() {
           if (i >= 0) { const next = [...rows]; next[i] = { ...next[i], value, on: true }; return next; }
           return [...rows, { label, value, on: true, from: null, until: null, custom: true }];
         })} />
+      {!!brainFacts && (
+        <div role="note" style={{ ...ui.card, marginBottom: 16, borderColor: '#6366f1', background: 'var(--wash-blue)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: '1 1 320px', fontSize: 13.5, lineHeight: 1.55, color: 'var(--ce2e8f0)' }}>
+            <b>{lang === 'vi' ? `Bot đang trả lời theo ${brainFacts} mục trong Bộ não AI → Kiến thức tiệm.` : `The bot answers from the ${brainFacts} facts in AI brain → Knowledge.`}</b>{' '}
+            {lang === 'vi' ? 'Sửa giá gói, mô tả dịch vụ ở đó. Danh sách cũ bên dưới không còn được dùng.' : 'Edit packages and descriptions there. The old list below is no longer read.'}
+          </span>
+          <a href="/salon/ai?tab=knowledge" style={{ ...ui.primaryBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: 40 }}>{lang === 'vi' ? 'Mở Kiến thức tiệm →' : 'Open Knowledge →'}</a>
+        </div>
+      )}
       {/* Knowledge import: website / fanpage → proposed facts → human approves */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>

@@ -18,6 +18,8 @@ Files:
 - Phía web: `apps/web/src/lib/native.ts`, `components/NativeBridge.tsx` (push token, back button, splash).
 - Phía API: `apps/api/src/push/fcm.ts` — cần `FCM_SERVICE_ACCOUNT_JSON` trên Render.
 
-**iPad:** `npm run sync` (hoặc `npm run ios:ipad`) tự sửa project iOS: bật iPad, iPad xoay đủ 4 hướng, iPhone chỉ dọc, cho chia đôi màn hình (`scripts/ios-ipad.mjs`). Màn check-in / màn hình khách trên iPad đặt nằm ngang. Sau đó build lại trong Xcode và nộp bản mới (TestFlight / App Store) — iPad chỉ xoay được khi đã cài bản mới. Chi tiết: `docs/app-store/submission-guide.md`.
+**Không có Mac:** `docs/app-store/cloud-build-ios.md` — GitHub Actions build và gửi TestFlight (`.github/workflows/ios-testflight.yml`, bản gốc ở `store-app/ci/` — copy sang theo Bước 0a); chứng chỉ tạo bằng `scripts/ios-cert.sh` trên Windows.
+
+**Cài đặt iOS tự động:** `npm run sync` (hoặc `npm run ios:prepare`) chạy `scripts/ios-prepare.mjs`: tên app, bật iPad, iPad xoay đủ 4 hướng, iPhone chỉ dọc, chia đôi màn hình, push, chuỗi quyền camera/ảnh, Firebase khi có `GoogleService-Info.plist`. Màn check-in / màn hình khách trên iPad đặt nằm ngang. Sau đó build lại trong Xcode và nộp bản mới (TestFlight / App Store) — iPad chỉ xoay được khi đã cài bản mới. Chi tiết: `docs/app-store/submission-guide.md`.
 
 Không commit: `google-services.json`, `GoogleService-Info.plist`, keystore, `.p8`.

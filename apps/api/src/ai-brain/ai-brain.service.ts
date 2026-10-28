@@ -18,7 +18,7 @@ import {
 export const AI_LEGACY_MERGED_KEY = 'ai_legacy_merged';
 import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLanguage, type EndReason } from './brain-rules';
 import { AiInstructionsService, instructionChannel } from './instructions.service';
-import { checkingLine, cleanInstruction, correctionFor, lastResort, type Instruction, type InstructionChannel } from './instructions';
+import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, needsMeaning, type Instruction, type InstructionChannel } from './instructions';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -667,6 +667,13 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
     const editing = typeof dto.editingId === 'string' ? dto.editingId : null;
     const stored = await this.instructions.allFor(tenantId);
     const temp: Instruction = { id: '__try', kind: c.value.kind, text: c.value.text, triggers: c.value.triggers, mode: c.value.mode, channels: c.value.channels, on: true };
+    // Tried the way it will run: with what the owner means, the one they were shown when it is for these words.
+    if (needsMeaning(c.value)) {
+      const shown = typeof dto.meaning === 'string' ? dto.meaning.trim().slice(0, 600) : '';
+      temp.meaning = shown.length >= 8 && dto.meaningKey === meaningKey(c.value)
+        ? shown
+        : (await this.instructions.interpret(tenantId, { ...c.value, sourceQuestion: question }, 'vi').catch(() => null))?.rule ?? null;
+    }
     const list = [...stored.filter((i) => i.id !== editing), temp];
     const on = instructionChannel(typeof dto.channel === 'string' ? dto.channel : null);
     const ctx = (Array.isArray(dto.context) ? dto.context : [])

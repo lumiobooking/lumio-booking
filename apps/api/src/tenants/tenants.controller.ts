@@ -96,6 +96,15 @@ export class TenantsController {
     return this.tenantsService.resetAdminPassword(id, dto.password, user);
   }
 
+  // Fill a DEMO salon (name contains "Demo", new and empty — or already the demo)
+  // with invented data for the App Store reviewer and screenshots. Run again to
+  // put fresh bookings on today and the next two days.
+  @Post(':id/demo-data')
+  @HttpCode(200)
+  loadDemoData(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.tenantsService.loadDemoData(id, user);
+  }
+
   @Post(':id/access')
   @HttpCode(200)
   setAccess(

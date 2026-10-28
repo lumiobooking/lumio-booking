@@ -34,7 +34,8 @@ Chọn **"Yes, we collect data from this app"**, rồi khai từng loại:
 Trả lời "Do you or your third-party partners use data for tracking?" → **No**.
 
 **Privacy manifest** (Xcode ≥ 15, `PrivacyInfo.xcprivacy`): Capacitor 7 đã kèm manifest cho chính nó và các plugin;
-app không dùng "required reason APIs" ngoài những gì Capacitor khai. Nếu Xcode báo thiếu, thêm file với
+app không dùng "required reason APIs" ngoài những gì Capacitor khai. Firebase Messaging (thông báo đẩy) cũng kèm manifest riêng
+và chỉ dùng mã thiết bị cho push — đã khai ở dòng "Device ID". Nếu Xcode báo thiếu, thêm file với
 `NSPrivacyTracking = false`, `NSPrivacyTrackingDomains = []`, `NSPrivacyCollectedDataTypes` = bảng trên.
 
 **Export compliance** (mỗi lần upload build): app chỉ dùng HTTPS chuẩn → chọn "None of the algorithms mentioned
@@ -72,14 +73,14 @@ theo hợp đồng xử lý dữ liệu — Google không tính là "sharing".
 
 ## C. Quyền (permissions) và chuỗi giải thích iOS
 
-Thêm vào `ios/App/App/Info.plist` (Capacitor không tự thêm):
+`store-app/scripts/ios-prepare.mjs` tự ghi các dòng này vào `ios/App/App/Info.plist` mỗi lần build (máy Mac hay
+build trên mây) — không cần sửa tay. Bảng để đối chiếu khi Apple hỏi:
 
 | Key | Chuỗi |
 |---|---|
 | `NSCameraUsageDescription` | `Lumio uses the camera to scan product barcodes at checkout and to take photos for a client's profile.` |
 | `NSPhotoLibraryUsageDescription` | `Lumio needs access to your photos to attach pictures of your work to clients and social posts.` |
 | `NSPhotoLibraryAddUsageDescription` | `Lumio saves receipts and post images you export to your photo library.` |
-| `NSUserNotificationsUsageDescription` (tuỳ chọn) | `Lumio notifies you about new bookings, cancellations and client messages.` |
 | `ITSAppUsesNonExemptEncryption` | `NO` (Boolean) |
 
 Android `AndroidManifest.xml`: Capacitor thêm `INTERNET`; `POST_NOTIFICATIONS` (Android 13+) do plugin push

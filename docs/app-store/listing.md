@@ -21,9 +21,10 @@ khách hàng là tiệm ở Mỹ; thêm bản **Vietnamese** làm ngôn ngữ th
 
 **Keywords** (100, phân cách bằng dấu phẩy, không lặp lại chữ trong tên/phụ đề):
 ```
-nail,spa,barber,appointment,scheduling,calendar,clients,reminders,pos,reviews,social,tiktok,instagram
+nail,spa,barber,appointment,scheduler,calendar,walk-in,check-in,kiosk,clients,reminders,pos,tips
 ```
-(99 ký tự)
+(96 ký tự. Không đưa tên app/thương hiệu khác như TikTok, Instagram, Messenger vào từ khoá — Apple từ chối
+theo mục 2.3.7. Không lặp chữ đã có trong tên/phụ đề: "booking", "salon", "marketing".)
 
 **Promotional Text** (170):
 ```
@@ -35,10 +36,11 @@ Run your salon from your phone: bookings, walk-ins, clients, staff, reviews and 
 Lumio Booking is the all-in-one app for nail salons, spas and barbershops that want to spend less time on the phone and more time with clients.
 
 BOOKINGS THAT RUN THEMSELVES
-• Online booking page and Google "Reserve" button for your clients
+• Your own online booking page — link it from Google, Facebook, Instagram and your website
 • Calendar by staff, drag to reschedule, waitlist and walk-in queue
 • Automatic SMS and email reminders — fewer no-shows
-• Customer self check-in on a tablet at the front desk
+• Self check-in kiosk on an iPad at the front desk, or from the client's own phone
+• A customer-facing screen at checkout: totals, tips and a Google review QR
 
 AI THAT ANSWERS FOR YOU
 • Messenger, Instagram, Zalo OA and web-chat assistant that books appointments, quotes prices and sends photos of your work
@@ -102,17 +104,18 @@ Salon bookings, clients, POS and social marketing — with AI answering for you.
 - Apple: `Đặt lịch & marketing cho tiệm`
 - Play: `Đặt lịch, khách hàng, POS và marketing cho tiệm nail, spa — AI trả lời thay bạn.`
 
-**Từ khoá (Apple)**: `nail,spa,toc,dat lich,lich hen,khach hang,nhan vien,pos,danh gia,tiktok,instagram,messenger`
+**Từ khoá (Apple)**: `nail,spa,toc,dat lich,lich hen,khach hang,nhan vien,check-in,pos,tip,danh gia,nhac lich`
 
 **Mô tả**:
 ```
 Lumio Booking là ứng dụng tất-cả-trong-một cho tiệm nail, spa và barber: bớt nghe điện thoại, thêm thời gian cho khách.
 
 ĐẶT LỊCH TỰ CHẠY
-• Trang đặt lịch online và nút "Đặt chỗ" trên Google
+• Trang đặt lịch online riêng của tiệm — gắn link lên Google, Facebook, Instagram, website
 • Lịch theo từng thợ, kéo thả đổi giờ, danh sách chờ và hàng đợi khách walk-in
 • Nhắc lịch tự động qua SMS và email — giảm khách quên hẹn
-• Khách tự check-in trên máy tính bảng ở quầy
+• Khách tự check-in trên iPad ở quầy, hoặc bằng điện thoại của khách
+• Màn hình cho khách khi thanh toán: tổng tiền, tip, mã QR đánh giá Google
 
 AI TRẢ LỜI THAY BẠN
 • Trợ lý Messenger, Instagram, Zalo OA và chat web: đặt lịch, báo giá, gửi ảnh mẫu
@@ -142,32 +145,49 @@ DÀNH CHO CẢ ĐỘI
 
 ## D. Ghi chú cho người duyệt (App Review Notes / App access instructions)
 
-Tạo một tiệm demo riêng (tên `Lumio Demo Salon`, dữ liệu giả, không SMS thật, không thẻ thật) và một tài khoản
-SALON_ADMIN trên tiệm đó. **Không dùng tiệm khách thật.** Điền:
+### Chuẩn bị tiệm demo (10 phút, làm 1 lần)
+
+1. Super Admin → **Tenants** → tạo tiệm mới tên **`Lumio Demo Nails`** (tên phải có chữ "Demo"), múi giờ
+   America/Chicago, ngành Nail.
+2. Mở tiệm vừa tạo → bấm **"Load demo data"**. Hệ thống đổ vào: 6 dịch vụ, 4 thợ (Lisa, Kim, Mai, Tina),
+   12 khách giả (email `@example.com`, số `555-01xx`), lịch hôm nay + 2 ngày tới (có lịch chờ xác nhận, 1 lịch
+   khách huỷ). Đồng thời **tắt SMS/email** và nhắc lịch của tiệm này, và miễn phí thuê bao. Bấm lại lần nữa
+   (ngày khác) chỉ thêm lịch cho ngày còn trống, không nhân đôi. Nút này **từ chối** chạy trên tiệm có khách thật.
+3. Tạo tài khoản chủ tiệm (SALON_ADMIN) cho tiệm demo: email `demo-review@lumiobooking.com`, mật khẩu do anh tự
+   đặt (chỉ dán vào App Store Connect, không gửi qua chat).
+4. Đăng nhập thử một lần trên web để chắc chắn tài khoản chạy.
+   Kiểm tra đường dẫn đặt lịch của tiệm demo (Cài đặt → Công ty → slug). Nếu khác `lumio-demo-nails` thì sửa link
+   trong ghi chú bên dưới cho đúng.
+5. Trước mỗi lần nộp bản mới: bấm "Load demo data" lại để lịch hôm nay không trống.
+
+### Dán vào App Review Information → Notes
 
 ```
-Lumio Booking is a business app for salon owners and their staff. Salons subscribe on our website (lumiobooking.com); the app is used to run the salon day to day. There are no in-app purchases and no consumer sign-up inside the app — accounts are created by the salon owner on the web.
+Lumio Booking is a business app for salon owners and their staff. Salons subscribe on our website (lumiobooking.com); the app runs the salon day to day. There are no in-app purchases and no consumer sign-up inside the app — accounts are created by the salon on the web.
 
-DEMO ACCOUNT (a demo salon with sample data; nothing you do here reaches a real business):
+DEMO ACCOUNT — a demo salon ("Lumio Demo Nails") with invented clients and bookings. Texts and emails are switched off for it, so nothing you do reaches a real person.
   Email:    demo-review@lumiobooking.com
-  Password: <điền mật khẩu demo>
+  Password: (see the Sign-In Information fields)
 
 WHAT TO TRY
-  1. Sign in → Calendar: today's appointments; tap one to see the client; drag to reschedule.
-  2. Walk-ins: add a walk-in to the queue and seat them.
-  3. Inbox: sample Messenger conversations answered by the AI assistant; reply as staff.
-  4. Content → Queue: the month's social posts; open one to see the preview and comments.
-  5. Clients: search "Anna" for a profile with history.
-  6. My account → Delete account: in-app account deletion (works on the demo account; a fresh one is provisioned nightly).
+  1. Calendar: today's bookings by technician. Tap a booking to open it; on iPad, drag a card to move it.
+  2. The orange "to confirm" button or the bell: new online bookings — tap Confirm.
+  3. Walk-ins · Turns: add a walk-in and seat them with a technician.
+  4. Clients: search "Anna" for a client with visit history.
+  5. iPad, front desk: Walk-ins · Turns → "Check-in QR" opens the self check-in kiosk (works in landscape and portrait). Try the number (512) 555-0101 — a returning client.
+  6. iPad, customer display: Checkout → "Customer iPad screen" shows the totals screen customers see while paying.
 
 NOTIFICATIONS
-  Push notifications are used for new bookings, cancellations and client messages. Booking a test appointment from https://lumiobooking.com/book/lumio-demo-salon triggers one.
+  Push notifications tell staff about new bookings, cancellations and client messages. Booking from the demo salon's public page, https://lumiobooking.com/lumio-demo-nails , sends one to the signed-in device.
 
-PERMISSIONS
-  Camera: scanning product barcodes at the point of sale and attaching photos to a client's profile. Photos: attaching before/after photos. Both are optional.
+PERMISSIONS (both optional)
+  Camera: scanning product barcodes at checkout and taking photos for a client's profile.
+  Photos: attaching pictures of the work to a client or a social post.
 
-Contact for review questions: support@lumiobooking.com (replies within 24 hours).
+ACCOUNT DELETION
+  Account → Delete account deletes the signed-in user in the app. If you delete the demo login, email us and we restore it.
+
+Questions: support@lumiobooking.com (we reply within 24 hours).
 ```
 
-Việc cần làm trước khi nộp: tạo tiệm demo + tài khoản `demo-review@lumiobooking.com` trong Super Admin, đổ dữ liệu mẫu
-(vài khách, vài lịch hôm nay, 2–3 hội thoại Messenger mẫu, 5 bài trong queue), tắt SMS/email thật cho tiệm này.
+**Sign-In Information**: tick "Sign-in required", điền email + mật khẩu ở trên vào 2 ô riêng của Apple.

@@ -43,6 +43,10 @@ export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall, 
   tall: boolean;           // clearly portrait
 }) {
   const listRef = useRef<HTMLDivElement>(null);
+  // The lines themselves: when they grow (a web font arriving, a name wrapping)
+  // the list box can stay the same size, so it is watched too — else a stale
+  // "more below" sat under a list that fitted.
+  const innerRef = useRef<HTMLDivElement>(null);
   const [fadeTop, setFadeTop] = useState(false);
   const [fadeBottom, setFadeBottom] = useState(false);
   const count = lines.reduce((a, l) => a + (l.qty || 1), 0);
@@ -70,6 +74,8 @@ export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall, 
     if (typeof ResizeObserver === 'undefined' || !listRef.current) return;
     const ro = new ResizeObserver(measure);
     ro.observe(listRef.current);
+    if (innerRef.current) ro.observe(innerRef.current);
+    if (typeof document !== 'undefined' && document.fonts?.ready) document.fonts.ready.then(measure).catch(() => undefined);
     return () => ro.disconnect();
   }, []);
 
@@ -86,8 +92,9 @@ export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall, 
           {count} {count === 1 ? 'item' : 'items'}
         </span>
       </div>
-      <div ref={listRef} className="os-list" onScroll={measure}
+      <div ref={listRef} className="os-list" onScroll={measure} onAnimationEnd={measure}
         style={{ flex: '0 1 auto', minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', margin: '0 -6px', padding: '0 6px', WebkitMaskImage: mask, maskImage: mask }}>
+        <div ref={innerRef}>
         {lines.map((l, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, padding: dense ? 'clamp(9px, 1.3vh, 13px) 0' : 'clamp(12px, 1.8vh, 18px) 0', borderBottom: i === lines.length - 1 ? 'none' : '1px solid #f1f5f9', animation: i === lines.length - 1 ? 'osIn .35s ease both' : undefined }}>
             <div style={{ minWidth: 0 }}>
@@ -99,6 +106,7 @@ export function OrderScreen({ lines, rows, due, accent, money, reviewUrl, tall, 
             <div style={{ fontSize: dense ? 'clamp(16px, 1.8vw, 20px)' : 'clamp(17px, 2.1vw, 23px)', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{money(l.lineCents)}</div>
           </div>
         ))}
+        </div>
       </div>
       {fadeBottom && (
         <div style={{ flexShrink: 0, textAlign: 'center', fontSize: 'clamp(11.5px, 1.3vw, 13.5px)', color: '#64748b', paddingTop: 6 }}>↓ more below</div>

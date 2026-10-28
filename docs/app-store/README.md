@@ -5,6 +5,7 @@ Khách của tiệm vẫn đặt lịch qua web/WordPress như cũ — không c�
 
 | File | Dùng để làm gì |
 |---|---|
+| `cloud-build-ios.md` | **Không có Mac:** build iOS trên máy Mac của GitHub và tự gửi lên TestFlight — từng bước, kể cả tạo chứng chỉ trên Windows. |
 | `submission-guide.md` | Các bước theo thứ tự: đăng ký tài khoản → Firebase → build iOS/Android → TestFlight/Internal testing → nộp duyệt. **Đọc file này trước.** |
 | `listing.md` | Toàn bộ chữ để dán vào App Store Connect và Play Console (EN + VI): tên, phụ đề, từ khoá, mô tả, ghi chú cho người duyệt. |
 | `privacy-answers.md` | Câu trả lời cho bảng **App Privacy** (Apple) và **Data safety** (Google) + bảng câu hỏi phân loại nội dung. |
@@ -25,7 +26,7 @@ Khách của tiệm vẫn đặt lịch qua web/WordPress như cũ — không c�
 1. Đăng ký **D-U-N-S** cho Lumio Agency LLC (miễn phí, ~5 ngày) → cần cho cả Apple lẫn Google tài khoản tổ chức.
 2. Đăng ký **Apple Developer Program** ($99/năm) và **Google Play Console** ($25 một lần).
 3. Tạo **Firebase project** (miễn phí) để có push.
-4. Trên Mac: cài Xcode mới nhất + Android Studio, chạy các lệnh trong `store-app/README.md`.
+4. iOS: **không cần Mac** — làm theo `cloud-build-ios.md` (GitHub Actions). Có Mac thì chạy các lệnh trong `store-app/README.md`. Android: Android Studio (chạy được trên Windows).
 5. Chụp 6 ảnh màn hình theo `screenshots.md`.
 6. Dán chữ từ `listing.md`, trả lời form theo `privacy-answers.md`, nộp.
 

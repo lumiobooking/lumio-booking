@@ -31,6 +31,7 @@ import { NewBookingModal, type NewBookingPrefill } from '../../../components/New
 import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
 import { VisitContactEditor } from '../../../components/VisitContactEditor';
 import { notify } from '../../../lib/feedback';
+import { pickerStaff } from '../../../lib/bookable-staff';
 
 interface Addon { id: string; name: string; priceCents: number; durationMinutes?: number; kind?: string; staffMemberId?: string }
 /** Pill/label text: primary service plus a +N badge for the extra lines. */
@@ -1218,10 +1219,10 @@ function QuickEdit({ b, onAction }: { b: Booking; onAction: (id: string, path: s
 function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void; editable: boolean }) {
   const { token } = useAuth();
   const { lang } = useLang();
-  const [staff, setStaff] = useState<{ id: string; firstName: string; lastName: string | null; isActive: boolean }[]>([]);
+  const [staff, setStaff] = useState<{ id: string; firstName: string; lastName: string | null; isActive: boolean; takesAppointments?: boolean; staffRole?: string | null }[]>([]);
   useEffect(() => {
     if (!token) return;
-    apiFetch<{ id: string; firstName: string; lastName: string | null; isActive: boolean }[]>('/staff', { token })
+    apiFetch<{ id: string; firstName: string; lastName: string | null; isActive: boolean; takesAppointments?: boolean; staffRole?: string | null }[]>('/staff', { token })
       .then((list) => setStaff(list.filter((x) => x.isActive)))
       .catch(() => undefined);
   }, [token]);
@@ -1259,7 +1260,8 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
             style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 150, flexShrink: 0, ...(b.assignedStaff ? {} : { color: 'var(--ink-warn)', borderColor: 'var(--c7c5c22)' }) }}
           >
             <option value="" disabled>{tr('cal.linePick', lang)}</option>
-            {staff.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
+            {/* Technicians only — never the front desk (lib/bookable-staff). */}
+            {pickerStaff(staff, [b.assignedStaff?.id]).map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
           </select>
         ) : (
           <span style={{ color: b.assignedStaff ? 'var(--ce2e8f0)' : 'var(--ink-warn)', fontWeight: 600, whiteSpace: 'nowrap' }}>👤 {primaryTech}</span>
@@ -1277,7 +1279,7 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
               style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 150, flexShrink: 0 }}
             >
               <option value="">{tr('cal.lineWithMain', lang)}</option>
-              {staff.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
+              {pickerStaff(staff, [line.staffMemberId]).map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
             </select>
           ) : (
             <span style={{ color: 'var(--ce2e8f0)', whiteSpace: 'nowrap' }}>👤 {nameOf(line.staffMemberId) ?? primaryTech}</span>

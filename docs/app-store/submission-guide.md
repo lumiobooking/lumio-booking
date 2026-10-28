@@ -36,7 +36,24 @@ Sau lệnh này có 2 thư mục `ios/` và `android/` — **commit chúng vào 
 ### iOS — chỉnh trong Xcode (`npm run open:ios`)
 - Target **App** → *Signing & Capabilities*: Team = Lumio Agency LLC; Bundle Identifier `com.lumioagency.booking`;
   bấm **+ Capability** → *Push Notifications*; **+ Capability** → *Background Modes* → tick *Remote notifications*.
-- *General* → Supported Destinations: bỏ **iPad** (để không phải nộp ảnh iPad). Minimum Deployments: iOS 15.
+- *General* → Supported Destinations: **giữ iPad** (iPhone + iPad). Minimum Deployments: iOS 15.
+  - Tiệm dùng iPad làm màn check-in và màn hình khách, đặt **nằm ngang**. Một app chỉ-iPhone chạy trên iPad
+    ở chế độ "app iPhone": cửa sổ nhỏ, kẹt **dọc**, không xoay — và trang check-in tưởng là điện thoại.
+  - *General* → Deployment Info → iPad: tick đủ **Portrait, Upside Down, Landscape Left, Landscape Right**;
+    iPhone: chỉ **Portrait**. Bỏ tick *Requires full screen* (để iPad chia đôi màn hình được).
+  - Tương đương trong `ios/App/App/Info.plist`:
+    ```xml
+    <key>UISupportedInterfaceOrientations</key>
+    <array><string>UIInterfaceOrientationPortrait</string></array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+      <string>UIInterfaceOrientationPortrait</string>
+      <string>UIInterfaceOrientationPortraitUpsideDown</string>
+      <string>UIInterfaceOrientationLandscapeLeft</string>
+      <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    ```
+  - Có iPad thì App Store đòi thêm ảnh iPad 13" (xem `screenshots.md`).
 - *Info* → thêm các khoá trong `privacy-answers.md` mục C (Camera, Photo Library, ITSAppUsesNonExemptEncryption).
 - Display Name: `Lumio Booking`. Version 1.0.0, Build 1.
 

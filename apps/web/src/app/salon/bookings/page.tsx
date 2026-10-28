@@ -18,6 +18,7 @@ import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '.
 import { uiLocale } from '../../../lib/datetime';
 import { DateTimeField } from '../../../components/DateTimeField';
 import { withHoursOverride, type HoursRules } from '../../../lib/desk-hours';
+import { isBookable } from '../../../lib/bookable-staff';
 
 
 interface NamedRef {
@@ -287,7 +288,7 @@ function BookingsInner() {
         <CreateBookingForm
           token={token!}
           services={services}
-          staff={staff.filter((s) => s.isActive)}
+          staff={staff.filter(isBookable)}
           bookings={bookings}
           initial={prefill ?? undefined}
           salonTz={salonTz}
@@ -498,7 +499,7 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
   const [panel, setPanel] = useState<'none' | 'move' | 'staff'>('none');
   const active = ACTIVE_STATUSES.includes(b.status);
   const pending = b.status === 'PENDING';
-  const live = staff.filter((s) => s.isActive);
+  const live = staff.filter(isBookable);
 
   const iconBtn: React.CSSProperties = {
     width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 8,

@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { takesAppointmentsFor } from './bookable-role';
 import { Prisma, UserRole, StaffRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -260,7 +261,8 @@ export class StaffService {
     // Role drives RBAC; bookable visibility defaults from role but can be set
     // explicitly (e.g. an owner/manager who also takes appointments).
     const role = dto.staffRole ?? StaffRole.TECHNICIAN;
-    const takesAppointments = dto.takesAppointments ?? role === StaffRole.TECHNICIAN;
+    // A receptionist / waiter / kitchen is never bookable (bookable-role.ts).
+    const takesAppointments = takesAppointmentsFor(role, dto.takesAppointments);
 
     // Optional inline login. Validate intent + uniqueness before the txn, and
     // hash outside it so the transaction stays short.
@@ -340,7 +342,12 @@ export class StaffService {
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateStaffDto) {
     const tenantId = this.tenantId(user);
-    const before = await this.getById(user, id) as unknown as { staffRole: StaffRole; permissions?: unknown; userId: string | null; firstName: string; lastName: string | null }; // tenant ownership / 404
+    const before = await this.getById(user, id) as unknown as { staffRole: StaffRole; takesAppointments?: boolean; permissions?: unknown; userId: string | null; firstName: string; lastName: string | null }; // tenant ownership / 404
+    // The role decides first: a receptionist is never a technician, whatever the form says.
+    const role = dto.staffRole ?? before.staffRole;
+    const takes = dto.takesAppointments === undefined && dto.staffRole === undefined
+      ? undefined
+      : takesAppointmentsFor(role, dto.takesAppointments, { role: before.staffRole, takes: before.takesAppointments !== false });
 
     // Per-person screens: undefined = untouched, null = back to the role's
     // preset, a list = exactly those (owner-only areas dropped).
@@ -372,7 +379,7 @@ export class StaffService {
           ...payFields(dto),
           staffRole: dto.staffRole,
           ...(perms === undefined ? {} : { permissions: perms === null ? Prisma.DbNull : perms }),
-          takesAppointments: dto.takesAppointments,
+          takesAppointments: takes,
           bookingPriority: dto.bookingPriority,
         } as never,
       });

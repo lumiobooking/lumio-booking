@@ -17,6 +17,7 @@ import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
 import type { HoursRules } from '../lib/desk-hours';
 import { CreateBookingForm, type BookingFormBooking, type BookingFormService, type BookingFormStaff } from './CreateBookingForm';
+import { isBookable } from '../lib/bookable-staff';
 
 export interface NewBookingPrefill { staffId?: string; startLocal?: string; firstName?: string; lastName?: string; phone?: string }
 
@@ -86,7 +87,7 @@ export function NewBookingModal({ initial, bookings, onClose, onCreated }: {
             onCancel={onClose}
             token={token!}
             services={services}
-            staff={staff.filter((s) => s.isActive)}
+            staff={staff.filter(isBookable)}
             bookings={bookings}
             initial={initial}
             salonTz={tz}

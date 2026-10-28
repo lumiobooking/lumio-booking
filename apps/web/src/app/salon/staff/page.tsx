@@ -17,6 +17,7 @@ import { AccessBlock, LoginSection, PermissionChecklist, RoleMatrix, useAccessCa
 import { TimeOffPanel } from './TimeOffPanel';
 import { ind, uiIndustry } from '../../../lib/ui-industry';
 import { isTableIndustry } from '../../../lib/restaurant-till';
+import { FRONT_ONLY_ROLES } from '../../../lib/bookable-staff';
 
 interface Service {
   id: string;
@@ -107,13 +108,22 @@ function RolePicker({
           );
         })}
       </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer' }}>
-        <input type="checkbox" checked={takesAppointments} onChange={(e) => onChange(role, e.target.checked)} />
-        <span style={{ fontSize: 14, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{t('st.takesAppts')}</span>
-      </label>
-      <p style={{ color: takesAppointments ? 'var(--c64748b)' : 'var(--ink-warn)', fontSize: 12, marginTop: 6 }}>
-        {takesAppointments ? t('st.bookableHint') : t('st.notBookableHint')}
-      </p>
+      {/* The front desk, servers and the kitchen are never technicians (api staff/bookable-role.ts): no switch to offer. */}
+      {FRONT_ONLY_ROLES.includes(role) ? (
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, marginTop: 12, lineHeight: 1.5 }}>
+          {lang === 'vi' ? 'Tài khoản này chỉ làm việc quầy — không nhận khách, không hiện trong danh sách chọn thợ.' : 'This account works the desk only — never booked, never listed as a technician.'}
+        </p>
+      ) : (
+        <>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={takesAppointments} onChange={(e) => onChange(role, e.target.checked)} />
+            <span style={{ fontSize: 14, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{t('st.takesAppts')}</span>
+          </label>
+          <p style={{ color: takesAppointments ? 'var(--c64748b)' : 'var(--ink-warn)', fontSize: 12, marginTop: 6 }}>
+            {takesAppointments ? t('st.bookableHint') : t('st.notBookableHint')}
+          </p>
+        </>
+      )}
     </div>
   );
 }

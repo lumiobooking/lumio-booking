@@ -15,6 +15,7 @@ import { HOUR_PX, cardTier, fmtPhone, timeRange, useCardColor } from '../../../l
 import { CardBody, CardColorSwitch, cardLook, cardPad, WIDE_CARD_PX, type CardFace } from './CalCard';
 import { arrange, moveTo as moveId, type StaffLayout } from '../../../lib/staff-order';
 import { StaffOrderSheet } from './StaffOrderSheet';
+import { isBookable } from '../../../lib/bookable-staff';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -253,7 +254,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
 
   // Everyone bookable, in the salon's order (staff-order.ts) — hidden ones too, for the sheet.
   const bookable = useMemo(
-    () => arrange(staff.filter((s) => s.isActive && s.takesAppointments !== false), { order: layout.order, hidden: [] }),
+    () => arrange(staff.filter(isBookable), { order: layout.order, hidden: [] }),
     [staff, layout.order],
   );
   // A hidden technician still shows on a day she has a booking: a booking never vanishes.

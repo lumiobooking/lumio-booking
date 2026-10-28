@@ -10,7 +10,11 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: '/salon',
     scope: '/',
     display: 'standalone',
-    orientation: 'portrait',
+    // 'any', not 'portrait': the same app runs the salon's iPad / Android tablet
+    // at the counter — the check-in and customer screens stand LANDSCAPE. A
+    // portrait lock here kept an installed tablet app upright whichever way it
+    // was turned. (Phones still follow their own rotation lock.)
+    orientation: 'any',
     // A manifest is JSON the OS reads, not CSS the page reads: a var() here is
     // an invalid color that can break install/launch on the home screen.
     background_color: '#0f172a',

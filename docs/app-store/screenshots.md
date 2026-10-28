@@ -2,9 +2,10 @@
 
 ## Kích thước bắt buộc
 
-**App Store** (chỉ nộp iPhone — tắt iPad trong Xcode: target App → General → Supported Destinations bỏ iPad):
+**App Store** (iPhone + iPad — iPad cần để màn check-in / màn hình khách xoay ngang, xem `submission-guide.md`):
 - iPhone 6.9" — **1320 × 2868** (bắt buộc; 3–10 ảnh). Apple tự co cho các cỡ nhỏ hơn.
 - (tuỳ chọn) iPhone 6.5" — 1284 × 2778.
+- iPad 13" — **2064 × 2752** dọc hoặc **2752 × 2064** ngang (bắt buộc khi app có iPad; 3–10 ảnh). Nên chụp lịch, màn check-in ngang, màn hình khách ngang.
 
 **Google Play**:
 - Điện thoại: tối thiểu 2, tối đa 8; tỉ lệ 9:16, mỗi cạnh 320–3840 px → dùng **1080 × 1920** hoặc **1320 × 2868** như iOS.

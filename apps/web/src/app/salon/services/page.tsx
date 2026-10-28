@@ -15,6 +15,7 @@ import { ServiceImport } from '../../../components/ServiceImport';
 import { SearchBox, matchesQuery } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { ind } from '../../../lib/ui-industry';
+import { isBookable } from '../../../lib/bookable-staff';
 
 interface Service {
   id: string;
@@ -115,7 +116,8 @@ function ServicesInner() {
         apiFetch<{ booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } } & SettingsPromos>('/settings', { token }).catch(() => ({})),
       ]);
       setPromos(promosFrom(settings as SettingsPromos));
-      setStaff(staffList);
+      // Who performs a service: technicians, never the front desk.
+      setStaff(staffList.filter(isBookable));
       const b = (settings as { booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } }).booking ?? {};
       const code = b.currency ?? 'USD';
       setMoney({

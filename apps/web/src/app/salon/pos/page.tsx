@@ -26,6 +26,7 @@ import { buildReceiptHtml as buildBillHtml, buildReceiptText as buildBillText, r
 import { ind, uiIndustry, onUiIndustryChange } from '../../../lib/ui-industry';
 import { isTableIndustry } from '../../../lib/restaurant-till';
 import { RestaurantTill } from '../../../components/RestaurantTill';
+import { isBookable } from '../../../lib/bookable-staff';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null; imageUrl?: string | null }
@@ -460,7 +461,8 @@ function Register() {
         services: s.filter((x) => x.isActive),
         products: p.filter((x) => x.isActive),
         addons: a,
-        staff: st.filter((x) => x.isActive),
+        // The technicians a service line can be credited to — never the front desk.
+        staff: st.filter(isBookable),
         taxRate: settings.pos?.taxRatePercent ?? 0,
         cardSurchargePct: settings.pos?.cardSurchargePercent ?? 0,
         cardSurchargeOn: settings.pos?.cardSurchargeEnabled ?? false,

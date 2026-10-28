@@ -18,4 +18,6 @@ Files:
 - Phía web: `apps/web/src/lib/native.ts`, `components/NativeBridge.tsx` (push token, back button, splash).
 - Phía API: `apps/api/src/push/fcm.ts` — cần `FCM_SERVICE_ACCOUNT_JSON` trên Render.
 
+**iPad:** giữ iPad trong Supported Destinations và cho iPad xoay đủ 4 hướng (iPhone chỉ dọc) — màn check-in / màn hình khách trên iPad đặt nằm ngang. Chi tiết: `docs/app-store/submission-guide.md`.
+
 Không commit: `google-services.json`, `GoogleService-Info.plist`, keystore, `.p8`.

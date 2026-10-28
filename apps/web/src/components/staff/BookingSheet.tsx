@@ -19,6 +19,7 @@ import { ClientCard } from './ClientCard';
 import { apiFetch } from '../../lib/api';
 import { isMaskedContact } from '../../lib/contact-mask';
 import { useAuth } from '../../lib/auth';
+import { ClientFormsPanel } from '../forms/ClientFormsPanel';
 
 export interface StaffBooking {
   id: string;
@@ -79,6 +80,9 @@ export const REJECT_REASONS: { vi: string; en: string }[] = [
   { vi: 'Lý do khác', en: 'Other reason' },
 ];
 
+/** No forms on a booking that will not happen. */
+const FORMLESS = new Set(['CANCELLED', 'REJECTED', 'NO_SHOW']);
+
 export function BookingSheet({ booking, vi, currency, onClose, onAccept, onReject, onStart, startReject = false }: {
   booking: StaffBooking | null; vi: boolean; currency?: string;
   onClose: () => void;
@@ -130,6 +134,11 @@ export function BookingSheet({ booking, vi, currency, onClose, onAccept, onRejec
           )}
           {/* the client, close up — hers only (bookings/client-card) */}
           {b.customer && <ClientCard bookingId={b.id} token={token} vi={vi} />}
+          {/* Her client's forms before she arrives: what is signed, what is missing,
+              sign on this phone or text the link (massage / spa salons; draws
+              nothing when the salon has no forms). The API only answers for
+              bookings that are hers. */}
+          {b.customer && !FORMLESS.has(b.status) && <div style={{ marginTop: 12 }}><ClientFormsPanel appointmentId={b.id} /></div>}
           {/* Full number (the salon allows it): call / text. Otherwise the desk does it for her. */}
           {phone && !isMaskedContact(phone) ? (
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>

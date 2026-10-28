@@ -14,7 +14,10 @@ import {
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-const CACHE_MS = 60_000;
+// Short: invalidate() only clears THIS process, and the Messenger webhook may
+// land on another instance — an owner who saves a correction and texts the
+// page straight away must not get the old answer for a minute.
+const CACHE_MS = 15_000;
 const SOURCE_KINDS = ['thread', 'call', 'session', 'gap', 'manual'];
 
 export interface TurnInstructions {

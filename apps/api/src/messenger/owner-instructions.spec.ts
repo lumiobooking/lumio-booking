@@ -88,4 +88,23 @@ describe('the owner has the last word in chat', () => {
     expect(out).toBe('Hi! What can I book for you?');
     expect(mocked).toHaveBeenCalledTimes(1);
   });
+
+  it('a SALES-mode page obeys its owner too — a correction made in the Inbox changes every later reply on it', async () => {
+    const sales: Row[] = [
+      { id: 's1', tenantId: 't3', kind: 'answer', text: 'Social Care covers Facebook, Instagram and TikTok — Shorts and Yelp are not included.', triggers: ['Gói Social Care bao gồm những gì'], mode: 'meaning', channels: [], on: true, createdAt: new Date(4) },
+      { id: 'x2', tenantId: 't4', kind: 'never', text: 'Mention parking', triggers: [], mode: 'meaning', channels: [], on: true, createdAt: new Date(5) },
+    ];
+    mocked
+      .mockResolvedValueOnce(reply('Dạ gói Social Care gồm Facebook, Instagram, TikTok, Shorts, Yelp ạ.'))
+      .mockResolvedValueOnce(judge({ applies: ['A1'], violations: ['A1'], rewrite: '' }))
+      .mockResolvedValueOnce(reply('Dạ gói Social Care gồm đăng bài trên Facebook, Instagram và TikTok ạ.'))
+      .mockResolvedValueOnce(ok);
+    const svc = build(sales);
+    const text = 'Gói Marketing Lumio Social Care bao gồm những gì?';
+    const out = await svc.runAgent('t3', '', [{ role: 'user', content: text }], text, { mode: 'sales', leadEmail: null, channel: 'messenger' });
+    expect(out).not.toMatch(/Shorts|Yelp/);
+    const system = (mocked.mock.calls[0][0].system as { text: string }[]).map((b) => b.text).join('\n');
+    expect(system).toContain('THE OWNER\'S INSTRUCTIONS — HIGHEST PRIORITY');
+    expect(system).not.toContain('Mention parking');
+  });
 });

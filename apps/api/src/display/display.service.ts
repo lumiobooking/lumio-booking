@@ -25,6 +25,25 @@ interface PayTicket {
   techs: TechSplit[];
 }
 
+export interface DisplayBrand { salonName: string; salonLogo: string; salonAccent: string; salonWelcome: string; reviewUrl: string | null }
+const BRAND_CACHE_MS = 20_000;
+
+/**
+ * The state the display paints: the register's, with the salon's branding
+ * filled in. The salon's settings win over what the register sent (they are
+ * the fresher of the two); a field the settings leave blank keeps the
+ * register's. No state at all → the idle welcome, branded.
+ */
+export function withBrand(state: Record<string, unknown> | null, brand: DisplayBrand | null): Record<string, unknown> | null {
+  if (!brand) return state;
+  const base: Record<string, unknown> = state && typeof state === 'object' ? { ...state } : { status: 'idle', lines: [] };
+  for (const k of ['salonName', 'salonLogo', 'salonAccent', 'salonWelcome', 'reviewUrl'] as const) {
+    const v = brand[k];
+    if (v) base[k] = v;
+  }
+  return base;
+}
+
 /** On the ticket of a guest who stepped away mid check-in (kiosk "Still there?" ran out). */
 export const UNFINISHED_NOTE = 'Did not finish check-in on the tablet — ask about services at the chair';
 
@@ -109,9 +128,7 @@ export class DisplayService {
     if (!this.settings) return out;
     try {
       const brand = this.settings.brandingFrom(branding);
-      const review = await this.settings.getReviewSettings(tenantId);
-      const google = review.enabled ? await this.settings.effectiveGoogleReviewUrl(tenantId, review) : null;
-      if (google && slug) out.reviewUrl = `${publicWebBase()}/review/${encodeURIComponent(slug)}/salon`;
+      out.reviewUrl = await this.reviewLink(tenantId, slug);
       const mode = brand.ratingMode || 'auto';
       if (mode === 'manual' && brand.ratingCount > 0) out.rating = { value: Math.round(brand.ratingValue * 10) / 10, count: brand.ratingCount };
       if (mode === 'auto') {
@@ -124,6 +141,49 @@ export class DisplayService {
       out.panelQr = want !== 'checkin' && !out.reviewUrl ? 'checkin' : want;
     } catch { /* panel extras are best-effort */ }
     return out;
+  }
+
+  /**
+   * Where a review QR on the salon's own screens points. With the review
+   * program on: the salon's /review page (stars first, then Google). With it
+   * off but Google connected (a Business Profile, a Place ID or a pasted
+   * link): Google's own "write a review" page — a salon that connected its
+   * Google Maps listing gets the QR without a second switch to find. Null
+   * when there is no Google link at all.
+   */
+  private async reviewLink(tenantId: string, slug: string | null): Promise<string | null> {
+    if (!this.settings) return null;
+    const review = await this.settings.getReviewSettings(tenantId);
+    const google = await this.settings.effectiveGoogleReviewUrl(tenantId, review);
+    if (!google) return null;
+    return review.enabled && slug ? `${publicWebBase()}/review/${encodeURIComponent(slug)}/salon` : google;
+  }
+
+  /** Per salon, briefly: the display polls every second. Keyed by tenantId only. */
+  private readonly brandCache = new Map<string, { at: number; v: DisplayBrand }>();
+
+  /**
+   * What the customer display needs for its welcome screen, read from the
+   * salon's own settings: name, logo, accent, welcome photo, review QR.
+   * Before, only the register's last push carried these — a display paired
+   * while no register was open (or a register with an old cached catalog)
+   * showed a blank generic "Welcome" with no logo and no Google QR.
+   */
+  async displayBrand(tenantId: string): Promise<DisplayBrand> {
+    const hit = this.brandCache.get(tenantId);
+    if (hit && Date.now() - hit.at < BRAND_CACHE_MS) return hit.v;
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, branding: true } });
+    const b = (t?.branding ?? {}) as { logoUrl?: unknown; accentColor?: unknown; welcomeImageUrl?: unknown };
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const v: DisplayBrand = {
+      salonName: str(t?.name),
+      salonLogo: str(b.logoUrl),
+      salonAccent: str(b.accentColor),
+      salonWelcome: str(b.welcomeImageUrl),
+      reviewUrl: await this.reviewLink(tenantId, t?.slug ?? null).catch(() => null),
+    };
+    this.brandCache.set(tenantId, { at: Date.now(), v });
+    return v;
   }
 
   /**
@@ -481,9 +541,12 @@ export class DisplayService {
 
   /** Public: the paired device polls the current customer-facing state (no secrets). */
   async stateByToken(token: string) {
-    const s = await this.prisma.displaySession.findUnique({ where: { token }, select: { state: true, updatedAt: true } });
+    const s = await this.prisma.displaySession.findUnique({ where: { token }, select: { tenantId: true, state: true, updatedAt: true } });
     if (!s) throw new NotFoundException('This screen is not linked. Re-pair it from the register.');
-    return { state: s.state ?? null, at: s.updatedAt };
+    // The salon's own branding fills what the register did not send (or
+    // sent stale). Never fatal: the screen keeps working without it.
+    const brand = await this.displayBrand(s.tenantId).catch(() => null);
+    return { state: withBrand(s.state as Record<string, unknown> | null, brand), at: s.updatedAt };
   }
 
   /**

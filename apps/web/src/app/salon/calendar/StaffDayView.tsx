@@ -603,8 +603,8 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
               <div style={{ position: 'relative' }}>
                 <style>{'.lumio-cols::-webkit-scrollbar{display:none}'}</style>
                 <div ref={gridRef} className="lumio-cols" onScroll={gridEdges}
-                  style={{ overflowX: 'auto', scrollSnapType: 'x proximity', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', borderRadius: 14, border: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
-                  <div style={{ display: 'flex', width: 'max-content' }}>
+                  style={{ overflowX: 'auto', scrollSnapType: 'x proximity', scrollPaddingLeft: 44, WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', borderRadius: 14, border: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
+                  <div style={{ display: 'flex', width: 'max-content', minWidth: '100%' }}>
                     <div style={{ position: 'sticky', left: 0, zIndex: 4, width: 44, flexShrink: 0, background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)' }}>
                       <div style={{ height: 52, borderBottom: '1px solid var(--c1f2937)' }} />
                       <div style={{ position: 'relative', height: gH }}>
@@ -614,7 +614,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                     {onShift.map((r) => {
                       const lanes = place(r.live);
                       return (
-                        <div key={r.id} style={{ width: COLW, flexShrink: 0, borderRight: '1px solid var(--c1f2937)', scrollSnapAlign: 'start' }}>
+                        <div key={r.id} style={{ width: COLW, flexShrink: 0, flexGrow: 1, borderRight: '1px solid var(--c1f2937)', scrollSnapAlign: 'start' }}>
                           <button type="button" onClick={() => setFocus(r.id)} aria-label={vi ? `Chỉ xem lịch của ${r.name}` : `Show ${r.name} only`}
                             style={{ height: 52, width: '100%', boxSizing: 'border-box', border: 0, borderBottom: '1px solid var(--c1f2937)', background: 'transparent', display: 'flex', alignItems: 'center', gap: 8, padding: '0 8px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
                             {avatar(r, 28, 12)}

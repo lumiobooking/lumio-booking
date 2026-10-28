@@ -4057,9 +4057,12 @@ export class MessengerService implements OnModuleInit {
     // The owner's instructions to the AI (ai-brain/instructions.ts): the
     // highest-priority section of the prompt, the ones THIS message is about
     // pinned next to it, and a check of the reply before it goes (below).
-    // Booking mode only: the sales page is Lumio's own.
+    // Both modes: a page in SALES mode belongs to a tenant too (Lumio's own
+    // agency page is one), and its owner teaches it from the same Inbox —
+    // a correction saved there must change every later reply on that page,
+    // not only the booking bots'. Read by THIS tenantId only.
     const insCh = instructionChannel(ctx.channel);
-    const owner = this.instructions && ctx.mode === 'booking'
+    const owner = this.instructions
       ? await this.instructions.forTurn(tenantId, insCh, userText).catch(() => null)
       : null;
 
@@ -4824,7 +4827,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // with the instruction quoted; a second break sends the judge's
       // corrected reply (or, for one broken answer, the owner's own words).
       // A check that cannot run never holds a reply back.
-      if (owner && this.instructions && ctx.mode === 'booking' && text) {
+      if (owner && this.instructions && text) {
         const insLang = brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en');
         const chk = await this.instructions.check(tenantId, { turn: owner, channel: insCh, customer: userText, draft: text, lang: insLang, timeoutMs: 6000 }).catch(() => null);
         if (chk?.broken.length) {

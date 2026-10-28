@@ -164,10 +164,15 @@ export const FEED_NAMES = {
 } as const;
 export type FeedKind = keyof typeof FEED_NAMES;
 
-/** The file names of one upload: `<kind>_<ts>.json` and its descriptor. */
+/**
+ * The file names of one upload: `<kind>_<ts>.json` and its descriptor,
+ * named the way Google's feed guide says a descriptor must be:
+ * `<feed_name>-<generation_timestamp>.filesetdesc.json`
+ * (e.g. `reservewithgoogle.entity-1792144800.filesetdesc.json`).
+ */
 export function feedFileNames(kind: FeedKind, generatedAt: Date): { data: string; descriptor: string } {
   const ts = Math.floor(generatedAt.getTime() / 1000);
-  return { data: `${kind}_${ts}.json`, descriptor: `${kind}_${ts}.filesetdesc.json` };
+  return { data: `${kind}_${ts}.json`, descriptor: `${FEED_NAMES[kind]}-${ts}.filesetdesc.json` };
 }
 
 export function descriptor(kind: FeedKind, generatedAt: Date, dataFiles: string[]) {

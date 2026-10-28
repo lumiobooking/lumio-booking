@@ -58,7 +58,7 @@ describe('pre-order — on a reservation, one restaurant\'s menu only', () => {
     await svc.create(owner('r1'), dto([{ menuItemId: 'pho', qty: 2 }, { menuItemId: 'theirs', qty: 1 }, { menuItemId: 'old', qty: 1 }]));
     expect(menuFind.mock.calls[0][0].where.tenantId).toBe('r1');
     expect(created[0].notes).toBe('Window · Pre-order: 2× Phở bò');
-    const up = prisma.appointment.updateMany.mock.calls[0][0];
+    const up = prisma.appointment.updateMany.mock.calls.map(([a]: any) => a).find((a: any) => a.data?.status !== 'CONFIRMED');
     expect(up.where).toEqual({ id: 'ap1', tenantId: 'r1' });
     expect(up.data.preOrder).toEqual([{ id: 'pho', name: 'Phở bò', qty: 2, priceCents: 1500 }]);
   });
@@ -67,14 +67,15 @@ describe('pre-order — on a reservation, one restaurant\'s menu only', () => {
     const { svc, prisma, created } = make();
     await svc.create(owner('r1'), dto([{ menuItemId: 'theirs', qty: 3 }]));
     expect(created[0].notes).toBe('Window');
-    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+    // Only the desk's own confirm may write (a desk booking is confirmed on the spot).
+    expect(prisma.appointment.updateMany.mock.calls.filter(([a]: any) => a.data?.status !== 'CONFIRMED')).toHaveLength(0);
   });
 
   it('an address (a property to view, a client\'s home) is stored on the booking and in the notes', async () => {
     const { svc, prisma, created } = make();
     await svc.create(owner('r1'), { ...(dto(undefined) as object), notes: undefined, location: '  12  Main St,\n Austin ' } as never);
     expect(created[0].notes).toBe('Address: 12 Main St, Austin');
-    const up = prisma.appointment.updateMany.mock.calls[0][0];
+    const up = prisma.appointment.updateMany.mock.calls.map(([a]: any) => a).find((a: any) => a.data?.status !== 'CONFIRMED');
     expect(up.where).toEqual({ id: 'ap1', tenantId: 'r1' });
     expect(up.data).toEqual({ location: '12 Main St, Austin' });
   });
@@ -83,6 +84,7 @@ describe('pre-order — on a reservation, one restaurant\'s menu only', () => {
     const { svc, menuFind, prisma } = make();
     await svc.create(owner('r1'), dto(undefined));
     expect(menuFind).not.toHaveBeenCalled();
-    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+    // Only the desk's own confirm may write (a desk booking is confirmed on the spot).
+    expect(prisma.appointment.updateMany.mock.calls.filter(([a]: any) => a.data?.status !== 'CONFIRMED')).toHaveLength(0);
   });
 });

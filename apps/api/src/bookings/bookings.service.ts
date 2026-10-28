@@ -512,7 +512,9 @@ export class BookingsService {
     const tenantId = this.tenantId(user);
     const arrivedNow = clean.arrivedNow === true && arrivedNowApplies(new Date(clean.startTime), new Date());
     delete (clean as { arrivedNow?: boolean }).arrivedNow;
-    const created = await this.createForTenant(tenantId, clean, user.userId, source, null, { autoAssign, ...(arrivedNow ? { quiet: true } : {}) });
+    // Booked by the salon itself (on the phone, at the counter): the customer
+    // already agreed, so it is CONFIRMED on creation — no second confirm.
+    const created = await this.createForTenant(tenantId, clean, user.userId, source, null, { autoAssign, deskConfirm: true, ...(arrivedNow ? { quiet: true } : {}) });
     if (!arrivedNow || !created) return created;
     const ids = [(created as { id: string }).id];
     const at = new Date();
@@ -597,7 +599,15 @@ export class BookingsService {
      * the person who called is the group's contact.
      */
     /** `quiet` — the customer is at the counter (arrivedNow): no "your booking is confirmed" text. */
-    opts?: { autoAssign?: boolean; groupGuest?: boolean; quiet?: boolean },
+    /**
+     * `deskConfirm` — SERVER-SIDE CALLERS ONLY (BookingsService.create). The
+     * salon booked it itself, with the customer on the phone or at the counter:
+     * the booking is CONFIRMED as soon as it exists. Before, it sat at "Chờ
+     * xác nhận" and the desk had to confirm a booking it had just made. A
+     * salon that has technicians accept in the app (staffMustAccept) keeps the
+     * technician's accept step for a booking that has a technician.
+     */
+    opts?: { autoAssign?: boolean; groupGuest?: boolean; quiet?: boolean; deskConfirm?: boolean },
   ) {
     // Contact rules. Online (public) customer bookings MUST include a phone number
     // — it is the salon's primary way to reach the client and it cuts down on spam
@@ -954,6 +964,16 @@ export class BookingsService {
         const refreshed = await this.prisma.appointment.findFirst({ where: { id: appointment.id, tenantId }, include: BOOKING_INCLUDE });
         if (refreshed) finished = refreshed as typeof appointment;
       } catch { /* the booking stands; the lines can be assigned by hand */ }
+    }
+
+    if (opts?.deskConfirm && actorUserId) {
+      try {
+        const confirmed = await this.confirmDeskBooking(tenantId, finished as { id: string; status: AppointmentStatus; assignedStaffId: string | null });
+        if (confirmed) finished = confirmed as typeof appointment;
+      } catch (e) {
+        // The booking stands either way; the desk can still confirm by hand.
+        this.logger.warn(`desk booking ${appointment.id} not auto-confirmed: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
 
     // Fire-and-forget confirmation; never block/fail the booking on it.
@@ -3285,6 +3305,27 @@ export class BookingsService {
     }
   }
 
+  /**
+   * A booking the salon made itself is confirmed on the spot (see deskConfirm).
+   * Only a still-open PENDING / ASSIGNED booking moves; with staffMustAccept
+   * on, a booking that has a technician waits for that technician's accept.
+   * Returns the updated booking, or null when nothing changed.
+   */
+  private async confirmDeskBooking(tenantId: string, b: { id: string; status: AppointmentStatus; assignedStaffId: string | null }) {
+    if (b.status !== AppointmentStatus.PENDING && b.status !== AppointmentStatus.ASSIGNED) return null;
+    if (b.assignedStaffId) {
+      const rules = await this.settings.getBookingRules(tenantId).catch(() => null);
+      if (rules?.staffMustAccept) return null;
+    }
+    const now = new Date();
+    const r = await this.prisma.appointment.updateMany({
+      where: { id: b.id, tenantId, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED] } },
+      data: { status: AppointmentStatus.CONFIRMED, confirmedAt: now, customerConfirmedAt: now, responseDeadline: null },
+    });
+    if (!r.count) return null;
+    return this.prisma.appointment.findFirst({ where: { id: b.id, tenantId }, include: BOOKING_INCLUDE });
+  }
+
   /** Customer taps "Confirm" in a reminder. */
   async confirmByToken(token: string) {
     const id = this.verifyApptToken(token);
@@ -4100,14 +4141,17 @@ export class BookingsService {
     const updated = await this.prisma.$transaction(async (tx) => {
       await this.lockStaffSlot(tx, tenantId, staffId);
       await this.assertNoOverlap(tx, tenantId, staffId, booking.startTime, booking.endTime, booking.id);
+      // A confirmed (or arrived) visit only changes hands — the engine picking
+      // its technician must not send it back to "Chờ xác nhận".
+      const cur = await tx.appointment.findFirst({ where: { id: booking.id, tenantId }, select: { status: true } });
+      const keepStatus = cur?.status === AppointmentStatus.CONFIRMED || cur?.status === AppointmentStatus.ARRIVED;
       await tx.appointment.updateMany({
         where: { id: booking.id, tenantId },
         data: {
           assignedStaffId: staffId,
-          status: AppointmentStatus.ASSIGNED,
           assignedAt: new Date(),
-          responseDeadline: addMinutes(new Date(), 30),
           rejectedAt: null,
+          ...(keepStatus ? {} : { status: AppointmentStatus.ASSIGNED, responseDeadline: addMinutes(new Date(), 30) }),
         },
       });
       return tx.appointment.findFirst({ where: { id: booking.id, tenantId }, include: BOOKING_INCLUDE });

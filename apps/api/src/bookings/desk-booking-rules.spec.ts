@@ -93,7 +93,7 @@ describe('no technician chosen at the desk: the system picks one', () => {
     const { svc } = make();
     const spy = jest.spyOn(svc, 'createForTenant').mockResolvedValue({} as never);
     await svc.create(desk, dto(AT_1140_AM));
-    expect(spy.mock.calls[0][5]).toEqual({ autoAssign: true });
+    expect(spy.mock.calls[0][5]).toEqual({ autoAssign: true, deskConfirm: true });
     expect(spy.mock.calls[0][0]).toBe('tenant-a');
   });
 
@@ -102,7 +102,7 @@ describe('no technician chosen at the desk: the system picks one', () => {
     const spy = jest.spyOn(svc, 'createForTenant').mockResolvedValue({} as never);
     await svc.create(desk, dto(AT_1140_AM, { staffId: 'staff-1' }));
     await svc.create(desk, dto(AT_1140_AM, { autoAssign: false }));
-    expect(spy.mock.calls.map((c) => c[5])).toEqual([{ autoAssign: false }, { autoAssign: false }]);
+    expect(spy.mock.calls.map((c) => c[5])).toEqual([{ autoAssign: false, deskConfirm: true }, { autoAssign: false, deskConfirm: true }]);
   });
 
   it('never passes a receptionist’s outsideHours through', async () => {

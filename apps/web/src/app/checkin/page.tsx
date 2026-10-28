@@ -1,7 +1,7 @@
 'use client';
 
 // ---------------------------------------------------------------------------
-// Self check-in kiosk — the iPad the customer touches at the door.
+// Self check-in kiosk — the tablet the customer touches at the door.
 //
 // Runs beside the front desk, not instead of it: whatever the customer taps
 // lands in the same WAITING queue the receptionist types into, so either side
@@ -11,15 +11,25 @@
 // Pairs once with the salon's 6-character display code (the same code the
 // customer display uses), then talks to the backend with that token only.
 //
-// PHONE FIRST. The customer types their mobile number on a big keypad and the
-// salon answers "have we seen you before?" (POST /display/checkin-lookup):
-//   - a returning customer goes straight to the services, greeted by name,
-//     with today's booking or "same as last time" one tap away;
-//   - a new customer gives a first name, then (optionally) a birthday picked
-//     as MONTH then DAY on big buttons — no dd/mm/yyyy field, no year;
-//   - no phone at all: "check in with your name".
-// Older customers could not work the native date field or the old one-page
-// form; every target here is at least 56px and one decision per screen.
+// V2 (mockup "Check-in v2 — toàn màn hình", "Khi bàn phím bật lên" B4):
+//   - WELCOME screen ("Tap anywhere to check in"). That first tap is what lets
+//     the browser go full screen (no Chrome bar) and keep the screen awake.
+//   - PHONE FIRST on a big keypad; the salon is asked "seen this number?"
+//     (POST /display/checkin-lookup): a returning guest goes straight to the
+//     services, a new one gives a name, then (optionally) a birthday.
+//   - NAMES ON THE SALON'S OWN KEYBOARD. Android's keyboard covered the form
+//     (Chrome lays it OVER the page), so on the tablet the name is typed on
+//     big A–Z keys drawn by this page and the device keyboard never opens.
+//     "Phone keys" switches to the device keyboard for a name with accents.
+//     On a customer's own phone (arrived by QR) the device keyboard is used,
+//     the page resizes with it and goes compact.
+//   - ONE BAR at the top after the phone step — the coloured side panel only
+//     on the phone step, so the content has the screen.
+//   - WALKED AWAY? After a quiet spell "Still there?" counts down; then a guest
+//     who gave a name is SAVED and put in line ("services at the chair"),
+//     anyone else is cleared for the next person.
+//   - STAFF: hold the salon logo 3 s for the kiosk settings (full screen, keep
+//     awake, quiet time, device keyboard, disconnect). Per device.
 //
 // LIGHT, ON PURPOSE. This page has its own daylight palette (below), fixed,
 // independent of the owner's theme toggle. No `var(--c…)` tokens here.
@@ -28,12 +38,40 @@
 // step, and each becomes their own ticket on their own technician.
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useMemo, useState, CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, CSSProperties } from 'react';
 import { apiFetch } from '../../lib/api';
 import { useHorizontalScroll } from '../../lib/useHorizontalScroll';
+import { NAME_MAX, splitSalonName, typeInto } from '../../lib/kiosk-name';
 
 const TOKEN_KEY = 'lumio_checkin_token';
-const IDLE_RESET_MS = 90_000; // abandoned half-filled form clears itself
+const PREFS_KEY = 'lumio_checkin_prefs';
+/** Seconds the "Still there?" countdown runs before the kiosk acts on its own. */
+const STILL_THERE_SEC = 15;
+
+/** This device's kiosk settings (the staff sheet). Stored on the tablet only. */
+interface Prefs {
+  /** Go full screen on the first tap (hides the browser bar). */
+  fullscreen: boolean;
+  /** Ask the browser to keep the screen on. */
+  awake: boolean;
+  /** Quiet seconds before "Still there?". */
+  idleSec: number;
+  /** Use the device's own keyboard for names instead of the salon keys. */
+  deviceKeys: boolean;
+}
+const DEFAULT_PREFS: Prefs = { fullscreen: true, awake: true, idleSec: 90, deviceKeys: false };
+const IDLE_CHOICES = [60, 90, 120];
+function readPrefs(): Prefs {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') as Partial<Prefs>;
+    return {
+      fullscreen: raw.fullscreen !== false,
+      awake: raw.awake !== false,
+      idleSec: IDLE_CHOICES.includes(Number(raw.idleSec)) ? Number(raw.idleSec) : DEFAULT_PREFS.idleSec,
+      deviceKeys: raw.deviceKeys === true,
+    };
+  } catch { return { ...DEFAULT_PREFS }; }
+}
 
 interface Service {
   id: string;
@@ -72,7 +110,7 @@ interface Lookup {
   appointment?: { at: string; serviceIds: string[]; staffName: string | null } | null;
   lastVisit?: { at: string; serviceIds: string[]; staffName: string | null } | null;
 }
-type Step = 'phone' | 'about' | 'birthday' | 'services' | 'done';
+type Step = 'welcome' | 'phone' | 'name' | 'birthday' | 'services' | 'done';
 
 const SALE = '__sale';
 const POPULAR = '__popular';
@@ -121,17 +159,23 @@ const C = {
   price: '#15803d',
   bad: '#b91c1c',
   ok: '#16a34a',
+  soft: '#f1eee9',
 };
+
+type WakeSentinel = { release: () => Promise<void>; addEventListener?: (t: string, f: () => void) => void };
 
 export default function CheckInKiosk() {
   const [token, setToken] = useState<string | null>(null);
   // Arrived from the desk's QR on the customer's own phone: no "scan to check
-  // in on your phone" offer here — they already are.
+  // in on your phone" offer here — they already are — and no kiosk behaviour
+  // (no welcome screen, no full screen, the phone's own keyboard).
   const [viaQr, setViaQr] = useState(false);
+  const kiosk = !viaQr;
+  const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [pairInput, setPairInput] = useState('');
   const [pairErr, setPairErr] = useState<string | null>(null);
-  const [step, setStep] = useState<Step>('phone');
+  const [step, setStep] = useState<Step>('welcome');
   const [digits, setDigits] = useState('');
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [looking, setLooking] = useState(false);
@@ -140,7 +184,11 @@ export default function CheckInKiosk() {
   const [seated, setSeated] = useState(false);
   // Massage / spa: forms still to sign for this ticket — signed right here, on the iPad.
   const [formsToken, setFormsToken] = useState<string | null>(null);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '' });
+  // Salon keys: which name the keyboard is typing.
+  const [nameField, setNameField] = useState<'first' | 'last'>('first');
+  // The guest pressed "Phone keys": the device keyboard for this check-in.
+  const [nativeNow, setNativeNow] = useState(false);
   const [bMonth, setBMonth] = useState<number | null>(null);
   const [bDay, setBDay] = useState<number | null>(null);
   const [partySize, setPartySize] = useState(1);
@@ -156,15 +204,30 @@ export default function CheckInKiosk() {
   const [qrTurn, setQrTurn] = useState(0);
   // Add-ons picked, per person of the party (0 = the one checking in).
   const [extras, setExtras] = useState<Record<number, string[]>>({});
+  // "Still there?" — seconds left, or null when not showing.
+  const [still, setStill] = useState<number | null>(null);
+  // How the thank-you screen reads: finished, or saved for them after the countdown.
+  const [outcome, setOutcome] = useState<'done' | 'saved'>('done');
+  // The guest-name sheet on the salon keys (party member index), or null.
+  const [guestKeys, setGuestKeys] = useState<number | null>(null);
+  const [staffOpen, setStaffOpen] = useState(false);
+  const [confirmUnpair, setConfirmUnpair] = useState(false);
+  // The device keyboard is up (customer's phone / "Phone keys"): go compact.
+  const [kbOpen, setKbOpen] = useState(false);
+
+  const lastTouch = useRef(Date.now());
+  const wakeRef = useRef<WakeSentinel | null>(null);
 
   // Restore a previous pairing so the iPad comes back up ready after a reboot.
   // A phone arriving from the salon's QR carries ?c=CODE and pairs itself.
   useEffect(() => {
     let saved: string | null = null;
     try { saved = localStorage.getItem(TOKEN_KEY); } catch { /* private mode */ }
+    setPrefs(readPrefs());
     const code = new URLSearchParams(window.location.search).get('c');
     if (code) {
       setViaQr(true);
+      setStep('phone');
       apiFetch<{ token: string }>('/display/pair', { method: 'POST', body: { pairCode: code.toUpperCase() } })
         .then((r) => setToken(r.token))
         .catch(() => setToken(saved));
@@ -172,6 +235,13 @@ export default function CheckInKiosk() {
     }
     setToken(saved);
   }, []);
+
+  const savePrefs = (p: Prefs) => {
+    setPrefs(p);
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* private mode */ }
+    if (!p.fullscreen && typeof document !== 'undefined' && document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
+    if (!p.awake && wakeRef.current) { wakeRef.current.release().catch(() => undefined); wakeRef.current = null; }
+  };
 
   const loadMenu = useCallback(async (tk: string) => {
     try {
@@ -185,23 +255,68 @@ export default function CheckInKiosk() {
   useEffect(() => { if (token) loadMenu(token); }, [token, loadMenu]);
 
   const reset = useCallback(() => {
-    setForm({ firstName: '', lastName: '', email: '' });
+    setForm({ firstName: '', lastName: '' }); setNameField('first'); setNativeNow(false);
     setDigits(''); setLookup(null); setBMonth(null); setBDay(null); setPartySize(1);
-    setPicked([]); setGuests([]); setWho(0); setCat(null); setErr(null); setStep('phone');
+    setPicked([]); setGuests([]); setWho(0); setCat(null); setErr(null);
+    setStep(viaQr ? 'phone' : 'welcome');
     setEta(null); setSeated(false); setFormsToken(null); setExtras({});
+    setStill(null); setOutcome('done'); setGuestKeys(null); setStaffOpen(false); setConfirmUnpair(false);
+  }, [viaQr]);
+
+  // ---- Kiosk: full screen + screen awake, re-armed by any tap ---------------
+  // A browser only allows full screen from a tap, so the welcome screen's
+  // "Tap anywhere" is that tap — and any later tap puts it back if someone
+  // swiped out of it.
+  const enterKiosk = useCallback(() => {
+    if (!kiosk || !token) return;
+    // iPadOS Safari still spells it webkitRequestFullscreen.
+    const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+    const doc = document as Document & { webkitFullscreenElement?: Element | null };
+    if (prefs.fullscreen && !doc.fullscreenElement && !doc.webkitFullscreenElement) {
+      if (typeof el.requestFullscreen === 'function') el.requestFullscreen({ navigationUI: 'hide' }).catch(() => undefined);
+      else if (typeof el.webkitRequestFullscreen === 'function') { try { el.webkitRequestFullscreen(); } catch { /* not allowed here */ } }
+    }
+    const wl = (navigator as unknown as { wakeLock?: { request: (t: 'screen') => Promise<WakeSentinel> } }).wakeLock;
+    if (prefs.awake && !wakeRef.current && wl) {
+      wl.request('screen').then((s) => {
+        wakeRef.current = s;
+        s.addEventListener?.('release', () => { wakeRef.current = null; });
+      }).catch(() => undefined);
+    }
+  }, [kiosk, token, prefs.fullscreen, prefs.awake]);
+  useEffect(() => {
+    if (!kiosk) return;
+    const on = () => enterKiosk();
+    window.addEventListener('click', on);
+    return () => window.removeEventListener('click', on);
+  }, [kiosk, enterKiosk]);
+
+  // Any touch or key counts as "still here".
+  useEffect(() => {
+    const mark = () => { lastTouch.current = Date.now(); };
+    window.addEventListener('pointerdown', mark, true);
+    window.addEventListener('keydown', mark, true);
+    return () => { window.removeEventListener('pointerdown', mark, true); window.removeEventListener('keydown', mark, true); };
   }, []);
 
-  // Someone walks away mid-way; the next customer should meet a clean screen.
+  // The device keyboard is up when the page has shrunk well below its full
+  // height (the viewport resizes with the keyboard — see layout.tsx).
   useEffect(() => {
-    if (step === 'phone' && !digits) return;
-    if (step === 'done') return;
-    const id = window.setTimeout(reset, IDLE_RESET_MS);
-    return () => window.clearTimeout(id);
-  }, [step, digits, form, picked, guests, who, bMonth, bDay, reset]);
+    let full = window.innerHeight;
+    const check = () => {
+      const h = window.visualViewport?.height ?? window.innerHeight;
+      full = Math.max(full, window.innerHeight);
+      setKbOpen(h < full * 0.72);
+    };
+    check();
+    window.visualViewport?.addEventListener('resize', check);
+    window.addEventListener('resize', check);
+    return () => { window.visualViewport?.removeEventListener('resize', check); window.removeEventListener('resize', check); };
+  }, []);
 
   const panelQr = menu?.panelQr ?? 'checkin';
   useEffect(() => {
-    if (panelQr !== 'both' || step !== 'phone') return;
+    if (panelQr !== 'both' || (step !== 'phone' && step !== 'welcome')) return;
     const id = window.setInterval(() => setQrTurn((t) => 1 - t), 8000);
     return () => window.clearInterval(id);
   }, [panelQr, step]);
@@ -243,6 +358,11 @@ export default function CheckInKiosk() {
     [form.firstName, picked, guests, party, listOf],
   );
 
+  const returning = !!lookup?.returning;
+  // The salon's own keys for names: the paired tablet, unless staff turned on
+  // the device keyboard or this guest asked for it.
+  const salonKeys = kiosk && !prefs.deviceKeys && !nativeNow;
+
   const findMe = useCallback(async () => {
     if (!token || digits.length < MIN_DIGITS || looking) return;
     setLooking(true); setErr(null);
@@ -257,26 +377,15 @@ export default function CheckInKiosk() {
       setLooking(false);
     }
     setLookup(r);
+    setNameField('first');
     if (r.returning) {
       setForm((f) => ({ ...f, firstName: r.firstName ?? '' }));
       if (r.appointment?.serviceIds?.length) setPicked(r.appointment.serviceIds);
-      setStep(r.firstName ? 'services' : 'about');
+      setStep(r.firstName ? 'services' : 'name');
     } else {
-      setStep('about');
+      setStep('name');
     }
-    window.scrollTo({ top: 0 });
   }, [token, digits, looking]);
-
-  useEffect(() => {
-    if (step !== 'phone' || !menu) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key >= '0' && e.key <= '9') press(e.key);
-      else if (e.key === 'Backspace') press('del');
-      else if (e.key === 'Enter') void findMe();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [step, menu, press, findMe]);
 
   const current = people[Math.min(who, people.length - 1)] ?? people[0];
   const currentPicked = who === 0 ? picked : (guests[who - 1]?.picked ?? []);
@@ -285,10 +394,11 @@ export default function CheckInKiosk() {
     if (who === 0) { setPicked((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id])); return; }
     setGuests((gs) => gs.map((g, i) => (i === who - 1 ? { ...g, picked: g.picked.includes(id) ? g.picked.filter((x) => x !== id) : [...g.picked, id] } : g)));
   };
-  /** The party size buttons also make (or trim) one slot per guest. */
+  /** The party size also makes (or trims) one slot per guest. */
   const setParty = (n: number) => {
-    setPartySize(n);
-    setGuests((gs) => Array.from({ length: Math.min(n, MAX_PARTY) - 1 }, (_, i) => gs[i] ?? { name: '', picked: [] }));
+    const next = Math.max(1, Math.min(MAX_PARTY, n));
+    setPartySize(next);
+    setGuests((gs) => Array.from({ length: next - 1 }, (_, i) => gs[i] ?? { name: '', picked: [] }));
     setWho(0);
   };
   const everyone = people.flatMap((p) => p.list);
@@ -326,7 +436,12 @@ export default function CheckInKiosk() {
     }
   }
 
-  async function submit() {
+  const unpair = () => {
+    try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+    reset(); setMenu(null); setToken(null);
+  };
+
+  async function submit(opts: { unfinished?: boolean } = {}) {
     if (!token || busy) return;
     setBusy(true); setErr(null);
     try {
@@ -336,10 +451,10 @@ export default function CheckInKiosk() {
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim() || undefined,
           phone: digits || undefined,
-          email: form.email.trim() || undefined,
           birthDate: bMonth !== null && bDay !== null ? birthIso(bMonth, bDay) : undefined,
           partySize: party,
           serviceIds: picked,
+          ...(opts.unfinished ? { unfinished: true } : {}),
           ...(extrasOf(0).length ? { addonIds: extrasOf(0).map((a) => a.id) } : {}),
           ...(group ? { guests: guests.slice(0, party - 1).map((g, i) => ({ firstName: g.name.trim() || `Guest ${i + 2}`, serviceIds: g.picked, ...(extrasOf(i + 1).length ? { addonIds: extrasOf(i + 1).map((a) => a.id) } : {}) })) } : {}),
         },
@@ -347,17 +462,107 @@ export default function CheckInKiosk() {
       setEta(res?.estimate ?? null);
       setFormsToken(res?.formsToken ?? null);
       setSeated(!!res?.seated);
+      setOutcome(opts.unfinished ? 'saved' : 'done');
+      setStill(null);
       setStep('done');
-      // Thank-you screen, then ready for the next person: longer when there
-      // are forms to sign, or a review code to scan while they wait.
-      const showReview = !!lookup?.returning && !!menu?.reviewUrl;
-      window.setTimeout(reset, res?.formsToken ? 60000 : showReview ? 25000 : 9000);
     } catch (e) {
+      if (opts.unfinished) { reset(); return; }
       setErr(e instanceof Error ? e.message : 'Something went wrong. Please ask the front desk.');
     } finally {
       setBusy(false);
     }
   }
+
+  // ---- Still there? ----------------------------------------------------------
+  const working = !!menu && step !== 'welcome' && step !== 'done' && !(step === 'phone' && !digits);
+  // A guest who gave a name is saved and put in line; anyone else is cleared.
+  const canSave = form.firstName.trim().length > 0 && step !== 'phone';
+  useEffect(() => {
+    if (!working || still !== null || staffOpen) return;
+    lastTouch.current = Date.now();
+    const id = window.setInterval(() => {
+      if (Date.now() - lastTouch.current > prefs.idleSec * 1000) setStill(STILL_THERE_SEC);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [working, still, staffOpen, prefs.idleSec, step]);
+  const timeUp = useRef<() => void>(() => undefined);
+  timeUp.current = () => {
+    setStill(null);
+    if (canSave) void submit({ unfinished: true });
+    else reset();
+  };
+  useEffect(() => {
+    if (still === null) return;
+    if (still <= 0) { timeUp.current(); return; }
+    const id = window.setTimeout(() => setStill((s) => (s === null ? null : s - 1)), 1000);
+    return () => window.clearTimeout(id);
+  }, [still]);
+  const stillHere = () => { lastTouch.current = Date.now(); setStill(null); };
+
+  // Thank-you screen, then ready for the next person: longer when there are
+  // forms to sign, or a review code to scan while they wait. One timer, owned
+  // by the screen — pressing Done and starting the next guest cancels it.
+  useEffect(() => {
+    if (step !== 'done') return;
+    const showReview = returning && !!menu?.reviewUrl;
+    const id = window.setTimeout(reset, formsToken ? 60000 : showReview ? 25000 : 9000);
+    return () => window.clearTimeout(id);
+  }, [step, formsToken, returning, menu?.reviewUrl, reset]);
+
+  // ---- Name: the salon keys (and a real keyboard, when there is one) --------
+  const typeName = useCallback((k: string) => {
+    if (guestKeys !== null) {
+      setGuests((gs) => gs.map((g, i) => (i === guestKeys - 1 ? { ...g, name: typeInto(g.name, k) } : g)));
+      return;
+    }
+    setForm((f) => (nameField === 'first' ? { ...f, firstName: typeInto(f.firstName, k) } : { ...f, lastName: typeInto(f.lastName, k) }));
+  }, [nameField, guestKeys]);
+
+  const afterName = useCallback(() => {
+    setStep(returning || !digits ? 'services' : 'birthday');
+  }, [returning, digits]);
+  const nameNext = useCallback(() => {
+    if (nameField === 'first') {
+      if (!form.firstName.trim()) return;
+      if (returning || !salonKeys) { afterName(); return; }
+      setNameField('last');
+      return;
+    }
+    afterName();
+  }, [nameField, form.firstName, returning, salonKeys, afterName]);
+
+  useEffect(() => {
+    if (!menu || staffOpen || still !== null) return;
+    const keysUp = (step === 'name' && salonKeys) || guestKeys !== null;
+    if (step !== 'phone' && !keysUp) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (step === 'phone' && guestKeys === null) {
+        if (e.key >= '0' && e.key <= '9') press(e.key);
+        else if (e.key === 'Backspace') press('del');
+        else if (e.key === 'Enter') void findMe();
+        return;
+      }
+      if (/^[a-zA-Z]$/.test(e.key) || e.key === ' ' || e.key === '-' || e.key === "'") { e.preventDefault(); typeName(e.key); }
+      else if (e.key === 'Backspace') { e.preventDefault(); typeName('del'); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (guestKeys !== null) setGuestKeys(null); else nameNext(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [step, menu, press, findMe, salonKeys, guestKeys, typeName, nameNext, staffOpen, still]);
+
+  // ---- Staff: hold the salon logo 3 seconds ---------------------------------
+  const holdTimer = useRef<number | null>(null);
+  const held = useRef(false);
+  const holdProps = kiosk ? {
+    onPointerDown: () => {
+      held.current = false;
+      holdTimer.current = window.setTimeout(() => { held.current = true; setStaffOpen(true); setConfirmUnpair(false); }, 3000);
+    },
+    onPointerUp: () => { if (holdTimer.current) window.clearTimeout(holdTimer.current); },
+    onPointerLeave: () => { if (holdTimer.current) window.clearTimeout(holdTimer.current); },
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+  } : {};
 
   // ---- Pairing ------------------------------------------------------------
   if (!token) {
@@ -366,7 +571,7 @@ export default function CheckInKiosk() {
         <style>{baseCss}</style>
         <div style={{ ...panel, maxWidth: 520, textAlign: 'center', padding: 'clamp(28px, 6vw, 44px)' }}>
           <Monogram accent={accent} size={72} />
-          <h1 style={{ ...serifTitle, fontSize: 32, margin: '18px 0 8px' }}>Connect this iPad</h1>
+          <h1 style={{ ...titleStyle, fontSize: 32, margin: '18px 0 8px' }}>Connect this tablet</h1>
           <p style={{ color: C.muted, fontSize: 17, lineHeight: 1.55, margin: '0 0 26px' }}>
             Enter the 6-character shop code from the salon dashboard. You only do this once.
           </p>
@@ -377,6 +582,7 @@ export default function CheckInKiosk() {
             placeholder="ABC123"
             autoCapitalize="characters"
             autoCorrect="off"
+            autoComplete="off"
             style={{ ...bigInput, textAlign: 'center', letterSpacing: 10, fontSize: 34, fontWeight: 700, minHeight: 72 }}
           />
           {pairErr && <div style={{ color: C.bad, fontSize: 15, marginTop: 12 }}>{pairErr}</div>}
@@ -392,23 +598,89 @@ export default function CheckInKiosk() {
     return <main style={screen}><div style={{ color: C.muted, fontSize: 20 }}>Loading…</div></main>;
   }
 
+  const brand = splitSalonName(menu.salonName);
   const firstShown = form.firstName.trim() || 'friend';
-  const returning = !!lookup?.returning;
+  const showCheckinQr = !viaQr && !!menu.checkinUrl && (panelQr === 'checkin' || (panelQr === 'both' && qrTurn === 0) || !menu.reviewUrl);
+  const qrUrl = showCheckinQr ? menu.checkinUrl : menu.reviewUrl;
+  const qrKind: 'checkin' | 'review' = showCheckinQr ? 'checkin' : 'review';
 
-  // ---- Thank you ----------------------------------------------------------
-  if (step === 'done') {
-    const showReview = returning && !!menu.reviewUrl;
+  const staffSheet = staffOpen && (
+    <StaffSheet
+      prefs={prefs} onChange={savePrefs} onClose={() => { setStaffOpen(false); setConfirmUnpair(false); }}
+      confirmUnpair={confirmUnpair} onUnpair={() => (confirmUnpair ? unpair() : setConfirmUnpair(true))} accent={accent}
+    />
+  );
+  const stillSheet = still !== null && (
+    <StillThere
+      seconds={still} name={form.firstName.trim()} canSave={canSave} accent={accent} busy={busy}
+      onHere={stillHere} onSaveNow={() => timeUp.current()} onStartOver={reset}
+    />
+  );
+
+  // ---- Welcome (the paired tablet, between guests) ---------------------------
+  if (step === 'welcome') {
     return (
-      <main style={{ ...screen, ...accentVar(accent), background: accent, color: '#fff', alignItems: 'stretch', padding: 0 }}>
+      <main className="ck-page" style={{ ...screen, ...accentVar(accent), padding: 0, display: 'block' }}>
+        <style>{baseCss + layoutCss}</style>
+        <div className="ck-welcome">
+          <button type="button" className="ck-wel-go" style={{ background: accent }}
+            onClick={() => { if (held.current) { held.current = false; return; } enterKiosk(); setStep('phone'); }}>
+            <span aria-hidden className="ck-deco1" />
+            <span aria-hidden className="ck-deco2" />
+            <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 16 }} {...holdProps}>
+              <SalonMark menu={menu} accent={accent} size={68} />
+              <BrandName brand={brand} size={30} />
+            </span>
+            {menu.rating && menu.rating.count > 0 && (
+              <span style={{ ...liveChip, position: 'relative', alignSelf: 'flex-start', fontSize: 16, minHeight: 38 }}>
+                <span style={{ color: '#fcd34d' }}>★</span> {menu.rating.value.toFixed(1)} · {menu.rating.count.toLocaleString('en-US')} Google reviews
+              </span>
+            )}
+            <span style={{ flex: 1 }} />
+            <span className="ck-wel-big">Tap anywhere<br />to check in</span>
+            <span style={{ position: 'relative', fontSize: 'clamp(17px, 2.4vh, 22px)', opacity: 0.94, textAlign: 'left' }}>Takes about 20 seconds. Been here before? Just your number.</span>
+            <span className="ck-wel-cta" style={{ color: accent }}>Start check-in →</span>
+          </button>
+          <aside className="ck-wel-side">
+            {qrUrl ? (
+              <>
+                <span style={{ ...eyebrow, color: C.muted }}>{qrKind === 'checkin' ? 'Someone using the tablet?' : 'Love your nails?'}</span>
+                <b style={{ fontSize: 'clamp(22px, 3vh, 28px)', lineHeight: 1.15 }}>{qrKind === 'checkin' ? 'Check in on your phone' : 'Review us on Google'}</b>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qrSrc(qrUrl, 400)} alt={qrKind === 'checkin' ? 'QR code to check in on your phone' : 'QR code to review us on Google'}
+                  style={{ alignSelf: 'center', width: 'clamp(150px, 27vh, 230px)', height: 'auto', aspectRatio: '1 / 1', display: 'block', borderRadius: 16, border: `1.5px solid ${C.line}`, padding: 10, background: '#fff' }} />
+                <span style={{ fontSize: 16, color: C.ink2, textAlign: 'center' }}>Point your camera here — no app needed.</span>
+              </>
+            ) : (
+              <span style={{ fontSize: 18, color: C.ink2, lineHeight: 1.5 }}>Welcome! Tap the screen to let us know you’re here.</span>
+            )}
+            <span className="ck-wel-spacer" style={{ flex: 1 }} />
+            {menu.promo && menu.promo.percent > 0 && <div className="ck-wel-offer"><OfferCard menu={menu} accent={accent} light /></div>}
+          </aside>
+        </div>
+        {staffSheet}
+      </main>
+    );
+  }
+
+  // ---- Thank you / saved for you --------------------------------------------
+  if (step === 'done') {
+    const showReview = returning && !!menu.reviewUrl && outcome === 'done';
+    const saved = outcome === 'saved';
+    return (
+      <main className="ck-page" style={{ ...screen, ...accentVar(accent), background: accent, color: '#fff', alignItems: 'stretch', padding: 0 }}>
         <style>{baseCss + layoutCss}</style>
         <div className="ck-done">
           <span style={{ width: 'clamp(72px, 10vh, 96px)', height: 'clamp(72px, 10vh, 96px)', borderRadius: '50%', background: '#fff', color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="50%" height="50%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
           </span>
-          <div style={{ ...eyebrow, color: 'rgba(255,255,255,0.9)', fontSize: 15 }}>You&rsquo;re checked in</div>
-          <h1 style={{ ...serifTitle, color: '#fff', fontSize: 'clamp(34px, 6vw, 64px)', lineHeight: 1.05, margin: 0 }}>Thank you, {firstShown}!</h1>
+          <div style={{ ...eyebrow, color: 'rgba(255,255,255,0.9)', fontSize: 15 }}>{saved ? 'We saved your spot' : 'You’re checked in'}</div>
+          <h1 style={{ ...titleStyle, color: '#fff', fontSize: 'clamp(34px, 6vw, 64px)', lineHeight: 1.05, margin: 0 }}>
+            {saved ? `You’re on the list, ${firstShown}.` : `Thank you, ${firstShown}!`}
+          </h1>
           <p style={{ fontSize: 'clamp(18px, 2.6vw, 24px)', lineHeight: 1.45, margin: 0 }}>
-            {seated ? 'Your technician is getting ready for you.' : group ? `Please have a seat — we’ll be with all ${party} of you shortly.` : 'Please have a seat — we’ll be with you shortly.'}
+            {saved ? 'We kept your details and your place in line. The front desk will help you choose your services.'
+              : seated ? 'Your technician is getting ready for you.' : group ? `Please have a seat — we’ll be with all ${party} of you shortly.` : 'Please have a seat — we’ll be with you shortly.'}
           </p>
           <div className="ck-tiles">
             <div className="ck-tile">
@@ -426,7 +698,7 @@ export default function CheckInKiosk() {
               <b style={{ ...tileBig, fontSize: 'clamp(22px, 2.6vw, 30px)', lineHeight: 1.2 }}>{group ? people.map((p) => p.name).join(', ') : firstShown}</b>
             </div>
           </div>
-          {formsToken && (
+          {formsToken && !saved && (
             <button onClick={() => { window.location.href = `/sign/${formsToken}?return=${encodeURIComponent('/checkin')}`; }}
               style={{ ...primary('#fff'), color: accent, boxShadow: 'none', alignSelf: 'flex-start' }}>
               Please sign your forms (1 min) · Ký phiếu
@@ -455,156 +727,110 @@ export default function CheckInKiosk() {
   }
 
   // ---- The flow ------------------------------------------------------------
-  const path = returning ? (lookup?.firstName ? ['Your mobile', 'Services'] : ['Your mobile', 'Your name', 'Services']) : ['Your mobile', 'About you', 'Services'];
+  const path = returning ? (lookup?.firstName ? ['Mobile', 'Services'] : ['Mobile', 'Your name', 'Services']) : ['Mobile', 'About you', 'Services'];
   const idx = step === 'phone' ? 0 : step === 'services' ? path.length - 1 : 1;
-  const showCheckinQr = !viaQr && !!menu.checkinUrl && (panelQr === 'checkin' || (panelQr === 'both' && qrTurn === 0) || !menu.reviewUrl);
-  const qrUrl = showCheckinQr ? menu.checkinUrl : menu.reviewUrl;
-  const qrKind: 'checkin' | 'review' = showCheckinQr ? 'checkin' : 'review';
   const lastVisit = lookup?.lastVisit && lookup.lastVisit.serviceIds.length ? lookup.lastVisit : null;
   const lastList = lastVisit ? listOf(lastVisit.serviceIds) : [];
   const lastApplied = lastList.length > 0 && lastList.every((s) => picked.includes(s.id)) && picked.length === lastList.length;
   const appt = lookup?.appointment ?? null;
   const goBack = () => {
-    if (step === 'about') { setStep('phone'); return; }
-    if (step === 'birthday') { setStep('about'); return; }
+    if (step === 'name') {
+      if (salonKeys && nameField === 'last') { setNameField('first'); return; }
+      setStep('phone'); return;
+    }
+    if (step === 'birthday') { setStep('name'); setNameField(salonKeys ? 'last' : 'first'); return; }
     if (step === 'services') {
       if (group && who > 0) { setWho(who - 1); return; }
-      setStep(returning ? (lookup?.firstName ? 'phone' : 'about') : digits ? 'birthday' : 'about');
+      if (returning && lookup?.firstName) { setStep('phone'); return; }
+      if (!returning && digits) { setStep('birthday'); return; }
+      setStep('name'); setNameField(salonKeys && !returning ? 'last' : 'first');
     }
   };
-  const aboutNext = () => {
-    if (!form.firstName.trim()) return;
-    setStep(returning ? 'services' : 'birthday');
-    window.scrollTo({ top: 0 });
-  };
 
-  return (
-    <main className="ck-page" style={{ ...screen, ...accentVar(accent), alignItems: 'stretch', padding: 0, display: 'block' }}>
-      <style>{baseCss + layoutCss}</style>
-      <div className="ck-shell">
-        {/* ---- Side panel (iPad landscape and up) ---- */}
-        <aside className="ck-side" style={{ background: accent, color: '#fff' }}>
-          <span aria-hidden className="ck-deco1" />
-          <span aria-hidden className="ck-deco2" />
-          <div className="ck-side-in">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <SalonMark menu={menu} accent={accent} size={58} />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ ...eyebrow, color: 'rgba(255,255,255,0.85)' }}>Welcome to</div>
-                <div style={{ ...serifTitle, color: '#fff', fontSize: 'clamp(20px, 1.9vw, 26px)', lineHeight: 1.15 }}>{menu.salonName}</div>
-              </div>
-            </div>
+  const topBar = (
+    <header className="ck-bar">
+      <button type="button" className="ck-iconbtn" aria-label="Back" onClick={goBack}>
+        <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 6l-6 6 6 6" /></svg>
+      </button>
+      <span className="ck-bar-brand" {...holdProps}>
+        <SalonMark menu={menu} accent={accent} size={36} />
+        <span className="ck-bar-name">{brand.name}</span>
+      </span>
+      <ol className="ck-steps" aria-label={`Step ${idx + 1} of ${path.length}`}>
+        {path.map((n, i) => (
+          <li key={n} className={i === idx ? 'on' : i < idx ? 'past' : ''}>
+            <span className="ck-dot" style={i < idx ? { background: accent, borderColor: accent, color: '#fff' } : i === idx ? { background: C.ink, borderColor: C.ink, color: '#fff' } : undefined}>{i < idx ? '✓' : i + 1}</span>
+            <span className="ck-steplbl">{n}</span>
+          </li>
+        ))}
+      </ol>
+      <span className="ck-steps-sm">Step {idx + 1} of {path.length}</span>
+      <button type="button" className="ck-textbtn" onClick={reset}>Start over</button>
+    </header>
+  );
+
+  // ---- Phone ----------------------------------------------------------------
+  if (step === 'phone') {
+    return (
+      <main className={`ck-page${kbOpen ? ' ck-kb' : ''}`} style={{ ...screen, ...accentVar(accent), padding: 0, display: 'block' }}>
+        <style>{baseCss + layoutCss}</style>
+        <div className="ck-app ck-row">
+          <aside className="ck-rail" style={{ background: accent }}>
+            <span aria-hidden className="ck-deco1" />
+            <span aria-hidden className="ck-deco2" />
+            <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12 }} {...holdProps}>
+              <SalonMark menu={menu} accent={accent} size={54} />
+              <BrandName brand={brand} size={22} />
+            </span>
             {menu.rating && menu.rating.count > 0 && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <span style={liveChip}><span style={{ color: '#fcd34d' }}>★</span> {menu.rating.value.toFixed(1)} · {menu.rating.count} reviews</span>
-              </div>
+              <span style={{ ...liveChip, position: 'relative', alignSelf: 'flex-start' }}><span style={{ color: '#fcd34d' }}>★</span> {menu.rating.value.toFixed(1)} · {menu.rating.count.toLocaleString('en-US')} reviews</span>
             )}
-
-            {step === 'phone' ? (
-              <>
-                {qrUrl && (
-                  <div className="ck-qrcard">
-                    <span style={{ ...eyebrow, color: accent }}>{qrKind === 'checkin' ? 'Skip the line' : 'Love your nails?'}</span>
-                    <b style={{ fontSize: 'clamp(18px, 1.7vw, 22px)', lineHeight: 1.2, color: C.ink }}>{qrKind === 'checkin' ? 'Check in on your phone' : 'Review us on Google'}</b>
-                    {qrKind === 'review' && <span aria-label="5 stars" style={{ color: '#f59e0b', fontSize: 18, letterSpacing: 2 }}>★★★★★</span>}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={qrSrc(qrUrl, 360)} alt={qrKind === 'checkin' ? 'QR code to check in on your phone' : 'QR code to review us on Google'}
-                      style={{ width: 'clamp(120px, 17vh, 180px)', height: 'auto', aspectRatio: '1 / 1', display: 'block', borderRadius: 12, border: `1.5px solid ${C.line}`, padding: 6, background: '#fff' }} />
-                    <span style={{ fontSize: 14, lineHeight: 1.45, color: C.ink2 }}>
-                      {qrKind === 'checkin' ? 'Someone at the iPad? Point your camera here and check in from your seat.' : 'Point your camera here — it takes a minute and means the world to us.'}
-                    </span>
-                    {panelQr === 'both' && menu.reviewUrl && !viaQr && (
-                      <span style={{ display: 'flex', gap: 6 }} aria-hidden>
-                        <span style={{ width: qrTurn === 0 ? 22 : 6, height: 6, borderRadius: 6, background: qrTurn === 0 ? accent : C.line }} />
-                        <span style={{ width: qrTurn === 1 ? 22 : 6, height: 6, borderRadius: 6, background: qrTurn === 1 ? accent : C.line }} />
-                      </span>
-                    )}
-                  </div>
-                )}
-                {menu.promo && menu.promo.percent > 0 && <OfferCard menu={menu} accent={accent} />}
-              </>
-            ) : (
-              <>
-                <div style={{ ...serifTitle, color: '#fff', fontSize: 'clamp(22px, 2vw, 28px)' }}>
-                  {form.firstName.trim() ? (returning ? `Hi ${form.firstName.trim()}, welcome back!` : `Hi ${form.firstName.trim()}!`) : 'Almost there'}
-                </div>
-                <ol className="ck-stepbox">
-                  {path.map((name, i) => (
-                    <li key={name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{
-                        width: 34, height: 34, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800,
-                        ...(i <= idx ? { background: '#fff', color: accent } : { border: '2px solid rgba(255,255,255,0.6)', color: '#fff' }),
-                      }}>{i < idx ? '✓' : i + 1}</span>
-                      <span style={{ fontSize: 17, fontWeight: i === idx ? 800 : 600, opacity: i <= idx ? 1 : 0.8 }}>{name}</span>
-                    </li>
-                  ))}
-                </ol>
-                <div className="ck-visit">
-                  <span style={{ ...eyebrow, color: accent }}>Your visit</span>
-                  {pickedCount === 0 ? (
-                    <span style={{ fontSize: 15, color: C.ink2, lineHeight: 1.45 }}>Your services will show up here as you pick them.</span>
-                  ) : (
-                    <>
-                      {people.map((p, i) => [...p.list.map((s) => ({ k: `${i}-${s.id}`, n: s.name, c: payCents(s) })), ...extrasOf(i).map((a) => ({ k: `${i}-x-${a.id}`, n: `+ ${a.name}`, c: a.priceCents }))]
-                        .map((l) => (
-                          <span key={l.k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 15.5, color: C.ink }}>
-                            <span style={{ minWidth: 0 }}>{group ? `${p.name}: ` : ''}{l.n}</span><b style={{ fontVariantNumeric: 'tabular-nums' }}>{money(l.c)}</b>
-                          </span>
-                        )))}
-                      <span style={{ display: 'flex', justifyContent: 'space-between', gap: 10, paddingTop: 8, borderTop: `1px dashed ${C.line}`, fontSize: 15, color: C.ink2 }}>
-                        <span>{mins(totalMinutes) ? `~${mins(totalMinutes)}` : 'Estimate'}</span><b style={{ color: C.ink, fontVariantNumeric: 'tabular-nums' }}>{money(totalCents)}</b>
-                      </span>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
-            <div style={{ marginTop: 'auto', fontSize: 13.5, color: 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <LockIcon /> Your details are seen only by the salon.
-            </div>
-          </div>
-        </aside>
-
-        <section className="ck-main">
-          {/* ---- Band (iPad portrait and phones) ---- */}
-          <header className="ck-top" style={{ background: accent, color: '#fff' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <SalonMark menu={menu} accent={accent} size={44} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ ...serifTitle, color: '#fff', fontSize: 19, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{menu.salonName}</div>
-                <div style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.85)' }}>Step {idx + 1} of {path.length} · {path[idx]}</div>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${path.length}, minmax(0, 1fr))`, gap: 6 }}>
-              {path.map((n, i) => <span key={n} style={{ height: 5, borderRadius: 5, background: i <= idx ? '#fff' : 'rgba(255,255,255,0.35)' }} />)}
-            </div>
-            {step === 'phone' && qrUrl && (
-              <div className="ck-bandqr">
+            {qrUrl && (
+              <section className="ck-qrrow" aria-label={qrKind === 'checkin' ? 'Check in on your phone' : 'Review us on Google'}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrSrc(qrUrl, 240)} alt={qrKind === 'checkin' ? 'QR code to check in on your phone' : 'QR code to review us on Google'} style={{ width: 92, height: 92, flexShrink: 0, display: 'block' }} />
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                <img src={qrSrc(qrUrl, 300)} alt={qrKind === 'checkin' ? 'QR code to check in on your phone' : 'QR code to review us on Google'}
+                  style={{ width: 'clamp(92px, 15vh, 120px)', height: 'auto', aspectRatio: '1 / 1', display: 'block', flexShrink: 0 }} />
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                   <span style={{ ...eyebrow, color: accent }}>{qrKind === 'checkin' ? 'Skip the line' : 'Love your nails?'}</span>
-                  <b style={{ fontSize: 18, color: C.ink }}>{qrKind === 'checkin' ? 'Check in on your phone' : 'Review us on Google'}</b>
-                  <span style={{ fontSize: 14, color: C.ink2 }}>Open your camera and point it at the code.</span>
+                  <b style={{ fontSize: 17, lineHeight: 1.2, color: C.ink }}>{qrKind === 'checkin' ? 'Check in on your phone' : 'Review us on Google'}</b>
+                  <span style={{ fontSize: 13.5, lineHeight: 1.4, color: C.ink2 }}>{qrKind === 'checkin' ? 'Point your camera here.' : 'Takes a minute — thank you!'}</span>
                 </span>
-              </div>
+              </section>
             )}
-          </header>
-
-          <div className="ck-body">
-            {step !== 'phone' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                <button type="button" onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '10px 18px' }}>← Back</button>
-                <span style={{ flex: 1 }} />
-                <span className="ck-eyebrow" style={eyebrow}>Step {idx + 1} of {path.length}</span>
-              </div>
-            )}
-
-            {/* ---- Phone ---- */}
-            {step === 'phone' && (
+            <span style={{ flex: 1 }} />
+            {menu.promo && menu.promo.percent > 0 && <OfferCard menu={menu} accent={accent} />}
+            <span style={{ position: 'relative', fontSize: 13, color: 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', gap: 8 }}><LockIcon /> Only the salon sees your details.</span>
+          </aside>
+          <section className="ck-col">
+            <header className="ck-mhead" style={{ background: accent }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }} {...holdProps}>
+                <SalonMark menu={menu} accent={accent} size={44} />
+                <BrandName brand={brand} size={19} />
+              </span>
+              {step === 'phone' && qrUrl && (
+                <div className="ck-bandqr">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={qrSrc(qrUrl, 240)} alt={qrKind === 'checkin' ? 'QR code to check in on your phone' : 'QR code to review us on Google'} style={{ width: 84, height: 84, flexShrink: 0, display: 'block' }} />
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                    <span style={{ ...eyebrow, color: accent }}>{qrKind === 'checkin' ? 'Skip the line' : 'Love your nails?'}</span>
+                    <b style={{ fontSize: 17, color: C.ink }}>{qrKind === 'checkin' ? 'Check in on your phone' : 'Review us on Google'}</b>
+                  </span>
+                </div>
+              )}
+            </header>
+            <div className="ck-scroll">
               <div className="ck-phone">
-                <h1 style={{ ...serifTitle, fontSize: 'clamp(26px, 3.4vw, 38px)', margin: 0 }}>What&rsquo;s your mobile number?</h1>
-                <p style={{ ...stepHint, margin: 0, fontSize: 'clamp(16px, 1.8vw, 19px)' }}>Been here before? That&rsquo;s all we need — we&rsquo;ll remember the rest.</p>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  {kiosk && (
+                    <button type="button" className="ck-iconbtn" aria-label="Back to the welcome screen" onClick={reset} style={{ marginTop: 4 }}>
+                      <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 6l-6 6 6 6" /></svg>
+                    </button>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                    <h1 style={{ ...titleStyle, fontSize: 'clamp(26px, 4.6vh, 38px)', margin: 0 }}>What&rsquo;s your mobile number?</h1>
+                    <p className="ck-hide-kb" style={{ margin: 0, color: C.ink2, fontSize: 'clamp(15px, 2.2vh, 18px)' }}>Been here before? That&rsquo;s all we need.</p>
+                  </div>
+                </div>
                 <div aria-live="polite" className="ck-display" style={{ borderColor: accent, color: digits ? C.ink : C.faint }}>
                   {digits ? fmtPhone(digits) : '(___) ___-____'}
                 </div>
@@ -621,320 +847,567 @@ export default function CheckInKiosk() {
                     {looking ? '…' : 'Continue'}
                   </button>
                 </div>
-                <button type="button" onClick={() => { setDigits(''); setLookup(null); setStep('about'); }}
+                <button type="button" onClick={() => { setDigits(''); setLookup(null); setNameField('first'); setStep('name'); }}
                   style={{ alignSelf: 'center', minHeight: 48, border: 'none', background: 'transparent', color: C.ink2, fontSize: 17, fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 4, cursor: 'pointer' }}>
                   No mobile number? Check in with your name
                 </button>
                 {menu.promo && menu.promo.percent > 0 && <div className="ck-promo-m"><OfferCard menu={menu} accent={accent} light /></div>}
               </div>
-            )}
+            </div>
+          </section>
+        </div>
+        {stillSheet}
+        {staffSheet}
+      </main>
+    );
+  }
 
-            {/* ---- About you (new customers; a returning one we know no name for) ---- */}
-            {step === 'about' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 760 }}>
-                <h1 style={{ ...serifTitle, fontSize: 'clamp(26px, 3.4vw, 38px)', margin: 0 }}>{returning ? 'Welcome back!' : 'Nice to meet you!'}</h1>
-                <p style={{ ...stepHint, margin: 0, fontSize: 'clamp(16px, 1.8vw, 19px)' }}>
-                  {returning ? 'What name should we call?' : digits ? 'Looks like your first visit. Just your name — it takes 10 seconds.' : 'Just your name, and we’ll call you when it’s your turn.'}
-                </p>
-                <div className="ck-grid">
-                  <Field label="First name" required>
-                    <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="e.g. Anna" style={{ ...bigInput, minHeight: 66, fontSize: 22, borderColor: accent }} autoCapitalize="words" autoComplete="given-name" enterKeyHint="next" autoFocus
-                      onKeyDown={(e) => { if (e.key === 'Enter') aboutNext(); }} />
-                  </Field>
-                  {!returning && (
-                    <Field label="Last name" hint="optional">
-                      <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} style={{ ...bigInput, minHeight: 66, fontSize: 22 }} autoCapitalize="words" autoComplete="family-name" enterKeyHint="next" />
-                    </Field>
-                  )}
-                  {!returning && (
-                    <Field label="Email" hint="optional · for your receipt">
-                      <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="anna@email.com" style={{ ...bigInput, minHeight: 66, fontSize: 20 }} inputMode="email" type="email" autoComplete="email" autoCapitalize="off" autoCorrect="off" enterKeyHint="done" />
-                    </Field>
+  // ---- Name -------------------------------------------------------------------
+  if (step === 'name') {
+    const typing = nameField === 'first' ? form.firstName : form.lastName;
+    const title = nameField === 'last'
+      ? `Thanks, ${form.firstName.trim()}! And your last name?`
+      : returning ? 'Welcome back! What name should we call?' : digits ? 'Nice to meet you! What’s your name?' : 'What’s your name?';
+    const firstOk = form.firstName.trim().length > 0;
+    return (
+      <main className={`ck-page${kbOpen ? ' ck-kb' : ''}`} style={{ ...screen, ...accentVar(accent), padding: 0, display: 'block' }}>
+        <style>{baseCss + layoutCss}</style>
+        <div className="ck-app">
+          {topBar}
+          {salonKeys ? (
+            <>
+              <div className="ck-nametop">
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 360px', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                    <h1 style={{ ...titleStyle, fontSize: 'clamp(24px, 4.2vh, 34px)', margin: 0 }}>{title}</h1>
+                    <span style={{ fontSize: 'clamp(15px, 2.2vh, 17px)', color: C.ink2 }}>
+                      {nameField === 'last' ? 'Optional — tap Skip if you’d rather not.' : digits ? 'First visit — this takes 10 seconds.' : 'We’ll call you by this name.'}
+                    </span>
+                  </div>
+                  {digits && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 6px 6px 14px', borderRadius: 999, background: C.card, border: `1px solid ${C.line}`, fontSize: 15, fontWeight: 700 }}>
+                      {fmtPhone(digits)}
+                      <button type="button" onClick={() => setStep('phone')} style={{ minHeight: 40, padding: '0 14px', borderRadius: 999, border: 0, background: C.soft, color: C.ink, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Change</button>
+                    </span>
                   )}
                 </div>
-                {digits && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderRadius: 18, background: C.card, border: `1px solid ${C.line}`, fontSize: 18 }}>
-                    <span style={{ flex: 1 }}>Mobile <b>{fmtPhone(digits)}</b></span>
-                    <button type="button" onClick={() => setStep('phone')} style={{ minHeight: 44, padding: '0 12px', border: 'none', background: 'transparent', color: accent, fontSize: 17, fontWeight: 800, cursor: 'pointer' }}>Change</button>
+                <div className="ck-namebox" role="textbox" aria-readonly="true" aria-label={nameField === 'first' ? 'First name' : 'Last name'} aria-live="polite">
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{typing}</span>
+                  <span className="ck-caret" aria-hidden />
+                  {!typing && <span style={{ color: C.faint, fontWeight: 600 }}>{nameField === 'first' ? 'First name' : 'Last name'}</span>}
+                </div>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: C.muted }}><LockIcon /> Saved as you go — if you step away, the front desk keeps your spot.</span>
+              </div>
+              <SalonKeys
+                accent={accent}
+                onKey={typeName}
+                onDevice={() => setNativeNow(true)}
+                goLabel={nameField === 'first' ? 'Next' : form.lastName.trim() ? 'Next' : 'Skip'}
+                goDisabled={nameField === 'first' && !firstOk}
+                onGo={nameNext}
+              />
+            </>
+          ) : (
+            <div className="ck-scroll">
+              <div className="ck-namenative">
+                <h1 style={{ ...titleStyle, fontSize: 'clamp(22px, 4vh, 32px)', margin: 0 }}>{returning ? 'What name should we call?' : 'What’s your name?'}</h1>
+                <p className="ck-hide-kb" style={{ margin: 0, fontSize: 16, color: C.ink2 }}>
+                  {digits ? <>Mobile <b>{fmtPhone(digits)}</b> · </> : null}Just your name — it takes 10 seconds.
+                </p>
+                <form className="ck-namerow" onSubmit={(e) => { e.preventDefault(); nameNext(); }}>
+                  <label>
+                    <span className="ck-lbl">First name <span style={{ color: C.bad }}>*</span></span>
+                    <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value.slice(0, NAME_MAX) })} placeholder="e.g. Anna"
+                      style={{ ...bigInput, minHeight: 60, fontSize: 22, borderColor: accent }} autoCapitalize="words" autoComplete="off" autoCorrect="off" enterKeyHint={returning ? 'done' : 'next'} autoFocus />
+                  </label>
+                  {!returning && (
+                    <label>
+                      <span className="ck-lbl">Last name <span style={{ fontWeight: 500, color: C.muted }}>· optional</span></span>
+                      <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value.slice(0, NAME_MAX) })}
+                        style={{ ...bigInput, minHeight: 60, fontSize: 20 }} autoCapitalize="words" autoComplete="off" autoCorrect="off" enterKeyHint="done" />
+                    </label>
+                  )}
+                  <button type="submit" disabled={!firstOk} style={{ ...primary(accent), minHeight: 60, borderRadius: 16, flex: '0 0 auto', opacity: firstOk ? 1 : 0.45 }}>Next →</button>
+                </form>
+                {kiosk && (
+                  <button type="button" onClick={() => setNativeNow(false)} className="ck-hide-kb" style={{ ...ghostBtn, alignSelf: 'flex-start', minHeight: 48, padding: '8px 18px', fontSize: 15 }}>Use the big salon keys</button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+        {stillSheet}
+        {staffSheet}
+      </main>
+    );
+  }
+
+  // ---- Birthday & services -------------------------------------------------------
+  const actionBtn = step === 'birthday' ? (
+    <button type="button" onClick={() => setStep('services')} style={{ ...primary(accent), flex: '0 1 280px' }}>Continue</button>
+  ) : group && who < people.length - 1 ? (
+    <button type="button" onClick={() => { setWho(who + 1); setCat(null); }} style={{ ...primary(accent), flex: '1 1 260px', minHeight: 64, fontSize: 19 }}>
+      Next: {people[who + 1].name} →
+    </button>
+  ) : (
+    <button type="button" onClick={() => void submit()} disabled={busy} style={{ ...primary(accent), flex: '1 1 260px', minHeight: 64, fontSize: 20, opacity: busy ? 0.6 : 1 }}>
+      {busy ? 'Checking you in…' : 'Check in'}
+    </button>
+  );
+  const visitLines = people.flatMap((p, i) => [
+    ...p.list.map((s) => ({ k: `${i}-${s.id}`, n: s.name, c: payCents(s), who: p.name, remove: () => { if (i === 0) setPicked((v) => v.filter((x) => x !== s.id)); else setGuests((gs) => gs.map((g, j) => (j === i - 1 ? { ...g, picked: g.picked.filter((x) => x !== s.id) } : g))); } })),
+    ...extrasOf(i).map((a) => ({ k: `${i}-x-${a.id}`, n: `+ ${a.name}`, c: a.priceCents, who: p.name, remove: () => setExtras((m) => ({ ...m, [i]: (m[i] ?? []).filter((x) => x !== a.id) })) })),
+  ]);
+
+  return (
+    <main className={`ck-page${kbOpen ? ' ck-kb' : ''}`} style={{ ...screen, ...accentVar(accent), padding: 0, display: 'block' }}>
+      <style>{baseCss + layoutCss}</style>
+      <div className="ck-app">
+        {topBar}
+
+        {/* ---- Birthday: month, then day — big targets, no year ---- */}
+        {step === 'birthday' && (
+          <div className="ck-scroll">
+            <div className="ck-pad" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <h1 style={{ ...titleStyle, fontSize: 'clamp(24px, 4.2vh, 34px)', margin: 0 }}>When&rsquo;s your birthday, {firstShown}?</h1>
+                  <span style={{ fontSize: 'clamp(15px, 2.2vh, 17px)', color: C.ink2 }}>Optional — a little treat comes your way. No year needed.</span>
+                </div>
+                <button type="button" onClick={() => { setBMonth(null); setBDay(null); setStep('services'); }} style={{ ...ghostBtn, minHeight: 56 }}>Skip</button>
+              </div>
+              {bMonth === null ? (
+                <>
+                  <span style={{ fontSize: 17, fontWeight: 700, color: C.ink2 }}>1 · Tap your month</span>
+                  <div className="ck-months">
+                    {MONTHS.map((m, i) => (
+                      <button key={m} type="button" className="ck-big" onClick={() => { setBMonth(i); setBDay(null); }}>{m}</button>
+                    ))}
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* ---- Birthday: month, then day — big targets, no year ---- */}
-            {step === 'birthday' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <h1 style={{ ...serifTitle, fontSize: 'clamp(26px, 3.4vw, 38px)', margin: 0 }}>When&rsquo;s your birthday?</h1>
-                <p style={{ ...stepHint, margin: 0, fontSize: 'clamp(16px, 1.8vw, 19px)' }}>Optional — we&rsquo;ll send you a birthday treat. No year needed.</p>
-                {bMonth === null ? (
-                  <>
-                    <span style={{ fontSize: 17, fontWeight: 700, color: C.ink2 }}>1 · Tap your month</span>
-                    <div className="ck-months">
-                      {MONTHS.map((m, i) => (
-                        <button key={m} type="button" className="ck-big" onClick={() => { setBMonth(i); setBDay(null); }}>{m}</button>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 17, fontWeight: 700, color: C.ink2 }}>2 · Tap the day in</span>
-                      <b style={{ fontSize: 'clamp(20px, 2.4vw, 26px)', color: accent }}>{MONTHS[bMonth]}</b>
-                      <span style={{ flex: 1 }} />
-                      <button type="button" onClick={() => { setBMonth(null); setBDay(null); }} style={{ ...ghostBtn, minHeight: 48, padding: '8px 16px' }}>Change month</button>
-                    </div>
-                    <div className="ck-days">
-                      {Array.from({ length: MONTH_DAYS[bMonth] }, (_, i) => i + 1).map((d) => {
-                        const on = bDay === d;
-                        return (
-                          <button key={d} type="button" className="ck-big ck-day" aria-pressed={on} onClick={() => setBDay(d)}
-                            style={on ? { background: accent, borderColor: accent, color: '#fff' } : undefined}>{d}</button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* ---- Services ---- */}
-            {step === 'services' && (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-                  <h1 style={{ ...serifTitle, fontSize: 'clamp(24px, 3vw, 34px)', margin: 0, flex: '1 1 280px' }}>
-                    {group ? `What would ${who === 0 ? 'you' : current.name} like?` : returning ? `Welcome back, ${firstShown}!` : `Thanks, ${firstShown}! What would you like?`}
-                  </h1>
-                  <div role="group" aria-label="How many of you?" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: C.ink2, marginRight: 4 }}>Guests</span>
-                    {[1, 2, 3, 4, 5].map((n) => {
-                      const on = party === n;
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 17, fontWeight: 700, color: C.ink2 }}>2 · Tap the day in</span>
+                    <b style={{ fontSize: 'clamp(20px, 2.4vw, 26px)', color: accent }}>{MONTHS[bMonth]}</b>
+                    <span style={{ flex: 1 }} />
+                    <button type="button" onClick={() => { setBMonth(null); setBDay(null); }} style={{ ...ghostBtn, minHeight: 48, padding: '8px 16px' }}>Change month</button>
+                  </div>
+                  <div className="ck-days">
+                    {Array.from({ length: MONTH_DAYS[bMonth] }, (_, i) => i + 1).map((d) => {
+                      const on = bDay === d;
                       return (
-                        <button key={n} type="button" onClick={() => setParty(n)} aria-pressed={on}
-                          style={{ minWidth: 48, minHeight: 48, borderRadius: 14, cursor: 'pointer', fontSize: 17, fontWeight: 800, border: `1.5px solid ${on ? accent : C.line}`, background: on ? accent : C.card, color: on ? '#fff' : C.ink }}>
-                          {n}{n === 5 ? '+' : ''}
+                        <button key={d} type="button" className="ck-big ck-day" aria-pressed={on} onClick={() => setBDay(d)}
+                          style={on ? { background: accent, borderColor: accent, color: '#fff' } : undefined}>{d}</button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ---- Services ---- */}
+        {step === 'services' && (
+          <div className="ck-svcwrap">
+            <div className="ck-scroll ck-svcmain">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+                <h1 style={{ ...titleStyle, fontSize: 'clamp(22px, 3.8vh, 30px)', margin: 0, flex: '1 1 280px' }}>
+                  {group ? `What would ${who === 0 ? 'you' : current.name} like?` : returning ? `What are we doing today, ${firstShown}?` : `Thanks, ${firstShown}! What would you like?`}
+                </h1>
+                <div role="group" aria-label="How many of you?" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: C.ink2 }}>Guests</span>
+                  <span style={{ display: 'flex', alignItems: 'center', border: `1.5px solid ${C.line}`, borderRadius: 16, background: C.card }}>
+                    <button type="button" aria-label="One less guest" disabled={party <= 1} onClick={() => setParty(party - 1)} className="ck-step" style={{ opacity: party <= 1 ? 0.35 : 1 }}>−</button>
+                    <b aria-live="polite" style={{ minWidth: 34, textAlign: 'center', fontSize: 20 }}>{party}</b>
+                    <button type="button" aria-label="One more guest" disabled={party >= MAX_PARTY} onClick={() => setParty(party + 1)} className="ck-step" style={{ opacity: party >= MAX_PARTY ? 0.35 : 1 }}>+</button>
+                  </span>
+                </div>
+              </div>
+
+              {appt && who === 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 16, border: `2px solid ${accent}`, background: `${accent}0d`, marginBottom: 12 }}>
+                  <CalendarIcon color={accent} />
+                  <span style={{ fontSize: 16, lineHeight: 1.45, color: C.ink }}>
+                    <b>We found your {timeOf(appt.at)} appointment{appt.staffName ? ` with ${appt.staffName}` : ''}.</b>{' '}
+                    {appt.serviceIds.length ? 'Your services are already picked — just tap Check in.' : 'Pick your services, then tap Check in.'}
+                  </span>
+                </div>
+              )}
+              {!appt && lastVisit && lastList.length > 0 && who === 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 12px 10px 18px', borderRadius: 16, border: `1.5px solid ${C.line}`, background: C.card, marginBottom: 12, flexWrap: 'wrap' }}>
+                  <span style={{ flex: '1 1 260px', fontSize: 15.5, color: C.ink2, lineHeight: 1.4 }}>
+                    <b style={{ color: C.ink }}>Same as last time?</b> {lastList.map((s) => s.name).join(' + ')}{lastVisit.staffName ? ` with ${lastVisit.staffName}` : ''} · {dateOf(lastVisit.at)}
+                  </span>
+                  <button type="button" onClick={() => setPicked(lastList.map((s) => s.id))}
+                    style={{ minHeight: 48, padding: '0 18px', borderRadius: 12, border: 0, background: lastApplied ? C.ok : C.ink, color: '#fff', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>
+                    {lastApplied ? '✓ Added' : lastList.length > 1 ? 'Add both' : 'Add it'}
+                  </button>
+                </div>
+              )}
+
+              {group && (
+                <div style={{ marginBottom: 12 }}>
+                  <div role="tablist" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }} className="ck-chips">
+                    {people.map((p, i) => {
+                      const on = i === who;
+                      return (
+                        <button key={i} type="button" role="tab" aria-selected={on} onClick={() => setWho(i)}
+                          style={{
+                            flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, cursor: 'pointer',
+                            minWidth: 120, padding: '10px 14px', borderRadius: 14, textAlign: 'left',
+                            border: `1.5px solid ${on ? accent : C.line}`, background: on ? `${accent}0f` : C.card,
+                          }}>
+                          <span style={{ fontSize: 15, fontWeight: 700, color: on ? accent : C.ink, whiteSpace: 'nowrap' }}>{i === 0 ? `${p.name} (you)` : p.name}</span>
+                          <span style={{ fontSize: 13, color: C.muted, whiteSpace: 'nowrap' }}>
+                            {p.list.length ? `${p.list.length} · ${money(subtotal(p.list) + addonCentsOf(i))}` : 'Nothing yet'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {who > 0 && (
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 12 }}>
+                      <label style={{ flex: '1 1 220px' }}>
+                        <span className="ck-lbl">Their first name <span style={{ fontWeight: 500, color: C.muted }}>· optional</span></span>
+                        {salonKeys ? (
+                          <button type="button" onClick={() => setGuestKeys(who)}
+                            style={{ ...bigInput, minHeight: 56, textAlign: 'left', cursor: 'pointer', color: guests[who - 1]?.name ? C.ink : C.faint, fontWeight: 600 }}>
+                            {guests[who - 1]?.name || `Guest ${who + 1} — tap to type`}
+                          </button>
+                        ) : (
+                          <input
+                            value={guests[who - 1]?.name ?? ''}
+                            onChange={(e) => setGuests((gs) => gs.map((g, i) => (i === who - 1 ? { ...g, name: e.target.value.slice(0, NAME_MAX) } : g)))}
+                            placeholder={`Guest ${who + 1}`} style={{ ...bigInput, minHeight: 56 }} autoCapitalize="words" autoComplete="off"
+                          />
+                        )}
+                      </label>
+                      {picked.length > 0 && (
+                        <button type="button" onClick={() => setGuests((gs) => gs.map((g, i) => (i === who - 1 ? { ...g, picked: [...picked] } : g)))}
+                          style={{ ...ghostBtn, minHeight: 56, padding: '12px 18px', fontSize: 15 }}>
+                          Same as {people[0].name}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {party >= MAX_PARTY && <div style={{ fontSize: 14, color: C.muted, marginTop: 8 }}>More than 5? The front desk will add the rest.</div>}
+                </div>
+              )}
+
+              {(cats.length > 0 || hasSale || hasPopular) && (
+                <div style={{ position: 'relative', marginLeft: -16, marginRight: -16, marginBottom: 2 }}>
+                  {chips.canLeft && <ChipArrow dir={-1} onClick={() => chips.nudge(-1)} />}
+                  <div ref={chips.ref} className="ck-chips" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, paddingLeft: 16, paddingRight: 16, scrollbarWidth: 'none' }}>
+                    <button onClick={() => setCat(null)} style={{ ...chip, ...(cat === null ? { background: C.ink, borderColor: C.ink, color: '#fff' } : null) }}>All</button>
+                    {hasSale && (
+                      <button onClick={() => setCat(SALE)} style={{ ...chip, display: 'inline-flex', alignItems: 'center', gap: 6, ...(cat === SALE ? { background: C.ink, borderColor: C.ink, color: '#fff' } : { borderColor: `${accent}66`, color: accent }) }}>
+                        <TagIcon color="currentColor" size={16} />On sale
+                      </button>
+                    )}
+                    {hasPopular && (
+                      <button onClick={() => setCat(POPULAR)} style={{ ...chip, display: 'inline-flex', alignItems: 'center', gap: 6, ...(cat === POPULAR ? { background: C.ink, borderColor: C.ink, color: '#fff' } : null) }}>
+                        <StarIcon size={16} />Popular
+                      </button>
+                    )}
+                    {cats.map((c) => (
+                      <button key={c.id} onClick={() => setCat(c.id)} style={{ ...chip, ...(cat === c.id ? { background: C.ink, borderColor: C.ink, color: '#fff' } : null) }}>{c.name}</button>
+                    ))}
+                  </div>
+                  {chips.canRight && <ChipArrow dir={1} onClick={() => chips.nudge(1)} />}
+                </div>
+              )}
+              <div className="ck-svcs">
+                {shown.map((s) => {
+                  const on = currentPicked.includes(s.id);
+                  return (
+                    <button key={s.id} type="button" onClick={() => togglePick(s.id)} aria-pressed={on}
+                      style={{
+                        position: 'relative', textAlign: 'left', borderRadius: 18,
+                        padding: '14px 16px', cursor: 'pointer',
+                        background: on ? `${accent}0f` : C.card,
+                        border: `${on ? 3 : 1.5}px solid ${on ? accent : C.line}`,
+                        color: C.ink, minHeight: 104, display: 'flex', flexDirection: 'column', gap: 6,
+                      }}>
+                      <span style={{
+                        position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: on ? accent : 'transparent', color: '#fff', border: `1.5px solid ${on ? accent : C.line}`,
+                      }}>{on && <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>}</span>
+                      {offPct(s) > 0 ? (
+                        <span style={{ ...badge, background: `${accent}14`, color: accent }}>−{offPct(s)}% for you</span>
+                      ) : dealPct(s) > 0 ? (
+                        <span style={{ ...badge, background: `${accent}14`, color: accent }}>Today −{dealPct(s)}%</span>
+                      ) : s.isFeatured ? (
+                        <span style={{ ...badge, background: '#fdf3e0', color: '#8a5a12' }}>★ Popular</span>
+                      ) : null}
+                      <span style={{ fontSize: 'clamp(16px, 2.4vh, 19px)', fontWeight: 700, lineHeight: 1.3, paddingRight: 30, color: C.ink }}>{s.name}</span>
+                      <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 'clamp(16px, 2.4vh, 18px)', fontWeight: 800, color: C.price, fontVariantNumeric: 'tabular-nums' }}>{money(payCents(s))}</span>
+                        {onSale(s) && <span style={{ fontSize: 14, color: C.muted, textDecoration: 'line-through' }}>{money(s.priceCents)}</span>}
+                        {mins(s.durationMinutes) && <span style={{ fontSize: 14.5, color: C.ink2 }}>· {mins(s.durationMinutes)}</span>}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {viewAddons.length > 0 && (
+                <div style={{ marginTop: 18 }}>
+                  <div style={{ ...eyebrow, marginBottom: 10 }}>Add-ons</div>
+                  <div className="ck-svcs">
+                    {viewAddons.map((a) => {
+                      const on = viewExtras.includes(a.id);
+                      return (
+                        <button key={a.id} type="button" onClick={() => toggleExtra(a.id)} aria-pressed={on}
+                          style={{
+                            position: 'relative', textAlign: 'left', borderRadius: 18,
+                            padding: '12px 16px', cursor: 'pointer',
+                            background: on ? `${accent}0f` : C.card,
+                            border: `${on ? 3 : 1.5}px solid ${on ? accent : C.line}`,
+                            color: C.ink, minHeight: 76, display: 'flex', flexDirection: 'column', gap: 4,
+                          }}>
+                          <span style={{
+                            position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: '50%',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: on ? accent : 'transparent', color: '#fff', border: `1.5px solid ${on ? accent : C.line}`,
+                          }}>{on && <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>}</span>
+                          <span style={{ fontSize: 'clamp(15px, 2.2vh, 17px)', fontWeight: 700, lineHeight: 1.3, paddingRight: 30, color: C.ink }}>{a.askAtBooking ? `Would you like ${a.name}?` : a.name}</span>
+                          <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 'clamp(16px, 2.4vh, 17.5px)', fontWeight: 800, color: C.price, fontVariantNumeric: 'tabular-nums' }}>+{money(a.priceCents)}</span>
+                            {mins(a.durationMinutes) && <span style={{ fontSize: 14, color: C.ink2 }}>· {mins(a.durationMinutes)}</span>}
+                          </span>
                         </button>
                       );
                     })}
                   </div>
                 </div>
+              )}
+              {err && <div role="alert" style={{ color: C.bad, fontSize: 16, marginTop: 14 }}>{err}</div>}
+            </div>
 
-                {appt && who === 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 18, border: `2px solid ${accent}`, background: `${accent}0d`, marginBottom: 14 }}>
-                    <CalendarIcon color={accent} />
-                    <span style={{ fontSize: 16.5, lineHeight: 1.45, color: C.ink }}>
-                      <b>We found your {timeOf(appt.at)} appointment{appt.staffName ? ` with ${appt.staffName}` : ''}.</b>{' '}
-                      {appt.serviceIds.length ? 'Your services are already picked — just tap Check in.' : 'Pick your services, then tap Check in.'}
-                    </span>
-                  </div>
-                )}
-                {!appt && lastVisit && lastList.length > 0 && who === 0 && (
-                  <button type="button" onClick={() => { setPicked(lastList.map((s) => s.id)); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', padding: '14px 16px', borderRadius: 18, border: `2px solid ${accent}`, background: `${accent}0d`, cursor: 'pointer', marginBottom: 14, flexWrap: 'wrap', color: C.ink }}>
-                    <span style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <b style={{ fontSize: 18 }}>Same as last time?</b>
-                      <span style={{ fontSize: 15, color: C.ink2 }}>{lastList.map((s) => s.name).join(' + ')}{lastVisit.staffName ? ` · with ${lastVisit.staffName}` : ''} · {dateOf(lastVisit.at)}</span>
-                    </span>
-                    <span style={{ minHeight: 48, padding: '0 20px', borderRadius: 999, background: lastApplied ? C.ok : accent, color: '#fff', display: 'flex', alignItems: 'center', fontSize: 16, fontWeight: 800 }}>
-                      {lastApplied ? '✓ Added' : 'Choose this'}
-                    </span>
-                  </button>
-                )}
-
-                {group && (
-                  <div style={{ marginBottom: 16 }}>
-                    <div role="tablist" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }} className="ck-chips">
-                      {people.map((p, i) => {
-                        const on = i === who;
-                        return (
-                          <button key={i} type="button" role="tab" aria-selected={on} onClick={() => setWho(i)}
-                            style={{
-                              flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, cursor: 'pointer',
-                              minWidth: 120, padding: '10px 14px', borderRadius: 14, textAlign: 'left',
-                              border: `1.5px solid ${on ? accent : C.line}`, background: on ? `${accent}0f` : C.card,
-                            }}>
-                            <span style={{ fontSize: 15, fontWeight: 700, color: on ? accent : C.ink, whiteSpace: 'nowrap' }}>{i === 0 ? `${p.name} (you)` : p.name}</span>
-                            <span style={{ fontSize: 13, color: C.muted, whiteSpace: 'nowrap' }}>
-                              {p.list.length ? `${p.list.length} · ${money(subtotal(p.list) + addonCentsOf(i))}` : 'Nothing yet'}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {who > 0 && (
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 12 }}>
-                        <label style={{ flex: '1 1 220px' }}>
-                          <span style={{ display: 'block', fontSize: 14, color: C.ink2, marginBottom: 6, fontWeight: 600 }}>
-                            Their first name <span style={{ fontWeight: 500, color: C.muted }}>· optional</span>
-                          </span>
-                          <input
-                            value={guests[who - 1]?.name ?? ''}
-                            onChange={(e) => setGuests((gs) => gs.map((g, i) => (i === who - 1 ? { ...g, name: e.target.value } : g)))}
-                            placeholder={`Guest ${who + 1}`} style={{ ...bigInput, minHeight: 56 }} autoCapitalize="words" autoComplete="off"
-                          />
-                        </label>
-                        {picked.length > 0 && (
-                          <button type="button" onClick={() => setGuests((gs) => gs.map((g, i) => (i === who - 1 ? { ...g, picked: [...picked] } : g)))}
-                            style={{ ...ghostBtn, minHeight: 56, padding: '12px 18px', fontSize: 15 }}>
-                            Same as {people[0].name}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {party >= MAX_PARTY && <div style={{ fontSize: 14, color: C.muted, marginTop: 8 }}>More than 5? The front desk will add the rest.</div>}
-                  </div>
-                )}
-
-                {(cats.length > 0 || hasSale || hasPopular) && (
-                  <div style={{ position: 'relative', marginLeft: -16, marginRight: -16, marginBottom: 4 }}>
-                    {chips.canLeft && <ChipArrow dir={-1} onClick={() => chips.nudge(-1)} />}
-                    <div ref={chips.ref} className="ck-chips" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, paddingLeft: 16, paddingRight: 16, scrollbarWidth: 'none' }}>
-                      <button onClick={() => setCat(null)} style={{ ...chip, ...(cat === null ? { background: C.ink, borderColor: C.ink, color: '#fff' } : null) }}>All</button>
-                      {hasSale && (
-                        <button onClick={() => setCat(SALE)} style={{ ...chip, display: 'inline-flex', alignItems: 'center', gap: 6, ...(cat === SALE ? { background: C.ink, borderColor: C.ink, color: '#fff' } : { borderColor: `${accent}66`, color: accent }) }}>
-                          <TagIcon color="currentColor" size={16} />On sale
-                        </button>
-                      )}
-                      {hasPopular && (
-                        <button onClick={() => setCat(POPULAR)} style={{ ...chip, display: 'inline-flex', alignItems: 'center', gap: 6, ...(cat === POPULAR ? { background: C.ink, borderColor: C.ink, color: '#fff' } : null) }}>
-                          <StarIcon size={16} />Popular
-                        </button>
-                      )}
-                      {cats.map((c) => (
-                        <button key={c.id} onClick={() => setCat(c.id)} style={{ ...chip, ...(cat === c.id ? { background: C.ink, borderColor: C.ink, color: '#fff' } : null) }}>{c.name}</button>
-                      ))}
-                    </div>
-                    {chips.canRight && <ChipArrow dir={1} onClick={() => chips.nudge(1)} />}
-                  </div>
-                )}
-                <div className="ck-svcs">
-                  {shown.map((s) => {
-                    const on = currentPicked.includes(s.id);
-                    return (
-                      <button key={s.id} type="button" onClick={() => togglePick(s.id)} aria-pressed={on}
-                        style={{
-                          position: 'relative', textAlign: 'left', borderRadius: 20,
-                          padding: 'clamp(14px, 3.4vw, 18px) clamp(14px, 3.6vw, 20px)', cursor: 'pointer',
-                          background: on ? `${accent}0f` : C.card,
-                          border: `${on ? 3 : 1.5}px solid ${on ? accent : C.line}`,
-                          color: C.ink, minHeight: 108, display: 'flex', flexDirection: 'column', gap: 6,
-                        }}>
-                        <span style={{
-                          position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: '50%',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          background: on ? accent : 'transparent', color: '#fff', border: `1.5px solid ${on ? accent : C.line}`,
-                        }}>{on && <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>}</span>
-                        {offPct(s) > 0 ? (
-                          <span style={{ ...badge, background: `${accent}14`, color: accent }}>−{offPct(s)}% for you</span>
-                        ) : dealPct(s) > 0 ? (
-                          <span style={{ ...badge, background: `${accent}14`, color: accent }}>Today −{dealPct(s)}%</span>
-                        ) : s.isFeatured ? (
-                          <span style={{ ...badge, background: '#fdf3e0', color: '#8a5a12' }}>★ Popular</span>
-                        ) : null}
-                        <span style={{ fontSize: 'clamp(16px, 1.9vw, 19px)', fontWeight: 700, lineHeight: 1.3, paddingRight: 30, color: C.ink }}>{s.name}</span>
-                        <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 'clamp(16px, 1.9vw, 18px)', fontWeight: 800, color: C.price, fontVariantNumeric: 'tabular-nums' }}>{money(payCents(s))}</span>
-                          {onSale(s) && <span style={{ fontSize: 14, color: C.muted, textDecoration: 'line-through' }}>{money(s.priceCents)}</span>}
-                          {mins(s.durationMinutes) && <span style={{ fontSize: 14.5, color: C.ink2 }}>· {mins(s.durationMinutes)}</span>}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {viewAddons.length > 0 && (
-                  <div style={{ marginTop: 18 }}>
-                    <div style={{ ...eyebrow, marginBottom: 10 }}>Add-ons</div>
-                    <div className="ck-svcs">
-                      {viewAddons.map((a) => {
-                        const on = viewExtras.includes(a.id);
-                        return (
-                          <button key={a.id} type="button" onClick={() => toggleExtra(a.id)} aria-pressed={on}
-                            style={{
-                              position: 'relative', textAlign: 'left', borderRadius: 20,
-                              padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3.6vw, 20px)', cursor: 'pointer',
-                              background: on ? `${accent}0f` : C.card,
-                              border: `${on ? 3 : 1.5}px solid ${on ? accent : C.line}`,
-                              color: C.ink, minHeight: 76, display: 'flex', flexDirection: 'column', gap: 4,
-                            }}>
-                            <span style={{
-                              position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: '50%',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              background: on ? accent : 'transparent', color: '#fff', border: `1.5px solid ${on ? accent : C.line}`,
-                            }}>{on && <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>}</span>
-                            <span style={{ fontSize: 'clamp(15px, 1.8vw, 17px)', fontWeight: 700, lineHeight: 1.3, paddingRight: 30, color: C.ink }}>{a.askAtBooking ? `Would you like ${a.name}?` : a.name}</span>
-                            <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 'clamp(16px, 1.9vw, 17.5px)', fontWeight: 800, color: C.price, fontVariantNumeric: 'tabular-nums' }}>+{money(a.priceCents)}</span>
-                              {mins(a.durationMinutes) && <span style={{ fontSize: 14, color: C.ink2 }}>· {mins(a.durationMinutes)}</span>}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                {err && <div role="alert" style={{ color: C.bad, fontSize: 16, marginTop: 14 }}>{err}</div>}
-              </>
-            )}
-          </div>
-
-          {/* Sticky action bar: thumbs live at the bottom of a tablet */}
-          {step !== 'phone' && (
-            <footer className="ck-foot">
-              {step === 'about' && <span style={{ flex: '1 1 200px', fontSize: 16, color: C.ink2 }}>{returning ? 'Next: your services' : digits ? 'Next: your birthday (optional)' : 'Next: your services'}</span>}
-              {step === 'birthday' && (
-                <span style={{ flex: '1 1 200px', fontSize: 17, fontWeight: 700, color: C.ink }}>
-                  {bMonth !== null && bDay !== null ? `Birthday: ${MONTHS[bMonth]} ${bDay}` : 'You can skip this'}
-                </span>
-              )}
-              {step === 'services' && (
-                <span style={{ flex: '1 1 220px', display: 'flex', flexDirection: 'column', gap: 1, fontSize: 16, color: C.ink2, fontWeight: 600 }}>
-                  {pickedCount > 0 ? (
-                    <>
-                      <span>
-                        {group ? `${party} people · ` : `${pickedCount} ${pickedCount === 1 ? 'service' : 'services'}${mins(totalMinutes) ? ` · ~${mins(totalMinutes)}` : ''} · `}
-                        {savedCents > 0 && <span style={{ color: C.muted, textDecoration: 'line-through', fontWeight: 500, marginRight: 6 }}>{money(fullCents)}</span>}
-                        <span style={{ color: C.ink, fontWeight: 800 }}>{money(totalCents)}</span>
-                      </span>
-                      {savedCents > 0 && <span style={{ fontSize: 14, color: C.price, fontWeight: 700 }}>You save {money(savedCents)} today</span>}
-                    </>
-                  ) : <span>Not sure yet? That&rsquo;s fine — we&rsquo;ll ask at the chair.</span>}
-                </span>
-              )}
-              {step === 'birthday' && (
-                <button type="button" onClick={() => { setBMonth(null); setBDay(null); setStep('services'); window.scrollTo({ top: 0 }); }} style={ghostBtn}>Skip</button>
-              )}
-              {step === 'about' && (
-                <button type="button" onClick={aboutNext} disabled={!form.firstName.trim()} style={{ ...primary(accent), flex: '0 1 280px', opacity: form.firstName.trim() ? 1 : 0.45 }}>Continue</button>
-              )}
-              {step === 'birthday' && (
-                <button type="button" onClick={() => { setStep('services'); window.scrollTo({ top: 0 }); }} style={{ ...primary(accent), flex: '0 1 280px' }}>Continue</button>
-              )}
-              {step === 'services' && (group && who < people.length - 1 ? (
-                <button type="button" onClick={() => { setWho(who + 1); setCat(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ ...primary(accent), flex: '0 1 300px' }}>
-                  Next: {people[who + 1].name} →
-                </button>
+            {/* Your visit — the right column on a wide screen */}
+            <aside className="ck-sum" aria-label="Your visit">
+              <span style={{ ...eyebrow, color: C.muted }}>Your visit</span>
+              {visitLines.length === 0 ? (
+                <span style={{ fontSize: 15, color: C.ink2, lineHeight: 1.45 }}>Your services will show up here as you pick them.</span>
               ) : (
-                <button type="button" onClick={submit} disabled={busy} style={{ ...primary(accent), flex: '0 1 300px', opacity: busy ? 0.6 : 1 }}>
-                  {busy ? 'Checking you in…' : 'Check in'}
-                </button>
-              ))}
-            </footer>
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', minHeight: 0 }}>
+                  {visitLines.map((l) => (
+                    <li key={l.k} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                        <b style={{ fontSize: 16, lineHeight: 1.3 }}>{l.n}</b>
+                        {group && <span style={{ fontSize: 13, color: C.muted }}>{l.who}</span>}
+                      </span>
+                      <b style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>{money(l.c)}</b>
+                      <button type="button" aria-label={`Remove ${l.n}`} onClick={l.remove}
+                        style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, border: `1px solid ${C.line}`, background: C.card, color: C.ink2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {visitLines.length > 0 && (
+                <>
+                  <div style={{ height: 1, background: C.line, flexShrink: 0 }} />
+                  <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+                    <b style={{ fontSize: 15, color: C.ink2 }}>Total today</b>
+                    <b style={{ fontSize: 28, fontVariantNumeric: 'tabular-nums' }}>{money(totalCents)}</b>
+                  </span>
+                  <span style={{ fontSize: 14, color: C.muted }}>
+                    {mins(totalMinutes) ? `About ${mins(totalMinutes)}` : ''}{savedCents > 0 ? `${mins(totalMinutes) ? ' · ' : ''}you save ${money(savedCents)}` : ''}
+                  </span>
+                </>
+              )}
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: 14, color: C.ink2, lineHeight: 1.45 }}>Not sure yet? Tap Check in anyway — we&rsquo;ll ask at the chair.</span>
+              <div style={{ display: 'flex' }}>{actionBtn}</div>
+            </aside>
+          </div>
+        )}
+
+        {/* Bottom bar: birthday always; services until the right column takes over */}
+        <footer className={`ck-foot${step === 'services' ? ' ck-foot-svc' : ''}`}>
+          {step === 'birthday' && (
+            <span style={{ flex: '1 1 200px', fontSize: 17, fontWeight: 700, color: C.ink }}>
+              {bMonth !== null && bDay !== null ? `Birthday: ${MONTHS[bMonth]} ${bDay}` : 'You can skip this'}
+            </span>
           )}
-        </section>
+          {step === 'services' && (
+            <span style={{ flex: '1 1 220px', display: 'flex', flexDirection: 'column', gap: 1, fontSize: 16, color: C.ink2, fontWeight: 600 }}>
+              {pickedCount > 0 ? (
+                <>
+                  <span>
+                    {group ? `${party} people · ` : `${pickedCount} ${pickedCount === 1 ? 'service' : 'services'}${mins(totalMinutes) ? ` · ~${mins(totalMinutes)}` : ''} · `}
+                    {savedCents > 0 && <span style={{ color: C.muted, textDecoration: 'line-through', fontWeight: 500, marginRight: 6 }}>{money(fullCents)}</span>}
+                    <span style={{ color: C.ink, fontWeight: 800 }}>{money(totalCents)}</span>
+                  </span>
+                  {savedCents > 0 && <span style={{ fontSize: 14, color: C.price, fontWeight: 700 }}>You save {money(savedCents)} today</span>}
+                </>
+              ) : <span>Not sure yet? That&rsquo;s fine — we&rsquo;ll ask at the chair.</span>}
+            </span>
+          )}
+          {actionBtn}
+        </footer>
       </div>
+
+      {/* A guest's name on the salon keys */}
+      {guestKeys !== null && (
+        <div role="dialog" aria-modal="true" aria-label={`Guest ${guestKeys + 1} first name`} className="ck-sheetwrap" onClick={(e) => { if (e.target === e.currentTarget) setGuestKeys(null); }}>
+          <div className="ck-keysheet">
+            <div className="ck-nametop" style={{ flex: '0 0 auto' }}>
+              <h2 style={{ ...titleStyle, fontSize: 'clamp(22px, 3.6vh, 28px)', margin: 0 }}>Guest {guestKeys + 1}&rsquo;s first name</h2>
+              <div className="ck-namebox" role="textbox" aria-readonly="true" aria-label="Guest first name" aria-live="polite">
+                <span>{guests[guestKeys - 1]?.name ?? ''}</span><span className="ck-caret" aria-hidden />
+              </div>
+            </div>
+            <SalonKeys accent={accent} onKey={typeName} goLabel="Done" onGo={() => setGuestKeys(null)} />
+          </div>
+        </div>
+      )}
+      {stillSheet}
+      {staffSheet}
     </main>
   );
 }
 
-function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
+/** The salon's name, with its branch on a second, quieter line. */
+function BrandName({ brand, size }: { brand: { name: string; place: string | null }; size: number }) {
   return (
-    <label style={{ display: 'block' }}>
-      <span style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: 16, color: C.ink2, marginBottom: 8, fontWeight: 700 }}>
-        {label}
-        {required && <span style={{ color: C.bad }}>*</span>}
-        {hint && <span style={{ fontWeight: 500, color: C.muted, fontSize: 14.5 }}>· {hint}</span>}
+    <span style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, color: '#fff', textAlign: 'left' }}>
+      <b style={{ fontSize: size, lineHeight: 1.08, fontWeight: 800, letterSpacing: '-0.015em', textWrap: 'balance' } as CSSProperties}>{brand.name}</b>
+      {brand.place && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: Math.max(13, Math.round(size * 0.58)), fontWeight: 600, opacity: 0.9 }}>
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden>
+            <path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.4-6.5 11-6.5 11z" /><circle cx="12" cy="10" r="2.3" />
+          </svg>
+          {brand.place}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The salon's own keyboard for names. Drawn by the page, so the device's
+ * keyboard never opens and never covers the form — big keys, A–Z, space,
+ * hyphen and apostrophe. "Phone keys" hands over to the device keyboard for a
+ * name with accents.
+ */
+function SalonKeys({ accent, onKey, onGo, goLabel, goDisabled, onDevice }: {
+  accent: string; onKey: (k: string) => void; onGo: () => void; goLabel: string; goDisabled?: boolean; onDevice?: () => void;
+}) {
+  const row = (letters: string) => letters.split('').map((c) => (
+    <button key={c} type="button" className="ck-k" onClick={() => onKey(c)} aria-label={c === "'" ? 'Apostrophe' : c === '-' ? 'Hyphen' : c.toUpperCase()}>{c.toUpperCase()}</button>
+  ));
+  return (
+    <div className="ck-keys" role="group" aria-label="Keyboard">
+      <div className="ck-krow">{row('qwertyuiop')}</div>
+      <div className="ck-krow ck-r2">{row('asdfghjkl')}</div>
+      <div className="ck-krow">
+        {row("zxcvbnm'-")}
+        <button type="button" className="ck-k ck-kw" aria-label="Delete" onClick={() => onKey('del')}>
+          <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 5H9l-6 7 6 7h12z" /><path d="m17 9-5 6M12 9l5 6" /></svg>
+        </button>
+      </div>
+      <div className="ck-krow">
+        {onDevice && (
+          <button type="button" className="ck-k ck-kw ck-kdev" onClick={onDevice}>
+            <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="2" y="6" width="20" height="13" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 15h10" /></svg>
+            <span>Phone keys</span>
+          </button>
+        )}
+        <button type="button" className="ck-k ck-kspace" aria-label="Space" onClick={() => onKey(' ')}>space</button>
+        <button type="button" className="ck-k ck-kgo" onClick={onGo} disabled={goDisabled} style={{ background: accent, opacity: goDisabled ? 0.45 : 1 }}>{goLabel} →</button>
+      </div>
+    </div>
+  );
+}
+
+/** "Still there?" — a countdown, then the kiosk keeps (or clears) the guest. */
+function StillThere({ seconds, name, canSave, accent, busy, onHere, onSaveNow, onStartOver }: {
+  seconds: number; name: string; canSave: boolean; accent: string; busy: boolean;
+  onHere: () => void; onSaveNow: () => void; onStartOver: () => void;
+}) {
+  const r = 58;
+  const len = 2 * Math.PI * r;
+  const left = Math.max(0, Math.min(1, seconds / STILL_THERE_SEC));
+  return (
+    <div className="ck-sheetwrap" onClick={onHere} style={{ alignItems: 'center' }}>
+      <section role="alertdialog" aria-modal="true" aria-label="Are you still there?" className="ck-still" onClick={(e) => e.stopPropagation()}>
+        <svg width={132} height={132} viewBox="0 0 132 132" role="img" aria-label={`${seconds} seconds left`}>
+          <circle cx={66} cy={66} r={r} fill="none" stroke={C.soft} strokeWidth={10} />
+          <circle cx={66} cy={66} r={r} fill="none" stroke={accent} strokeWidth={10} strokeLinecap="round" strokeDasharray={len} strokeDashoffset={len * (1 - left)} transform="rotate(-90 66 66)" style={{ transition: 'stroke-dashoffset 1s linear' }} />
+          <text x={66} y={80} textAnchor="middle" fontSize={44} fontWeight={800} fill={C.ink} fontFamily="inherit">{seconds}</text>
+        </svg>
+        <b style={{ fontSize: 'clamp(26px, 4.4vh, 34px)', lineHeight: 1.1 }}>{name ? `Still there, ${name}?` : 'Still there?'}</b>
+        <span style={{ fontSize: 'clamp(16px, 2.4vh, 18px)', color: C.ink2, lineHeight: 1.45 }}>
+          {canSave
+            ? <>No rush. If we don&rsquo;t hear from you, we&rsquo;ll <b style={{ color: C.ink }}>save your spot in line</b> and the front desk will help you pick your services.</>
+            : 'No rush. If we don’t hear from you, this screen starts over for the next guest.'}
+        </span>
+        <button type="button" onClick={onHere} style={{ ...primary(accent), width: '100%', minHeight: 72, fontSize: 22, borderRadius: 20 }}>I&rsquo;m still here</button>
+        {canSave ? (
+          <button type="button" disabled={busy} onClick={onSaveNow} className="ck-textbtn" style={{ fontSize: 17 }}>{busy ? 'Saving…' : 'Save my spot now'}</button>
+        ) : (
+          <button type="button" onClick={onStartOver} className="ck-textbtn" style={{ fontSize: 17 }}>Start over</button>
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** Staff only: hold the salon logo 3 seconds. Settings for THIS tablet. */
+function StaffSheet({ prefs, onChange, onClose, confirmUnpair, onUnpair, accent }: {
+  prefs: Prefs; onChange: (p: Prefs) => void; onClose: () => void; confirmUnpair: boolean; onUnpair: () => void; accent: string;
+}) {
+  const row = (label: string, sub: string, on: boolean, flip: () => void) => (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 0', borderBottom: `1px solid ${C.line}`, cursor: 'pointer' }}>
+      <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <b style={{ fontSize: 18 }}>{label}</b>
+        <span style={{ fontSize: 14, color: C.muted, lineHeight: 1.4 }}>{sub}</span>
       </span>
-      {children}
+      <input type="checkbox" role="switch" checked={on} onChange={flip} style={{ width: 26, height: 26, accentColor: accent, flexShrink: 0 }} />
     </label>
+  );
+  return (
+    <div className="ck-sheetwrap" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ alignItems: 'center' }}>
+      <section role="dialog" aria-modal="true" aria-label="Kiosk settings" className="ck-staff">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <b style={{ flex: 1, fontSize: 24 }}>Kiosk settings <span style={{ fontSize: 15, fontWeight: 600, color: C.muted }}>· this tablet</span></b>
+          <button type="button" aria-label="Close" onClick={onClose} className="ck-iconbtn">
+            <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <div style={{ overflowY: 'auto', minHeight: 0 }}>
+          {row('Full screen', 'Hides the browser bar. The first tap on the welcome screen turns it on.', prefs.fullscreen, () => onChange({ ...prefs, fullscreen: !prefs.fullscreen }))}
+          {row('Keep the screen awake', 'The tablet never dims or locks while check-in is open.', prefs.awake, () => onChange({ ...prefs, awake: !prefs.awake }))}
+          {row('Device keyboard for names', 'Off: big A–Z salon keys that never cover the form (recommended).', prefs.deviceKeys, () => onChange({ ...prefs, deviceKeys: !prefs.deviceKeys }))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 0', borderBottom: `1px solid ${C.line}`, flexWrap: 'wrap' }}>
+            <span style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <b style={{ fontSize: 18 }}>Guest steps away</b>
+              <span style={{ fontSize: 14, color: C.muted, lineHeight: 1.4 }}>Quiet time before “Still there?”. Then a guest with a name is saved and put in line.</span>
+            </span>
+            <span role="group" aria-label="Quiet time" style={{ display: 'flex', border: `1px solid ${C.line}`, borderRadius: 12, overflow: 'hidden' }}>
+              {IDLE_CHOICES.map((s) => (
+                <button key={s} type="button" aria-pressed={prefs.idleSec === s} onClick={() => onChange({ ...prefs, idleSec: s })}
+                  style={{ minWidth: 70, minHeight: 46, border: 0, background: prefs.idleSec === s ? C.ink : C.card, color: prefs.idleSec === s ? '#fff' : C.ink, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+                  {s < 120 ? `${s} s` : '2 min'}
+                </button>
+              ))}
+            </span>
+          </div>
+          <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.5, margin: '14px 0 0' }}>
+            iPad: Share → Add to Home Screen opens check-in with no browser bar; Settings → Accessibility → Guided Access locks the iPad to it.
+          </p>
+        </div>
+        <button type="button" onClick={onUnpair}
+          style={{ minHeight: 54, borderRadius: 14, border: `1.5px solid ${confirmUnpair ? C.bad : C.line}`, background: confirmUnpair ? C.bad : C.card, color: confirmUnpair ? '#fff' : C.ink, fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>
+          {confirmUnpair ? 'Tap again to disconnect this tablet' : 'Disconnect this tablet'}
+        </button>
+      </section>
+    </div>
   );
 }
 
@@ -942,10 +1415,10 @@ function Field({ label, required, hint, children }: { label: string; required?: 
 function SalonMark({ menu, accent, size }: { menu: Menu; accent: string; size: number }) {
   if (menu.logoUrl) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={menu.logoUrl} alt="" style={{ width: size, height: size, objectFit: 'contain', borderRadius: size * 0.26, background: '#fff', padding: size * 0.08, boxSizing: 'border-box', flexShrink: 0 }} />;
+    return <img src={menu.logoUrl} alt="" draggable={false} style={{ width: size, height: size, objectFit: 'contain', borderRadius: size * 0.28, background: '#fff', padding: size * 0.08, boxSizing: 'border-box', flexShrink: 0, boxShadow: '0 8px 20px -10px rgba(0,0,0,0.45)' }} />;
   }
   return (
-    <span style={{ width: size, height: size, borderRadius: size * 0.26, background: '#fff', color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.46, fontWeight: 800, flexShrink: 0 }}>
+    <span style={{ width: size, height: size, borderRadius: size * 0.28, background: '#fff', color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.46, fontWeight: 800, flexShrink: 0, boxShadow: '0 8px 20px -10px rgba(0,0,0,0.45)' }}>
       {(menu.salonName.trim()[0] || '✦').toUpperCase()}
     </span>
   );
@@ -957,14 +1430,12 @@ function OfferCard({ menu, accent, light }: { menu: Menu; accent: string; light?
   if (!p || p.percent <= 0) return null;
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 18,
+      position: 'relative', display: 'flex', flexDirection: 'column', gap: 4, padding: '14px 16px', borderRadius: 18,
       ...(light ? { background: `${accent}0d`, border: `1px solid ${accent}40`, color: C.ink } : { background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.24)', color: '#fff' }),
     }}>
-      <span style={{ flexShrink: 0, padding: '6px 10px', borderRadius: 10, background: light ? accent : '#fff', color: light ? '#fff' : accent, fontSize: 12, fontWeight: 800, letterSpacing: '0.1em' }}>TODAY</span>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <b style={{ fontSize: 16, lineHeight: 1.3 }}>{p.percent}% off {p.scope === 'all' ? 'every service' : p.scope.toLowerCase()}{p.label ? ` · ${p.label}` : ''}</b>
-        <span style={{ fontSize: 13.5, opacity: 0.92 }}>Applied automatically when you check in.</span>
-      </span>
+      <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.14em', color: light ? accent : 'rgba(255,255,255,0.9)' }}>TODAY</span>
+      <b style={{ fontSize: 17, lineHeight: 1.3 }}>{p.percent}% off {p.scope === 'all' ? 'every service' : p.scope.toLowerCase()}</b>
+      <span style={{ fontSize: 14, opacity: 0.92, lineHeight: 1.4 }}>{p.label ? `${p.label} · ` : ''}Applied automatically at the till.</span>
     </div>
   );
 }
@@ -994,67 +1465,141 @@ function LockIcon() {
 const accentVar = (accent: string): CSSProperties => ({ '--ck-accent': accent } as unknown as CSSProperties);
 
 /** One family for the whole page — the app's own Be Vietnam Pro (loaded by the
- *  root layout), hierarchy by size and weight. The serif display face looked
- *  like a wedding menu next to a sans form and a sans price list. */
+ *  root layout), hierarchy by size and weight. */
 const FONT = 'var(--font-app), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
-const baseCss = `html,body{background:${C.page}}
+const baseCss = `html,body{background:${C.page};overscroll-behavior:none}
 .ck-page input::placeholder{color:#a8a29e}
 .ck-page input:focus{outline:none;border-color:var(--ck-accent)!important;box-shadow:0 0 0 4px color-mix(in srgb, var(--ck-accent) 18%, transparent)}
-.ck-page input[type=date]{-webkit-appearance:none;min-height:60px}
-.ck-page button{font-family:inherit}`;
+.ck-page button{font-family:inherit}
+.ck-page button:focus-visible{outline:3px solid var(--ck-accent);outline-offset:2px}`;
 const layoutCss = `
 .ck-chips::-webkit-scrollbar{display:none}
 .ck-arrow{display:none} @media (hover:hover) and (pointer:fine){.ck-arrow{display:flex}}
-.ck-shell{display:flex;min-height:100dvh;width:100%}
-.ck-side{display:none}
 .ck-deco1,.ck-deco2{position:absolute;border-radius:50%;pointer-events:none}
 .ck-deco1{width:440px;height:440px;right:-200px;top:-160px;background:rgba(255,255,255,0.07)}
 .ck-deco2{width:320px;height:320px;left:-160px;bottom:-120px;border:38px solid rgba(255,255,255,0.06);box-sizing:border-box}
-.ck-side-in{position:relative;height:100%;box-sizing:border-box;padding:32px 30px 24px;display:flex;flex-direction:column;gap:18px;overflow-y:auto}
-.ck-qrcard{background:#fff;border-radius:24px;padding:20px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;box-shadow:0 24px 48px -28px rgba(0,0,0,0.5)}
-.ck-stepbox{list-style:none;margin:0;padding:16px;border-radius:18px;background:rgba(0,0,0,0.12);display:flex;flex-direction:column;gap:12px}
-.ck-visit{background:#fff;border-radius:20px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;box-shadow:0 24px 48px -28px rgba(0,0,0,0.5)}
-.ck-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:100dvh}
-.ck-top{display:flex;flex-direction:column;gap:12px;padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px;position:sticky;top:0;z-index:5}
-.ck-bandqr{display:none;align-items:center;gap:16px;padding:12px;border-radius:18px;background:#fff;text-align:left}
+
+/* One screen tall; the middle scrolls, the bars stay. The viewport resizes
+   with the device keyboard (layout.tsx), so nothing sits under it. */
+.ck-app{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+.ck-row{flex-direction:row}
+.ck-col{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.ck-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.ck-pad{padding:clamp(16px,3vh,26px) clamp(16px,4vw,40px) 24px}
+
+.ck-bar{flex-shrink:0;height:64px;box-sizing:border-box;padding:0 max(14px,env(safe-area-inset-left)) 0 max(14px,env(safe-area-inset-left));display:flex;align-items:center;gap:12px;background:#fff;border-bottom:1px solid ${C.line}}
+.ck-bar-brand{display:flex;align-items:center;gap:10px;min-width:0;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.ck-bar-name{font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.ck-steps{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;list-style:none;margin:0;padding:0;min-width:0}
+.ck-steps li{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:${C.muted};white-space:nowrap}
+.ck-steps li+li::before{content:"";width:24px;height:2px;background:${C.line};margin-right:2px}
+.ck-steps li.on{color:${C.ink};font-weight:800}.ck-steps li.past{color:${C.ink2}}
+.ck-dot{width:24px;height:24px;border-radius:50%;border:1.5px solid #b8b1a8;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.ck-steps-sm{display:none;flex:1;text-align:center;font-size:14px;font-weight:700;color:${C.ink2}}
+@media (max-width:820px){.ck-steps{display:none}.ck-steps-sm{display:block}.ck-bar-name{max-width:140px}}
+@media (max-width:480px){.ck-bar-name{display:none}}
+.ck-iconbtn{width:46px;height:46px;flex-shrink:0;border-radius:12px;border:1px solid ${C.line};background:#fff;color:${C.ink};display:flex;align-items:center;justify-content:center;cursor:pointer}
+.ck-textbtn{min-height:46px;padding:0 10px;border:0;background:transparent;color:${C.ink2};font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap}
+
+/* Welcome */
+.ck-welcome{height:100dvh;display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,33vw,440px)}
+.ck-wel-go{position:relative;overflow:hidden;border:0;color:#fff;text-align:left;cursor:pointer;padding:clamp(28px,7vh,56px) clamp(28px,5vw,64px);display:flex;flex-direction:column;gap:clamp(14px,3vh,26px);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.ck-wel-big{position:relative;font-size:clamp(44px,9vh,76px);line-height:1.02;font-weight:800;letter-spacing:-0.02em}
+.ck-wel-cta{position:relative;align-self:flex-start;display:inline-flex;align-items:center;min-height:clamp(60px,9vh,74px);padding:0 34px;border-radius:999px;background:#fff;font-size:clamp(19px,3vh,24px);font-weight:800}
+.ck-wel-side{background:#fff;border-left:1px solid ${C.line};padding:clamp(24px,5vh,44px) clamp(22px,3vw,38px);display:flex;flex-direction:column;gap:14px;overflow-y:auto}
+@media (max-width:760px),(orientation:portrait) and (max-width:1000px){
+  .ck-welcome{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}
+  .ck-wel-side{border-left:0;border-top:1px solid ${C.line};display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:22px;row-gap:6px;align-content:start;text-align:left}
+  .ck-wel-side > *{grid-column:2;text-align:left!important}
+  .ck-wel-side > img{grid-column:1;grid-row:1 / span 3;width:clamp(110px,18vh,160px)!important;align-self:center}
+  .ck-wel-spacer{display:none}
+  .ck-wel-offer{grid-column:1 / -1!important;margin-top:12px}
+}
+
+/* Phone step */
+.ck-rail{display:none}
+.ck-mhead{display:flex;flex-direction:column;gap:12px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;color:#fff;flex-shrink:0}
+.ck-bandqr{display:none;align-items:center;gap:14px;padding:10px;border-radius:16px;background:#fff;text-align:left}
 @media (min-width:600px) and (max-width:899px){.ck-bandqr{display:flex}}
-.ck-body{flex:1;padding:clamp(18px,4vw,28px) clamp(16px,4vw,40px) 24px;width:100%;box-sizing:border-box}
-.ck-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px 18px}
-.ck-phone{display:flex;flex-direction:column;gap:clamp(12px,2vh,18px);max-width:620px;margin:0 auto}
-.ck-display{min-height:clamp(64px,9vh,88px);border-radius:20px;border:2.5px solid;background:#fff;display:flex;align-items:center;justify-content:center;font-size:clamp(30px,4.2vh,44px);font-weight:700;letter-spacing:.04em;font-variant-numeric:tabular-nums}
-.ck-keypad{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(8px,1.4vh,14px)}
-.ck-key{min-height:clamp(60px,9vh,88px);border-radius:18px;border:1.5px solid ${C.line};background:#fff;color:${C.ink};font-size:clamp(26px,3.6vh,38px);font-weight:700;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.ck-qrrow{position:relative;background:#fff;border-radius:20px;padding:14px;display:flex;gap:14px;align-items:center;box-shadow:0 24px 48px -28px rgba(0,0,0,0.5)}
+.ck-phone{display:flex;flex-direction:column;gap:clamp(10px,1.8vh,16px);max-width:700px;margin:0 auto;padding:clamp(16px,3.4vh,30px) clamp(16px,4vw,40px) 20px;box-sizing:border-box}
+.ck-display{min-height:clamp(60px,9.5vh,80px);border-radius:20px;border:2.5px solid;background:#fff;display:flex;align-items:center;justify-content:center;font-size:clamp(28px,4.8vh,42px);font-weight:800;letter-spacing:.03em;font-variant-numeric:tabular-nums}
+.ck-keypad{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(8px,1.4vh,12px)}
+.ck-key{min-height:clamp(56px,10vh,84px);border-radius:18px;border:1.5px solid ${C.line};background:#fff;color:${C.ink};font-size:clamp(26px,4vh,36px);font-weight:700;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none;box-shadow:0 1px 0 #ddd6cc}
 .ck-key:active{transform:scale(.97);background:#f5f1ec}
-.ck-key-del{background:#f0ece6;border:none;display:flex;align-items:center;justify-content:center}
-.ck-key-go{border:none;color:#fff;font-size:clamp(16px,2.4vh,24px);font-weight:800;padding:0 4px}
+.ck-key-del{background:#f0ece6;border:none;display:flex;align-items:center;justify-content:center;box-shadow:none}
+.ck-key-go{border:none;color:#fff;font-size:clamp(17px,2.8vh,24px);font-weight:800;padding:0 4px;box-shadow:none}
 @media (max-width:420px){.ck-key-go{font-size:16px}}
 .ck-key-go:active{background:inherit}
+@media (min-width:900px){
+  .ck-rail{display:flex;position:relative;overflow:hidden;flex-direction:column;gap:16px;width:clamp(300px,27vw,360px);flex-shrink:0;box-sizing:border-box;padding:28px 24px 22px;color:#fff;overflow-y:auto;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  .ck-mhead{display:none}
+  .ck-promo-m{display:none}
+}
+
+/* Name on the salon keys */
+.ck-nametop{flex:1;min-height:0;overflow-y:auto;padding:clamp(12px,2.6vh,26px) clamp(16px,4vw,40px);display:flex;flex-direction:column;justify-content:center;gap:clamp(10px,1.8vh,14px)}
+@media (orientation:portrait){.ck-nametop{justify-content:flex-end;padding-bottom:28px}}
+.ck-namebox{display:flex;align-items:center;min-height:clamp(64px,11vh,92px);box-sizing:border-box;padding:0 24px;border-radius:20px;border:3px solid var(--ck-accent);background:#fff;font-size:clamp(28px,5.2vh,42px);font-weight:800;color:${C.ink}}
+.ck-caret{width:3px;height:1.05em;background:var(--ck-accent);margin:0 6px 0 3px;flex-shrink:0;animation:ckblink 1.1s steps(1) infinite}
+@keyframes ckblink{50%{opacity:0}}
+.ck-keys{flex-shrink:0;background:${C.soft};border-top:1px solid ${C.line};padding:10px clamp(8px,1.4vw,16px) max(12px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:clamp(6px,1vh,8px)}
+.ck-krow{display:flex;justify-content:center;gap:clamp(5px,0.7vw,8px)}
+.ck-r2{padding:0 4.5%}
+.ck-k{flex:1 1 0;min-width:0;max-width:124px;height:clamp(50px,9.4vh,82px);border-radius:14px;border:1px solid #ddd6cc;background:#fff;color:${C.ink};font-size:clamp(20px,3.4vh,28px);font-weight:700;box-shadow:0 1px 0 #d6cfc5;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none;padding:0}
+.ck-k:active{background:#e9e4dd;transform:translateY(1px)}
+.ck-kw{flex-grow:1.8;max-width:230px;background:#e2ddd5;border:0;box-shadow:none;display:flex;align-items:center;justify-content:center;gap:8px;font-size:clamp(14px,2.2vh,17px)}
+.ck-kdev span{white-space:nowrap}
+@media (max-width:600px){.ck-kdev span{display:none}}
+.ck-kspace{flex-grow:5;max-width:none;color:${C.muted};font-size:16px;font-weight:600}
+.ck-kgo{flex-grow:3;max-width:380px;border:0;color:#fff;box-shadow:none;font-size:clamp(18px,2.8vh,22px);font-weight:800}
+
+/* Name on the device keyboard */
+.ck-namenative{display:flex;flex-direction:column;gap:12px;padding:clamp(14px,3vh,28px) clamp(16px,4vw,40px);max-width:1100px}
+.ck-namerow{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.ck-namerow > label{flex:1 1 240px;min-width:0}
+.ck-lbl{display:block;font-size:15px;font-weight:700;color:${C.ink2};margin-bottom:6px}
+
+/* Keyboard up: compact everything that is not the field */
+.ck-kb .ck-bar{height:50px}
+.ck-kb .ck-hide-kb,.ck-kb .ck-mhead,.ck-kb .ck-rail{display:none!important}
+.ck-kb .ck-namenative{padding-top:10px;gap:8px}
+
+/* Birthday */
 .ck-months{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 @media (min-width:700px){.ck-months{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .ck-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:clamp(6px,1vw,10px)}
-.ck-big{min-height:clamp(60px,8vh,80px);border-radius:16px;border:1.5px solid ${C.line};background:#fff;color:${C.ink};font-size:clamp(16px,2.2vw,23px);padding:0 4px;font-weight:700;cursor:pointer;touch-action:manipulation}
+.ck-big{min-height:clamp(60px,10vh,88px);border-radius:16px;border:1.5px solid ${C.line};background:#fff;color:${C.ink};font-size:clamp(17px,3vh,24px);padding:0 4px;font-weight:700;cursor:pointer;touch-action:manipulation;box-shadow:0 1px 0 #ddd6cc}
 .ck-big:active{transform:scale(.97)}
-.ck-day{min-height:clamp(50px,7vh,66px);font-size:clamp(19px,2.4vw,25px);padding:0}
-.ck-svcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:clamp(10px,2.5vw,14px)}
-.ck-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;padding-bottom:max(14px,env(safe-area-inset-bottom));border-top:1px solid ${C.line};background:rgba(255,255,255,0.96);position:sticky;bottom:0;z-index:5}
+.ck-day{min-height:clamp(48px,7vh,64px);font-size:clamp(19px,3vh,25px);padding:0}
+
+/* Services */
+.ck-svcwrap{flex:1;min-height:0;display:flex}
+.ck-svcmain{padding:clamp(14px,2.4vh,20px) clamp(16px,3vw,28px) 24px}
+.ck-svcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:12px}
+.ck-step{width:52px;height:52px;border:0;background:transparent;color:${C.ink};font-size:26px;font-weight:700;cursor:pointer}
+.ck-sum{display:none}
+.ck-foot{flex-shrink:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));border-top:1px solid ${C.line};background:#fff}
+@media (min-width:1100px){
+  .ck-sum{display:flex;flex-direction:column;gap:12px;width:clamp(300px,26vw,360px);flex-shrink:0;box-sizing:border-box;background:#fff;border-left:1px solid ${C.line};padding:20px 22px max(20px,env(safe-area-inset-bottom));min-height:0}
+  .ck-foot-svc{display:none}
+  .ck-foot{padding:14px 40px}
+}
+
+/* Sheets */
+.ck-sheetwrap{position:fixed;inset:0;z-index:50;background:rgba(28,25,23,.55);display:flex;align-items:flex-end;justify-content:center}
+.ck-keysheet{width:100%;max-height:100dvh;background:${C.page};border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden}
+.ck-still{width:min(620px,calc(100vw - 32px));box-sizing:border-box;background:#fff;border-radius:28px;padding:clamp(24px,5vh,40px) clamp(22px,4vw,44px) clamp(20px,4vh,32px);display:flex;flex-direction:column;align-items:center;gap:clamp(10px,2vh,18px);text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.25)}
+.ck-staff{width:min(720px,calc(100vw - 32px));max-height:calc(100dvh - 48px);box-sizing:border-box;background:#fff;border-radius:26px;padding:24px 30px;display:flex;flex-direction:column;gap:12px}
+
+/* Thank you */
 .ck-done{min-height:100dvh;box-sizing:border-box;max-width:1100px;margin:0 auto;padding:clamp(28px,6vh,64px) clamp(20px,5vw,64px) clamp(20px,4vh,40px);display:flex;flex-direction:column;gap:clamp(12px,2vh,20px)}
 .ck-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(8px,1.6vw,16px)}
 .ck-tile{background:rgba(255,255,255,0.16);border-radius:22px;padding:clamp(14px,2vw,22px);display:flex;flex-direction:column;gap:4px;min-width:0}
 .ck-review{display:flex;align-items:center;gap:18px;padding:16px 20px;border-radius:24px;background:#fff;max-width:720px}
-@media (max-width:520px){.ck-tiles{grid-template-columns:1fr}.ck-tile{flex-direction:row;align-items:baseline;flex-wrap:wrap;gap:10px}}
-@media (min-width:900px){
-  .ck-side{display:block;position:sticky;top:0;height:100dvh;width:clamp(340px,32vw,460px);flex-shrink:0;overflow:hidden}
-  .ck-top{display:none}
-  .ck-body{padding:36px 48px 28px}
-  .ck-foot{padding:16px 48px}
-  .ck-promo-m{display:none}
-}
-@media (max-width:899px){ .ck-eyebrow{display:none} }`;
+@media (max-width:520px){.ck-tiles{grid-template-columns:1fr}.ck-tile{flex-direction:row;align-items:baseline;flex-wrap:wrap;gap:10px}}`;
 
-// No fixed height: on a phone the on-screen keyboard shrinks the viewport, and a
-// locked 100dvh traps the focused field behind it. Let the page flow and keep the
-// action bar sticky instead — that behaves on iOS, Android and a 27" monitor.
 const screen: CSSProperties = {
   minHeight: '100dvh', background: C.page, color: C.ink,
   fontFamily: FONT,
@@ -1098,9 +1643,7 @@ function ChipArrow({ dir, onClick }: { dir: -1 | 1; onClick: () => void }) {
     <button type="button" onClick={onClick} className="ck-arrow" aria-label={dir < 0 ? 'Scroll categories left' : 'Scroll categories right'}
       style={{
         position: 'absolute', top: 2, [dir < 0 ? 'left' : 'right']: 6, zIndex: 2,
-        // `display` deliberately NOT set here: the stylesheet decides it, so
-        // an inline value cannot out-rank the hover-capable media query
-        // that hides these on a phone.
+        // `display` deliberately NOT set here: the stylesheet decides it.
         width: 40, height: 40, borderRadius: '50%', border: `1.5px solid ${C.line}`, background: C.card, color: C.ink2,
         alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
         boxShadow: '0 2px 8px rgba(23,20,18,0.12)',
@@ -1114,20 +1657,19 @@ function ChipArrow({ dir, onClick }: { dir: -1 | 1; onClick: () => void }) {
 
 /** A category chip: one line, never squeezed, never wrapped. */
 const chip: CSSProperties = {
-  ...pill, padding: '9px 16px', minHeight: 42, fontSize: 14.5, whiteSpace: 'nowrap', flexShrink: 0,
+  ...pill, padding: '9px 16px', minHeight: 44, fontSize: 15, whiteSpace: 'nowrap', flexShrink: 0,
 };
 const ghostBtn: CSSProperties = {
   border: `1.5px solid ${C.line}`, background: C.card, color: C.ink,
-  borderRadius: 999, padding: '14px 26px', fontSize: 16, fontWeight: 600, cursor: 'pointer', minHeight: 54,
+  borderRadius: 999, padding: '14px 26px', fontSize: 16, fontWeight: 700, cursor: 'pointer', minHeight: 54,
 };
 const primary = (accent: string): CSSProperties => ({
   border: 'none', background: accent, color: '#fff', borderRadius: 999,
-  padding: '14px 32px', fontSize: 17, fontWeight: 700, cursor: 'pointer', minHeight: 56, letterSpacing: '0',
+  padding: '14px 32px', fontSize: 17, fontWeight: 800, cursor: 'pointer', minHeight: 56, letterSpacing: '0',
   boxShadow: `0 10px 24px ${accent}40`,
 });
-const serifTitle: CSSProperties = { fontFamily: FONT, fontWeight: 700, color: C.ink, letterSpacing: '-0.02em', lineHeight: 1.2 };
-const eyebrow: CSSProperties = { fontSize: 12, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.faint };
-const stepHint: CSSProperties = { fontSize: 'clamp(14.5px, 3.6vw, 16px)', color: C.muted, margin: '0 0 20px', lineHeight: 1.5 };
+const titleStyle: CSSProperties = { fontFamily: FONT, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em', lineHeight: 1.15 };
+const eyebrow: CSSProperties = { fontSize: 12, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.faint };
 
 const liveChip: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 7, minHeight: 32, padding: '0 12px', borderRadius: 999, background: 'rgba(255,255,255,0.16)', fontSize: 14, fontWeight: 700 };
 const tileLabel: CSSProperties = { fontSize: 13, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' };

@@ -25,6 +25,9 @@ interface PayTicket {
   techs: TechSplit[];
 }
 
+/** On the ticket of a guest who stepped away mid check-in (kiosk "Still there?" ran out). */
+export const UNFINISHED_NOTE = 'Did not finish check-in on the tablet — ask about services at the chair';
+
 @Injectable()
 export class DisplayService {
   private readonly logger = new Logger('Display');
@@ -244,7 +247,7 @@ export class DisplayService {
     token: string,
     dto: {
       firstName?: string; lastName?: string; phone?: string; email?: string; birthDate?: string;
-      serviceIds?: string[]; addonIds?: string[]; partySize?: number; note?: string;
+      serviceIds?: string[]; addonIds?: string[]; partySize?: number; note?: string; unfinished?: boolean;
       guests?: { firstName?: string; serviceIds?: string[]; addonIds?: string[] }[];
     },
   ) {
@@ -320,7 +323,7 @@ export class DisplayService {
         customerId: linked?.id ?? null,
         customerName: fullName,
         phone: dto.phone?.trim().slice(0, 40) || null,
-        note: [dto.note?.trim(), guests.length ? partyNote : ''].filter(Boolean).join(' · ').slice(0, 300) || null,
+        note: [dto.unfinished ? UNFINISHED_NOTE : '', dto.note?.trim(), guests.length ? partyNote : ''].filter(Boolean).join(' · ').slice(0, 300) || null,
         partySize: party,
         items: mainWithAddons as unknown as Prisma.InputJsonValue,
         source: 'walkin',
@@ -359,7 +362,9 @@ export class DisplayService {
     // Straight onto the "up next" technician — the owner asked that a phone
     // check-in not sit as a WAITING card until somebody presses "Giao". Each
     // person of a party gets their own; whoever cannot be seated simply waits.
-    const seat = async (id: string) => (this.walkins ? await this.walkins.seatSelfCheckIn(tenantId, id).catch(() => null) : null);
+    // A guest who walked away from the kiosk is NOT seated: the desk finds
+    // them first and asks what they would like.
+    const seat = async (id: string) => (this.walkins && !dto.unfinished ? await this.walkins.seatSelfCheckIn(tenantId, id).catch(() => null) : null);
     const staffId = await seat(walkIn.id);
     let guestsSeated = 0;
     for (const id of guestIds) if (await seat(id)) guestsSeated += 1;

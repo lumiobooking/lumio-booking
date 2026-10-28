@@ -19,6 +19,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
+  // Android Chrome lays its keyboard OVER the page by default, so the name
+  // field, the heading and Continue sat under the keys. Resize the page with
+  // the keyboard instead; the kiosk goes compact when it shrinks (page.tsx).
+  interactiveWidget: 'resizes-content',
   // A real colour: a CSS variable is not valid in <meta name="theme-color">.
   themeColor: '#faf9f7',
 };

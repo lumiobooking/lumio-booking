@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /** Register → server: the latest customer-facing display state (+ optional
@@ -45,6 +45,12 @@ export class SelfCheckInDto {
   @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) addonIds?: string[];
   @IsOptional() @IsInt() @Min(1) @Max(20) partySize?: number;
   @IsOptional() @IsString() @MaxLength(300) note?: string;
+  /**
+   * The guest stepped away mid-way and the kiosk's "Still there?" ran out: keep
+   * them in line (name, phone, whatever they picked) for the desk to finish —
+   * "services at the chair". Never seated on a technician by itself.
+   */
+  @IsOptional() @IsBoolean() unfinished?: boolean;
   /** The others in the party, each with their own services → their own ticket. */
   @IsOptional() @IsArray() @ArrayMaxSize(9) @ValidateNested({ each: true }) @Type(() => CheckInGuestDto) guests?: CheckInGuestDto[];
 }

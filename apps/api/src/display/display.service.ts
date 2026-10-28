@@ -10,7 +10,7 @@ import { LINK_WINDOW_MIN } from '../walkins/booking-link';
 import { CustomersService } from '../customers/customers.service';
 import { WalkinsService } from '../walkins/walkins.service';
 import { liveEvents } from '../common/live-events';
-import { linkWalkInToBooking } from '../walkins/booking-link';
+import { linkPartyToGroup, linkWalkInToBooking } from '../walkins/booking-link';
 import { dayKeyTz, weekdayTz } from '../common/salon-time';
 import { WEEKDAY_DISCOUNTS_KEY, DATE_DISCOUNTS_KEY } from '../settings/settings.constants';
 import { netCents, priceService, promoBanner, PromoSettings, SalonDay } from './checkin-pricing';
@@ -330,7 +330,9 @@ export class DisplayService {
       select: { id: true },
     });
     // A customer with a booking near now checks in on the tablet: she is that booking.
-    await linkWalkInToBooking(this.prisma as never, tenantId, walkIn.id, linked?.id ?? null).catch(() => null);
+    const bookedAs = await linkWalkInToBooking(this.prisma as never, tenantId, walkIn.id, linked?.id ?? null, new Date(), {
+      phone: dto.phone ?? null, firstName: name, lastName: dto.lastName ?? null,
+    }).catch(() => null);
     const guestIds: string[] = [];
     for (let i = 0; i < guests.length; i++) {
       const items = await withAddons(itemsFor(guests[i]?.serviceIds), guests[i]?.addonIds);
@@ -352,6 +354,8 @@ export class DisplayService {
       });
       guestIds.push(g.id);
     }
+    // The friends she booked with are the rest of her booking's group.
+    if (bookedAs && guestIds.length) await linkPartyToGroup(this.prisma as never, tenantId, bookedAs, guestIds).catch(() => []);
     // Straight onto the "up next" technician — the owner asked that a phone
     // check-in not sit as a WAITING card until somebody presses "Giao". Each
     // person of a party gets their own; whoever cannot be seated simply waits.

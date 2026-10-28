@@ -15,7 +15,56 @@ import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 import { ind } from '../lib/ui-industry';
 
-interface FollowUp { enabled: boolean; firstAfterMin: number; secondAfterMin: number; maxPerWindow: number; hourFrom: number; hourTo: number }
+export interface FollowUp {
+  enabled: boolean; firstAfterMin: number; secondAfterMin: number; maxPerWindow: number; hourFrom: number; hourTo: number;
+  /** The salon's own reminder wording; '' = the built-in lines. Absent on an older server. */
+  messageVi?: string; messageEn?: string;
+}
+
+/** Same cap as the server (messenger/followup NUDGE_MAX_CHARS). */
+export const NUDGE_MAX = 300;
+/** The built-in general reminder, shown as the placeholder so the owner sees what is sent today. */
+export const DEFAULT_NUDGE = {
+  vi: 'Dạ em vẫn đây ạ — anh/chị cần em báo giá dịch vụ nào hay xem giờ trống hôm nào thì nhắn em nhé.',
+  en: 'I am still here — say the word if you want a price or the open times for a day.',
+};
+
+/**
+ * The two reminder lines the owner may write — one per language the bot
+ * answers in. Shared by the settings box and the Inbox "Fix" on a reminder.
+ */
+export function NudgeWordingFields({ vi, valueVi, valueEn, onChange, disabled }: {
+  vi: boolean; valueVi: string; valueEn: string; disabled?: boolean;
+  onChange: (next: { messageVi: string; messageEn: string }) => void;
+}) {
+  const L = (v: string, e: string) => ind(vi ? v : e);
+  const field = (lang: 'vi' | 'en') => {
+    const value = lang === 'vi' ? valueVi : valueEn;
+    const id = `nudge-${lang}`;
+    return (
+      <div style={{ display: 'grid', gap: 5 }}>
+        <label htmlFor={id} style={{ ...ui.label, margin: 0, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+          <span>{lang === 'vi' ? L('Khách nhắn tiếng Việt', 'Vietnamese-speaking customers') : L('Khách nhắn tiếng Anh', 'English-speaking customers')}</span>
+          <span style={{ fontWeight: 500, color: value.length > NUDGE_MAX - 20 ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>{value.length}/{NUDGE_MAX}</span>
+        </label>
+        <textarea id={id} rows={2} maxLength={NUDGE_MAX} value={value} disabled={disabled}
+          placeholder={DEFAULT_NUDGE[lang]}
+          onChange={(e) => onChange(lang === 'vi' ? { messageVi: e.target.value, messageEn: valueEn } : { messageVi: valueVi, messageEn: e.target.value })}
+          style={{ ...ui.input, minHeight: 60, lineHeight: 1.5, resize: 'vertical', fontFamily: 'inherit' }} />
+      </div>
+    );
+  };
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {field('vi')}
+      {field('en')}
+      <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+        {L('Để trống = dùng câu mặc định (chữ mờ). Bot gửi đúng nguyên văn câu bạn viết, và không bao giờ gửi một câu hai lần cho cùng khách. Khách đang chờ xác nhận lịch hoặc chưa gửi tên/SĐT vẫn nhận câu hỏi đúng chỗ đó trước.',
+          'Empty = the default line (greyed). The bot sends your words exactly, and never sends the same line twice to one customer. A customer who still has to confirm, or send a name and phone, gets that specific ask first.')}
+      </span>
+    </div>
+  );
+}
 
 const FIRST = [15, 30, 45, 60, 90, 120, 180];
 const SECOND = [0, 120, 240, 360];
@@ -24,12 +73,16 @@ const hh = (h: number) => `${String(h % 24).padStart(2, '0')}:00`;
 export function FollowUpBox({ token, vi }: { token: string | null; vi: boolean }) {
   const [s, setS] = useState<FollowUp | null>(null);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [words, setWords] = useState<{ messageVi: string; messageEn: string } | null>(null);
   const L = (v: string, e: string) => ind(vi ? v : e);
 
   useEffect(() => {
     if (!token) return;
-    apiFetch<FollowUp>('/settings/chat-followup', { token }).then((r) => setS(r)).catch(() => setState('error'));
+    apiFetch<FollowUp>('/settings/chat-followup', { token })
+      .then((r) => { setS(r); setWords({ messageVi: r.messageVi ?? '', messageEn: r.messageEn ?? '' }); })
+      .catch(() => setState('error'));
   }, [token]);
+  const wordsDirty = !!s && !!words && (words.messageVi.trim() !== (s.messageVi ?? '') || words.messageEn.trim() !== (s.messageEn ?? ''));
 
   async function save(patch: Partial<FollowUp>) {
     if (!token || !s) return;
@@ -39,6 +92,7 @@ export function FollowUpBox({ token, vi }: { token: string | null; vi: boolean }
     try {
       const r = await apiFetch<FollowUp>('/settings/chat-followup', { method: 'PATCH', token, body: patch });
       setS(r); setState('saved'); window.setTimeout(() => setState('idle'), 1800);
+      if ('messageVi' in patch || 'messageEn' in patch) setWords({ messageVi: r.messageVi ?? '', messageEn: r.messageEn ?? '' });
     } catch { setState('error'); }
   }
 
@@ -98,16 +152,22 @@ export function FollowUpBox({ token, vi }: { token: string | null; vi: boolean }
         </div>
       )}
 
-      {on && (
-        <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(99,102,241,0.10)', border: '1px solid rgba(99,102,241,0.30)', fontSize: 12.5, lineHeight: 1.55, color: 'var(--ccbd5e1)' }}>
-          <div style={{ fontWeight: 700, color: 'var(--cc7d2fe)', marginBottom: 4 }}>{L('Ví dụ tin nhắn lại', 'Example follow-up')}</div>
-          {L('"Dạ anh/chị ơi, anh/chị gửi em tên và số điện thoại là em giữ lịch cho mình liền nhé 😊"',
-            '"Just checking in — send me your name and phone number and I will get your appointment set up 😊"')}
+      {on && words && (
+        <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(99,102,241,0.10)', border: '1px solid rgba(99,102,241,0.30)', display: 'grid', gap: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cc7d2fe)' }}>{L('Câu nhắc lại của tiệm', 'Your follow-up wording')}</div>
+          <NudgeWordingFields vi={vi} valueVi={words.messageVi} valueEn={words.messageEn} onChange={setWords} disabled={state === 'saving'} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" disabled={!wordsDirty || state === 'saving'} onClick={() => words && save({ messageVi: words.messageVi.trim(), messageEn: words.messageEn.trim() })}
+              style={{ ...ui.primaryBtn, minHeight: 40, padding: '0 16px', opacity: wordsDirty && state !== 'saving' ? 1 : 0.5 }}>
+              {L('Lưu câu nhắc', 'Save wording')}
+            </button>
+          </div>
         </div>
       )}
 
       <ul style={{ margin: '12px 0 0', paddingLeft: 18, fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
         <li>{L('Không nhắn khi khách đã đặt lịch, khi nhân viên đang trả lời, hoặc khi khách nói đừng nhắn nữa.', 'Never after a booking, never while a staff member is handling the chat, never to someone who asked not to be messaged.')}</li>
+        <li>{L('Không nhắn khi khách đã cảm ơn / từ chối / chào tạm biệt (VD "không cần đâu, cảm ơn em"), hoặc bot đã chào khách.', 'Never after the customer said no thanks or goodbye (e.g. "thanks, have a great day"), or after the bot signed off.')}</li>
         <li>{L('Chỉ trong 24 giờ kể từ tin cuối của khách — quy định của Meta để tránh bị khoá trang.', 'Only within 24 hours of the customer’s last message — Meta’s rule, which keeps the Page safe.')}</li>
       </ul>
 

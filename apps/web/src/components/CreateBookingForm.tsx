@@ -102,6 +102,10 @@ export function CreateBookingForm({
   const askLocation = uiIndustry() === 'REAL_ESTATE' || uiIndustry() === 'SERVICE';
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // "The customer is here now" — null = follow the time (on for a start near
+  // now), true/false = the desk decided. A walk-in booked at the counter must
+  // land as "Đã đến" (ARRIVED) and on the floor, not as Pending.
+  const [hereChoice, setHereChoice] = useState<boolean | null>(null);
 
   function up(key: keyof typeof form, v: string) {
     setForm((f) => ({ ...f, [key]: v }));
@@ -227,6 +231,12 @@ export function CreateBookingForm({
     return Number.isFinite(at) ? Math.floor((Date.now() - at) / 60_000) : 0;
   })();
   const tooOld = pastMin > 12 * 60;
+  // Same window as the server (bookings.service arrivedNowApplies): up to 30
+  // min ahead, up to 12 h back. Ticked by itself for a start between 10 min
+  // ahead and 2 h ago — the receptionist booking the person at the counter.
+  const hereAllowed = !!form.startLocal && pastMin >= -30 && !tooOld;
+  const hereAuto = hereAllowed && pastMin >= -10 && pastMin <= 120;
+  const hereNow = hereAllowed && (hereChoice ?? hereAuto);
   const pastText = tooOld
     ? (vi ? 'Giờ này đã qua hơn 12 tiếng — kiểm tra lại ngày và sáng/chiều (AM/PM).' : 'That time is more than 12 hours ago — check the date and AM/PM.')
     : (vi ? `Giờ này đã qua ${pastMin < 60 ? `${pastMin} phút` : `${Math.floor(pastMin / 60)} giờ ${pastMin % 60} phút`} — vẫn ghi được (khách đã đến / ghi bù).`
@@ -288,6 +298,7 @@ export function CreateBookingForm({
           partySize: partyN,
           groupId,
           notes: groupNote,
+          ...(hereNow ? { arrivedNow: true } : {}),
           location: askLocation ? form.location.trim() || undefined : undefined,
         },
       });
@@ -316,6 +327,7 @@ export function CreateBookingForm({
               partySize: partyN,
               groupId,
               notes: `${groupNote} — ${form.customerFirstName || ''}`.trim(),
+              ...(hereNow ? { arrivedNow: true } : {}),
             },
           });
         } catch {
@@ -480,6 +492,15 @@ export function CreateBookingForm({
                   {tooOld ? '⚠ ' : '⏱ '}{pastText}
                 </span>
               )}
+              {hereAllowed && (
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${hereNow ? 'rgba(34,197,94,0.55)' : 'var(--c334155)'}`, background: hereNow ? 'rgba(34,197,94,0.10)' : 'transparent' }}>
+                  <input type="checkbox" checked={hereNow} onChange={(e) => setHereChoice(e.target.checked)} style={{ marginTop: 2, width: 17, height: 17, accentColor: '#16a34a', flexShrink: 0 }} />
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{ind(vi ? 'Khách đang ở tiệm (walk-in) — check-in luôn' : 'Customer is here now (walk-in) — check in')}</span>
+                    <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>{ind(vi ? 'Lịch tạo ra ở trạng thái “Đã đến” và lên sàn ngay, không để Chờ xác nhận.' : 'The booking is created as “Arrived” and goes on the floor — not left Pending.')}</span>
+                  </span>
+                </label>
+              )}
               {outside && isOwner && (
                 <button type="button" onClick={() => { setOverrideAt(form.startLocal); setError(null); }}
                   style={{ marginTop: 6, padding: '5px 10px', fontSize: 12, borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
@@ -538,7 +559,7 @@ export function CreateBookingForm({
           disabled={submitting || people.some((p) => p.serviceIds.length === 0)}
           style={{ ...ui.primaryBtn, padding: '10px 22px', fontSize: 14, opacity: (submitting || people.some((p) => p.serviceIds.length === 0)) ? 0.5 : 1, cursor: (submitting || people.some((p) => p.serviceIds.length === 0)) ? 'not-allowed' : 'pointer' }}
         >
-          {submitting ? t('bk.creating') : `+ ${t('bk.createBooking')}${partyN > 1 ? ` (${partyN})` : ''}`}
+          {submitting ? t('bk.creating') : `+ ${hereNow ? (vi ? 'Tạo & check-in' : 'Create & check in') : t('bk.createBooking')}${partyN > 1 ? ` (${partyN})` : ''}`}
         </button>
       </div>
     </form>

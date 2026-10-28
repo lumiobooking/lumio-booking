@@ -20,7 +20,7 @@ import {
 } from './walkin-legs';
 import { turnReport, weekOf } from './turn-report';
 import { settledWalkIns, unpaidFromPastDays, UNPAID_LIST_DAYS } from './unpaid-sweep';
-import { linkWalkInToBooking } from './booking-link';
+import { linkPartyToGroup, linkWalkInToBooking } from './booking-link';
 import { bookingTechAfter, handLegsTo } from './booking-tech-sync';
 import { allocate } from '../payroll/sales-ledger';
 import { appointmentTurns, cleanTurnRules, DEFAULT_TURN_RULES, latePenalty, legTurns, minutesLate, tieCompare, toBottomDelta, TURN_RULES_KEY, TurnRules, newTechBoost } from './turn-rules';
@@ -648,7 +648,9 @@ export class WalkinsService {
     });
     // A customer with a booking near now, added as a walk-in: tie the ticket to
     // the booking, or the midnight sweep marks a customer who came as a no-show.
-    await linkWalkInToBooking(this.prisma as never, tenantId, created.id, linked?.id ?? null).catch(() => null);
+    const bookedAs = await linkWalkInToBooking(this.prisma as never, tenantId, created.id, linked?.id ?? null, new Date(), {
+      phone: dto.phone ?? onFile?.phone ?? null, firstName: leaderName, lastName: dto.lastName ?? null,
+    }).catch(() => null);
     const guestIds: string[] = [];
     let guestPromo: ((categoryId: string | null) => number) | undefined;
     let anyRequested = !!staffId;
@@ -684,6 +686,8 @@ export class WalkinsService {
       });
       guestIds.push(row.id);
     }
+    // Friends who booked with her are the rest of her booking's group.
+    if (bookedAs && guestIds.length) await linkPartyToGroup(this.prisma as never, tenantId, bookedAs, guestIds).catch(() => []);
     // Never ahead of anybody already waiting: the dispatcher serves the queue
     // in arrival order, so a newcomer only starts when nobody is before them
     // (or the technician they asked for is free).

@@ -497,7 +497,7 @@ export class BookingsService {
   }
 
   // Salon Admin create (tenant from the JWT).
-  create(user: AuthenticatedUser, dto: CreateBookingDto, source?: string) {
+  async create(user: AuthenticatedUser, dto: CreateBookingDto, source?: string) {
     // Booking outside opening hours on purpose is the owner's call alone.
     const owner = user.role === 'SALON_ADMIN' || user.role === 'SUPER_ADMIN';
     const clean = Object.assign(Object.create(Object.getPrototypeOf(dto)), dto, { outsideHours: owner ? dto.outsideHours === true : false }) as CreateBookingDto;
@@ -505,7 +505,33 @@ export class BookingsService {
     // who is free at that time), exactly as for an online booking — the salon's
     // assignment mode still decides. `autoAssign: false` leaves it open on purpose.
     const autoAssign = !clean.staffId && clean.autoAssign !== false;
-    return this.createForTenant(this.tenantId(user), clean, user.userId, source, null, { autoAssign });
+    // THE CUSTOMER IS ALREADY HERE. The desk books someone standing at the
+    // counter: the booking must read "Đã đến", not Pending — a Pending visit
+    // in the chair is how the midnight sweep marks a customer who came as a
+    // no-show. Only for a start near now: "arrived" on next Tuesday is a typo.
+    const tenantId = this.tenantId(user);
+    const arrivedNow = clean.arrivedNow === true && arrivedNowApplies(new Date(clean.startTime), new Date());
+    delete (clean as { arrivedNow?: boolean }).arrivedNow;
+    const created = await this.createForTenant(tenantId, clean, user.userId, source, null, { autoAssign, ...(arrivedNow ? { quiet: true } : {}) });
+    if (!arrivedNow || !created) return created;
+    const ids = [(created as { id: string }).id];
+    const at = new Date();
+    const r = await this.prisma.appointment.updateMany({
+      where: { id: { in: ids }, tenantId, status: { in: BookingsService.ACTIONABLE } },
+      data: { status: AppointmentStatus.ARRIVED, arrivedAt: at },
+    });
+    if (r.count) {
+      await this.audit.log({ tenantId, userId: user.userId, action: 'booking.arrived', resourceType: 'appointment', resourceId: ids[0], metadata: { at: 'create' } });
+      // On the floor too, exactly like pressing Check-in: a ticket tied to the
+      // booking, its technician starting now. Best-effort — the booking is
+      // ARRIVED either way; a failure is logged with its cause.
+      if (this.walkins) {
+        await this.walkins.seatAppointment(user, ids[0]).catch((e) => {
+          this.logger.warn(`arrived-now booking ${ids[0]} not seated on the floor: ${e instanceof Error ? e.message : String(e)}`);
+        });
+      }
+    }
+    return (await this.prisma.appointment.findFirst({ where: { id: ids[0], tenantId }, include: BOOKING_INCLUDE })) ?? created;
   }
 
   /**
@@ -570,7 +596,8 @@ export class BookingsService {
      * caller's customer record), so the phone rule below is waived for them —
      * the person who called is the group's contact.
      */
-    opts?: { autoAssign?: boolean; groupGuest?: boolean },
+    /** `quiet` — the customer is at the counter (arrivedNow): no "your booking is confirmed" text. */
+    opts?: { autoAssign?: boolean; groupGuest?: boolean; quiet?: boolean },
   ) {
     // Contact rules. Online (public) customer bookings MUST include a phone number
     // — it is the salon's primary way to reach the client and it cuts down on spam
@@ -930,7 +957,7 @@ export class BookingsService {
     }
 
     // Fire-and-forget confirmation; never block/fail the booking on it.
-    this.sendBookingConfirmation(tenantId, finished).catch(() => undefined);
+    if (!opts?.quiet) this.sendBookingConfirmation(tenantId, finished).catch(() => undefined);
     // If a technician was assigned at creation, email them too. An auto-assign
     // above already sent that mail from autoAssignForTenant, so this only
     // covers the front-desk case — otherwise the tech gets it twice.
@@ -4356,6 +4383,19 @@ export interface PublicServiceRow {
 }
 
 /** The one sentence every channel says about a walk-in-only service. */
+/**
+ * May a desk booking be born ARRIVED? Only when its start is near now: up to
+ * 30 minutes ahead (the chair is being set up) or up to 12 hours back (the
+ * desk recording a customer already in the chair — the same 12 hours the
+ * past-time rule allows).
+ */
+export function arrivedNowApplies(start: Date, now: Date): boolean {
+  const t = start.getTime();
+  if (!Number.isFinite(t)) return false;
+  const ahead = t - now.getTime();
+  return ahead <= 30 * 60_000 && ahead >= -12 * 60 * 60_000;
+}
+
 export function walkInOnlyMessage(serviceName: string): string {
   return `${serviceName} is walk-in only at this salon (first come, first served) — no appointment needed, just come in.`;
 }

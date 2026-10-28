@@ -43,6 +43,7 @@ import {
 } from '../lib/inbox-view';
 import { ind } from '../lib/ui-industry';
 import { TeachAiPanel, canTeachAi, type InsChannel } from './TeachAiPanel';
+import { NudgeTextPanel } from './NudgeTextPanel';
 
 /**
  * Avatar with the channel mark tucked into its corner, coloured by PAGE.
@@ -267,7 +268,7 @@ const Avatar = memo(function Avatar(
   );
 });
 
-interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Meta refused it; sendError says why. */ failed?: boolean; sendError?: string | null; /** Ours, minutes old, and missing from Meta's copy: the customer most likely never got it. */ undelivered?: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite / Meta's agent), mirrored in. */ source?: 'page'; /** First name of the teammate who typed it. */ by?: string | null }
+interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Meta refused it; sendError says why. */ failed?: boolean; sendError?: string | null; /** Ours, minutes old, and missing from Meta's copy: the customer most likely never got it. */ undelivered?: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite / Meta's agent), mirrored in. */ source?: 'page'; /** First name of the teammate who typed it. */ by?: string | null; /** An automatic follow-up after the customer went quiet — not an AI answer. */ nudge?: boolean }
 interface ApptCtx {
   id: string;
   startTime: string;
@@ -410,8 +411,11 @@ export function InboxView() {
   const me = useAuth().user?.id ?? null;
   const vi = lang === 'vi';
   // "Sửa" under a bot reply: the owner teaches the AI the right answer (TeachAiPanel).
-  const mayTeach = canTeachAi(useAuth().user);
-  const [teach, setTeach] = useState<{ index: number; question: string; reply: string } | null>(null);
+  const authUser = useAuth().user;
+  const mayTeach = canTeachAi(authUser);
+  // The follow-up wording is a salon setting (owner only, like the rest of Settings).
+  const mayEditNudge = authUser?.role === 'SALON_ADMIN' || authUser?.role === 'SUPER_ADMIN';
+  const [teach, setTeach] = useState<{ index: number; question: string; reply: string; nudge?: boolean } | null>(null);
   const [topRows, setRows] = useState<InboxRow[]>([]);
   /** Pages of older conversations the person asked for with "load more". The
    *  live list (first page, refreshed by the stream) sits on top; these follow.
@@ -1581,13 +1585,13 @@ export function InboxView() {
                       )}
                       <span style={{ fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5, padding: '0 4px' }}>
                         {mine && !t.manual && <span style={{ width: 14, height: 14, borderRadius: 4, background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 8, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>AI</span>}
-                        {who}{t.at ? <span title={fmtInTz(t.at, { dateStyle: 'full', timeStyle: 'short' })}> · {bubbleStampLabel(t.at, vi)}</span> : null}
+                        {who}{mine && t.nudge && <span title={vi ? 'Tin nhắc tự động khi khách im lặng' : 'Sent automatically after the customer went quiet'} style={{ marginLeft: 2, padding: '0 6px', borderRadius: 999, border: '1px solid var(--c475569)', fontSize: 10.5, fontWeight: 600, color: 'var(--c94a3b8)' }}>{vi ? 'Nhắc lại tự động' : 'Auto follow-up'}</span>}{t.at ? <span title={fmtInTz(t.at, { dateStyle: 'full', timeStyle: 'short' })}> · {bubbleStampLabel(t.at, vi)}</span> : null}
                         {mine && !t.manual && t.source !== 'page' && mayTeach && (
                           <button type="button" onClick={() => {
                             let qi = i - 1;
                             while (qi >= 0 && detail.history[qi].role !== 'user') qi -= 1;
-                            setTeach({ index: qi >= 0 ? qi : i, question: qi >= 0 ? detail.history[qi].content : '', reply: t.content });
-                          }} title={vi ? 'AI trả lời sai? Dạy AI câu đúng' : 'Wrong reply? Teach the AI'}
+                            setTeach({ index: qi >= 0 ? qi : i, question: qi >= 0 ? detail.history[qi].content : '', reply: t.content, nudge: !!t.nudge });
+                          }} title={t.nudge ? (vi ? 'Sửa câu nhắc lại tự động' : 'Edit the automatic follow-up') : (vi ? 'AI trả lời sai? Dạy AI câu đúng' : 'Wrong reply? Teach the AI')}
                             style={{ marginLeft: 4, minHeight: 26, padding: '0 8px', borderRadius: 7, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                             ✎ {vi ? 'Sửa' : 'Fix'}
                           </button>
@@ -1608,7 +1612,10 @@ export function InboxView() {
                 </span>
               </div>
             ))}
-            {teach && (
+            {teach?.nudge && (
+              <NudgeTextPanel token={token} vi={vi} reply={teach.reply} canEdit={mayEditNudge} onClose={() => setTeach(null)} />
+            )}
+            {teach && !teach.nudge && (
               <TeachAiPanel token={token} vi={vi} question={teach.question} reply={teach.reply}
                 channel={((['messenger', 'instagram', 'zalo', 'web'].includes(String(detail.channel)) ? detail.channel : 'messenger') as InsChannel)}
                 source={{ kind: 'thread', id: detail.id }} customerName={detail.senderName ?? null}

@@ -142,7 +142,7 @@ export class SettingsController {
   }
 
   @Patch('chat-followup')
-  updateChatFollowUp(@CurrentUser() user: AuthenticatedUser, @Body() dto: { enabled?: boolean; firstAfterMin?: number; secondAfterMin?: number; hourFrom?: number; hourTo?: number }) {
+  updateChatFollowUp(@CurrentUser() user: AuthenticatedUser, @Body() dto: { enabled?: boolean; firstAfterMin?: number; secondAfterMin?: number; hourFrom?: number; hourTo?: number; messageVi?: string; messageEn?: string }) {
     return this.settings.updateChatFollowUp(user, dto as Record<string, unknown>);
   }
 

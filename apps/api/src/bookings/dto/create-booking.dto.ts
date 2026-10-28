@@ -147,6 +147,13 @@ export class CreateBookingDto {
   @IsBoolean()
   autoAssign?: boolean;
 
+  // Desk only (ignored on public requests): the customer is standing in the
+  // salon right now — the booking is born ARRIVED ("Đã đến"), not Pending.
+  // Honoured only for a start time near now (see BookingsService.create).
+  @IsOptional()
+  @IsBoolean()
+  arrivedNow?: boolean;
+
   // Desk only, OWNER only: book a start time outside opening hours on purpose.
   // Anyone else gets "outside opening hours" — a typed 11:40 PM for 11:40 AM
   // is caught before it reaches the calendar.

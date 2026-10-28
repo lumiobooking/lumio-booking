@@ -294,11 +294,13 @@ export class SettingsService implements OnApplicationBootstrap {
     const next = followUpSettingsFrom({
       ...current,
       ...pick('enabled'), ...pick('firstAfterMin'), ...pick('secondAfterMin'), ...pick('hourFrom'), ...pick('hourTo'),
+      // The salon's own reminder wording (cleaned + capped in cleanFollowUp).
+      ...pick('messageVi'), ...pick('messageEn'),
     });
     // A second nudge only counts when there is a delay for it.
     next.maxPerWindow = next.secondAfterMin > 0 ? 2 : 1;
     await this.writeKey(tenantId, CHAT_FOLLOWUP_KEY, next);
-    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.chat_followup_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { enabled: next.enabled, firstAfterMin: next.firstAfterMin, secondAfterMin: next.secondAfterMin, hourFrom: next.hourFrom, hourTo: next.hourTo } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.chat_followup_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { enabled: next.enabled, firstAfterMin: next.firstAfterMin, secondAfterMin: next.secondAfterMin, hourFrom: next.hourFrom, hourTo: next.hourTo, customVi: next.messageVi.length > 0, customEn: next.messageEn.length > 0 } });
     return next;
   }
 

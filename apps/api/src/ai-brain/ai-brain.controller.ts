@@ -12,6 +12,9 @@ import { AiInstructionsService } from './instructions.service';
 import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
 import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 
+/** The switches that may teach the bots: the brain itself, or any screen with a "Teach the AI" button. */
+export const TEACH_KEYS = ['aiBrain', 'inbox', 'messengerAi', 'voiceAi'];
+
 class SandboxMsgDto {
   @IsIn(['user', 'assistant']) role!: 'user' | 'assistant';
   @IsString() @MaxLength(2000) content!: string;
@@ -101,27 +104,31 @@ export class AiBrainController {
   // ---- The owner's instructions (instructions.ts). Reading: anyone with the
   // screen; writing: owner / manager, decided in the service. Bodies are
   // cleaned field by field there (cleanInstruction).
+  //
+  // Teaching is reached from the Inbox too ("Teach the AI" under a bot reply),
+  // so a salon handed the Inbox or a bot screen may correct its own bot even
+  // while the AI brain screen itself stays with Lumio. Any ONE switch opens it.
   @Get('instructions')
   listInstructions(@CurrentUser() user: AuthenticatedUser) { return this.instructions.list(user); }
 
   @UseGuards(FeaturePolicyGuard)
-  @RequiresFeature('aiBrain')
+  @RequiresFeature(...TEACH_KEYS)
   @Post('instructions')
   createInstruction(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.instructions.create(user, dto); }
 
   @UseGuards(FeaturePolicyGuard)
-  @RequiresFeature('aiBrain')
+  @RequiresFeature(...TEACH_KEYS)
   @RateLimit(30, 60_000)
   @Post('instructions/try')
   tryInstruction(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.brain.tryInstruction(user, dto); }
 
   @UseGuards(FeaturePolicyGuard)
-  @RequiresFeature('aiBrain')
+  @RequiresFeature(...TEACH_KEYS)
   @Patch('instructions/:id')
   updateInstruction(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: Record<string, unknown>) { return this.instructions.update(user, id, dto); }
 
   @UseGuards(FeaturePolicyGuard)
-  @RequiresFeature('aiBrain')
+  @RequiresFeature(...TEACH_KEYS)
   @Delete('instructions/:id')
   deleteInstruction(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.instructions.remove(user, id); }
 

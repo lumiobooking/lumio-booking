@@ -19,7 +19,7 @@ import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
 import { igCustomer, igVerdict } from './instagram-status';
-import { decideFollowUp, threadStateFrom, contextualNudge, followUpSettingsFrom, CHAT_FOLLOWUP_KEY, WINDOW_MS, type StoredTurn } from './followup';
+import { decideFollowUp, threadStateFrom, contextualNudge, followUpSettingsFrom, isNudgeLine, CHAT_FOLLOWUP_KEY, WINDOW_MS, type StoredTurn } from './followup';
 import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION, repeatCorrection, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap, questionFirstCorrection, answersBeforeRecap, endsOnFiller, customerWrappingUp, FILLER_CORRECTION } from './booking-guards';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
@@ -1783,6 +1783,12 @@ export class MessengerService implements OnModuleInit {
       ? await this.prisma.messengerPage.findUnique({ where: { pageId: String(row.pageId) }, select: { pageName: true } }).catch(() => null)
       : null;
 
+    // Which bot lines were reminders (see the history mapping below).
+    const nudgeLines = new Set(localTurns.filter((t) => t && t.nudge).map((t) => String(t.content ?? '').trim()));
+    const followRow = await this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_FOLLOWUP_KEY }, select: { value: true } }).catch(() => null);
+    const followSettings = followUpSettingsFrom(followRow?.value);
+    const followCustom = { vi: followSettings.messageVi, en: followSettings.messageEn };
+
     const notes = await this.prisma.messengerNote.findMany({
       where: { tenantId, threadId: String(row.id) },
       orderBy: { createdAt: 'desc' }, take: 50,
@@ -1816,7 +1822,11 @@ export class MessengerService implements OnModuleInit {
           // Meta refused looked exactly like one it delivered.
           ...(t.failed ? { failed: true, sendError: (t as { sendError?: string | null }).sendError ?? null } : {}),
           ...((t as { undelivered?: boolean }).undelivered ? { undelivered: true } : {}),
-          ...((t as { source?: string }).source === 'page' ? { source: 'page' } : {}) })),
+          ...((t as { source?: string }).source === 'page' ? { source: 'page' } : {}),
+          // An automatic reminder, not an answer: its "Fix" edits the reminder
+          // wording (settings › chat-followup), which no AI instruction reaches.
+          // Meta's copy drops our flag, so the local buffer and the known lines decide.
+          ...(t.role === 'assistant' && !t.manual && ((t as { nudge?: boolean }).nudge || nudgeLines.has(String(t.content ?? '').trim()) || isNudgeLine(t.content, followCustom)) ? { nudge: true } : {}) })),
       state: view.state,
       stateReason: view.reason,
       waitingMinutes: waitingMinutes(row as never, now, botFirst),
@@ -6491,7 +6501,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (!token || (pg ? !pg.enabled : !legacy?.enabled)) continue;
 
       const lang = conversationLang(history.filter((h) => h.role === 'user').map((h) => String(h.content ?? ''))) ?? await this.defaultLangOf(tenantId);
-      const text = contextualNudge(state.lastBotText, lang === 'vi', d.nth);
+      // The salon's own wording first; never a sentence this thread already got.
+      const text = contextualNudge(state.lastBotText, lang === 'vi', d.nth, {
+        custom: { vi: settings.messageVi, en: settings.messageEn },
+        sent: state.sentNudges,
+      });
+      if (!text) continue;
       const r = await this.sendText(token, t.senderId, text, t.channel === 'instagram' ? 'instagram' : 'messenger', tenantId);
       if (!r.ok) continue;
       await this.appendTurns(t.id, history, this.threadSummary(t), [{ role: 'assistant', content: text, at: now.toISOString(), nudge: true }]);

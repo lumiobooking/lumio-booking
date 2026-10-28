@@ -16,6 +16,9 @@ export interface CardFace {
   partySize?: number | null;
   price: string;
   service: string;
+  /** The main service alone, and how many more lines — the wide card shows them apart. */
+  serviceName?: string;
+  extra?: number;
   phone: string;
   /** "11:30 – 12:30 PM" */
   range: string;
@@ -67,7 +70,10 @@ export function cardPad(tier: 1 | 2 | 3 | 4, size: CardSize): string {
 
 const one: CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 };
 
-export function CardBody({ f, tier, size, look }: { f: CardFace; tier: 1 | 2 | 3 | 4; size: CardSize; look: CardLook }) {
+/** A card at least this wide reads across, in three columns (canvas board 1B). */
+export const WIDE_CARD_PX = 520;
+
+export function CardBody({ f, tier, size, look, wide, vi }: { f: CardFace; tier: 1 | 2 | 3 | 4; size: CardSize; look: CardLook; wide?: boolean; vi?: boolean }) {
   const lg = size === 'lg';
   const nameFs = lg ? 15 : 13.5;
   const subFs = lg ? 13.5 : 12;
@@ -85,6 +91,38 @@ export function CardBody({ f, tier, size, look }: { f: CardFace; tier: 1 | 2 | 3
   );
   const subLine = (text: string) => <span style={{ ...one, display: 'block', width: '100%', fontSize: subFs, color: look.sub, lineHeight: subLh }}>{text}</span>;
   const joined = (...parts: string[]) => parts.filter(Boolean).join(' · ');
+
+  // One technician on the day: the column is the whole screen. A one-row card
+  // left the price alone at the far right and a sea of empty card between —
+  // across three columns, the price stands right after the name (board 1B).
+  if (wide && tier >= 3) {
+    const col: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 };
+    const divider: CSSProperties = { ...col, borderLeft: `1px solid ${look.solid ? 'rgba(255,255,255,0.35)' : 'color-mix(in srgb, currentColor 18%, transparent)'}`, paddingLeft: 16, color: look.sub };
+    const extra = f.extra ?? 0;
+    return (
+      <span style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1.1fr) minmax(200px, 1.3fr) minmax(180px, 1fr)', columnGap: 24, alignItems: 'start', width: '100%', minWidth: 0 }}>
+        <span style={col}>
+          <span style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0, lineHeight: nameLh }}>
+            <span style={{ ...one, fontSize: nameFs + 1.5, fontWeight: 700, color: look.main, textDecoration: strike }}>{who}</span>
+            {f.price ? <span style={{ flexShrink: 0, fontSize: subFs + 1, fontWeight: 700, color: look.main, background: look.chip, border: `1px solid ${look.solid ? 'rgba(255,255,255,0.45)' : 'color-mix(in srgb, currentColor 22%, transparent)'}`, borderRadius: 6, padding: '0 7px' }}>{f.price}</span> : null}
+            {dot}
+          </span>
+          {f.phone ? <span style={{ ...one, fontSize: subFs, color: look.sub, lineHeight: subLh }}>{f.phone}</span> : null}
+        </span>
+        <span style={divider}>
+          <span style={{ ...one, fontSize: subFs + 1, fontWeight: 600, color: look.main, lineHeight: subLh }}>{f.serviceName ?? f.service}</span>
+          {extra > 0 ? <span style={{ ...one, fontSize: subFs, color: look.sub, lineHeight: subLh }}>{vi ? `+${extra} dịch vụ thêm` : `+${extra} more service${extra > 1 ? 's' : ''}`}</span> : null}
+        </span>
+        <span style={divider}>
+          <span style={{ fontSize: timeFs + 1, fontWeight: 700, color: look.ink, whiteSpace: 'nowrap', lineHeight: subLh }}>{f.range}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            {f.source ? <span className={look.solid ? 'cal-src-solid' : 'cal-src-tint'} style={{ display: 'inline-flex', minWidth: 0, overflow: 'hidden' }}>{f.source}</span> : null}
+            {f.tag ? <span style={{ flexShrink: 0, height: 18, padding: '0 7px', borderRadius: 999, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', background: look.chip, color: look.ink, whiteSpace: 'nowrap' }}>{f.tag}</span> : null}
+          </span>
+        </span>
+      </span>
+    );
+  }
 
   if (tier === 1) {
     return (

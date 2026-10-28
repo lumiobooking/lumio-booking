@@ -15,6 +15,14 @@ import { Caps } from '../auth/decorators/caps.decorator';
 export class ActivityController {
   constructor(private readonly activity: ActivityService) {}
 
+  /** The header's "Cần xác nhận · Mới đặt · Đã huỷ" (booking-inbox.ts). This salon's bookings only. */
+  @Get('inbox')
+  inbox(@CurrentUser() user: AuthenticatedUser) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) return { needs: [], fresh: [], cancelled: [] };
+    return this.activity.inbox(tenantId);
+  }
+
   @Get()
   feed(@CurrentUser() user: AuthenticatedUser) {
     const tenantId = resolveTenantScope(user);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SourceChip, SourceDot } from '../../../components/SourceChip';
 import { srcMetaOf } from '../../../lib/booking-sources';
 import { useAuth } from '../../../lib/auth';
@@ -12,7 +12,9 @@ import { uiLocale, wallToInstantISO } from '../../../lib/datetime';
 import { ind } from '../../../lib/ui-industry';
 import { statusTag } from '../../../lib/cal-day';
 import { HOUR_PX, cardTier, fmtPhone, timeRange, useCardColor } from '../../../lib/cal-card';
-import { CardBody, CardColorSwitch, cardLook, cardPad, type CardFace } from './CalCard';
+import { CardBody, CardColorSwitch, cardLook, cardPad, WIDE_CARD_PX, type CardFace } from './CalCard';
+import { arrange, moveTo as moveId, type StaffLayout } from '../../../lib/staff-order';
+import { StaffOrderSheet } from './StaffOrderSheet';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -76,6 +78,8 @@ function faceOf(b: Booking, s: number, e: number, vi: boolean, t: (k: string) =>
     partySize: b.partySize ?? null,
     price: formatPrice(b.priceCents, b.currency).replace(/[.,]00(?=\D*$)/, ''),
     service: `${b.service?.name ?? ''}${extra ? ` +${extra}` : ''}`,
+    serviceName: b.service?.name ?? '',
+    extra,
     phone: fmtPhone(b.customer?.phone),
     range: timeRange(s, e, vi),
     start: timeRange(s, s, vi).split(' – ')[0],
@@ -195,6 +199,45 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
     apiFetch<StaffLite[]>('/staff', { token }).then(setStaff).catch(() => undefined);
   }, [token]);
 
+  // The salon's line-up of technician columns (canvas boards 3A / 3B): one
+  // order for every device, saved by the owner or a manager.
+  const [layout, setLayout] = useState<StaffLayout & { canEdit?: boolean }>({ order: [], hidden: [] });
+  const [sheet, setSheet] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<StaffLayout & { canEdit?: boolean }>('/calendar-layout/staff', { token }).then((l) => { if (l && Array.isArray(l.order)) setLayout(l); }).catch(() => undefined);
+  }, [token]);
+  const canArrange = !!layout.canEdit;
+  const saveLayout = async (order: string[], hidden: string[]) => {
+    const before = layout;
+    setLayout({ ...layout, order, hidden });
+    try {
+      const r = await apiFetch<StaffLayout & { canEdit?: boolean }>('/calendar-layout/staff', { method: 'PATCH', token, body: { order, hidden } });
+      if (r && Array.isArray(r.order)) setLayout(r);
+    } catch (e) {
+      setLayout(before);
+      throw e;
+    }
+  };
+  // Header drag (desktop): which column is being carried, and where it would land.
+  const [colDrag, setColDrag] = useState<string | null>(null);
+  const [colTo, setColTo] = useState<number | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const colPxRef = useRef(172);
+  // How wide the grid is: a column wider than WIDE_CARD_PX lays its cards across (board 1B).
+  const [deskW, setDeskW] = useState(0);
+  const deskRo = useRef<ResizeObserver | null>(null);
+  const deskRef = useCallback((el: HTMLDivElement | null) => {
+    deskRo.current?.disconnect(); deskRo.current = null;
+    if (!el) return;
+    setDeskW(el.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setDeskW(el.clientWidth));
+    ro.observe(el);
+    deskRo.current = ro;
+  }, []);
+  useEffect(() => () => { deskRo.current?.disconnect(); }, []);
+
   const fmtT = (iso: string) => new Date(iso).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   const minInTz = (iso: string) => {
     const d = new Date(iso);
@@ -208,9 +251,16 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
   const revenue = items.reduce((s, b) => s + (b.status === 'CANCELLED' || b.status === 'NO_SHOW' ? 0 : b.priceCents), 0);
   const arrived = items.filter((b) => b.status === 'ARRIVED').length;
 
+  // Everyone bookable, in the salon's order (staff-order.ts) — hidden ones too, for the sheet.
+  const bookable = useMemo(
+    () => arrange(staff.filter((s) => s.isActive && s.takesAppointments !== false), { order: layout.order, hidden: [] }),
+    [staff, layout.order],
+  );
+  // A hidden technician still shows on a day she has a booking: a booking never vanishes.
+  const busyIds = useMemo(() => new Set(allItems.filter((b) => !isGone(b.status) && b.assignedStaff).map((b) => b.assignedStaff!.id)), [allItems]);
   const activeStaff = useMemo(
-    () => staff.filter((s) => s.isActive && s.takesAppointments !== false).sort((a, b) => a.firstName.localeCompare(b.firstName)),
-    [staff],
+    () => arrange(bookable, { order: bookable.map((x) => x.id), hidden: layout.hidden }, busyIds),
+    [bookable, layout.hidden, busyIds],
   );
 
   const columns = useMemo(() => {
@@ -368,6 +418,35 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
 
 
 
+  // ── the technician line-up: the sheet (board 3B) and the header drag (3A) ──
+  const sheetEl = sheet ? (
+    <StaffOrderSheet vi={vi} mobile={isMobile} hidden={layout.hidden} onClose={() => setSheet(false)} onSave={saveLayout}
+      staff={bookable.map((s, i) => ({ id: s.id, name: s.firstName, avatar: s.avatarUrl, hue: PHONE_AVATAR[i % PHONE_AVATAR.length], count: allItems.filter((b) => b.assignedStaff?.id === s.id && !isGone(b.status)).length }))} />
+  ) : null;
+  const arrangeBtn = canArrange && bookable.length > 1 ? (
+    <button type="button" onClick={() => setSheet(true)} title={vi ? 'Đổi thứ tự cột thợ, ẩn / hiện thợ trên lịch' : 'Reorder the technician columns, hide or show technicians'}
+      style={{ ...chip(false), display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--ce2e8f0)' }}>
+      <span aria-hidden="true" style={{ letterSpacing: -2, color: 'var(--c94a3b8)' }}>⋮⋮</span>{vi ? 'Sắp xếp thợ' : 'Arrange technicians'}
+    </button>
+  ) : null;
+  /** The carried column's floating card (board 3A): lifted, purple, "the whole column comes along". */
+  const dragImage = (e: React.DragEvent, c: { name: string; items: Booking[] }, avatarBg: string) => {
+    try {
+      const n = c.items.filter((b) => !isGone(b.status)).length;
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;top:-200px;left:-400px;width:230px;height:46px;box-sizing:border-box;padding:0 12px;display:flex;align-items:center;gap:8px;background:#ffffff;color:#111827;border:2px solid #7c3aed;border-radius:10px;box-shadow:0 16px 34px rgba(76,29,149,.28);font:600 12.5px system-ui,sans-serif;z-index:9999';
+      const grip = document.createElement('span'); grip.textContent = '⋮⋮'; grip.style.cssText = 'color:#7c3aed;letter-spacing:-2px;font-size:14px';
+      const av = document.createElement('span'); av.textContent = c.name.charAt(0).toUpperCase(); av.style.cssText = `width:26px;height:26px;border-radius:50%;background:${avatarBg};color:#0b1220;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700`;
+      const txt = document.createElement('span'); txt.style.cssText = 'display:flex;flex-direction:column;line-height:1.25';
+      const nm = document.createElement('b'); nm.textContent = c.name;
+      const sub = document.createElement('span'); sub.textContent = vi ? `${n} hẹn · cả cột đi theo` : `${n} booked · the column comes along`; sub.style.cssText = 'font-size:10.5px;color:#6b7280;font-weight:500';
+      txt.append(nm, sub); el.append(grip, av, txt);
+      document.body.appendChild(el);
+      e.dataTransfer.setDragImage(el, 24, 22);
+      window.setTimeout(() => el.remove(), 0);
+    } catch { /* the browser draws its own */ }
+  };
+
   // ───────────────────────────── phone ─────────────────────────────
   // Board 3 "Theo thợ — cả ca trong một màn hình": one card per technician
   // with a 24px day bar (shift band + booking blocks + now line). Tap a card
@@ -479,7 +558,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
               <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{workingNow} {vi ? 'đang làm' : 'busy'} · <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{freeNow} {vi ? 'trống' : 'free'}</span></span>
             )}
           </div>
-          {onShift.length > 0 && <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{goneChip}<CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></div>}
+          {onShift.length > 0 && <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{arrangeBtn}{goneChip}<CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></div>}
           {onShift.length === 0 && unassigned.length === 0 && (
             <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '36px 0', fontSize: 14 }}>{items.length === 0 ? t('cal.noAppts') : (vi ? 'Chưa có thợ nào làm hôm nay.' : 'No technician on shift today.')}</div>
           )}
@@ -579,6 +658,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
               <span style={{ flex: 1, fontSize: 14, color: 'var(--c94a3b8)' }}>{r.name} · {vi ? 'nghỉ hôm nay' : 'off today'}</span>
             </button>
           ))}
+          {sheetEl}
         </div>
       );
     }
@@ -748,11 +828,59 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
               )}
             </div>
           </div>
+          {sheetEl}
           <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', padding: '2px 0 8px', textAlign: 'center', lineHeight: 1.5 }}>{ind(vi ? 'Vuốt lịch hoặc bấm ‹ › để sang thợ khác · Đổi thợ cho một lịch: mở lịch → “Đổi thợ”.' : 'Swipe the schedule, or tap ‹ ›, for the next technician · To reassign one booking: open it → “Change tech”.')}</span>
         </div>
       </div>
     );
   }
+
+  // ── desktop: the header drag (board 3A) ──
+  const staffCols = columns.filter((c) => c.id !== '__un');
+  const canReorderCols = canArrange && !focus && staffCols.length > 1 && !dragId;
+  const previewCols = (() => {
+    if (!colDrag || colTo === null) return columns;
+    const carried = staffCols.find((c) => c.id === colDrag);
+    if (!carried) return columns;
+    const rest = staffCols.filter((c) => c.id !== colDrag);
+    const preview = [...rest.slice(0, colTo), carried, ...rest.slice(colTo)];
+    const lane = columns.find((c) => c.id === '__un');
+    return lane ? [lane, ...preview] : preview;
+  })();
+  // While a column is carried nothing moves in the page (the browser would drop
+  // the drag if its source left the page): the columns slide with a transform.
+  const laneFirst = columns[0]?.id === '__un';
+  const shiftOf = (id: string): number => {
+    if (!colDrag || colTo === null) return 0;
+    const o = staffCols.findIndex((x) => x.id === id);
+    if (o < 0) return 0;
+    if (id === colDrag) return (colTo - o) * colPxRef.current;
+    const r = staffCols.filter((x) => x.id !== colDrag).findIndex((x) => x.id === id);
+    const v = r < colTo ? r : r + 1;
+    return (v - o) * colPxRef.current;
+  };
+  const overGrid = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!colDrag) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    const box = innerRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const start = box.left + railW + (laneFirst ? colPxRef.current : 0);
+    const to = Math.max(0, Math.min(staffCols.length - 1, Math.floor((e.clientX - start) / colPxRef.current)));
+    if (to !== colTo) setColTo(to);
+  };
+  const dropCol = () => {
+    const id = colDrag, to = colTo;
+    setColDrag(null); setColTo(null);
+    if (!id || to === null) return;
+    const shown = staffCols.map((c) => c.id);
+    const moved = moveId(shown, id, to);
+    if (moved.join() === shown.join()) return;
+    // Anyone not on screen (hidden, or off the list) keeps a place after the columns shown.
+    const full = [...moved, ...bookable.map((x) => x.id).filter((x) => !moved.includes(x))];
+    saveLayout(full, layout.hidden)
+      .then(() => flash(vi ? 'Đã lưu thứ tự thợ cho cả tiệm' : 'Order saved for the whole salon'))
+      .catch((e) => flash(e instanceof Error ? e.message : (vi ? 'Không lưu được thứ tự' : 'Could not save the order'), 5000));
+  };
 
   return (
     <div>
@@ -776,8 +904,8 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
           {activeStaff.map((s) => (
             <button key={s.id} onClick={() => setFocus(focus === s.id ? null : s.id)} style={chip(focus === s.id)}>{s.firstName}</button>
           ))}
-          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 6 }}>{t('cal.dragHint')}</span>
-          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>{goneChip}<CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></span>
+          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 6 }}>{t('cal.dragHint')}{canArrange && !focus && columns.length > 1 ? (vi ? ' · Kéo tên thợ ở đầu cột để đổi thứ tự' : ' · Drag a name at the top of a column to reorder') : ''}</span>
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>{arrangeBtn}{goneChip}<CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></span>
         </div>
       )}
 
@@ -787,8 +915,9 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
       {columns.length === 0 ? (
         <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
       ) : (
-        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid var(--c1f2937)', borderRadius: 12, background: 'var(--c0f172a)', opacity: busy ? 0.6 : 1, transition: 'opacity .15s' }}>
-          <div style={{ position: 'relative', display: 'flex', minWidth: railW + columns.length * colW }}>
+        <div ref={deskRef} style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid var(--c1f2937)', borderRadius: 12, background: 'var(--c0f172a)', opacity: busy ? 0.6 : 1, transition: 'opacity .15s' }}>
+          <div ref={innerRef} onDragOver={overGrid} onDrop={(e) => { if (colDrag) { e.preventDefault(); dropCol(); } }}
+            style={{ position: 'relative', display: 'flex', minWidth: railW + columns.length * colW }}>
             <div style={{ position: 'sticky', left: 0, zIndex: 4, width: railW, flexShrink: 0, background: 'var(--c0f172a)', borderRight: '1px solid var(--c1f2937)' }}>
               <div style={{ height: headH }} />
               <div style={{ position: 'relative', height: total }}>
@@ -822,6 +951,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
               return (
                 <div key={c.id}
                   onDragOver={(e) => {
+                    if (colDrag) return; // a column being carried: the grid handles it
                     if (!canDrop || !dragged) return;
                     e.preventDefault(); setOverCol(c.id);
                     const m = dropMin(e.currentTarget, e.clientY, durOf(dragged));
@@ -831,12 +961,36 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                   onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setOverCol((o) => (o === c.id ? null : o)); setGhost((gh) => (gh && gh.col === c.id ? null : gh)); } }}
                   onDrop={(e) => {
                     e.preventDefault();
+                    if (colDrag) return;
                     const b = dragged; setDragId(null); setOverCol(null); setGhost(null);
                     if (!b || !canDrop) return;
                     moveTo(b, dropMin(e.currentTarget, e.clientY, durOf(b)), c);
                   }}
-                  style={{ flex: `1 0 ${colW}px`, minWidth: colW, borderRight: '1px solid var(--c1f2937)', background: isTarget ? 'rgba(99,102,241,0.12)' : un ? 'rgba(99,102,241,0.05)' : 'transparent', outline: isTarget ? '2px dashed #6366f1' : 'none', outlineOffset: -2 }}>
-                  <div style={{ height: headH, display: 'flex', alignItems: 'center', gap: 7, padding: '0 8px', borderBottom: '1px solid var(--c1f2937)', boxSizing: 'border-box' }}>
+                  style={{ flex: `1 0 ${colW}px`, minWidth: colW, borderRight: '1px solid var(--c1f2937)', background: isTarget ? 'rgba(99,102,241,0.12)' : un ? 'rgba(99,102,241,0.05)' : 'transparent', outline: isTarget ? '2px dashed #6366f1' : 'none', outlineOffset: -2,
+                    position: 'relative', transform: colDrag ? `translateX(${shiftOf(c.id)}px)` : undefined, transition: colDrag ? 'transform .15s ease-out' : undefined, zIndex: colDrag === c.id ? 3 : undefined }}>
+                  {colDrag === c.id && (
+                    // Where the carried column will land (board 3A): striped, a purple line at its left edge.
+                    <div aria-hidden="true" style={{ position: 'absolute', inset: 0, zIndex: 6, pointerEvents: 'none', background: 'repeating-linear-gradient(135deg, color-mix(in srgb, #7c3aed 14%, var(--c0f172a)) 0 10px, var(--c0f172a) 10px 20px)' }}>
+                      <span style={{ position: 'absolute', left: -3, top: 0, bottom: 0, width: 5, borderRadius: 3, background: '#7c3aed', boxShadow: '0 0 0 4px rgba(124,58,237,0.18)' }} />
+                      <span style={{ position: 'absolute', left: -11, top: 4, width: 20, height: 20, borderRadius: '50%', background: '#7c3aed' }} />
+                      <div style={{ position: 'absolute', left: 0, right: 0, top: headH + Math.min(200, total / 3), textAlign: 'center', fontSize: 13, fontWeight: 700, color: '#8b5cf6' }}>{vi ? 'Thả vào đây' : 'Drop here'}</div>
+                    </div>
+                  )}
+                  <div draggable={canReorderCols && !un}
+                    onDragStart={canReorderCols && !un ? (e) => {
+                      e.stopPropagation();
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', `col:${c.id}`);
+                      dragImage(e, c, AVATAR_BG[ci % AVATAR_BG.length]);
+                      colPxRef.current = (e.currentTarget.parentElement as HTMLElement | null)?.offsetWidth || colW;
+                      const from = staffCols.findIndex((x) => x.id === c.id);
+                      // Next frame: changing what is under the pointer while the drag starts can cancel it.
+                      window.setTimeout(() => { setColDrag(c.id); setColTo(from); setGhost(null); }, 0);
+                    } : undefined}
+                    onDragEnd={canReorderCols && !un ? () => { setColDrag(null); setColTo(null); } : undefined}
+                    title={canReorderCols && !un ? (vi ? 'Kéo sang trái / phải để đổi thứ tự cột' : 'Drag left / right to reorder') : undefined}
+                    style={{ height: headH, display: 'flex', alignItems: 'center', gap: 7, padding: '0 8px', borderBottom: '1px solid var(--c1f2937)', boxSizing: 'border-box', cursor: canReorderCols && !un ? 'grab' : 'default' }}>
+                    {canReorderCols && !un && <span aria-hidden="true" style={{ color: 'var(--c64748b)', fontSize: 13, letterSpacing: -2, marginRight: -2 }}>⋮⋮</span>}
                     {un ? (
                       <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>?</div>
                     ) : c.avatar ? (
@@ -871,11 +1025,17 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                     {Array.from({ length: endH - startH }, (_, i) => i + 1).map((i) => (
                       <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--line)', pointerEvents: 'none' }} />
                     ))}
-                    {g && (
-                      <div style={{ position: 'absolute', top: (g.min - gStart) / 60 * HP, height: Math.max(22, g.dur / 60 * HP - 3), left: 3, right: 3, boxSizing: 'border-box', borderRadius: 8, border: `1.5px dashed ${g.clash ? '#ef4444' : '#6366f1'}`, background: g.clash ? 'rgba(239,68,68,0.12)' : 'rgba(99,102,241,0.10)', color: g.clash ? 'var(--ink-bad)' : 'var(--ink-link)', fontSize: 11.5, fontWeight: 700, padding: '3px 7px', pointerEvents: 'none', zIndex: 2 }}>
-                        {g.drag ? `${clock(g.min)} – ${clock(g.min + g.dur)}${g.clash ? (vi ? ' · trùng lịch' : ' · clash') : ''}` : `+ ${clock(g.min)} · ${ind(vi ? 'đặt lịch' : 'book')}`}
-                      </div>
-                    )}
+                    {g && (() => {
+                      // The "+ đặt lịch" slot shows only in real free time: it stops at the next card (board 1B).
+                      const next = g.drag ? Infinity : Math.min(Infinity, ...pos.filter((p) => p.s > g.min).map((p) => p.s));
+                      const gh = Math.max(16, (Math.min(g.min + g.dur, next) - g.min) / 60 * HP - 3);
+                      const short = gh < 24;
+                      return (
+                        <div style={{ position: 'absolute', top: (g.min - gStart) / 60 * HP, height: gh, left: 3, right: 3, boxSizing: 'border-box', borderRadius: 8, border: `1.5px dashed ${g.clash ? '#ef4444' : '#6366f1'}`, background: g.clash ? 'rgba(239,68,68,0.12)' : 'rgba(99,102,241,0.10)', color: g.clash ? 'var(--ink-bad)' : 'var(--ink-link)', fontSize: short ? 11 : 11.5, fontWeight: 700, padding: short ? '0 7px' : '3px 7px', display: short ? 'flex' : 'block', alignItems: 'center', lineHeight: short ? 1 : undefined, overflow: 'hidden', whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 2 }}>
+                          {g.drag ? `${clock(g.min)} – ${clock(g.min + g.dur)}${g.clash ? (vi ? ' · trùng lịch' : ' · clash') : ''}` : `+ ${clock(g.min)} · ${ind(vi ? 'đặt lịch' : 'book')}`}
+                        </div>
+                      );
+                    })()}
                     {pos.map(({ b, s, e, col, cols }) => {
                       const cc = sc(b.status);
                       const topPx = (s - gStart) / 60 * HP;
@@ -883,14 +1043,16 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                       const dim = b.status === 'CANCELLED' || b.status === 'NO_SHOW';
                       const w = 100 / cols;
                       const tier = cardTier(h, 'sm');
-                      const face: CardFace = { ...faceOf(b, s, e, vi, t), source: <MiniSrc b={b} vi={vi} /> };
+                      // One technician (or one in focus): the column is the screen — the card reads across (board 1B).
+                      const wide = tier >= 3 && deskW > 0 && (Math.max(colW, (deskW - railW) / Math.max(1, columns.length)) * w) / 100 - 6 >= WIDE_CARD_PX;
+                      const face: CardFace = { ...faceOf(b, s, e, vi, t), source: wide ? <SourceChip b={b} vi={vi} /> : <MiniSrc b={b} vi={vi} /> };
                       const look = cardLook(face, colorMode, cc);
                       return (
                         <div key={b.id} data-card="1" draggable={!dim} onDragStart={(ev) => { setDragId(b.id); setGhost(null); grab.current = ((ev.clientY - ev.currentTarget.getBoundingClientRect().top) / HP) * 60; ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', b.id); }} onDragEnd={() => { setDragId(null); setOverCol(null); setGhost(null); }}
                           onClick={() => onOpen(b)} onContextMenu={onCtx ? (ev) => { ev.preventDefault(); onCtx(b, ev.clientX, ev.clientY); } : undefined}
                           title={[face.name, face.service, face.phone, face.range].filter(Boolean).join(' · ')}
-                          style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: look.background, border: look.border, borderRadius: 8, padding: cardPad(tier, 'sm'), display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', gap: 2, overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dragId === b.id ? 0.4 : 1 }}>
-                          <CardBody f={face} tier={tier} size="sm" look={look} />
+                          style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: look.background, border: look.border, ...(wide ? { borderLeft: `4px solid ${look.solid ? 'rgba(255,255,255,0.65)' : cc}` } : {}), borderRadius: 8, padding: wide ? '10px 14px' : cardPad(tier, 'sm'), display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', gap: 2, overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dragId === b.id ? 0.4 : 1 }}>
+                          <CardBody f={face} tier={tier} size="sm" look={look} wide={wide} vi={vi} />
                         </div>
                       );
                     })}
@@ -907,7 +1069,17 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
           </div>
         </div>
       )}
-      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('cal.staffHint')}</p>
+      {colDrag ? (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12.5, marginTop: 10 }}>
+          <span style={{ padding: '6px 10px', borderRadius: 8, background: 'var(--c111827)', border: '1px solid var(--c1f2937)', color: 'var(--ccbd5e1)' }}>{vi ? 'Thứ tự trước' : 'Before'}: {staffCols.map((x) => x.name).join(' · ')}</span>
+          <span style={{ padding: '6px 10px', borderRadius: 8, background: 'color-mix(in srgb, #7c3aed 12%, transparent)', border: '1px solid color-mix(in srgb, #7c3aed 35%, transparent)', color: 'var(--ce2e8f0)', fontWeight: 600 }}>
+            {vi ? 'Sau khi thả' : 'After the drop'}: {previewCols.filter((x) => x.id !== '__un').map((x) => x.name).join(' · ')} — {vi ? 'lưu cho cả tiệm' : 'saved for the whole salon'}
+          </span>
+        </div>
+      ) : (
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('cal.staffHint')}</p>
+      )}
+      {sheetEl}
     </div>
   );
 }

@@ -3326,6 +3326,29 @@ export class BookingsService {
     return this.prisma.appointment.findFirst({ where: { id: b.id, tenantId }, include: BOOKING_INCLUDE });
   }
 
+  /**
+   * The salon says yes to a booking a customer made (the header's "Cần xác
+   * nhận" → "Xác nhận"). Only a booking still waiting moves; one already
+   * confirmed, arrived, finished or cancelled is returned as it is. No message
+   * to the customer: she was sent her booking confirmation when she booked.
+   */
+  async confirmBySalon(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const a = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { id: true, status: true } });
+    if (!a) throw new NotFoundException('Booking not found');
+    const waiting: AppointmentStatus[] = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.REJECTED];
+    if (!waiting.includes(a.status)) return this.getById(user, id);
+    const now = new Date();
+    const r = await this.prisma.appointment.updateMany({
+      where: { id, tenantId, status: { in: waiting } },
+      data: { status: AppointmentStatus.CONFIRMED, confirmedAt: now, responseDeadline: null },
+    });
+    if (r.count) {
+      await this.audit.log({ tenantId, userId: user.userId, action: 'booking.confirmed_by_salon', resourceType: 'appointment', resourceId: id, metadata: { from: a.status } });
+    }
+    return this.getById(user, id);
+  }
+
   /** Customer taps "Confirm" in a reminder. */
   async confirmByToken(token: string) {
     const id = this.verifyApptToken(token);

@@ -299,6 +299,16 @@ export class BookingsController {
     return this.bookings.cancel(user, id, body?.money ?? null);
   }
 
+  // "Xác nhận" in the header's booking inbox: the salon says yes to a booking
+  // a customer made online / by chat. This salon's bookings only.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Post(':id/confirm')
+  @HttpCode(200)
+  confirm(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.bookings.confirmBySalon(user, id);
+  }
+
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
   @Caps('bookings')
   @Post(':id/arrive')

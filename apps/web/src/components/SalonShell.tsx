@@ -23,6 +23,8 @@ import { InstallAppButton } from './InstallAppButton';
 import { ShareBookingLink } from './ShareBookingLink';
 import { MobileTabBar } from './MobileTabBar';
 import { NotificationBell } from './NotificationBell';
+import { BookingSoundToggle, ConfirmPill } from './BookingInbox';
+import { useInbox } from '../lib/booking-inbox';
 import { LumioLogo } from './LumioLogo';
 import { DASHBOARD, GROUPS, ITEM_BY_HREF, SCREEN_BY_HREF, basePath, menuOwner, type NavItem } from './shell/nav-map';
 import { HubTabs } from './shell/HubTabs';
@@ -154,6 +156,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isMobile = useIsMobile();
   const { lang, setLang } = useLang();
+  const { inbox: bookingInbox } = useInbox();
   const [drawerOpen, setDrawerOpen] = useState(false);
   // Start from the last-known plan (cached) so the sidebar doesn't flash all
   // items then hide them on every reload/navigation. null = unknown (first ever
@@ -664,7 +667,8 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       <div style={{ minHeight: '100dvh', background: 'var(--c0b1120)' }}>
         {/* Sticky top bar */}
         <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: 'var(--c111827)', borderBottom: '1px solid var(--c1f2937)' }}>
-          <LumioLogo size={28} />
+          {/* Bookings waiting for a yes take the logo's place — the bar has no room for both (canvas 2C). */}
+          {bookingInbox.needs.length > 0 ? <ConfirmPill vi={lang === 'vi'} compact /> : <LumioLogo size={28} />}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {inboxAlerts(true)}
             <NotificationBell />
@@ -726,10 +730,14 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
             onClick={toggleNav}
             title={navHidden ? (lang === 'vi' ? 'Hiện menu' : 'Show menu') : (lang === 'vi' ? 'Thu menu — màn hình rộng hơn' : 'Collapse menu — wider screen')}
             aria-label={navHidden ? 'Show menu' : 'Collapse menu'}
-            style={{ marginRight: 'auto', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c0f172a)', border: '1px solid var(--line)', color: 'var(--ce2e8f0)', borderRadius: 10, cursor: 'pointer' }}
+            style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c0f172a)', border: '1px solid var(--line)', color: 'var(--ce2e8f0)', borderRadius: 10, cursor: 'pointer' }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">{navHidden ? <path d="M4 6h16M4 12h16M4 18h16" /> : <path d="M11 6l-6 6 6 6M19 6l-6 6 6 6" />}</svg>
           </button>
+          {/* Bookings waiting for the salon's yes — seen from every page (canvas 2A). */}
+          <ConfirmPill vi={lang === 'vi'} />
+          <span style={{ marginRight: 'auto' }} />
+          <BookingSoundToggle vi={lang === 'vi'} />
           {!isSupport && (
             <a href="/salon/calendar" style={{ height: 40, padding: '0 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>{ind(lang === 'vi' ? 'Lịch hẹn mới' : 'New booking')}

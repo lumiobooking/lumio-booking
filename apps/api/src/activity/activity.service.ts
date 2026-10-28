@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { formatMoneyShort } from '../common/money';
 import { AppointmentStatus, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildInbox, NEEDS_GRACE_MS, NEEDS_STATUSES, RECENT_MS, type Inbox, type InboxRow } from './booking-inbox';
 
 export type ActivityType = 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed' | 'postReview';
 
@@ -30,6 +31,36 @@ export class ActivityService {
   private nameOf(c: { firstName: string; lastName: string | null } | null | undefined): string {
     if (!c) return 'Khách';
     return [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || 'Khách';
+  }
+
+  /**
+   * The header's booking inbox (booking-inbox.ts): to confirm, newly booked,
+   * cancelled. Every query is scoped to the caller's salon.
+   */
+  async inbox(tenantId: string, now = new Date()): Promise<Inbox> {
+    const select = {
+      id: true, status: true, source: true, utmSource: true, attrReferrer: true, attrLandingUrl: true,
+      startTime: true, createdAt: true, cancelledAt: true, cancelledBy: true, priceCents: true, currency: true, addons: true,
+      customer: { select: { firstName: true, lastName: true } },
+      service: { select: { name: true } },
+      assignedStaff: { select: { firstName: true } },
+    };
+    const since = new Date(now.getTime() - RECENT_MS);
+    const [open, recent] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: { tenantId, status: { in: [...NEEDS_STATUSES] as AppointmentStatus[] }, startTime: { gte: new Date(now.getTime() - NEEDS_GRACE_MS) } },
+        orderBy: { createdAt: 'desc' },
+        take: 120,
+        select,
+      }),
+      this.prisma.appointment.findMany({
+        where: { tenantId, OR: [{ createdAt: { gte: since } }, { cancelledAt: { gte: since } }] },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        select,
+      }),
+    ]);
+    return buildInbox(open as unknown as InboxRow[], recent as unknown as InboxRow[], now);
   }
 
   async feed(tenantId: string, limit = 50): Promise<ActivityItem[]> {

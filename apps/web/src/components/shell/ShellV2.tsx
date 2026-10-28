@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { NavIcon } from '../NavIcon';
 import { ThemeToggle } from '../ThemeToggle';
 import { NotificationBell } from '../NotificationBell';
+import { BookingSoundToggle, ConfirmPill } from '../BookingInbox';
 import { ShareBookingLink } from '../ShareBookingLink';
 import { InstallAppButton } from '../InstallAppButton';
 import { MobileTabBar } from '../MobileTabBar';
@@ -281,6 +282,7 @@ export function ShellV2({ children, banner, visible, screenVisible, go, menuLabe
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--c94a3b8)', lineHeight: 1.2 }}>{hereSection ? (vi ? hereSection.vi : hereSection.en) : 'Lumio'}</div>
             <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--cf8fafc)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.25 }}>{pageTitle || 'Lumio'}</div>
           </div>
+          <ConfirmPill vi={vi} compact />
           {searchButton(false)}
           {createButton(true)}
           <NotificationBell />
@@ -390,12 +392,14 @@ export function ShellV2({ children, banner, visible, screenVisible, go, menuLabe
               {tablet || !subOpen ? <path d="M4 6h16M4 12h16M4 18h16" /> : <path d="M11 6l-6 6 6 6M19 6l-6 6 6 6" />}
             </svg>
           </button>
+          <ConfirmPill vi={vi} />
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {hereSection ? (vi ? hereSection.vi : hereSection.en) : 'Lumio'}
             </div>
             <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--cf8fafc)', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pageTitle}</div>
           </div>
+          {!tablet && <BookingSoundToggle vi={vi} />}
           {searchButton(!tablet)}
           {createButton(tablet)}
           {langToggle}

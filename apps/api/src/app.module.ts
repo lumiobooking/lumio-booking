@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { RateLimitGuard } from './common/security/rate-limit.guard';
 import { ActivityModule } from './activity/activity.module';
+import { CalendarLayoutModule } from './calendar-layout/calendar-layout.module';
 import { PushModule } from './push/push.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
@@ -162,6 +163,7 @@ import { AiUsageModule } from './common/ai-usage.module';
     // calls a model next. See common/ai-usage.ts.
     AiUsageModule,
     ActivityModule,
+    CalendarLayoutModule,
     PushModule,
   ],
   providers: [

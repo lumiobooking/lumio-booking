@@ -4,7 +4,7 @@ import { liveEvents } from '../common/live-events';
 import { Public } from '../auth/decorators/public.decorator';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { DisplayService } from './display.service';
-import { DisplayTipDto, PairDto, SelfCheckInDto } from './dto/display.dto';
+import { DisplayTipDto, KioskLookupDto, PairDto, SelfCheckInDto } from './dto/display.dto';
 
 // Device-side endpoints (the wireless iPad). No login: the pairing token IS the
 // credential, and the tenant is resolved from it — never from the request body.
@@ -44,6 +44,19 @@ export class PublicDisplayController {
   @Get('checkin-menu/:token')
   checkInMenu(@Param('token') token: string) {
     return this.display.checkInMenu(token);
+  }
+
+  /**
+   * Kiosk: the customer typed their phone number. Returning customer → their
+   * first name, an appointment near now, and what they had last time; anyone
+   * else → { returning: false }. Only this token's salon is searched, and only
+   * a first name ever leaves — never a surname, email, or record id. Rate
+   * limited: a phone-number guessing script gets 20 tries a minute, not more.
+   */
+  @RateLimit(20, 60_000)
+  @Post('checkin-lookup/:token')
+  kioskLookup(@Param('token') token: string, @Body() dto: KioskLookupDto) {
+    return this.display.kioskLookup(token, dto.phone);
   }
 
   @Post('checkin/:token')

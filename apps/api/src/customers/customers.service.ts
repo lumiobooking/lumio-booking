@@ -361,7 +361,8 @@ export class CustomersService {
    * This salon's customer with this phone number, however either side was
    * written (with or without +1 / 0, spaces, dashes). Only ever inside one salon.
    */
-  private async findByPhone(tenantId: string, raw: string) {
+  /** This salon's customer with this phone (as typed or in E.164), or null. Tenant-scoped. */
+  async findByPhone(tenantId: string, raw: string) {
     const digits = raw.replace(/\D/g, '');
     if (digits.length < 7) return null;
     const dial = await this.dialFor(tenantId);

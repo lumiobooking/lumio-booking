@@ -93,6 +93,8 @@ export class UpdateBrandingDto {
   @IsOptional() @IsString() @MaxLength(40) @Matches(/^[a-z0-9-]+$/) cartArt?: string;
   @IsOptional() @IsString() @MaxLength(80) cartTitle?: string;
   @IsOptional() @IsString() @MaxLength(140) cartHint?: string;
+  /** What the check-in kiosk's side panel offers to scan. */
+  @IsOptional() @IsIn(['checkin', 'review', 'both']) checkinQr?: string;
 }
 
 /**

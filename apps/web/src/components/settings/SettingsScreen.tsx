@@ -46,7 +46,7 @@ interface SettingsData {
   market?: string;
   company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string; country?: string };
   booking: Booking;
-  branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; priceListImageUrl?: string; storefrontImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number; cartArt?: string; cartTitle?: string; cartHint?: string };
+  branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; priceListImageUrl?: string; storefrontImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number; cartArt?: string; cartTitle?: string; cartHint?: string; checkinQr?: string };
   rebooking?: { enabled: boolean; daysAfter: number; email: boolean; sms: boolean };
   /** How the technician app shows client phones / emails (server-side masking). */
   staffPrivacy?: { contact: 'hidden' | 'last4' | 'full' };
@@ -1857,6 +1857,20 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           </div>
           {wErr && <div style={{ color: 'var(--cf87171)', fontSize: 12, marginTop: 4 }}>{wErr}</div>}
           <div style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 6 }}>{ind(lang === 'vi' ? 'Ảnh ngang, đẹp nhất ~16:9 (vd bàn tay/nail sang trọng). Hiện làm nền màn chào khách kèm logo + chữ "Welcome". Để trống thì dùng màn chào mặc định.' : 'Landscape image, best ~16:9 (e.g. an elegant nail/hand shot). Becomes the welcome-screen background with your logo + a "Welcome" title. Leave blank for the default welcome screen.')}</div>
+        </Field>
+      </div>
+
+      {/* The check-in iPad's side panel: what a customer can scan while someone
+          else is at the kiosk. 'review' falls back to check-in when the salon has
+          no Google review link yet. */}
+      <div style={{ marginTop: 12 }}>
+        <Field label={lang === 'vi' ? 'Mã QR bên hông màn hình check-in (iPad)' : 'QR on the check-in iPad side panel'}>
+          <select style={ui.input} value={f.checkinQr ?? 'checkin'} onChange={(e) => setF({ ...f, checkinQr: e.target.value })}>
+            <option value="checkin">{lang === 'vi' ? 'Check-in bằng điện thoại khách (khuyên dùng)' : 'Check in on your phone (recommended)'}</option>
+            <option value="review">{lang === 'vi' ? 'Đánh giá Google' : 'Google review'}</option>
+            <option value="both">{lang === 'vi' ? 'Đổi qua lại mỗi 8 giây' : 'Alternate every 8 seconds'}</option>
+          </select>
+          <div style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 6 }}>{lang === 'vi' ? 'Khi có người đang dùng iPad, khách sau quét QR để tự check-in tại ghế. Khách cũ còn thấy QR đánh giá Google ở màn “đã check-in” nếu tiệm bật chương trình đánh giá.' : 'While someone is at the iPad, the next customer scans to check in from their seat. Returning customers also see the Google review QR on the “checked in” screen when your review program is on.'}</div>
         </Field>
       </div>
 

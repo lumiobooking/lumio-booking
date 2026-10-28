@@ -5,9 +5,10 @@ import { PublicDisplayController } from './public-display.controller';
 import { CustomersModule } from '../customers/customers.module';
 import { WalkinsModule } from '../walkins/walkins.module';
 import { ClientFormsModule } from '../client-forms/client-forms.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [CustomersModule, WalkinsModule, ClientFormsModule],
+  imports: [CustomersModule, WalkinsModule, ClientFormsModule, SettingsModule],
   controllers: [DisplayController, PublicDisplayController],
   providers: [DisplayService],
   exports: [DisplayService],

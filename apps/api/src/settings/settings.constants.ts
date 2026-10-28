@@ -743,6 +743,9 @@ export interface Branding {
   /** The salon's own headline / line for it; blank = the template's. */
   cartTitle: string;
   cartHint: string;
+  /** Check-in kiosk side panel QR: 'checkin' (scan to check in on your phone),
+   *  'review' (Google review) or 'both' (alternating). */
+  checkinQr: string;
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -759,6 +762,7 @@ export const DEFAULT_BRANDING: Branding = {
   cartArt: 'auto',
   cartTitle: '',
   cartHint: '',
+  checkinQr: 'checkin',
 };
 
 // ===========================================================================

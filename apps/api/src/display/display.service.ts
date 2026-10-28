@@ -4,7 +4,9 @@ import { randomBytes, randomUUID } from 'crypto';
 import { Prisma, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { displayBaseUrl, displayPairUrl } from '../common/public-url.util';
+import { displayBaseUrl, displayPairUrl, publicWebBase } from '../common/public-url.util';
+import { SettingsService } from '../settings/settings.service';
+import { LINK_WINDOW_MIN } from '../walkins/booking-link';
 import { CustomersService } from '../customers/customers.service';
 import { WalkinsService } from '../walkins/walkins.service';
 import { liveEvents } from '../common/live-events';
@@ -34,6 +36,8 @@ export class DisplayService {
     @Optional() private readonly walkins?: WalkinsService,
     // Massage / spa: the thank-you screen offers "sign your forms" (client-forms/).
     @Optional() private readonly forms?: ClientFormsService,
+    // Review link + rating for the kiosk's side panel (optional in unit tests).
+    @Optional() private readonly settings?: SettingsService,
   ) {}
 
   /** Resolve a paired device's token to its tenant, or 404. */
@@ -51,7 +55,7 @@ export class DisplayService {
   async checkInMenu(token: string) {
     const tenantId = await this.tenantOfToken(token);
     const [tenant, services, promos, addons] = await Promise.all([
-      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, branding: true, timezone: true } }),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, branding: true, timezone: true } }),
       this.prisma.service.findMany({
         where: { tenantId, isActive: true },
         select: { id: true, name: true, priceCents: true, discountPercent: true, isFeatured: true, durationMinutes: true, category: { select: { id: true, name: true } } },
@@ -66,21 +70,126 @@ export class DisplayService {
         orderBy: { createdAt: 'asc' },
       }).catch(() => []),
     ]);
-    const b = (tenant?.branding ?? {}) as { logoUrl?: string; accentColor?: string };
+    const b = (tenant?.branding ?? {}) as { logoUrl?: string; accentColor?: string; checkinQr?: string };
     // Priced for TODAY in the salon's own timezone — the same rule as the
     // booking page and as the ticket selfCheckIn writes, see checkin-pricing.
     const day = await this.salonDay(tenantId, tenant?.timezone);
     const priced = services.map((sv) => priceService(sv, promos, day));
     const cats = new Map<string, string>();
     for (const sv of services) if (sv.category) cats.set(sv.category.id, sv.category.name);
+    const panel = await this.kioskPanel(token, tenantId, tenant?.slug ?? null, tenant?.branding);
     return {
       salonName: tenant?.name ?? '',
       logoUrl: b.logoUrl ?? null,
       accentColor: b.accentColor ?? '#6366f1',
+      ...panel,
       services: priced,
       addons,
       /** Today's promotion, for the band at the top. Null when none runs. */
       promo: promoBanner(promos, day, [...cats].map(([id, name]) => ({ id, name }))),
+    };
+  }
+
+  /**
+   * The kiosk's side panel: a QR to check in on your own phone (the same
+   * /checkin?c=CODE link the desk shows), the salon's Google review link when
+   * its review program is on, and the rating badge the booking page shows.
+   * Every piece is optional — a failure here never stops a check-in.
+   */
+  private async kioskPanel(token: string, tenantId: string, slug: string | null, branding: unknown) {
+    const out: { checkinUrl: string | null; reviewUrl: string | null; rating: { value: number; count: number } | null; panelQr: 'checkin' | 'review' | 'both' } =
+      { checkinUrl: null, reviewUrl: null, rating: null, panelQr: 'checkin' };
+    try {
+      const sess = await this.prisma.displaySession.findUnique({ where: { token }, select: { pairCode: true } });
+      if (sess?.pairCode) out.checkinUrl = `${publicWebBase()}/checkin?c=${encodeURIComponent(sess.pairCode)}`;
+    } catch { /* no QR */ }
+    if (!this.settings) return out;
+    try {
+      const brand = this.settings.brandingFrom(branding);
+      const review = await this.settings.getReviewSettings(tenantId);
+      const google = review.enabled ? await this.settings.effectiveGoogleReviewUrl(tenantId, review) : null;
+      if (google && slug) out.reviewUrl = `${publicWebBase()}/review/${encodeURIComponent(slug)}/salon`;
+      const mode = brand.ratingMode || 'auto';
+      if (mode === 'manual' && brand.ratingCount > 0) out.rating = { value: Math.round(brand.ratingValue * 10) / 10, count: brand.ratingCount };
+      if (mode === 'auto') {
+        const agg = await this.prisma.feedback.aggregate({ where: { tenantId }, _avg: { rating: true }, _count: { _all: true } });
+        const n = agg?._count?._all ?? 0;
+        if (n > 0) out.rating = { value: Math.round((agg._avg.rating ?? 0) * 10) / 10, count: n };
+      }
+      const want = brand.checkinQr === 'review' || brand.checkinQr === 'both' ? brand.checkinQr : 'checkin';
+      // Asked for a review QR with no review link to point at: the check-in QR it is.
+      out.panelQr = want !== 'checkin' && !out.reviewUrl ? 'checkin' : want;
+    } catch { /* panel extras are best-effort */ }
+    return out;
+  }
+
+  /**
+   * Kiosk: who owns this phone number, in THIS salon only.
+   * Returning → first name, an open booking near now (±2 h, the same window
+   * check-in uses to mark it ARRIVED), and the services + technician of the
+   * last finished visit, limited to what is on the menu today. Never returns
+   * a surname, contact, or any record id but menu service ids.
+   */
+  async kioskLookup(token: string, phone: string) {
+    const tenantId = await this.tenantOfToken(token);
+    const digits = String(phone ?? '').replace(/\D/g, '');
+    if (digits.length < 7 || digits.length > 15) return { returning: false as const };
+    const c = await this.customers.findByPhone(tenantId, String(phone));
+    if (!c) return { returning: false as const };
+
+    const now = new Date();
+    const win = LINK_WINDOW_MIN * 60_000;
+    const OPEN = ['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED'];
+    const [menu, near, lastAppt, lastWalk] = await Promise.all([
+      this.prisma.service.findMany({ where: { tenantId, isActive: true }, select: { id: true } }),
+      this.prisma.appointment.findMany({
+        where: { tenantId, customerId: c.id, status: { in: OPEN as never }, startTime: { gte: new Date(now.getTime() - win), lte: new Date(now.getTime() + win) } },
+        select: { startTime: true, serviceId: true, groupId: true, assignedStaff: { select: { firstName: true } } },
+        orderBy: { startTime: 'asc' }, take: 10,
+      }),
+      this.prisma.appointment.findFirst({
+        where: { tenantId, customerId: c.id, status: 'COMPLETED' as never },
+        select: { startTime: true, serviceId: true, groupId: true, assignedStaff: { select: { firstName: true } } },
+        orderBy: { startTime: 'desc' },
+      }),
+      this.prisma.walkIn.findFirst({
+        where: { tenantId, customerId: c.id, status: WalkInStatus.DONE },
+        select: { createdAt: true, items: true, assignedStaff: { select: { firstName: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+    const onMenu = new Set(menu.map((m) => m.id));
+    const keep = (ids: (string | null | undefined)[]) => [...new Set(ids.filter((x): x is string => !!x && onMenu.has(x)))].slice(0, 8);
+
+    // Today's booking: the first one near now, plus the rest of its group.
+    let appointment: { at: string; serviceIds: string[]; staffName: string | null } | null = null;
+    if (near.length) {
+      const first = near[0];
+      const same = near.filter((a) => (first.groupId ? a.groupId === first.groupId : a === first));
+      appointment = { at: first.startTime.toISOString(), serviceIds: keep(same.map((a) => a.serviceId)), staffName: first.assignedStaff?.firstName ?? null };
+    }
+
+    // Last finished visit: a ticket or a booking, whichever is more recent.
+    let lastVisit: { at: string; serviceIds: string[]; staffName: string | null } | null = null;
+    const walkAt = lastWalk ? new Date(lastWalk.createdAt).getTime() : 0;
+    const apptAt = lastAppt ? new Date(lastAppt.startTime).getTime() : 0;
+    if (lastWalk && walkAt >= apptAt) {
+      const items = Array.isArray(lastWalk.items) ? (lastWalk.items as { serviceId?: string | null }[]) : [];
+      lastVisit = { at: new Date(walkAt).toISOString(), serviceIds: keep(items.map((i) => i?.serviceId)), staffName: lastWalk.assignedStaff?.firstName ?? null };
+    } else if (lastAppt) {
+      const group = lastAppt.groupId
+        ? await this.prisma.appointment.findMany({ where: { tenantId, groupId: lastAppt.groupId, customerId: c.id }, select: { serviceId: true }, take: 8 })
+        : [{ serviceId: lastAppt.serviceId }];
+      lastVisit = { at: new Date(apptAt).toISOString(), serviceIds: keep(group.map((g) => g.serviceId)), staffName: lastAppt.assignedStaff?.firstName ?? null };
+    }
+    if (lastVisit && !lastVisit.serviceIds.length) lastVisit = null;
+
+    const first = (c.firstName ?? '').trim();
+    return {
+      returning: true as const,
+      firstName: first && first !== 'Walk-in' ? first.slice(0, 40) : null,
+      appointment,
+      lastVisit,
     };
   }
 

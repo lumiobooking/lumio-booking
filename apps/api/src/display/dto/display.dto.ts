@@ -18,6 +18,11 @@ export class DisplayTipDto {
   @IsInt() @Min(1) amountCents!: number;
 }
 
+/** Kiosk: "is this a returning customer?" — the phone number typed on the keypad. */
+export class KioskLookupDto {
+  @IsString() @MaxLength(40) phone!: string;
+}
+
 /** One more person in a self check-in party: a name (optional) and their own services. */
 export class CheckInGuestDto {
   @IsOptional() @IsString() @MaxLength(80) firstName?: string;

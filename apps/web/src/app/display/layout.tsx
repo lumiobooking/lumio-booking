@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { FixedPalette } from '../../components/FixedPalette';
 
 // Makes the customer display installable as a full-screen "app" on the iPad:
 // Safari → Share → Add to Home Screen → launches with NO browser chrome
@@ -29,5 +30,6 @@ export const viewport: Viewport = {
 };
 
 export default function DisplayLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  // The customer sees a fixed light design, never the salon's dark/light switch.
+  return <><FixedPalette />{children}</>;
 }

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { FixedPalette } from '../../components/FixedPalette';
 
 // Self check-in kiosk. Same install story as the customer display: Safari →
 // Share → Add to Home Screen gives a full-screen app with no browser chrome,
@@ -28,5 +29,6 @@ export const viewport: Viewport = {
 };
 
 export default function CheckInLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  // The customer sees a fixed light design, never the salon's dark/light switch.
+  return <><FixedPalette />{children}</>;
 }

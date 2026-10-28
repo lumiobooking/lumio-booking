@@ -166,11 +166,16 @@ type WakeSentinel = { release: () => Promise<void>; addEventListener?: (t: strin
 
 export default function CheckInKiosk() {
   const [token, setToken] = useState<string | null>(null);
-  // Arrived from the desk's QR on the customer's own phone: no "scan to check
-  // in on your phone" offer here — they already are — and no kiosk behaviour
-  // (no welcome screen, no full screen, the phone's own keyboard).
+  // Opened through the salon's pairing link (?c=CODE).
   const [viaQr, setViaQr] = useState(false);
-  const kiosk = !viaQr;
+  // A phone-sized screen. The pairing link is ALSO how many salons set up the
+  // tablet itself (they bookmark lumiobooking.com/checkin?c=CODE), so the link
+  // alone must not switch the tablet into "customer's phone" mode — that hid
+  // the welcome screen, the salon keyboard and the QR cards on the tablet.
+  const [onPhone, setOnPhone] = useState(false);
+  // The tablet at the door: welcome screen, full screen, salon keys, QR cards.
+  // Only a customer's own phone that arrived by the QR is not a kiosk.
+  const kiosk = !(viaQr && onPhone);
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [pairInput, setPairInput] = useState('');
@@ -224,12 +229,18 @@ export default function CheckInKiosk() {
     let saved: string | null = null;
     try { saved = localStorage.getItem(TOKEN_KEY); } catch { /* private mode */ }
     setPrefs(readPrefs());
+    const small = Math.min(window.screen?.width || window.innerWidth, window.screen?.height || window.innerHeight) < 600;
+    setOnPhone(small);
     const code = new URLSearchParams(window.location.search).get('c');
     if (code) {
       setViaQr(true);
-      setStep('phone');
+      if (small) setStep('phone');
       apiFetch<{ token: string }>('/display/pair', { method: 'POST', body: { pairCode: code.toUpperCase() } })
-        .then((r) => setToken(r.token))
+        .then((r) => {
+          // A tablet set up through the link keeps its pairing across reboots.
+          if (!small) { try { localStorage.setItem(TOKEN_KEY, r.token); } catch { /* private mode */ } }
+          setToken(r.token);
+        })
         .catch(() => setToken(saved));
       return;
     }
@@ -258,10 +269,10 @@ export default function CheckInKiosk() {
     setForm({ firstName: '', lastName: '' }); setNameField('first'); setNativeNow(false);
     setDigits(''); setLookup(null); setBMonth(null); setBDay(null); setPartySize(1);
     setPicked([]); setGuests([]); setWho(0); setCat(null); setErr(null);
-    setStep(viaQr ? 'phone' : 'welcome');
+    setStep(viaQr && onPhone ? 'phone' : 'welcome');
     setEta(null); setSeated(false); setFormsToken(null); setExtras({});
     setStill(null); setOutcome('done'); setGuestKeys(null); setStaffOpen(false); setConfirmUnpair(false);
-  }, [viaQr]);
+  }, [viaQr, onPhone]);
 
   // ---- Kiosk: full screen + screen awake, re-armed by any tap ---------------
   // A browser only allows full screen from a tap, so the welcome screen's
@@ -521,15 +532,11 @@ export default function CheckInKiosk() {
   const afterName = useCallback(() => {
     setStep(returning || !digits ? 'services' : 'birthday');
   }, [returning, digits]);
+  // Enter / Next: on to the birthday or the services once there is a first name.
   const nameNext = useCallback(() => {
-    if (nameField === 'first') {
-      if (!form.firstName.trim()) return;
-      if (returning || !salonKeys) { afterName(); return; }
-      setNameField('last');
-      return;
-    }
+    if (!form.firstName.trim()) return;
     afterName();
-  }, [nameField, form.firstName, returning, salonKeys, afterName]);
+  }, [form.firstName, afterName]);
 
   useEffect(() => {
     if (!menu || staffOpen || still !== null) return;
@@ -600,7 +607,7 @@ export default function CheckInKiosk() {
 
   const brand = splitSalonName(menu.salonName);
   const firstShown = form.firstName.trim() || 'friend';
-  const showCheckinQr = !viaQr && !!menu.checkinUrl && (panelQr === 'checkin' || (panelQr === 'both' && qrTurn === 0) || !menu.reviewUrl);
+  const showCheckinQr = kiosk && !!menu.checkinUrl && (panelQr === 'checkin' || (panelQr === 'both' && qrTurn === 0) || !menu.reviewUrl);
   const qrUrl = showCheckinQr ? menu.checkinUrl : menu.reviewUrl;
   const qrKind: 'checkin' | 'review' = showCheckinQr ? 'checkin' : 'review';
 
@@ -642,16 +649,13 @@ export default function CheckInKiosk() {
             <span className="ck-wel-cta" style={{ color: accent }}>Start check-in →</span>
           </button>
           <aside className="ck-wel-side">
-            {qrUrl ? (
-              <>
-                <span style={{ ...eyebrow, color: C.muted }}>{qrKind === 'checkin' ? 'Someone using the tablet?' : 'Love your nails?'}</span>
-                <b style={{ fontSize: 'clamp(22px, 3vh, 28px)', lineHeight: 1.15 }}>{qrKind === 'checkin' ? 'Check in on your phone' : 'Review us on Google'}</b>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrSrc(qrUrl, 400)} alt={qrKind === 'checkin' ? 'QR code to check in on your phone' : 'QR code to review us on Google'}
-                  style={{ alignSelf: 'center', width: 'clamp(150px, 27vh, 230px)', height: 'auto', aspectRatio: '1 / 1', display: 'block', borderRadius: 16, border: `1.5px solid ${C.line}`, padding: 10, background: '#fff' }} />
-                <span style={{ fontSize: 16, color: C.ink2, textAlign: 'center' }}>Point your camera here — no app needed.</span>
-              </>
-            ) : (
+            {kiosk && menu.checkinUrl && (
+              <QrCard url={menu.checkinUrl} accent={accent} eyebrow="Someone using the tablet?" title="Check in on your phone" note="Point your camera here — no app needed." />
+            )}
+            {menu.reviewUrl && (
+              <QrCard url={menu.reviewUrl} accent={accent} eyebrow="Love your nails?" title="Review us on Google" note="Takes a minute — it means the world to us." stars />
+            )}
+            {!menu.checkinUrl && !menu.reviewUrl && (
               <span style={{ fontSize: 18, color: C.ink2, lineHeight: 1.5 }}>Welcome! Tap the screen to let us know you’re here.</span>
             )}
             <span className="ck-wel-spacer" style={{ flex: 1 }} />
@@ -668,59 +672,57 @@ export default function CheckInKiosk() {
     const showReview = returning && !!menu.reviewUrl && outcome === 'done';
     const saved = outcome === 'saved';
     return (
-      <main className="ck-page" style={{ ...screen, ...accentVar(accent), background: accent, color: '#fff', alignItems: 'stretch', padding: 0 }}>
+      <main className="ck-page" style={{ ...screen, ...accentVar(accent), alignItems: 'stretch', padding: 0 }}>
         <style>{baseCss + layoutCss}</style>
         <div className="ck-done">
-          <span style={{ width: 'clamp(72px, 10vh, 96px)', height: 'clamp(72px, 10vh, 96px)', borderRadius: '50%', background: '#fff', color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="50%" height="50%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+          <span style={{ width: 'clamp(76px, 11vh, 96px)', height: 'clamp(76px, 11vh, 96px)', borderRadius: '50%', background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="54%" height="54%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
           </span>
-          <div style={{ ...eyebrow, color: 'rgba(255,255,255,0.9)', fontSize: 15 }}>{saved ? 'We saved your spot' : 'You’re checked in'}</div>
-          <h1 style={{ ...titleStyle, color: '#fff', fontSize: 'clamp(34px, 6vw, 64px)', lineHeight: 1.05, margin: 0 }}>
-            {saved ? `You’re on the list, ${firstShown}.` : `Thank you, ${firstShown}!`}
+          <h1 style={{ ...titleStyle, fontSize: 'clamp(32px, 6vh, 46px)', lineHeight: 1.1, margin: 0 }}>
+            {saved ? `You’re on the list, ${firstShown}.` : `You’re checked in, ${firstShown}!`}
           </h1>
-          <p style={{ fontSize: 'clamp(18px, 2.6vw, 24px)', lineHeight: 1.45, margin: 0 }}>
-            {saved ? 'We kept your details and your place in line. The front desk will help you choose your services.'
-              : seated ? 'Your technician is getting ready for you.' : group ? `Please have a seat — we’ll be with all ${party} of you shortly.` : 'Please have a seat — we’ll be with you shortly.'}
+          <p style={{ fontSize: 'clamp(17px, 2.6vh, 20px)', lineHeight: 1.45, margin: 0, color: C.ink2, maxWidth: 760 }}>
+            {saved ? 'We saved your details and your place in line. The front desk will come and help you choose your services.'
+              : seated ? 'Your technician is getting ready for you.'
+                : `${pickedCount ? `${everyone.map((x) => x.name).join(' + ')} · ${money(totalCents)}. ` : ''}${group ? `Have a seat — we’ll call all ${party} of you.` : 'Have a seat — we’ll call your name.'}`}
           </p>
           <div className="ck-tiles">
             <div className="ck-tile">
-              <span style={tileLabel}>Estimated wait</span>
-              <b style={tileBig}>{seated ? 'Now' : eta && eta.max > 0 ? `${eta.min}–${eta.max}` : 'Shortly'}</b>
-              {!seated && eta && eta.max > 0 && <span style={tileSub}>minutes</span>}
+              <span style={tileLabel}>About</span>
+              <b style={tileBig}>{seated ? 'Now' : eta && eta.max > 0 ? `${eta.min}–${eta.max} min` : 'Shortly'}</b>
+              <span style={tileSub}>{seated ? 'Your technician is ready' : 'Estimated wait'}</span>
             </div>
             <div className="ck-tile">
-              <span style={tileLabel}>Your visit</span>
-              <b style={tileBig}>{pickedCount || '—'}</b>
-              <span style={tileSub}>{pickedCount ? (pickedCount === 1 ? 'service' : 'services') : 'we’ll ask at the chair'}</span>
+              <span style={tileLabel}>Services</span>
+              <b style={tileBig}>{pickedCount ? pickedCount : 'At the chair'}</b>
+              <span style={tileSub}>{pickedCount ? (pickedCount === 1 ? 'service picked' : 'services picked') : 'The desk will ask you'}</span>
             </div>
             <div className="ck-tile">
               <span style={tileLabel}>We&rsquo;ll call</span>
-              <b style={{ ...tileBig, fontSize: 'clamp(22px, 2.6vw, 30px)', lineHeight: 1.2 }}>{group ? people.map((p) => p.name).join(', ') : firstShown}</b>
+              <b style={{ ...tileBig, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group ? people.map((p) => p.name).join(', ') : firstShown}</b>
+              <span style={tileSub}>{group ? `${party} people` : 'Listen for your name'}</span>
             </div>
           </div>
           {formsToken && !saved && (
             <button onClick={() => { window.location.href = `/sign/${formsToken}?return=${encodeURIComponent('/checkin')}`; }}
-              style={{ ...primary('#fff'), color: accent, boxShadow: 'none', alignSelf: 'flex-start' }}>
+              style={{ ...primary(accent) }}>
               Please sign your forms (1 min) · Ký phiếu
             </button>
           )}
           {showReview && (
             <div className="ck-review">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qrSrc(menu.reviewUrl as string, 300)} alt="QR code to review us on Google" style={{ width: 'clamp(96px, 13vh, 132px)', height: 'auto', aspectRatio: '1 / 1', flexShrink: 0, display: 'block' }} />
-              <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+              <img src={qrSrc(menu.reviewUrl as string, 300)} alt="QR code to review us on Google" style={{ width: 'clamp(96px, 14vh, 124px)', height: 'auto', aspectRatio: '1 / 1', flexShrink: 0, display: 'block' }} />
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, textAlign: 'left' }}>
                 <span style={{ ...eyebrow, color: accent }}>While you wait</span>
-                <b style={{ fontSize: 'clamp(17px, 2vw, 21px)', lineHeight: 1.25, color: C.ink }}>Loved your last visit? Review us on Google</b>
-                <span aria-label="5 stars" style={{ color: '#f59e0b', fontSize: 20, letterSpacing: 2 }}>★★★★★</span>
-                <span style={{ fontSize: 14.5, color: C.ink2, lineHeight: 1.45 }}>Point your phone camera at the code — it takes a minute.</span>
+                <b style={{ fontSize: 'clamp(17px, 2.6vh, 20px)', lineHeight: 1.25, color: C.ink }}>Loved your last visit? Review us on Google</b>
+                <span aria-label="5 stars" style={{ color: '#f59e0b', fontSize: 18, letterSpacing: 2 }}>★★★★★</span>
+                <span style={{ fontSize: 14, color: C.ink2, lineHeight: 1.4 }}>Point your phone camera at the code.</span>
               </span>
             </div>
           )}
-          <div style={{ flex: 1 }} />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <button onClick={reset} style={{ ...primary('#fff'), color: accent, boxShadow: 'none', minWidth: 160 }}>Done</button>
-            <span style={{ fontSize: 15, opacity: 0.92 }}>Back to the start in a few seconds</span>
-          </div>
+          <span style={{ fontSize: 15, color: C.muted }}>Back to the start in a few seconds.</span>
+          <button onClick={reset} style={{ ...ghostBtn, minHeight: 60, padding: '0 40px', fontSize: 18, fontWeight: 800, borderRadius: 18 }}>Done</button>
         </div>
       </main>
     );
@@ -735,15 +737,14 @@ export default function CheckInKiosk() {
   const appt = lookup?.appointment ?? null;
   const goBack = () => {
     if (step === 'name') {
-      if (salonKeys && nameField === 'last') { setNameField('first'); return; }
       setStep('phone'); return;
     }
-    if (step === 'birthday') { setStep('name'); setNameField(salonKeys ? 'last' : 'first'); return; }
+    if (step === 'birthday') { setStep('name'); setNameField('first'); return; }
     if (step === 'services') {
       if (group && who > 0) { setWho(who - 1); return; }
       if (returning && lookup?.firstName) { setStep('phone'); return; }
       if (!returning && digits) { setStep('birthday'); return; }
-      setStep('name'); setNameField(salonKeys && !returning ? 'last' : 'first');
+      setStep('name'); setNameField('first');
     }
   };
 
@@ -864,11 +865,23 @@ export default function CheckInKiosk() {
 
   // ---- Name -------------------------------------------------------------------
   if (step === 'name') {
-    const typing = nameField === 'first' ? form.firstName : form.lastName;
-    const title = nameField === 'last'
-      ? `Thanks, ${form.firstName.trim()}! And your last name?`
-      : returning ? 'Welcome back! What name should we call?' : digits ? 'Nice to meet you! What’s your name?' : 'What’s your name?';
+    const title = returning ? 'Welcome back! What name should we call?' : digits ? 'Nice to meet you! What’s your name?' : 'What’s your name?';
     const firstOk = form.firstName.trim().length > 0;
+    const keyField = (which: 'first' | 'last') => {
+      const on = nameField === which;
+      const value = which === 'first' ? form.firstName : form.lastName;
+      return (
+        <div className="ck-kfield">
+          <span className="ck-lbl">{which === 'first' ? <>First name <span style={{ color: C.bad }}>*</span></> : <>Last name <span style={{ fontWeight: 500, color: C.muted }}>· optional</span></>}</span>
+          <button type="button" aria-label={which === 'first' ? 'First name' : 'Last name'} aria-pressed={on}
+            className={`ck-namebox${on ? ' on' : ''}`} onClick={() => setNameField(which)}>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+            {on && <span className="ck-caret" aria-hidden />}
+            {!value && !on && <span style={{ color: C.faint, fontWeight: 600 }}>Tap to add</span>}
+          </button>
+        </div>
+      );
+    };
     return (
       <main className={`ck-page${kbOpen ? ' ck-kb' : ''}`} style={{ ...screen, ...accentVar(accent), padding: 0, display: 'block' }}>
         <style>{baseCss + layoutCss}</style>
@@ -879,9 +892,9 @@ export default function CheckInKiosk() {
               <div className="ck-nametop">
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 360px', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                    <h1 style={{ ...titleStyle, fontSize: 'clamp(24px, 4.2vh, 34px)', margin: 0 }}>{title}</h1>
-                    <span style={{ fontSize: 'clamp(15px, 2.2vh, 17px)', color: C.ink2 }}>
-                      {nameField === 'last' ? 'Optional — tap Skip if you’d rather not.' : digits ? 'First visit — this takes 10 seconds.' : 'We’ll call you by this name.'}
+                    <h1 style={{ ...titleStyle, fontSize: 'clamp(24px, 4.2vh, 32px)', margin: 0 }}>{title}</h1>
+                    <span style={{ fontSize: 'clamp(15px, 2.2vh, 16px)', color: C.ink2 }}>
+                      {digits ? 'First visit — this takes 10 seconds.' : 'We’ll call you by this name.'}
                     </span>
                   </div>
                   {digits && (
@@ -891,10 +904,9 @@ export default function CheckInKiosk() {
                     </span>
                   )}
                 </div>
-                <div className="ck-namebox" role="textbox" aria-readonly="true" aria-label={nameField === 'first' ? 'First name' : 'Last name'} aria-live="polite">
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{typing}</span>
-                  <span className="ck-caret" aria-hidden />
-                  {!typing && <span style={{ color: C.faint, fontWeight: 600 }}>{nameField === 'first' ? 'First name' : 'Last name'}</span>}
+                <div className="ck-kfields">
+                  {keyField('first')}
+                  {!returning && keyField('last')}
                 </div>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: C.muted }}><LockIcon /> Saved as you go — if you step away, the front desk keeps your spot.</span>
               </div>
@@ -902,9 +914,9 @@ export default function CheckInKiosk() {
                 accent={accent}
                 onKey={typeName}
                 onDevice={() => setNativeNow(true)}
-                goLabel={nameField === 'first' ? 'Next' : form.lastName.trim() ? 'Next' : 'Skip'}
-                goDisabled={nameField === 'first' && !firstOk}
-                onGo={nameNext}
+                goLabel="Next"
+                goDisabled={!firstOk}
+                onGo={() => { if (firstOk) afterName(); }}
               />
             </>
           ) : (
@@ -1258,7 +1270,7 @@ export default function CheckInKiosk() {
           <div className="ck-keysheet">
             <div className="ck-nametop" style={{ flex: '0 0 auto' }}>
               <h2 style={{ ...titleStyle, fontSize: 'clamp(22px, 3.6vh, 28px)', margin: 0 }}>Guest {guestKeys + 1}&rsquo;s first name</h2>
-              <div className="ck-namebox" role="textbox" aria-readonly="true" aria-label="Guest first name" aria-live="polite">
+              <div className="ck-namebox on" role="textbox" aria-readonly="true" aria-label="Guest first name" aria-live="polite">
                 <span>{guests[guestKeys - 1]?.name ?? ''}</span><span className="ck-caret" aria-hidden />
               </div>
             </div>
@@ -1269,6 +1281,22 @@ export default function CheckInKiosk() {
       {stillSheet}
       {staffSheet}
     </main>
+  );
+}
+
+/** A QR with a heading, for the welcome screen's side. */
+function QrCard({ url, accent, eyebrow: eb, title, note, stars }: { url: string; accent: string; eyebrow: string; title: string; note: string; stars?: boolean }) {
+  return (
+    <section className="ck-qrcard" aria-label={title}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={qrSrc(url, 360)} alt={`QR code: ${title}`} className="ck-qrimg" />
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+        <span style={{ ...eyebrow, color: accent }}>{eb}</span>
+        <b style={{ fontSize: 'clamp(18px, 2.8vh, 22px)', lineHeight: 1.2, color: C.ink }}>{title}</b>
+        {stars && <span aria-label="5 stars" style={{ color: '#f59e0b', fontSize: 16, letterSpacing: 2 }}>★★★★★</span>}
+        <span style={{ fontSize: 14, lineHeight: 1.4, color: C.ink2 }}>{note}</span>
+      </span>
+    </section>
   );
 }
 
@@ -1507,14 +1535,14 @@ const layoutCss = `
 .ck-wel-go{position:relative;overflow:hidden;border:0;color:#fff;text-align:left;cursor:pointer;padding:clamp(28px,7vh,56px) clamp(28px,5vw,64px);display:flex;flex-direction:column;gap:clamp(14px,3vh,26px);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .ck-wel-big{position:relative;font-size:clamp(44px,9vh,76px);line-height:1.02;font-weight:800;letter-spacing:-0.02em}
 .ck-wel-cta{position:relative;align-self:flex-start;display:inline-flex;align-items:center;min-height:clamp(60px,9vh,74px);padding:0 34px;border-radius:999px;background:#fff;font-size:clamp(19px,3vh,24px);font-weight:800}
-.ck-wel-side{background:#fff;border-left:1px solid ${C.line};padding:clamp(24px,5vh,44px) clamp(22px,3vw,38px);display:flex;flex-direction:column;gap:14px;overflow-y:auto}
+.ck-wel-side{background:#fff;border-left:1px solid ${C.line};padding:clamp(20px,4vh,40px) clamp(20px,2.6vw,34px);display:flex;flex-direction:column;gap:clamp(12px,2.2vh,18px);overflow-y:auto}
+.ck-qrcard{display:flex;align-items:center;gap:16px;padding:14px;border-radius:20px;border:1px solid ${C.line};background:#fff}
+.ck-qrimg{width:clamp(104px,17vh,138px);height:auto;aspect-ratio:1/1;display:block;flex-shrink:0;border-radius:10px}
 @media (max-width:760px),(orientation:portrait) and (max-width:1000px){
   .ck-welcome{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}
-  .ck-wel-side{border-left:0;border-top:1px solid ${C.line};display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:22px;row-gap:6px;align-content:start;text-align:left}
-  .ck-wel-side > *{grid-column:2;text-align:left!important}
-  .ck-wel-side > img{grid-column:1;grid-row:1 / span 3;width:clamp(110px,18vh,160px)!important;align-self:center}
+  .ck-wel-side{border-left:0;border-top:1px solid ${C.line};display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-content:start}
   .ck-wel-spacer{display:none}
-  .ck-wel-offer{grid-column:1 / -1!important;margin-top:12px}
+  .ck-wel-offer{grid-column:1 / -1}
 }
 
 /* Phone step */
@@ -1540,8 +1568,11 @@ const layoutCss = `
 
 /* Name on the salon keys */
 .ck-nametop{flex:1;min-height:0;overflow-y:auto;padding:clamp(12px,2.6vh,26px) clamp(16px,4vw,40px);display:flex;flex-direction:column;justify-content:center;gap:clamp(10px,1.8vh,14px)}
-@media (orientation:portrait){.ck-nametop{justify-content:flex-end;padding-bottom:28px}}
-.ck-namebox{display:flex;align-items:center;min-height:clamp(64px,11vh,92px);box-sizing:border-box;padding:0 24px;border-radius:20px;border:3px solid var(--ck-accent);background:#fff;font-size:clamp(28px,5.2vh,42px);font-weight:800;color:${C.ink}}
+.ck-kfields{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px}
+@media (max-width:700px){.ck-kfields{grid-template-columns:1fr}}
+.ck-kfield{display:flex;flex-direction:column;gap:6px;min-width:0}
+.ck-namebox{display:flex;align-items:center;width:100%;min-height:clamp(60px,9.5vh,76px);box-sizing:border-box;padding:0 20px;border-radius:16px;border:1.5px solid ${C.line};background:#fff;font-family:inherit;font-size:clamp(24px,4vh,30px);font-weight:800;color:${C.ink};text-align:left;cursor:pointer}
+.ck-namebox.on{border:2.5px solid var(--ck-accent);box-shadow:0 0 0 4px color-mix(in srgb, var(--ck-accent) 14%, transparent)}
 .ck-caret{width:3px;height:1.05em;background:var(--ck-accent);margin:0 6px 0 3px;flex-shrink:0;animation:ckblink 1.1s steps(1) infinite}
 @keyframes ckblink{50%{opacity:0}}
 .ck-keys{flex-shrink:0;background:${C.soft};border-top:1px solid ${C.line};padding:10px clamp(8px,1.4vw,16px) max(12px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:clamp(6px,1vh,8px)}
@@ -1594,10 +1625,10 @@ const layoutCss = `
 .ck-staff{width:min(720px,calc(100vw - 32px));max-height:calc(100dvh - 48px);box-sizing:border-box;background:#fff;border-radius:26px;padding:24px 30px;display:flex;flex-direction:column;gap:12px}
 
 /* Thank you */
-.ck-done{min-height:100dvh;box-sizing:border-box;max-width:1100px;margin:0 auto;padding:clamp(28px,6vh,64px) clamp(20px,5vw,64px) clamp(20px,4vh,40px);display:flex;flex-direction:column;gap:clamp(12px,2vh,20px)}
-.ck-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(8px,1.6vw,16px)}
-.ck-tile{background:rgba(255,255,255,0.16);border-radius:22px;padding:clamp(14px,2vw,22px);display:flex;flex-direction:column;gap:4px;min-width:0}
-.ck-review{display:flex;align-items:center;gap:18px;padding:16px 20px;border-radius:24px;background:#fff;max-width:720px}
+.ck-done{min-height:100dvh;box-sizing:border-box;max-width:1000px;margin:0 auto;padding:clamp(24px,5vh,48px) clamp(20px,5vw,64px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:clamp(12px,2.4vh,20px)}
+.ck-tiles{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(8px,1.6vw,16px);text-align:left}
+.ck-tile{background:#fff;border:1px solid ${C.line};border-radius:22px;padding:clamp(14px,2.6vh,22px) clamp(16px,2vw,24px);display:flex;flex-direction:column;gap:4px;min-width:0}
+.ck-review{display:flex;align-items:center;gap:18px;padding:14px 20px;border-radius:22px;background:#fff;border:1px solid ${C.line};max-width:720px}
 @media (max-width:520px){.ck-tiles{grid-template-columns:1fr}.ck-tile{flex-direction:row;align-items:baseline;flex-wrap:wrap;gap:10px}}`;
 
 const screen: CSSProperties = {
@@ -1672,9 +1703,9 @@ const titleStyle: CSSProperties = { fontFamily: FONT, fontWeight: 800, color: C.
 const eyebrow: CSSProperties = { fontSize: 12, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.faint };
 
 const liveChip: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 7, minHeight: 32, padding: '0 12px', borderRadius: 999, background: 'rgba(255,255,255,0.16)', fontSize: 14, fontWeight: 700 };
-const tileLabel: CSSProperties = { fontSize: 13, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' };
-const tileBig: CSSProperties = { fontSize: 'clamp(30px, 4vw, 48px)', lineHeight: 1.05, fontWeight: 800, overflowWrap: 'anywhere' };
-const tileSub: CSSProperties = { fontSize: 16 };
+const tileLabel: CSSProperties = { fontSize: 13, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.muted };
+const tileBig: CSSProperties = { fontSize: 'clamp(24px, 4.4vh, 34px)', lineHeight: 1.1, fontWeight: 800, color: C.ink };
+const tileSub: CSSProperties = { fontSize: 15, color: C.ink2 };
 function CalendarIcon({ color }: { color: string }) {
   return (
     <svg width={30} height={30} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" style={{ flexShrink: 0 }} aria-hidden>

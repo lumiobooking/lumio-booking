@@ -31,4 +31,17 @@ export class TwilioInboundController {
     await this.notifications.handleInboundSms(body ?? {}).catch(() => undefined);
     return '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
   }
+
+  /**
+   * Delivery reports for texts sent on the platform account (StatusCallback,
+   * set per message at send time — nothing to configure in the Twilio
+   * console). Undelivered texts are recorded so the next one to a dead number
+   * is held instead of paid for. Always 204: a 500 only buys retries.
+   */
+  @Public()
+  @Post('sms-status')
+  @HttpCode(204)
+  async smsStatus(@Body() body: Record<string, string>) {
+    await this.notifications.applyTwilioStatus(body ?? {}).catch(() => undefined);
+  }
 }

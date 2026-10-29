@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { CustomersService } from '../customers/customers.service';
 import { pastStartProblem } from './past-start';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { signingSecret } from '../common/secret.util';
 import { publicWebBase } from '../common/public-url.util';
 import { formatMoney, localeForCountry } from '../common/money';
@@ -1500,6 +1500,8 @@ export class BookingsService {
     const related = { relatedType: 'appointment', relatedId: appointment.id };
     // Self-service link so the customer can view / confirm / cancel without login.
     const manageUrl = `${publicWebBase()}/appt/${this.apptToken(appointment.id)}`;
+    // The same link at SMS size (/a/<33 chars>) — texts are billed per 153 characters.
+    const smsManageUrl = this.buildApptSmsUrl(appointment.id);
 
     // Refer-a-friend invite in the confirmation email — only when the program is
     // ON. Best-effort: any failure here must never block the confirmation.
@@ -1617,8 +1619,11 @@ export class BookingsService {
       // and carriers there allowlist template AND urls — a per-booking manage
       // link is exactly the shape that gets a message silently dropped. So the
       // registered text goes out alone; the manage link still rides the email.
-      const smsBase = tpl ? fillPct(tpl.smsBody, pct) : fill(n.smsCustomer, d);
-      const smsText = (n.market ?? 'US').toUpperCase() === 'VN' ? smsBase : `${smsBase}\nManage/cancel: ${manageUrl}`;
+      const smsBase = tpl ? fillPct(tpl.smsBody, { ...pct, manage_url: smsManageUrl }) : fill(n.smsCustomer, d);
+      // A template that already placed %manage_url% itself gets no second copy.
+      const smsText = (n.market ?? 'US').toUpperCase() === 'VN' || smsBase.includes(smsManageUrl)
+        ? smsBase
+        : `${smsBase}\nManage/cancel: ${smsManageUrl}`;
       jobs.push(this.notifications.send({
         tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio,
         // Zalo ZNS first for a configured VN salon (send() decides; everyone
@@ -1741,6 +1746,7 @@ export class BookingsService {
     const contact = tenant?.contactPhone || tenant?.contactEmail || '';
     // One-tap self-service link (Confirm / Cancel) — no login needed.
     const actionUrl = `${publicWebBase()}/appt/${this.apptToken(appt.id)}`;
+    const smsActionUrl = this.buildApptSmsUrl(appt.id);
     const subject = `Reminder: your ${svc} at ${salon} — ${when}`;
     const text = `Hi ${cust}, a friendly reminder of your ${svc} at ${salon} on ${when}. Confirm or cancel: ${actionUrl}` + (contact ? ` — or call ${contact}.` : '') + ' See you soon!';
     const html = `<p>Hi ${cust},</p><p>This is a friendly reminder of your <strong>${svc}</strong> at <strong>${salon}</strong>:</p><p style="font-size:16px"><strong>${when}</strong></p>`
@@ -1750,7 +1756,7 @@ export class BookingsService {
     // carriers allowlist template AND urls), and STOP is a US convention.
     const smsText = (n.market ?? 'US').toUpperCase() === 'VN'
       ? `${salon}: Nhac ban lich hen ${svc} ngay ${when}. Hen gap ban!`
-      : `${salon}: reminder — ${svc} on ${when}. Confirm/cancel: ${actionUrl}. Reply STOP to opt out.`;
+      : `${salon}: reminder - ${svc} on ${when}. Confirm/cancel: ${smsActionUrl}\nReply STOP to opt out.`;
 
     const senderName = n.senderName || salon;
     const replyTo = n.replyTo || n.senderEmail || undefined;
@@ -3182,7 +3188,8 @@ export class BookingsService {
           smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related,
         }));
       } else {
-        jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: t.recipient, body: fillPct(tpl.smsBody, pct), twilio: n.twilio, ...related }));
+        const smsPct = pct.manage_url ? { ...pct, manage_url: this.buildApptSmsUrl(appt.id) } : pct;
+        jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: t.recipient, body: fillPct(tpl.smsBody, smsPct), twilio: n.twilio, ...related }));
       }
     }
 
@@ -3231,7 +3238,60 @@ export class BookingsService {
     return `${publicWebBase()}/appt/${this.apptToken(appointmentId)}`;
   }
 
+  /**
+   * The SMS-sized form of the same link: lumiobooking.com/a/<33 chars>
+   * instead of /appt/<~180 chars>. A text is billed per 153 characters, and
+   * the long token alone was more than one of them.
+   *
+   * 22 chars = the appointment uuid packed into 16 bytes; 11 chars = the first
+   * 8 bytes of an HMAC over it, under the same signing secret as the long
+   * token (and a different label, so neither can be turned into the other).
+   * Nothing is stored: it is verified exactly like the long one. It carries no
+   * date of its own — it stops working 30 days after the appointment instead
+   * (shortLinkExpired), which is longer than any reminder needs.
+   * Null for an id that is not a uuid; the caller then uses the long link.
+   */
+  private apptShortCode(appointmentId: string): string | null {
+    const hex = String(appointmentId ?? '').replace(/-/g, '').toLowerCase();
+    if (!/^[0-9a-f]{32}$/.test(hex)) return null;
+    return Buffer.from(hex, 'hex').toString('base64url') + this.apptShortSig(hex);
+  }
+
+  private apptShortSig(hex: string): string {
+    return createHmac('sha256', signingSecret()).update(`appt-sms:${hex}`).digest().subarray(0, 8).toString('base64url');
+  }
+
+  /** The short self-service link, for SMS. Emails and Messenger keep the long one. */
+  buildApptSmsUrl(appointmentId: string): string {
+    const code = this.apptShortCode(appointmentId);
+    return code ? `${publicWebBase()}/a/${code}` : this.buildApptManageUrl(appointmentId);
+  }
+
+  private static isShortApptCode(token: string): boolean {
+    return /^[A-Za-z0-9_-]{33}$/.test(token || '');
+  }
+
+  private verifyApptShortCode(code: string): string | null {
+    if (!BookingsService.isShortApptCode(code)) return null;
+    const idPart = code.slice(0, 22);
+    const buf = Buffer.from(idPart, 'base64url');
+    // Re-encode and compare: base64 decoding forgives stray bits, the check must not.
+    if (buf.length !== 16 || buf.toString('base64url') !== idPart) return null;
+    const hex = buf.toString('hex');
+    const want = Buffer.from(this.apptShortSig(hex));
+    const got = Buffer.from(code.slice(22));
+    if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  /** A short link is good until 30 days after the visit (the long one carries its own date). */
+  private static shortLinkExpired(token: string, startTime: Date | null | undefined): boolean {
+    if (!BookingsService.isShortApptCode(token) || !startTime) return false;
+    return Date.now() > new Date(startTime).getTime() + 30 * 86400 * 1000;
+  }
+
   private verifyApptToken(token: string): string | null {
+    if (BookingsService.isShortApptCode(token)) return this.verifyApptShortCode(token);
     const [payload, sig] = (token || '').split('.');
     if (!payload || !sig) return null;
     const expect = createHmac('sha256', signingSecret()).update(payload).digest('base64url');
@@ -3256,6 +3316,7 @@ export class BookingsService {
       include: { service: { select: { name: true } }, tenant: { select: { name: true, slug: true, timezone: true, branding: true } }, customer: { select: { id: true, firstName: true } } },
     });
     if (!a) throw new NotFoundException('Appointment not found');
+    if (BookingsService.shortLinkExpired(token, a.startTime)) throw new NotFoundException('This link has expired or is invalid.');
     const tz = a.tenant?.timezone || 'America/New_York';
     const loc = await this.customerLocale(a.tenantId, a.tenant?.timezone);
     // Referral: when the program is on, surface THIS customer's own share link so
@@ -3353,8 +3414,9 @@ export class BookingsService {
   async confirmByToken(token: string) {
     const id = this.verifyApptToken(token);
     if (!id) throw new NotFoundException('This link has expired or is invalid.');
-    const a = await this.prisma.appointment.findUnique({ where: { id }, select: { id: true, tenantId: true, status: true } });
+    const a = await this.prisma.appointment.findUnique({ where: { id }, select: { id: true, tenantId: true, status: true, startTime: true } });
     if (!a) throw new NotFoundException('Appointment not found');
+    if (BookingsService.shortLinkExpired(token, a.startTime)) throw new NotFoundException('This link has expired or is invalid.');
     if (!BookingsService.ACTIONABLE.includes(a.status)) return { ok: false, status: a.status };
     await this.prisma.appointment.update({ where: { id }, data: { customerConfirmedAt: new Date(), status: AppointmentStatus.CONFIRMED, confirmedAt: new Date() } });
     await this.audit.log({ tenantId: a.tenantId, userId: null, action: 'booking.customer_confirmed', resourceType: 'appointment', resourceId: id });
@@ -3365,8 +3427,9 @@ export class BookingsService {
   async cancelByToken(token: string) {
     const id = this.verifyApptToken(token);
     if (!id) throw new NotFoundException('This link has expired or is invalid.');
-    const a = await this.prisma.appointment.findUnique({ where: { id }, select: { id: true, tenantId: true, status: true } });
+    const a = await this.prisma.appointment.findUnique({ where: { id }, select: { id: true, tenantId: true, status: true, startTime: true } });
     if (!a) throw new NotFoundException('Appointment not found');
+    if (BookingsService.shortLinkExpired(token, a.startTime)) throw new NotFoundException('This link has expired or is invalid.');
     if (!BookingsService.ACTIONABLE.includes(a.status)) return { ok: false, status: a.status };
     await this.cancelForTenant(a.tenantId, id, null);
     return { ok: true, status: AppointmentStatus.CANCELLED };

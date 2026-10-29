@@ -112,6 +112,28 @@ export function twilioSenderFor(args: {
 }
 
 /**
+ * The second look, at the PERSON being texted rather than the salon.
+ *
+ * A US salon with an Australian customer used to text them from the US
+ * toll-free number, which cannot reach Australia at all — every attempt
+ * failed. When the platform default is about to be used and the recipient is
+ * a +61 number, send from the shared Australian number instead (when one is
+ * configured). Every other case is returned exactly as it came in: a salon
+ * with its own sender, a refusal, and every US/CA recipient.
+ */
+export function senderForRecipient(
+  base: TwilioSender,
+  recipientE164: string | null | undefined,
+  auShared: string | null | undefined,
+): TwilioSender {
+  if (base.kind !== 'default') return base;
+  const to = String(recipientE164 ?? '').trim();
+  if (!to.startsWith('+61')) return base;
+  const shared = String(auShared ?? '').trim();
+  return /^\+61\d{9}$/.test(shared) ? { kind: 'from', from: shared } : base;
+}
+
+/**
  * Which eSMS account a Vietnamese salon's messages go out through.
  *
  * Two sources, the same shape as the US/AU "one number for everyone" model:

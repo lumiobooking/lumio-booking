@@ -210,7 +210,8 @@ export function renderBookingEmailHtml(args: {
 // ===========================================================================
 
 /**
- * Replaces %key% tokens. Unknown tokens are left blank.
+ * Replaces %key% tokens (and their common other names — PCT_ALIASES). Tokens
+ * still unknown are left blank.
  *
  * A line that is nothing but a label and an empty placeholder — "Add-ons:" on a
  * booking with no add-ons, "Your note:" when the customer wrote none — is
@@ -220,11 +221,54 @@ export function renderBookingEmailHtml(args: {
  * it is empty and what is left over is just a label (blank, or ending in ':'),
  * so prose is never touched.
  */
+/**
+ * Other names salons type for our placeholders — most of them Amelia's, which
+ * many salons copy their old texts from. "on %date% at %time%" used to come
+ * out as "on at": the token was unknown, so it was blanked. An alias is only
+ * read when the template's own key is missing, so a key a caller really
+ * provides always wins.
+ */
+export const PCT_ALIASES: Readonly<Record<string, string>> = {
+  date: 'appointment_date', appointment_day: 'appointment_date', booking_date: 'appointment_date',
+  appt_date: 'appointment_date', appointment_date_formatted: 'appointment_date',
+  time: 'appointment_time', booking_time: 'appointment_time', appt_time: 'appointment_time',
+  customer_first_name: 'customer_name', first_name: 'customer_name', client_name: 'customer_name', client_first_name: 'customer_name',
+  full_name: 'customer_full_name', client_full_name: 'customer_full_name', booked_customer_full_name: 'customer_full_name',
+  employee_name: 'staff_name', employee_first_name: 'staff_name', employee_full_name: 'staff_name',
+  technician: 'staff_name', technician_name: 'staff_name', tech_name: 'staff_name', staff: 'staff_name', provider_name: 'staff_name',
+  company_name: 'salon_name', business_name: 'salon_name', shop_name: 'salon_name', store_name: 'salon_name', salon: 'salon_name',
+  company_phone: 'salon_contact', salon_phone: 'salon_contact', business_phone: 'salon_contact', company_email: 'salon_contact', salon_email: 'salon_contact',
+  company_address: 'salon_address', location_address: 'salon_address', salon_location: 'salon_address',
+  appointment_price: 'total_price', service_price: 'total_price', price: 'total_price', total: 'total_price', booking_price: 'total_price',
+  service_duration: 'duration', appointment_duration: 'duration',
+  manage_link: 'manage_url', appointment_link: 'manage_url', cancel_link: 'manage_url', manage_appointment_url: 'manage_url',
+  booking_number: 'booking_ref', appointment_id: 'booking_ref',
+};
+
+/** One placeholder's value: the key itself, any case, then its alias. */
+export function pctValue(data: Record<string, string>, key: string): string {
+  const own = data[key] ?? data[key.toLowerCase()];
+  if (own != null) return String(own);
+  const k = key.toLowerCase();
+  // appointment_time is a range ("2:30 PM – 4:00 PM"); the start / end
+  // placeholders are its two halves.
+  const [start = '', end = ''] = String(data.appointment_time ?? '').split(/\s+[–-]\s+/);
+  switch (k) {
+    case 'appointment_start_time': case 'start_time': case 'appointment_time_start':
+      return start;
+    case 'appointment_end_time': case 'end_time':
+      return end;
+    case 'appointment_date_time': case 'appointment_datetime': case 'date_time': case 'datetime':
+      return data.appointment_date && start ? `${data.appointment_date}, ${start}` : '';
+    default: {
+      const canon = PCT_ALIASES[k];
+      return canon && data[canon] != null ? String(data[canon]) : '';
+    }
+  }
+}
+
 export function fillPct(template: string, data: Record<string, string>): string {
-  const value = (key: string) => {
-    const v = data[key];
-    return v == null ? '' : String(v);
-  };
+  const value = (key: string) => pctValue(data, key);
   // Split on line AND paragraph boundaries, keeping them, so the shape of the
   // body survives. Paragraph tags matter: the editor joins paragraphs with no
   // newline between them, so without </p><p> in this list the last label of one

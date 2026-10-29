@@ -19,6 +19,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { uiLocale } from '../../../lib/datetime';
 import { SettingsScreen } from '../../../components/settings/SettingsScreen';
+import { smsSegments, toGsm7 } from '../../../lib/sms-text';
 
 interface Tpl {
   enabled: boolean; email: boolean; sms: boolean;
@@ -62,7 +63,50 @@ const SAMPLE: Record<string, string> = {
   duration: '45 min', total_price: '$45.00', add_ons: 'Nail Art', salon_contact: '(587) 435-0838', booking_id: 'BK-1042',
   old_date: 'Sat, Jun 20, 2026', old_time: '3:00 PM',
 };
-function fillPct(s: string) { return s.replace(/%(\w+)%/g, (_m, k) => SAMPLE[k] ?? `%${k}%`); }
+function fillPct(s: string) { return s.replace(/%(\w+)%/g, (_m, k) => SAMPLE[k] ?? SAMPLE[PCT_ALIASES[k.toLowerCase()] ?? ''] ?? `%${k}%`); }
+
+/**
+ * The other names the API also fills (apps/api/src/notifications/email-template.ts
+ * PCT_ALIASES — keep in step). Shown in the preview as the value they get.
+ */
+const PCT_ALIASES: Record<string, string> = {
+  date: 'appointment_date', appointment_day: 'appointment_date', booking_date: 'appointment_date', appt_date: 'appointment_date', appointment_date_formatted: 'appointment_date',
+  time: 'appointment_time', booking_time: 'appointment_time', appt_time: 'appointment_time',
+  appointment_start_time: 'appointment_time', start_time: 'appointment_time', appointment_time_start: 'appointment_time',
+  customer_first_name: 'customer_name', first_name: 'customer_name', client_name: 'customer_name', client_first_name: 'customer_name',
+  employee_name: 'staff_name', employee_first_name: 'staff_name', employee_full_name: 'staff_name', technician: 'staff_name', technician_name: 'staff_name', tech_name: 'staff_name', staff: 'staff_name', provider_name: 'staff_name',
+  company_name: 'salon_name', business_name: 'salon_name', shop_name: 'salon_name', store_name: 'salon_name', salon: 'salon_name',
+  company_phone: 'salon_contact', salon_phone: 'salon_contact', business_phone: 'salon_contact', company_email: 'salon_contact', salon_email: 'salon_contact',
+  appointment_price: 'total_price', service_price: 'total_price', price: 'total_price', total: 'total_price', booking_price: 'total_price',
+  service_duration: 'duration', appointment_duration: 'duration',
+};
+/** Placeholders the API knows besides the chips (and their aliases). */
+const OTHER_KNOWN = new Set([
+  'customer_full_name', 'customer_phone', 'customer_email', 'service_lineup', 'add_ons_only', 'booking_notes',
+  'salon_address', 'booking_source', 'booking_ref', 'manage_url', 'appointment_end_time', 'end_time',
+  'appointment_date_time', 'appointment_datetime', 'date_time', 'datetime', 'full_name', 'client_full_name',
+  'booked_customer_full_name', 'company_address', 'location_address', 'salon_location', 'manage_link',
+  'appointment_link', 'cancel_link', 'manage_appointment_url', 'booking_number', 'appointment_id',
+  'booking_url', 'booking_link', 'review_url', 'review_link',
+]);
+const unknownTokens = (s: string) => [...new Set((s.match(/%(\w+)%/g) ?? []).filter((tk) => {
+  const k = tk.slice(1, -1).toLowerCase();
+  return !(k in SAMPLE) && !(k in PCT_ALIASES) && !OTHER_KNOWN.has(k);
+}))];
+
+/** A sample of the 33-character signed code the real text carries. */
+const SAMPLE_SMS_LINK = 'https://lumiobooking.com/a/Px2c8Q6dSnu-ilzH6PmqC1Xb4rTq9wE_k';
+/**
+ * The text exactly as a customer receives it: the template filled, the
+ * manage link the confirmation adds (outside Vietnam, unless the template
+ * already placed it), then the same plain-text pass the API applies.
+ */
+function smsAsSent(id: string, smsBody: string, vn: boolean): string {
+  let s = fillPct(smsBody);
+  if (id === 'customer_booking_confirmed' && !vn && !/%manage_url%/i.test(smsBody)) s = `${s}\nManage/cancel: ${SAMPLE_SMS_LINK}`;
+  s = s.replace(/%manage_url%/gi, SAMPLE_SMS_LINK);
+  return vn ? s : toGsm7(s);
+}
 
 export default function NotificationsPage() {
   return (
@@ -115,6 +159,9 @@ function TemplatesView({ token }: { token: string | null }) {
   const t = (k: string) => tr(k, lang);
   const [templates, setTemplates] = useState<Templates | null>(null);
   const [accent, setAccent] = useState('#6366f1');
+  // Vietnamese texts go out exactly as written (registered with the carriers),
+  // so the plain-text pass and the manage link do not apply there.
+  const [vn, setVn] = useState(false);
   const [audience, setAudience] = useState<Audience>('customer');
   const [selectedId, setSelectedId] = useState<string>('customer_booking_confirmed');
   const [loading, setLoading] = useState(true);
@@ -132,8 +179,9 @@ function TemplatesView({ token }: { token: string | null }) {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      const s = await apiFetch<{ notificationTemplates: Templates; branding?: { accentColor: string } }>('/settings', { token });
+      const s = await apiFetch<{ notificationTemplates: Templates; branding?: { accentColor: string }; market?: string }>('/settings', { token });
       setTemplates(s.notificationTemplates ?? {});
+      setVn(String(s.market ?? '').toUpperCase() === 'VN');
       if (s.branding?.accentColor) setAccent(s.branding.accentColor);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load templates');
@@ -296,9 +344,7 @@ function TemplatesView({ token }: { token: string | null }) {
                   <textarea ref={smsRef} onFocus={() => (focusedRef.current = 'smsBody')}
                     value={tpl.smsBody} onChange={(e) => patch('smsBody', e.target.value)} rows={3}
                     style={{ ...ui.input, fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
-                  <div style={{ fontSize: 11, color: fillPct(tpl.smsBody).length > 160 ? '#f97316' : 'var(--c64748b)', marginTop: 4 }}>
-                    {fillPct(tpl.smsBody).length} {t('nt.chars')} {fillPct(tpl.smsBody).length > 160 ? t('nt.overSegment') : ''}
-                  </div>
+                  <SmsCost id={selectedId} smsBody={tpl.smsBody} vn={vn} />
                 </>
               )}
               {!tpl.email && !tpl.sms && (
@@ -310,7 +356,7 @@ function TemplatesView({ token }: { token: string | null }) {
             <div>
               <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--c64748b)', margin: '0 0 8px 2px', fontWeight: 600 }}>{t('nt.preview')}</div>
               {tpl.email && <EmailPreview accent={accent} subject={fillPct(tpl.subject)} body={fillPct(tpl.body)} salon={SAMPLE.salon_name} contact={SAMPLE.salon_contact} />}
-              {tpl.sms && <SmsPreview text={fillPct(tpl.smsBody)} salon={SAMPLE.salon_name} />}
+              {tpl.sms && <SmsPreview text={smsAsSent(selectedId, tpl.smsBody, vn)} salon={SAMPLE.salon_name} />}
             </div>
           </div>
         )}
@@ -335,6 +381,44 @@ function EmailPreview({ accent, subject, body, salon, contact }: { accent: strin
       <div style={{ background: '#f9fafb', padding: '12px 22px', color: '#4b5563', fontSize: 12, borderTop: '1px solid #eef0f4' }}>
         {salon} · {contact}
       </div>
+    </div>
+  );
+}
+
+/**
+ * What one text costs, counted the way the carrier bills it: segments of 160
+ * plain characters (153 once split), or 70 (67) as soon as one emoji or curly
+ * quote is in it. Counted on the text as SENT — after the link and the
+ * plain-text pass — so the number is the real one.
+ */
+function SmsCost({ id, smsBody, vn }: { id: string; smsBody: string; vn: boolean }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const sent = smsAsSent(id, smsBody, vn);
+  const size = smsSegments(sent);
+  const raw = fillPct(smsBody);
+  const cleaned = !vn && toGsm7(raw) !== raw;
+  const unknown = unknownTokens(smsBody);
+  const warn = size.segments > 2;
+  return (
+    <div style={{ fontSize: 12, marginTop: 6, display: 'grid', gap: 4 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <span style={{
+          padding: '2px 8px', borderRadius: 999, fontWeight: 700,
+          background: warn ? 'var(--cfef3c7)' : 'var(--cf1f5f9)', color: warn ? 'var(--c78350f)' : 'var(--c334155)',
+          border: `1px solid ${warn ? 'var(--cfed7aa)' : 'var(--ce2e8f0)'}`,
+        }}>
+          {t('nt.segments').replace('{n}', String(size.segments))}
+        </span>
+        <span style={{ color: 'var(--c64748b)' }}>
+          {size.units} {t('nt.chars')}{size.encoding === 'UCS-2' ? ` · ${t('nt.unicode')}` : ''}
+        </span>
+      </div>
+      {cleaned && <div style={{ color: 'var(--c64748b)' }}>{t('nt.plainNote')}</div>}
+      {warn && <div style={{ color: 'var(--c78350f)' }}>{t('nt.segmentsTip')}</div>}
+      {unknown.length > 0 && (
+        <div style={{ color: 'var(--c991b1b)' }}>{t('nt.unknownPh').replace('{list}', unknown.join(', '))}</div>
+      )}
     </div>
   );
 }

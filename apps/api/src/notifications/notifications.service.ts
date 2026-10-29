@@ -8,7 +8,10 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { EmailProvider, SmsProvider } from './providers/notification-provider.interface';
 import { createEmailProvider, createSmsProvider } from './providers/notification-provider.factory';
 import { ESmsProvider } from './providers/esms.provider';
-import { twilioSenderFor, vnEsmsFor, platformEsmsFromEnv } from './providers/sms-routing';
+import { senderForRecipient, twilioSenderFor, vnEsmsFor, platformEsmsFromEnv } from './providers/sms-routing';
+import { toE164 } from '../common/phone';
+import { toGsm7 } from './sms-text';
+import { HOLD_LOOKBACK_MS, twilioOutcome, undeliveredError, undeliveredHold } from './sms-delivery';
 import { readEsmsCallback } from './providers/esms-callback';
 import { ZnsProvider } from './providers/zns.provider';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
@@ -387,9 +390,51 @@ export class NotificationsService {
     const ownTwilio = !!(input.twilio?.accountSid && input.twilio?.authToken && (input.twilio.fromNumber || input.twilio.messagingServiceSid));
     // Only when the platform really sends through Twilio: the mock provider
     // used in development and tests keeps accepting everything.
-    const sender = input.channel === NotificationChannel.SMS && !vnKeys && !ownTwilio && this.sms.name === 'twilio'
-      ? await this.twilioSenderForTenant(input.tenantId)
+    const platformTwilio = input.channel === NotificationChannel.SMS && !vnKeys && !ownTwilio && this.sms.name === 'twilio';
+    const dialCode = input.channel === NotificationChannel.SMS ? await this.dialCodeForTenant(input.tenantId) : '1';
+    // Then the person: a +61 customer goes out on the Australian number even
+    // when the salon is American (the US toll-free cannot reach Australia).
+    const sender = platformTwilio
+      ? senderForRecipient(
+        await this.twilioSenderForTenant(input.tenantId),
+        toE164(input.recipient, dialCode),
+        process.env.TWILIO_FROM_NUMBER_AU ?? null,
+      )
       : { kind: 'default' as const };
+
+    // Every non-Vietnamese text goes out on the GSM-7 alphabet: one curly
+    // apostrophe or emoji otherwise bills the whole text at 70 characters a
+    // segment instead of 160 (sms-text.ts). Vietnamese texts are untouched —
+    // they must match the template the carriers registered, letter for letter.
+    if (input.channel === NotificationChannel.SMS && !vnKeys) {
+      const plain = toGsm7(input.body);
+      if (plain && plain !== input.body) input = { ...input, body: plain };
+    }
+
+    // The last two texts to this number at this salon never arrived: stop
+    // paying to send a third (sms-delivery.ts). Only platform-account texts
+    // carry the delivery callback, so only they can be held.
+    if (platformTwilio && sender.kind !== 'refuse') {
+      const hold = await this.undeliveredHoldFor(input.tenantId, input.recipient);
+      if (hold) {
+        return this.prisma.notification.create({
+          data: {
+            id: rowId,
+            tenantId: input.tenantId,
+            channel: input.channel,
+            recipient: input.recipient,
+            subject: input.subject ?? null,
+            body: input.body,
+            status: NotificationStatus.FAILED,
+            provider: 'sms-guard',
+            error: hold,
+            relatedType: input.relatedType ?? null,
+            relatedId: input.relatedId ?? null,
+            sentAt: null,
+          },
+        });
+      }
+    }
 
     const smsProvider: SmsProvider = ((): SmsProvider => {
       if (input.channel !== NotificationChannel.SMS) return this.sms;
@@ -485,8 +530,11 @@ export class NotificationsService {
             // The salon's timezone is the only country signal a tenant
             // carries, and it is enough to tell Ho Chi Minh City from
             // Los Angeles. US/CA tenants resolve to '1' — unchanged.
-            defaultDialCode: await this.dialCodeForTenant(input.tenantId),
+            defaultDialCode: dialCode,
             requestId: rowId,
+            // Delivery reports come back signed with the PLATFORM auth token,
+            // so only platform-account texts ask for them.
+            ...(platformTwilio ? { statusCallback: `${apiBase()}/api/public/twilio/sms-status` } : {}),
           });
         }
       }
@@ -577,6 +625,63 @@ export class NotificationsService {
   }
 
   /**
+   * Twilio's delivery report for a platform-account text (StatusCallback).
+   *
+   * Never throws, for the same reason as the eSMS callback. The row is found
+   * by Twilio's MessageSid and only among rows that went out through Twilio,
+   * so a report can never touch another provider's history. Signed by Twilio
+   * (TwilioSignatureGuard on the controller) — a forged report is refused
+   * before it gets here.
+   */
+  async applyTwilioStatus(body: Record<string, string>) {
+    try {
+      const sid = String(body?.MessageSid ?? body?.SmsSid ?? '').trim();
+      const outcome = twilioOutcome(body?.MessageStatus ?? body?.SmsStatus);
+      if (!sid || outcome === 'pending') return { ok: true };
+      const row = (await this.prisma.notification.findFirst({
+        where: { provider: 'twilio', providerMessageId: sid } as never,
+        select: { id: true, deliveredAt: true } as never,
+      })) as { id: string; deliveredAt: Date | null } | null;
+      if (!row) return { ok: true };
+      if (outcome === 'delivered') {
+        await this.prisma.notification.update({
+          where: { id: row.id },
+          data: { status: NotificationStatus.SENT, error: null, ...({ deliveredAt: row.deliveredAt ?? new Date() } as Record<string, unknown>) },
+        });
+      } else if (!row.deliveredAt) {
+        await this.prisma.notification.update({
+          where: { id: row.id },
+          data: { status: NotificationStatus.FAILED, error: undeliveredError(body?.ErrorCode, String(body?.MessageStatus ?? '')) },
+        });
+      }
+    } catch {
+      // Acknowledge and drop — a 500 only buys Twilio retries.
+    }
+    return { ok: true };
+  }
+
+  /** The hold reason for the next text to this number at this salon, or null. Never throws. */
+  private async undeliveredHoldFor(tenantId: string, recipient: string): Promise<string | null> {
+    try {
+      const rows = (await this.prisma.notification.findMany({
+        where: {
+          tenantId,
+          channel: NotificationChannel.SMS,
+          recipient,
+          provider: 'twilio',
+          createdAt: { gte: new Date(Date.now() - HOLD_LOOKBACK_MS) },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 2,
+        select: { createdAt: true, error: true, deliveredAt: true } as never,
+      })) as unknown as { createdAt: Date; error: string | null; deliveredAt: Date | null }[];
+      return undeliveredHold(rows ?? [], Date.now());
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * The customer said stop — make it stick.
    *
    * Called when an inbound message matches the market's opt-out words
@@ -605,8 +710,11 @@ export class NotificationsService {
     // (a demo line, say), and a STOP sent to it is about every Australian
     // salon that texts from it — not just the one whose hotline it is.
     if (to === String(process.env.TWILIO_FROM_NUMBER_AU ?? '').trim()) {
+      // Every +61 customer is now texted from this number, whatever the
+      // salon's market (senderForRecipient) — so a STOP from a +61 phone
+      // counts at every salon that has it.
       const rows = await this.prisma.customer.findMany({
-        where: { phone: from, tenant: { market: 'AU' } as never },
+        where: from.startsWith('+61') ? { phone: from } : { phone: from, tenant: { market: 'AU' } as never },
         select: { tenantId: true },
         take: 50,
       }).catch(() => [] as { tenantId: string }[]);

@@ -34,6 +34,9 @@ export class TwilioSmsProvider implements SmsProvider {
     const params = new URLSearchParams();
     params.set('To', to);
     params.set('Body', message.body);
+    // Twilio reports delivered / undelivered here (NotificationsService
+    // .applyTwilioStatus) — how a dead number stops being texted.
+    if (message.statusCallback) params.set('StatusCallback', message.statusCallback);
     if (this.config.messagingServiceSid) params.set('MessagingServiceSid', this.config.messagingServiceSid);
     else if (this.config.fromNumber) {
       // Outside North America a sender typed the local way ("0485 085 339")

@@ -29,6 +29,9 @@ export interface SmsMessage {
    *  (eSMS RequestId: a repeated id within 24h is a no-op, so a retry can
    *  never double-text a customer). Providers without the concept ignore it. */
   requestId?: string;
+  /** Where the provider should report the final delivery outcome (Twilio
+   *  StatusCallback). Providers without the concept ignore it. */
+  statusCallback?: string;
 }
 
 export interface EmailProvider {

@@ -1466,7 +1466,7 @@ export default function PublicBookingPage() {
         )}
 
         {asPage && (
-          <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
+          <a href="https://lumiobooking.com/" target="_blank" rel="noopener noreferrer" title="Online booking by Lumio Booking, operated by Lumio Agency LLC"
             style={{ display: 'block', textAlign: 'center', padding: isMobile ? '14px 0 calc(104px + env(safe-area-inset-bottom, 0px))' : '16px 0 8px', fontSize: 11.5, color: 'var(--c94a3b8)', textDecoration: 'none' }}>
             {bt('Powered by')} <span style={{ color: accent, fontWeight: 600 }}>Lumio Booking</span>
           </a>

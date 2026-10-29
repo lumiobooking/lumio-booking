@@ -412,7 +412,10 @@ export function QuickBookSheet({ token, vi, services, staff, bookings, initial, 
               </div>
             )}
             {allServices ? (
-              <ServicePicker services={services} selected={serviceIds} onToggle={toggleSvc} onSet={(ids) => setServiceIds(ids)} history={row?.history ?? null} currency={currency} vi={vi} hideWalkInOnly maxHeight={280} />
+              <>
+                <ServicePicker services={services} selected={serviceIds} onToggle={toggleSvc} onSet={(ids) => setServiceIds(ids)} history={row?.history ?? null} currency={currency} vi={vi} hideWalkInOnly hideChosen maxHeight={320} />
+                {serviceIds.length > 0 && <button type="button" onClick={() => setAllServices(false)} style={linkBtn}>{L('Xong', 'Done')}</button>}
+              </>
             ) : (
               <button type="button" onClick={() => setAllServices(true)} style={linkBtn}>
                 {serviceIds.length ? <><Plus />{L('Thêm dịch vụ khác', 'Add another service')}</> : <>{L('Tất cả dịch vụ ›', 'All services ›')}</>}

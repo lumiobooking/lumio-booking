@@ -3456,7 +3456,7 @@ export class BookingsService {
   async editLines(
     user: AuthenticatedUser,
     id: string,
-    dto: { addServiceIds?: string[]; removeIndexes?: number[]; extraMinutes?: number; lang?: string },
+    dto: { addServiceIds?: string[]; removeIndexes?: number[]; extraMinutes?: number; replaceMainServiceId?: string; lang?: string },
   ) {
     const tenantId = this.tenantId(user);
     const b = await this.prisma.appointment.findFirst({ where: { id, tenantId } });
@@ -3472,8 +3472,26 @@ export class BookingsService {
     const drop = new Set((dto.removeIndexes ?? []).filter((n) => Number.isInteger(n) && n >= 0));
     const kept = current.filter((_, i) => !drop.has(i));
     const removed = current.filter((_, i) => drop.has(i));
-    const removedPrice = removed.reduce((sum, x) => sum + (x.priceCents ?? 0), 0);
-    const removedMinutes = removed.reduce((sum, x) => sum + (x.durationMinutes ?? 0), 0);
+    let removedPrice = removed.reduce((sum, x) => sum + (x.priceCents ?? 0), 0);
+    let removedMinutes = removed.reduce((sum, x) => sum + (x.durationMinutes ?? 0), 0);
+
+    // 1b) The main service swapped for another ("she wants a full set, not a fill").
+    // The main service's share of the price is what the lines do not account for;
+    // its minutes are its catalogue length. The new one is priced like an added line.
+    let mainSwap: { id: string; name: string; from: string | null; priceCents: number; minutes: number } | null = null;
+    const swapTo = (dto.replaceMainServiceId ?? '').trim();
+    if (swapTo && swapTo !== b.serviceId) {
+      const sv = await this.prisma.service.findFirst({ where: { id: swapTo, tenantId, isActive: true } });
+      if (!sv) throw new BadRequestException('That service is unavailable.');
+      const old = b.serviceId ? await this.prisma.service.findFirst({ where: { id: b.serviceId, tenantId }, select: { name: true, durationMinutes: true } }) : null;
+      const linesPrice = current.reduce((sum, x) => sum + (x.priceCents ?? 0), 0);
+      removedPrice += Math.max(0, b.priceCents - linesPrice);
+      removedMinutes += old?.durationMinutes ?? 0;
+      const disc = Math.min(90, Math.max(0, sv.discountPercent ?? 0));
+      const net = Math.round((sv.priceCents * (100 - disc)) / 100);
+      const wd = await this.promoDiscountPercent(tenantId, b.startTime, sv.categoryId, channelOfSource(b.source));
+      mainSwap = { id: sv.id, name: sv.name, from: old?.name ?? null, priceCents: Math.round((net * (100 - wd)) / 100), minutes: sv.durationMinutes };
+    }
 
     // 2) Add the new services, priced the same way the booking form prices them.
     const addIds = [...new Set(dto.addServiceIds ?? [])].filter(Boolean);
@@ -3491,8 +3509,8 @@ export class BookingsService {
         });
       }
     }
-    const addedPrice = added.reduce((sum, x) => sum + (x.priceCents ?? 0), 0);
-    const addedMinutes = added.reduce((sum, x) => sum + (x.durationMinutes ?? 0), 0);
+    const addedPrice = added.reduce((sum, x) => sum + (x.priceCents ?? 0), 0) + (mainSwap?.priceCents ?? 0);
+    const addedMinutes = added.reduce((sum, x) => sum + (x.durationMinutes ?? 0), 0) + (mainSwap?.minutes ?? 0);
 
     // 3) Manual time on top (the "customer wants longer" case).
     const extra = Math.max(-600, Math.min(600, Math.round(dto.extraMinutes ?? 0)));
@@ -3534,7 +3552,7 @@ export class BookingsService {
       }
       await tx.appointment.updateMany({
         where: { id, tenantId },
-        data: { endTime: newEnd, priceCents: newPrice, addons: lines as unknown as Prisma.InputJsonValue },
+        data: { endTime: newEnd, priceCents: newPrice, addons: lines as unknown as Prisma.InputJsonValue, ...(mainSwap ? { serviceId: mainSwap.id } : {}) },
       });
       return tx.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
     });
@@ -3546,11 +3564,22 @@ export class BookingsService {
       metadata: {
         added: added.map((x) => x.name ?? '').filter(Boolean),
         removed: removed.map((x) => x.name ?? '').filter(Boolean),
+        ...(mainSwap ? { mainFrom: mainSwap.from ?? '', mainTo: mainSwap.name } : {}),
         extraMinutes: extra,
         priceCents: newPrice,
       },
     });
     return updated && stretchWarning ? { ...updated, stretchWarning } : updated;
+  }
+
+  /** The note on a booking ("allergic to acetone", "bring her daughter"), written or cleared by the desk. */
+  async updateNotes(user: AuthenticatedUser, id: string, notes: string | null) {
+    const tenantId = this.tenantId(user);
+    const text = (notes ?? '').trim().slice(0, 1000) || null;
+    const r = await this.prisma.appointment.updateMany({ where: { id, tenantId }, data: { notes: text } });
+    if (!r.count) throw new NotFoundException('Booking not found');
+    await this.audit.log({ tenantId, userId: user.userId, action: 'booking.notes_edited', resourceType: 'appointment', resourceId: id, metadata: { length: text?.length ?? 0 } });
+    return this.getById(user, id);
   }
 
   async noShow(user: AuthenticatedUser, id: string) {

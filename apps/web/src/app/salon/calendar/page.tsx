@@ -421,7 +421,7 @@ function Inner() {
       // A move outside opening hours: the owner is asked once and may go ahead.
       const timed = path === 'reschedule' || path === 'move';
       const updated = await withHoursOverride(
-        (o) => apiFetch<Booking>(`/bookings/${id}/${path}`, { method: 'POST', token, body: o && timed ? { ...(body as object), outsideHours: true } : body }),
+        (o) => apiFetch<Booking>(`/bookings/${id}/${path}`, { method: path === 'notes' ? 'PATCH' : 'POST', token, body: o && timed ? { ...(body as object), outsideHours: true } : body }),
         { owner: isOwner && timed, vi: lang === 'vi' },
       );
       // Status changes and visit edits keep the drawer open showing the new
@@ -432,7 +432,9 @@ function Inner() {
           ? `Đã huỷ lịch nhưng hoàn tiền KHÔNG thành công (${failed.map((f) => `${f.provider}: ${f.error}`).join('; ')}). Hãy hoàn tay trong tài khoản thanh toán của tiệm.`
           : `Cancelled, but the refund FAILED (${failed.map((f) => `${f.provider}: ${f.error}`).join('; ')}). Refund it by hand in the salon's payment account.`);
       }
-      if ((path === 'status' || path === 'lines' || path === 'line-staff' || path === 'assign') && updated && typeof updated === 'object') setSelected(updated);
+      // Every edit keeps the drawer open on the booking, so the desk can change the next thing too.
+      const keepOpen = ['status', 'lines', 'line-staff', 'assign', 'notes', 'reschedule'].includes(path);
+      if (keepOpen && updated && typeof updated === 'object' && 'id' in updated && 'startTime' in updated) setSelected(updated);
       else setSelected(null);
       await load();
     } catch (err) {
@@ -1007,12 +1009,12 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
           </span>
         </div>
         <ServiceLines b={b} onAction={onAction} editable={active} />
+        <VisitEditor b={b} onAction={onAction} />
         <div style={{ marginTop: 12 }}><ClientFormsPanel appointmentId={b.id} /></div>
 
         {/* Status is editable in BOTH directions and at ANY status: pressing
             Complete by mistake used to leave the front desk with no way back. */}
         <StatusPicker b={b} onAction={onAction} />
-        <VisitEditor b={b} onAction={onAction} />
 
         <div style={{ borderTop: '1px solid var(--c1f2937)', margin: '16px 0 12px' }} />
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
@@ -1044,7 +1046,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
         {b.location && (
           <DetailRow label="📍" value={<a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.location)}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c818cf8)', textDecoration: 'none', textAlign: 'right' }}>{b.location}</a>} />
         )}
-        {b.notes && <NoteBox label={t('cal.dNote')} text={b.notes} />}
+        <NoteEditor b={b} onAction={onAction} label={t('cal.dNote')} />
 
         {active && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
@@ -1078,29 +1080,34 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
   );
 }
 
-const ALL_STATUSES = ['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED', 'ARRIVED', 'COMPLETED', 'NO_SHOW', 'CANCELLED', 'REJECTED'] as const;
+// The four statuses the desk sets by hand. Checked-in and Complete have their own
+// buttons below; Assigned / Accepted / Rejected are the technicians' answers,
+// shown as the current state but never offered.
+const DESK_STATUSES = ['PENDING', 'CONFIRMED', 'NO_SHOW', 'CANCELLED'] as const;
 
 /**
- * Free-form status change. The old drawer hid every action once a visit was
- * finished, so a mis-click on Complete was permanent from the UI's point of
- * view. Money follows the status server-side.
+ * Status change in either direction. A cancellation goes through Cancel (the
+ * customer is told, and a paid deposit is refunded or kept on purpose).
  */
 function StatusPicker({ b, onAction }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [next, setNext] = useState(b.status);
-  useEffect(() => { setNext(b.status); }, [b.status, b.id]);
+  const known = (DESK_STATUSES as readonly string[]).includes(b.status);
+  const [next, setNext] = useState(known ? b.status : '');
+  useEffect(() => { setNext((DESK_STATUSES as readonly string[]).includes(b.status) ? b.status : ''); }, [b.status, b.id]);
+  const off = !next || next === b.status;
   return (
     <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 10, marginTop: 12, background: 'var(--c0f172a)' }}>
       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c94a3b8)', marginBottom: 7 }}>{t('cal.setStatus')}</div>
       <div style={{ display: 'flex', gap: 6 }}>
         <select value={next} onChange={(e) => setNext(e.target.value)} style={{ ...ui.input, flex: 1, padding: '7px 8px', fontSize: 13 }}>
-          {ALL_STATUSES.map((sName) => <option key={sName} value={sName}>{t(`cal.st${sName}`)}</option>)}
+          {!known && <option value="" disabled>{t(`cal.st${b.status}`)} · {lang === 'vi' ? 'hiện tại' : 'now'}</option>}
+          {DESK_STATUSES.map((sName) => <option key={sName} value={sName}>{t(`cal.st${sName}`)}</option>)}
         </select>
         <button
-          disabled={next === b.status}
-          onClick={() => onAction(b.id, 'status', { status: next })}
-          style={{ ...ui.primaryBtn, padding: '7px 14px', fontSize: 13, opacity: next === b.status ? 0.5 : 1, cursor: next === b.status ? 'default' : 'pointer' }}
+          disabled={off}
+          onClick={() => (next === 'CANCELLED' ? onAction(b.id, 'cancel') : onAction(b.id, 'status', { status: next }))}
+          style={{ ...ui.primaryBtn, padding: '7px 14px', fontSize: 13, opacity: off ? 0.5 : 1, cursor: off ? 'default' : 'pointer' }}
         >{t('cal.apply')}</button>
       </div>
       {b.status === 'COMPLETED' && (
@@ -1111,30 +1118,60 @@ function StatusPicker({ b, onAction }: { b: Booking; onAction: (id: string, path
 }
 
 /**
+ * The note on the booking, editable: what the customer asked for, an allergy,
+ * a change she phoned in. Empty clears it.
+ */
+function NoteEditor({ b, onAction, label }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void; label: string }) {
+  const { lang } = useLang();
+  const vi = lang === 'vi';
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(b.notes ?? '');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setText(b.notes ?? ''); setOpen(false); }, [b.id, b.notes]);
+  const btn: React.CSSProperties = { background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: 8, color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, padding: '3px 8px', cursor: 'pointer' };
+  if (open) {
+    return (
+      <div style={{ padding: '6px 0', fontSize: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span style={{ color: 'var(--c94a3b8)' }}>{label}</span>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} rows={3} autoFocus
+          placeholder={vi ? 'vd. dị ứng acetone, muốn đổi màu…' : 'e.g. allergic to acetone, wants a different colour…'}
+          style={{ ...ui.input, resize: 'vertical', minHeight: 72, fontFamily: 'inherit', fontSize: 14, lineHeight: 1.45 }} />
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={() => { setText(b.notes ?? ''); setOpen(false); }} style={{ ...btn, color: 'var(--c94a3b8)' }}>{vi ? 'Huỷ' : 'Cancel'}</button>
+          <button type="button" disabled={busy || text.trim() === (b.notes ?? '').trim()}
+            onClick={async () => { setBusy(true); try { await onAction(b.id, 'notes', { notes: text }); } finally { setBusy(false); } }}
+            style={{ ...ui.primaryBtn, padding: '6px 14px', fontSize: 12.5, opacity: busy || text.trim() === (b.notes ?? '').trim() ? 0.5 : 1 }}>{vi ? 'Lưu ghi chú' : 'Save note'}</button>
+        </div>
+      </div>
+    );
+  }
+  if (!b.notes) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '6px 0', fontSize: 14 }}>
+        <span style={{ color: 'var(--c94a3b8)' }}>{label}</span>
+        <button type="button" onClick={() => setOpen(true)} style={btn}>+ {vi ? 'Thêm ghi chú' : 'Add a note'}</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <NoteBox label={label} text={b.notes} />
+      <button type="button" onClick={() => setOpen(true)} style={{ ...btn, position: 'absolute', top: 4, right: 0 }}>✎ {vi ? 'Sửa' : 'Edit'}</button>
+    </div>
+  );
+}
+
+/**
  * Adjust a visit that is already running: the customer asks for one more
  * service, or the work is taking longer. Both change the price and the finish
  * time, and the server re-checks the technician's slot before saving.
  */
 function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void }) {
-  const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [services, setServices] = useState<{ id: string; name: string; durationMinutes: number; priceCents: number }[]>([]);
-  const [pick, setPick] = useState('');
   const [minutes, setMinutes] = useState(0);
-  const [drop, setDrop] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open || !token || services.length) return;
-    apiFetch<{ id: string; name: string; durationMinutes: number; priceCents: number; isActive: boolean }[]>('/services', { token })
-      .then((r) => setServices(r.filter((x) => x.isActive)))
-      .catch(() => undefined);
-  }, [open, token, services.length]);
-  useEffect(() => { setPick(''); setMinutes(0); setDrop([]); }, [b.id]);
-
-  const lines = b.addons ?? [];
-  const dirty = !!pick || minutes !== 0 || drop.length > 0;
+  useEffect(() => { setMinutes(0); }, [b.id]);
   const vi = lang === 'vi';
   // The visit as booked now, and how far it may shrink (the API keeps at least 5 minutes).
   const curMin = Math.max(5, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
@@ -1142,66 +1179,33 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
   if (b.status === 'CANCELLED' || b.status === 'REJECTED') return null;
 
   return (
-    <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 10, marginTop: 8, background: 'var(--c0f172a)' }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}
-      >
-        {t('cal.editVisit')}<span style={{ marginLeft: 'auto', color: 'var(--c64748b)' }}>{open ? '▴' : '▾'}</span>
-      </button>
-      {open && (
-        <div style={{ marginTop: 9, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {lines.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {lines.map((a, i) => (
-                <label key={`${a.name}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: drop.includes(i) ? 'var(--c64748b)' : 'var(--ccbd5e1)', textDecoration: drop.includes(i) ? 'line-through' : 'none' }}>
-                  <input
-                    type="checkbox" checked={drop.includes(i)}
-                    onChange={() => setDrop((d) => d.includes(i) ? d.filter((x) => x !== i) : [...d, i])}
-                  />
-                  {a.name} <span style={{ marginLeft: 'auto', color: 'var(--c64748b)' }}>{t('cal.removeLine')}</span>
-                </label>
-              ))}
-            </div>
-          )}
-          <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...ui.input, padding: '7px 8px', fontSize: 13 }}>
-            <option value="">{t('cal.addService')}</option>
-            {services.map((sv) => <option key={sv.id} value={sv.id}>{sv.name} · {sv.durationMinutes}m</option>)}
-          </select>
-          {/* Time: shorter as well as longer. Only "+" existed, so a visit
-              stretched by mistake could not be brought back down. The new
-              length is spelled out (75 → 90 min) instead of a bare "+15m". */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', flex: '1 1 70px' }}>{vi ? 'Thời gian' : 'Time'}</span>
-            <button type="button" onClick={() => setMinutes((v) => Math.max(minDelta, v - 15))} disabled={minutes - 15 < minDelta} style={{ ...chipBtn, opacity: minutes - 15 < minDelta ? 0.4 : 1 }} aria-label={vi ? 'Bớt 15 phút' : 'Take off 15 minutes'}>−15m</button>
-            {[15, 30, 60].map((m) => (
-              <button key={m} type="button" onClick={() => setMinutes((v) => v + m)} style={chipBtn}>+{m}m</button>
-            ))}
-            <button type="button" onClick={() => setMinutes(0)} style={{ ...chipBtn, opacity: minutes === 0 ? 0.4 : 1 }} disabled={minutes === 0} title={vi ? 'Về như cũ' : 'Undo'}>↺</button>
-          </div>
-          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: -2 }}>
-            {curMin} {vi ? 'phút' : 'min'}
-            {minutes !== 0 && <> → <b style={{ color: minutes > 0 ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{curMin + minutes} {vi ? 'phút' : 'min'}</b> ({minutes > 0 ? '+' : '−'}{Math.abs(minutes)}m)</>}
-          </div>
-          {b.stretchWarning && (
-            <div role="status" style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink-warn)', background: 'var(--wash-amber-3)', borderRadius: 8, padding: '7px 9px' }}>⚠ {b.stretchWarning}</div>
-          )}
-          <button
-            disabled={!dirty || busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await onAction(b.id, 'lines', {
-                  ...(pick ? { addServiceIds: [pick] } : {}),
-                  ...(drop.length ? { removeIndexes: drop } : {}),
-                  ...(minutes ? { extraMinutes: minutes } : {}),
-                  lang: vi ? 'vi' : 'en',
-                });
-              } finally { setBusy(false); setPick(''); setMinutes(0); setDrop([]); }
-            }}
-            style={{ ...ui.primaryBtn, padding: '9px', fontSize: 13, opacity: (!dirty || busy) ? 0.5 : 1, cursor: (!dirty || busy) ? 'default' : 'pointer' }}
-          >{busy ? t('cal.savingVisit') : t('cal.saveVisit')}</button>
-        </div>
+    <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 10, marginTop: 8, background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c94a3b8)' }}>{vi ? 'Thời lượng lịch' : 'Length of the visit'}</div>
+      {/* Shorter as well as longer; the new length is spelled out (75 → 90 min). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => setMinutes((v) => Math.max(minDelta, v - 15))} disabled={minutes - 15 < minDelta} style={{ ...chipBtn, opacity: minutes - 15 < minDelta ? 0.4 : 1 }} aria-label={vi ? 'Bớt 15 phút' : 'Take off 15 minutes'}>−15m</button>
+        {[15, 30, 60].map((m) => (
+          <button key={m} type="button" onClick={() => setMinutes((v) => v + m)} style={chipBtn}>+{m}m</button>
+        ))}
+        <button type="button" onClick={() => setMinutes(0)} style={{ ...chipBtn, opacity: minutes === 0 ? 0.4 : 1 }} disabled={minutes === 0} title={vi ? 'Về như cũ' : 'Undo'}>↺</button>
+      </div>
+      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+        {curMin} {vi ? 'phút' : 'min'}
+        {minutes !== 0 && <> → <b style={{ color: minutes > 0 ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{curMin + minutes} {vi ? 'phút' : 'min'}</b> ({minutes > 0 ? '+' : '−'}{Math.abs(minutes)}m)</>}
+      </div>
+      {b.stretchWarning && (
+        <div role="status" style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink-warn)', background: 'var(--wash-amber-3)', borderRadius: 8, padding: '7px 9px' }}>⚠ {b.stretchWarning}</div>
+      )}
+      {minutes !== 0 && (
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try { await onAction(b.id, 'lines', { extraMinutes: minutes, lang: vi ? 'vi' : 'en' }); }
+            finally { setBusy(false); setMinutes(0); }
+          }}
+          style={{ ...ui.primaryBtn, padding: '9px', fontSize: 13, opacity: busy ? 0.5 : 1, cursor: busy ? 'default' : 'pointer' }}
+        >{busy ? t('cal.savingVisit') : t('cal.saveVisit')}</button>
       )}
     </div>
   );
@@ -1225,6 +1229,7 @@ function QuickEdit({ b, onAction }: { b: Booking; onAction: (id: string, path: s
   // one place answers "who does what", for one service or five.
   return (
     <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 10, padding: 10, margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', fontWeight: 600 }}>{lang === 'vi' ? 'Đổi ngày & giờ' : 'Change date & time'}</div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <DateTimeField value={when} onChange={setWhen} style={{ padding: '6px 8px' }} />
         <button onClick={() => onAction(b.id, 'reschedule', { startTime: wallToInstantISO(when) })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.move', lang)}</button>
@@ -1250,6 +1255,27 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
       .then((list) => setStaff(list.filter((x) => x.isActive)))
       .catch(() => undefined);
   }, [token]);
+  // The menu, for swapping the main service and adding one (grouped as the salon groups it).
+  const [menu, setMenu] = useState<{ id: string; name: string; durationMinutes: number; priceCents: number; category?: { name: string } | null }[]>([]);
+  useEffect(() => {
+    if (!token || !editable) return;
+    apiFetch<{ id: string; name: string; durationMinutes: number; priceCents: number; isActive: boolean; category?: { name: string } | null }[]>('/services', { token })
+      .then((r) => setMenu(r.filter((x) => x.isActive)))
+      .catch(() => undefined);
+  }, [token, editable]);
+  const vi = lang === 'vi';
+  const svcLabel = (x: { name: string; durationMinutes: number; priceCents: number }) => `${x.name} · ${x.durationMinutes}′ · ${formatPrice(x.priceCents, b.currency).replace(/[.,]00(?=\D*$)/, '')}`;
+  const groups = (() => {
+    const m = new Map<string, typeof menu>();
+    for (const x of menu) { const g = x.category?.name?.trim() || (vi ? 'Khác' : 'Other'); m.set(g, [...(m.get(g) ?? []), x]); }
+    return [...m.entries()];
+  })();
+  const menuOptions = (skip?: string) => groups.map(([g, xs]) => (
+    <optgroup key={g} label={g}>{xs.filter((x) => x.id !== skip).map((x) => <option key={x.id} value={x.id}>{svcLabel(x)}</option>)}</optgroup>
+  ));
+  const lang2 = vi ? 'vi' : 'en';
+  const lineSel: React.CSSProperties = { ...ui.input, padding: '6px 8px', fontSize: 12.5 };
+  const xBtn: React.CSSProperties = { width: 30, height: 30, flexShrink: 0, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 };
 
   const lines = (b.addons ?? []).filter((a) => a.kind === 'service');
   const extras = (b.addons ?? []).filter((a) => a.kind !== 'service');
@@ -1291,25 +1317,48 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
           <span style={{ color: b.assignedStaff ? 'var(--ce2e8f0)' : 'var(--ink-warn)', fontWeight: 600, whiteSpace: 'nowrap' }}>👤 {primaryTech}</span>
         )}
       </div>
+      {editable && menu.length > 0 && (
+        // Swap the main service ("a full set, not a fill"): price and end time follow.
+        <select value="" aria-label={vi ? 'Đổi dịch vụ chính' : 'Change the main service'}
+          onChange={(e) => { if (e.target.value) onAction(b.id, 'lines', { replaceMainServiceId: e.target.value, lang: lang2 }); }}
+          style={{ ...lineSel, width: '100%', marginBottom: 4, color: 'var(--ink-link)', fontWeight: 600 }}>
+          <option value="">{vi ? '⇄ Đổi dịch vụ chính…' : '⇄ Change this service…'}</option>
+          {menuOptions(b.service?.id)}
+        </select>
+      )}
 
       {/* extra service lines — each with its own tech picker */}
       {lines.map((line) => (
         <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13.5, borderTop: '1px solid var(--c1f2937)' }}>
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.name}</span>
           {editable ? (
-            <select
-              value={line.staffMemberId ?? ''}
-              onChange={(e) => onAction(b.id, 'line-staff', { serviceId: line.id, staffId: e.target.value || null })}
-              style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 150, flexShrink: 0 }}
-            >
-              <option value="">{tr('cal.lineWithMain', lang)}</option>
-              {pickerStaff(staff, [line.staffMemberId]).map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
-            </select>
+            <>
+              <select
+                value={line.staffMemberId ?? ''}
+                onChange={(e) => onAction(b.id, 'line-staff', { serviceId: line.id, staffId: e.target.value || null })}
+                style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 120, flexShrink: 0 }}
+              >
+                <option value="">{tr('cal.lineWithMain', lang)}</option>
+                {pickerStaff(staff, [line.staffMemberId]).map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
+              </select>
+              <button type="button" aria-label={vi ? `Bỏ ${line.name}` : `Remove ${line.name}`} title={vi ? 'Bỏ dịch vụ này' : 'Remove this service'}
+                onClick={() => { const i = (b.addons ?? []).indexOf(line); if (i >= 0) onAction(b.id, 'lines', { removeIndexes: [i], lang: lang2 }); }}
+                style={xBtn}>✕</button>
+            </>
           ) : (
             <span style={{ color: 'var(--ce2e8f0)', whiteSpace: 'nowrap' }}>👤 {nameOf(line.staffMemberId) ?? primaryTech}</span>
           )}
         </div>
       ))}
+
+      {editable && menu.length > 0 && (
+        <select value="" aria-label={vi ? 'Thêm dịch vụ' : 'Add a service'}
+          onChange={(e) => { if (e.target.value) onAction(b.id, 'lines', { addServiceIds: [e.target.value], lang: lang2 }); }}
+          style={{ ...lineSel, width: '100%', marginTop: 6, color: 'var(--ink-link)', fontWeight: 600 }}>
+          <option value="">{vi ? '+ Thêm dịch vụ…' : '+ Add a service…'}</option>
+          {menuOptions()}
+        </select>
+      )}
 
       {extras.length > 0 && (
         <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>

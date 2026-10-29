@@ -21,7 +21,7 @@ export interface PickerService {
   category?: { id: string; name: string } | null;
 }
 
-export function ServicePicker({ services, selected, onToggle, onSet, history, currency, vi, label, hideWalkInOnly = false, maxHeight = 300 }: {
+export function ServicePicker({ services, selected, onToggle, onSet, history, currency, vi, label, hideWalkInOnly = false, maxHeight = 300, hideChosen = false }: {
   services: PickerService[];
   selected: string[];
   onToggle: (id: string) => void;
@@ -34,6 +34,8 @@ export function ServicePicker({ services, selected, onToggle, onSet, history, cu
   label?: string;
   hideWalkInOnly?: boolean;
   maxHeight?: number;
+  /** The caller lists what is picked itself (the phone booking sheet): no chip row here. */
+  hideChosen?: boolean;
 }) {
   const L = (v: string, e: string) => (vi ? v : e);
   const [q, setQ] = useState('');
@@ -62,7 +64,8 @@ export function ServicePicker({ services, selected, onToggle, onSet, history, cu
   const mins = (ids: string[]) => ids.reduce((n, id) => n + (byId.get(id)?.durationMinutes ?? 0), 0);
   const cents = (ids: string[]) => ids.reduce((n, id) => n + (byId.get(id)?.priceCents ?? 0), 0);
   const hasPrice = usable.some((s) => typeof s.priceCents === 'number');
-  const money = (c: number) => formatPrice(c, currency);
+  // "$45", not "$45.00" — the way the calendar cards say it.
+  const money = (c: number) => formatPrice(c, currency).replace(/[.,]00(?=\D*$)/, '');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -78,7 +81,7 @@ export function ServicePicker({ services, selected, onToggle, onSet, history, cu
         </div>
       )}
 
-      {selected.length > 0 && (
+      {selected.length > 0 && !hideChosen && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
           {label && <span style={{ fontSize: 12, color: 'var(--c94a3b8)', marginRight: 2 }}>{label}:</span>}
           {selected.map((id) => {
@@ -100,11 +103,15 @@ export function ServicePicker({ services, selected, onToggle, onSet, history, cu
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={L('Gõ tên dịch vụ… (gel, pedi, dip)', 'Type a service… (gel, pedi, dip)')} aria-label={L('Tìm dịch vụ', 'Search services')} style={{ ...ui.input, paddingLeft: 32 }} />
       </div>
 
+      {/* The menu's groups as ONE row of tabs that scrolls sideways — never a
+          wrapped heap of pills of every width. */}
       {!term && (cats.length > 0 || fav.length > 0) && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div role="tablist" aria-label={L('Nhóm dịch vụ', 'Service groups')} className="svc-tabs"
+          style={{ display: 'flex', gap: 2, overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', borderBottom: '1px solid var(--c334155)', margin: '0 -2px' }}>
+          <style>{'.svc-tabs::-webkit-scrollbar{display:none}'}</style>
+          <TabBtn on={active === '__all'} onClick={() => setTab('__all')}>{L('Tất cả', 'All')} <span style={{ opacity: 0.7, fontWeight: 600 }}>{usable.length}</span></TabBtn>
           {fav.length > 0 && <TabBtn on={active === '__fav'} onClick={() => setTab('__fav')}>★ {L('Hay làm', 'Her usual')}</TabBtn>}
           {cats.map((c) => <TabBtn key={c} on={active === c} onClick={() => setTab(c)}>{c}</TabBtn>)}
-          <TabBtn on={active === '__all'} onClick={() => setTab('__all')}>{L('Tất cả', 'All')} <span style={{ opacity: 0.7, fontWeight: 500 }}>{usable.length}</span></TabBtn>
         </div>
       )}
 
@@ -133,7 +140,8 @@ export function ServicePicker({ services, selected, onToggle, onSet, history, cu
 
 function TabBtn({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={onClick} style={{ height: 30, padding: '0 12px', borderRadius: 999, border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+    <button type="button" role="tab" aria-selected={on} onClick={onClick}
+      style={{ flexShrink: 0, minHeight: 40, padding: '0 12px', border: 0, borderBottom: `3px solid ${on ? '#6366f1' : 'transparent'}`, marginBottom: -1, background: 'transparent', color: on ? 'var(--ink-link)' : 'var(--c94a3b8)', fontSize: 13.5, fontWeight: on ? 800 : 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
       {children}
     </button>
   );

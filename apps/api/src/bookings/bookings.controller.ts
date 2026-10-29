@@ -22,6 +22,7 @@ import { RejectBookingDto } from './dto/reject-booking.dto';
 import { SetStatusDto } from './dto/set-status.dto';
 import { LineStaffDto } from './dto/line-staff.dto';
 import { EditLinesDto } from './dto/edit-lines.dto';
+import { BookingNotesDto } from './dto/booking-notes.dto';
 import { NoShowPolicyDto } from './dto/no-show-policy.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -350,6 +351,14 @@ export class BookingsController {
     @Body() dto: EditLinesDto,
   ) {
     return this.bookings.editLines(user, id, dto);
+  }
+
+  // The booking's note, written or cleared by the desk. This salon's bookings only.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Patch(':id/notes')
+  notes(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: BookingNotesDto) {
+    return this.bookings.updateNotes(user, id, dto.notes ?? null);
   }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)

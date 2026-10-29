@@ -1,4 +1,4 @@
-import { mergeBurst, alreadySaid } from './burst';
+import { mergeBurst, alreadySaid, repeatCount, repeatVerdict } from './burst';
 
 describe('mergeBurst', () => {
   it('COLLAPSES the same button tapped five times into one turn', () => {
@@ -67,5 +67,36 @@ describe('alreadySaid', () => {
 
   it('treats a turn with no timestamp as recent rather than risk the duplicate', () => {
     expect(alreadySaid([{ role: 'assistant', content: line }], line, now)).toBe(true);
+  });
+});
+
+describe('the same question again and again (ad button tapped, a spam bot)', () => {
+  const now = Date.parse('2026-10-30T15:40:00Z');
+  const at = (minAgo: number) => new Date(now - minAgo * 60_000).toISOString();
+  const q = 'Làm thế nào để được tư vấn chi tiết?';
+
+  it('answers the first two times, is silent from the third, moves to Spam from the fifth', () => {
+    const h: { role: string; content: string; at: string }[] = [];
+    const seen: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      seen.push(repeatVerdict(repeatCount(h, q, now)));
+      h.push({ role: 'user', content: q, at: at(20 - i) }, { role: 'assistant', content: 'Dạ anh chị gửi giúp em tên tiệm ạ', at: at(20 - i) });
+    }
+    expect(seen).toEqual(['answer', 'answer', 'silent', 'silent', 'spam', 'spam']);
+  });
+
+  it('spacing and case do not hide a repeat; a line inside a merged burst counts', () => {
+    const h = [{ role: 'user', content: '  làm thế nào ĐỂ được tư vấn chi tiết? ', at: at(5) }, { role: 'user', content: 'alo\nLàm thế nào để được tư vấn chi tiết?', at: at(3) }];
+    expect(repeatCount(h, q, now)).toBe(2);
+  });
+
+  it('older than half an hour, the bot\'s own lines, and different questions do not count', () => {
+    const h = [
+      { role: 'user', content: q, at: at(45) },
+      { role: 'assistant', content: q, at: at(10) },
+      { role: 'user', content: 'Giá gói Social Care bao nhiêu?', at: at(5) },
+    ];
+    expect(repeatCount(h, q, now)).toBe(0);
+    expect(repeatVerdict(repeatCount(h, q, now))).toBe('answer');
   });
 });

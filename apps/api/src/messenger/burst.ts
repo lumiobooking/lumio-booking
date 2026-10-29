@@ -78,3 +78,48 @@ export function alreadySaid(
   }
   return false;
 }
+
+/**
+ * THE SAME QUESTION, AGAIN AND AGAIN.
+ *
+ * An ad's "how do I get a consultation?" button tapped six times, a bot
+ * replaying one line every few minutes: answering each one is a paragraph the
+ * person already has on screen, a model call, and a Page that looks broken.
+ * Two answers to the same words are enough. From the third time in half an
+ * hour the bot says nothing; from the fifth the thread goes to Spam, where it
+ * stays quiet until someone at the salon says it is not spam.
+ */
+export const REPEAT_SPAM_WINDOW_MS = 30 * 60_000;
+/** Earlier identical customer messages before the bot stops answering this one. */
+export const REPEAT_SILENT_AT = 2;
+/** Earlier identical customer messages before the thread is moved to Spam. */
+export const REPEAT_SPAM_AT = 4;
+
+/** How many times the customer already sent exactly this (spacing and case aside) in the window. */
+export function repeatCount(
+  history: { role?: string; content?: unknown; at?: string }[],
+  text: string,
+  nowMs: number = Date.now(),
+  withinMs: number = REPEAT_SPAM_WINDOW_MS,
+): number {
+  const want = norm(text);
+  if (!want) return 0;
+  let n = 0;
+  for (const turn of history ?? []) {
+    if (turn?.role !== 'user') continue;
+    // A turn may hold a merged burst ("a\nb"): any of its lines counts.
+    const lines = String(turn.content ?? '').split('\n').map(norm);
+    if (!lines.includes(want) && norm(turn.content) !== want) continue;
+    const at = turn.at ? Date.parse(turn.at) : NaN;
+    if (Number.isFinite(at) && nowMs - at > withinMs) continue;
+    n += 1;
+  }
+  return n;
+}
+
+/** What the bot does with this message: answer, stay quiet, or stay quiet and move the thread to Spam. */
+export function repeatVerdict(priorRepeats: number): 'answer' | 'silent' | 'spam' {
+  if (priorRepeats >= REPEAT_SPAM_AT) return 'spam';
+  if (priorRepeats >= REPEAT_SILENT_AT) return 'silent';
+  return 'answer';
+}

@@ -56,7 +56,7 @@ import { BookingsService, walkInOnlyMessage } from '../bookings/bookings.service
 import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { mergeBurst, alreadySaid, BURST_MS } from './burst';
+import { mergeBurst, alreadySaid, BURST_MS, repeatCount, repeatVerdict } from './burst';
 import { mayAnswerMirrored, rescueVerdict } from './rescue-stuck';
 import { isMetaAdGreeting, isMetaSystemLine } from './meta-system-lines';
 import { AD_HOLD_REASON, AD_HOLD_RETRY_MS, adGreetingHold, readSendRefusal, type GraphError } from './send-errors';
@@ -3627,6 +3627,24 @@ export class MessengerService implements OnModuleInit {
     // What the photo said was read just now; the turn it belongs to was
     // written before that, so the note is added to it in place.
     if (arrived.length && photoNote) await this.noteOnTurns(threadId, ridSet, photoNote).catch(() => undefined);
+    // The same words for the third time in half an hour get no answer; the fifth
+    // time the thread goes to Spam (./burst repeatVerdict). A photo is never a repeat.
+    const verdict = inImages.length ? 'answer' : repeatVerdict(repeatCount(prior, text));
+    if (verdict !== 'answer') {
+      if (!userAlready) {
+        await this.prisma.messengerThread.update({
+          where: { id: threadId },
+          data: { history: [...history, { role: 'user', content: text, at: new Date().toISOString() }] as unknown as Prisma.InputJsonValue },
+        }).catch(() => undefined);
+      }
+      if (verdict === 'spam') {
+        await this.prisma.messengerThread.updateMany({ where: { id: threadId, tenantId: conn.tenantId }, data: { status: 'spam', readAt: new Date() } as never }).catch(() => undefined);
+        await this.audit(conn.tenantId, 'messenger.thread_auto_spam').catch(() => undefined);
+        this.events.publish(conn.tenantId, 'message');
+      }
+      this.logger.log(`bot silent on repeated message (${verdict}) thread ${threadId}`);
+      return;
+    }
     // Long-term memory + how long they were away (returning-customer handling).
     const memory = this.threadSummary(fresh);
     // The lead row this very bot wrote. It used to be write-only: the agent

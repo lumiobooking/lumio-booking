@@ -99,7 +99,7 @@ export function BookingSoundToggle({ vi }: { vi: boolean }) {
   if (!loaded) return null;
   return (
     <button type="button" onClick={() => setOn(!on)} aria-pressed={on}
-      title={on ? L(vi, 'Đang bật tiếng “ting” khi khách đặt / huỷ — bấm để tắt', 'A “ting” plays when a customer books or cancels — click to mute') : L(vi, 'Đang tắt tiếng báo — bấm để bật', 'Booking sound is off — click to turn on')}
+      title={on ? L(vi, 'Đang bật tiếng báo khi khách đặt / huỷ lịch và khi có tin nhắn mới — bấm để tắt', 'A sound plays for new bookings, cancellations and new messages — click to mute') : L(vi, 'Đang tắt tiếng báo (lịch hẹn và tin nhắn) — bấm để bật', 'Sound is off (bookings and messages) — click to turn on')}
       style={{ height: 40, padding: '0 12px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: on ? 'var(--ce2e8f0)' : 'var(--c64748b)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
       <SpeakerIcon on={on} />{on ? L(vi, 'Tiếng báo', 'Sound') : L(vi, 'Tiếng báo: tắt', 'Sound: off')}
     </button>

@@ -10,6 +10,7 @@ import {
 } from '../lib/inbox-alerts';
 import { PushState, pushState, subscribeToPush, pushMessage } from '../lib/push-client';
 import { playChime, unlockSound, installSoundUnlock, openConversation } from '../lib/inbox-sound';
+import { SOUND_EVENT, setSoundOn, soundOn } from '../lib/booking-inbox';
 
 /**
  * The thing that tells somebody a customer is waiting.
@@ -38,8 +39,14 @@ import { playChime, unlockSound, installSoundUnlock, openConversation } from '..
 
 const MUTE_KEY = 'lumio.inbox.muted';
 
-export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox', compact = false, onCount }: {
+export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox', compact = false, onCount, sharedSound = false }: {
   href?: string; label?: string;
+  /**
+   * The salon's top bar: no bell of its own. The chime follows the one sound
+   * switch ("Tiếng báo"), so the bar holds one bell — the notifications —
+   * instead of a second one that only muted messages.
+   */
+  sharedSound?: boolean;
   /** Phone header: just the icon, the count and the bell. */
   compact?: boolean;
   /** The unread number, for the sidebar's Inbox badge. */
@@ -72,11 +79,19 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox', compact = 
 
   useEffect(() => {
     baseTitle.current = document.title;
+    if (sharedSound) {
+      const sync = () => { const m = !soundOn(); setMuted(m); mutedRef.current = m; };
+      sync();
+      window.addEventListener(SOUND_EVENT, sync);
+      window.addEventListener('storage', sync);
+      return () => { window.removeEventListener(SOUND_EVENT, sync); window.removeEventListener('storage', sync); };
+    }
     try {
       const m = window.localStorage.getItem(MUTE_KEY) === '1';
       setMuted(m); mutedRef.current = m;
     } catch { /* private mode */ }
-  }, []);
+    return undefined;
+  }, [sharedSound]);
 
   // Ask the server whether push is actually configured BEFORE offering it.
   // Offering a button that cannot work is worse than not offering one: somebody
@@ -187,7 +202,11 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox', compact = 
   /** From a click, so the browser allows it: unlock, and ring once to prove it. */
   const enableSound = () => {
     unlockSound(window);
-    if (mutedRef.current) { setMuted(false); mutedRef.current = false; try { window.localStorage.setItem(MUTE_KEY, '0'); } catch { /* private mode */ } }
+    if (mutedRef.current) {
+      setMuted(false); mutedRef.current = false;
+      if (sharedSound) setSoundOn(true);
+      else try { window.localStorage.setItem(MUTE_KEY, '0'); } catch { /* private mode */ }
+    }
     void playChime().then((r) => setSoundBlocked(r === 'blocked'));
   };
 
@@ -235,7 +254,7 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox', compact = 
             padding: '8px 10px', borderRadius: 8, border: '1px solid var(--ink-warn)',
             background: 'rgba(245,158,11,0.14)', color: 'var(--ink-warn)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
           }}>🔔 {compact ? '' : (vi ? 'Bấm để bật chuông' : 'Click to enable sound')}</button>
-      ) : (
+      ) : sharedSound ? null : (
       <button onClick={toggleMute} title={muted ? (vi ? 'Bật tiếng' : 'Unmute') : (vi ? 'Tắt tiếng' : 'Mute')}
         aria-label={muted ? 'Unmute' : 'Mute'}
         style={{

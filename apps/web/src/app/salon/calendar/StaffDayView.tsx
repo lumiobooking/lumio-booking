@@ -557,15 +557,22 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {note && <div style={{ fontSize: 13, color: 'var(--ca7f3d0)', background: 'var(--c064e3b)', padding: '6px 10px', borderRadius: 8 }}>{note}</div>}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 2px' }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, color: 'var(--c94a3b8)', flex: 1 }}>
-              {isToday ? `${vi ? 'THỢ ĐANG LÀM' : 'ON THE FLOOR'} · ${hm(nowMin)}` : (vi ? 'THỢ TRONG NGÀY' : 'TECHNICIANS')}
+          {/* One line: who is on the floor, and the view options folded into one button
+              (card colour · cancelled · arrange) instead of a second row of controls. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 2px', minHeight: 40 }}>
+            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {isToday ? `${vi ? 'THỢ ĐANG LÀM' : 'ON THE FLOOR'} · ${hm(nowMin)}` : (vi ? 'THỢ TRONG NGÀY' : 'TECHNICIANS')}
+              </span>
+              {isToday && onShift.length > 0 && (
+                <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{workingNow} {vi ? 'đang làm' : 'busy'} · <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{freeNow} {vi ? 'trống' : 'free'}</span></span>
+              )}
             </span>
-            {isToday && onShift.length > 0 && (
-              <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{workingNow} {vi ? 'đang làm' : 'busy'} · <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{freeNow} {vi ? 'trống' : 'free'}</span></span>
+            {onShift.length > 0 && (
+              <ViewMenu vi={vi} colorMode={colorMode} setColorMode={setColorMode} goneCount={goneCount} showGone={showGone} toggleGone={toggleGone}
+                onArrange={canArrange && bookable.length > 1 ? () => setSheet(true) : undefined} />
             )}
           </div>
-          {onShift.length > 0 && <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{arrangeBtn}{goneChip}<CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} /></div>}
           {onShift.length === 0 && unassigned.length === 0 && (
             <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '36px 0', fontSize: 14 }}>{items.length === 0 ? t('cal.noAppts') : (vi ? 'Chưa có thợ nào làm hôm nay.' : 'No technician on shift today.')}</div>
           )}
@@ -1124,6 +1131,60 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
         <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('cal.staffHint')}</p>
       )}
       {sheetEl}
+    </div>
+  );
+}
+
+/**
+ * Phone: the calendar's view options behind one "View" button — card colour,
+ * show cancelled, arrange technicians — so they do not take a row of their own.
+ */
+function ViewMenu({ vi, colorMode, setColorMode, goneCount, showGone, toggleGone, onArrange }: {
+  vi: boolean; colorMode: Parameters<typeof CardColorSwitch>[0]['mode']; setColorMode: Parameters<typeof CardColorSwitch>[0]['set'];
+  goneCount: number; showGone: boolean; toggleGone: () => void; onArrange?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('touchstart', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('touchstart', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, width: '100%', boxSizing: 'border-box', padding: '0 4px', border: 0, background: 'transparent', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', cursor: 'pointer', textAlign: 'left' };
+  return (
+    <div ref={box} style={{ position: 'relative', flexShrink: 0 }}>
+      <button type="button" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((v) => !v)}
+        style={{ height: 40, padding: '0 12px', borderRadius: 10, border: '1px solid var(--c243044)', background: open ? 'var(--c1e293b)' : 'var(--c111827)', color: 'var(--ce2e8f0)', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
+        {vi ? 'Hiển thị' : 'View'}
+      </button>
+      {open && (
+        <div role="menu" style={{ position: 'absolute', right: 0, top: 46, zIndex: 20, width: 260, boxSizing: 'border-box', padding: 10, borderRadius: 14, background: 'var(--c111827)', border: '1px solid var(--c334155)', boxShadow: '0 16px 36px -12px rgba(2,6,23,.45)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 44, padding: '0 4px' }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{vi ? 'Màu thẻ' : 'Card colour'}</span>
+            <CardColorSwitch mode={colorMode} set={setColorMode} vi={vi} compact />
+          </div>
+          {goneCount > 0 && (
+            <button type="button" role="menuitemcheckbox" aria-checked={showGone} onClick={toggleGone} style={{ ...row, borderTop: '1px solid var(--c1f2937)' }}>
+              <span style={{ flex: 1 }}>{vi ? `Hiện lịch đã huỷ · ${goneCount}` : `Show cancelled · ${goneCount}`}</span>
+              <span aria-hidden="true" style={{ width: 40, height: 24, borderRadius: 999, background: showGone ? '#4f46e5' : 'var(--c334155)', position: 'relative', flexShrink: 0 }}>
+                <span style={{ position: 'absolute', top: 3, left: showGone ? 19 : 3, width: 18, height: 18, borderRadius: 999, background: '#fff', transition: 'left .15s' }} />
+              </span>
+            </button>
+          )}
+          {onArrange && (
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); onArrange(); }} style={{ ...row, borderTop: '1px solid var(--c1f2937)' }}>
+              <span aria-hidden="true" style={{ letterSpacing: -2, color: 'var(--c94a3b8)' }}>⋮⋮</span>
+              <span style={{ flex: 1 }}>{vi ? 'Sắp xếp thợ' : 'Arrange technicians'}</span>
+              <span aria-hidden="true" style={{ color: 'var(--c94a3b8)' }}>›</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

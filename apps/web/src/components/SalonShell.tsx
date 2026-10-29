@@ -287,7 +287,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // Lumio support — not only a support session as before.
   const inboxOk = hrefVisible('/salon/inbox');
   const inboxAlerts = (compact: boolean) => inboxOk
-    ? <InboxAlerts href="/salon/inbox" label={lang === 'vi' ? 'Hộp thư' : 'Inbox'} compact={compact} onCount={setInboxUnread} />
+    ? <InboxAlerts href="/salon/inbox" label={lang === 'vi' ? 'Hộp thư' : 'Inbox'} compact={compact} onCount={setInboxUnread} sharedSound />
     : null;
   const visibleGroups = GROUPS
     .map((g) => ({ ...g, items: g.items.filter(itemVisible) }))

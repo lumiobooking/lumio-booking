@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SourceChip, SourceDot } from '../../../components/SourceChip';
 import { srcMetaOf } from '../../../lib/booking-sources';
 import { useAuth } from '../../../lib/auth';
-import { withHoursOverride } from '../../../lib/desk-hours';
+import { clockText, withHoursOverride } from '../../../lib/desk-hours';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
@@ -116,12 +116,14 @@ function srcMeta(s: string | null | undefined, t: (k: string) => string): { icon
 // or down to change the time, sideways to change the tech (one POST /move, so a
 // clash leaves the booking where it was; "Hoàn tác" puts it back). Hours
 // outside a tech's shift, and breaks between split shifts, are hatched.
-export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, today, onChanged, onBook, onCtx }: {
+export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, today, onChanged, onBook, onCtx, freshId }: {
   date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onChanged?: () => void;
   /** An empty slot was clicked: open the booking form in place (staffId null = unassigned column). Without it the page changes. */
   onBook?: (staffId: string | null, startLocal: string) => void;
   /** Right-click on a card: the same menu as the month (view, arrive, complete, cancel, delete). */
   onCtx?: (b: Booking, x: number, y: number) => void;
+  /** Just booked from the phone sheet: ringed and tagged "New" for a few seconds. */
+  freshId?: string | null;
 }) {
   const { token, user } = useAuth();
   const { lang } = useLang();
@@ -186,6 +188,10 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
   // a dragged card will land — and how far down the card it was grabbed.
   const [ghost, setGhost] = useState<{ col: string; min: number; dur: number; drag: boolean; clash?: boolean } | null>(null);
   const grab = useRef(0);
+  // Phone, everyone: the empty slot tapped once ("+ Book 1:30 PM"); a second tap opens the booking sheet.
+  const [pick, setPick] = useState<{ col: string; min: number } | null>(null);
+  const dayMs = date.getTime();
+  useEffect(() => { setPick(null); }, [dayMs]);
   const [undo, setUndo] = useState<{ id: string; startTime: string; staffId: string } | null>(null);
   const noteTimer = useRef<number | null>(null);
   const flash = (msg: string, ms = 2600) => {
@@ -623,21 +629,56 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                               <span style={{ fontSize: 11.5, color: toneColor(statusLine(r).tone), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusLine(r).text}</span>
                             </span>
                           </button>
-                          <div style={{ position: 'relative', height: gH }}>
+                          <div style={{ position: 'relative', height: gH, cursor: isPastDay ? 'default' : 'pointer' }}
+                            onClick={(e) => {
+                              // Tap empty time once to mark it, again to book (canvas board 1). Cards and the slot button handle their own taps.
+                              if ((e.target as HTMLElement).closest('button,a') || isPastDay) return;
+                              const top = e.currentTarget.getBoundingClientRect().top;
+                              const m = aS + Math.floor((((e.clientY - top) / HG) * 60) / 15) * 15;
+                              if (m < aS || m >= aE) return;
+                              if (isToday && m + 15 <= nowMin) { setPick(null); flash(vi ? 'Giờ này đã qua.' : 'That time has passed.'); return; }
+                              if (r.shift && (m < r.shift.s || m >= r.shift.e)) { setPick(null); flash(ind(vi ? `${r.name} không làm giờ này.` : `${r.name} is off at this time.`)); return; }
+                              if (r.live.some((b) => { const sp = span(b); return sp.s < m + 15 && sp.e > m; })) return;
+                              if (pick && pick.col === r.id && pick.min === m) { setPick(null); bookAt(r.id, m); return; }
+                              setPick({ col: r.id, min: m });
+                            }}>
                             {r.shift && r.shift.s > aS && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: gy(r.shift.s), background: hatchBg }} />}
                             {r.shift && r.shift.e < aE && <div style={{ position: 'absolute', left: 0, right: 0, top: gy(r.shift.e), bottom: 0, background: hatchBg }} />}
                             {hours.slice(1, -1).map((hh) => <div key={hh} style={{ position: 'absolute', top: gy(hh), left: 0, right: 0, borderTop: '1px solid var(--c1f2937)' }} />)}
+                            {pick && pick.col === r.id && (() => {
+                              // The marked slot: half an hour, cut short by the next booking or the end of the shift.
+                              const nextS = Math.min(pick.min + 30, r.shift?.e ?? aE, ...r.live.map((b) => span(b).s).filter((x) => x > pick.min));
+                              const sh = Math.max(40, gy(nextS) - gy(pick.min) - 4);
+                              const hourTop = gy(Math.floor(pick.min / 60) * 60);
+                              const tipAbove = gy(pick.min) >= 40;
+                              return (
+                                <>
+                                  <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: hourTop, height: HG, background: 'rgba(79,70,229,0.07)', pointerEvents: 'none' }} />
+                                  <span aria-hidden="true" style={{ position: 'absolute', left: 8, right: 8, top: tipAbove ? gy(pick.min) - 34 : gy(pick.min) + sh + 8, zIndex: 3, padding: '6px 8px', borderRadius: 10, background: '#101f36', color: '#fff', fontSize: 12, fontWeight: 600, textAlign: 'center', lineHeight: 1.3, pointerEvents: 'none' }}>
+                                    {vi ? 'Chạm lần nữa để đặt' : 'Tap again to book'}
+                                  </span>
+                                  <button type="button" onClick={() => { setPick(null); bookAt(r.id, pick.min); }}
+                                    aria-label={vi ? `Đặt lịch ${clockText(pick.min, true)} với ${r.name}` : `Book ${clockText(pick.min, false)} with ${r.name}`}
+                                    style={{ position: 'absolute', left: 3, right: 3, top: gy(pick.min) + 2, height: sh, zIndex: 3, boxSizing: 'border-box', borderRadius: 10, border: '2px solid #4f46e5', background: 'var(--c1e1b4b)', color: 'var(--ce0e7ff)', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 6px 16px -6px rgba(79,70,229,0.5)', whiteSpace: 'nowrap' }}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                                    {vi ? `Đặt ${clockText(pick.min, true)}` : `Book ${clockText(pick.min, false)}`}
+                                  </button>
+                                </>
+                              );
+                            })()}
                             {lanes.map(({ b, s, e, col, cols }) => {
                               const w = 100 / cols;
                               const h = Math.max(20, gy(e) - gy(s) - 4);
                               const tier = cardTier(h, 'sm');
+                              const isFresh = !!freshId && b.id === freshId;
                               const face: CardFace = { ...faceOf(b, s, e, vi, t), source: <SourceDot b={b} vi={vi} /> };
                               const look = cardLook(face, colorMode, barColor(b.status));
                               return (
                                 <button key={b.id} type="button" onClick={() => onOpen(b)} onContextMenu={onCtx ? (ev) => { ev.preventDefault(); onCtx(b, ev.clientX, ev.clientY); } : undefined} aria-label={[face.name, face.service, face.phone, face.range].filter(Boolean).join(', ')}
                                   style={{ position: 'absolute', top: gy(s) + 2, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', padding: cardPad(tier, 'sm'), borderRadius: 10,
-                                    background: look.background, border: look.border, display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', alignItems: 'stretch', gap: 2, overflow: 'hidden', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                                    background: look.background, border: isFresh ? '2px solid #4f46e5' : look.border, boxShadow: isFresh ? '0 0 0 4px rgba(79,70,229,0.18)' : undefined, display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', alignItems: 'stretch', gap: 2, overflow: 'hidden', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
                                   <CardBody f={face} tier={tier} size="sm" look={look} />
+                                  {isFresh && <NewTag vi={vi} />}
                                 </button>
                               );
                             })}
@@ -808,13 +849,15 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                 // Height decides how many lines fit — never more lines than room (no text on text).
                 const h = Math.max(30, y(e) - y(s) - 4);
                 const tier = cardTier(h, 'lg');
+                const isFresh = !!freshId && b.id === freshId;
                 const face: CardFace = { ...faceOf(b, s, e, vi, t), tag: statusTag(b.status, vi), source: <SourceChip b={b} vi={vi} /> };
                 const look = cardLook(face, colorMode, barColor(b.status));
                 return (
                   <button key={b.id} type="button" onClick={() => onOpen(b)} onContextMenu={onCtx ? (ev) => { ev.preventDefault(); onCtx(b, ev.clientX, ev.clientY); } : undefined} aria-label={[face.name, face.service, face.phone, face.range, face.price, face.tag].filter(Boolean).join(', ')}
                     style={{ position: 'absolute', top: y(s) + 2, height: h, left: `calc(${col * w}% + 8px)`, width: `calc(${w}% - 16px)`, boxSizing: 'border-box', padding: cardPad(tier, 'lg'), borderRadius: 10,
-                      background: look.background, border: look.border, display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', alignItems: 'stretch', gap: 2, overflow: 'hidden', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                      background: look.background, border: isFresh ? '2px solid #4f46e5' : look.border, boxShadow: isFresh ? '0 0 0 4px rgba(79,70,229,0.18)' : undefined, display: 'flex', flexDirection: 'column', justifyContent: tier === 1 ? 'center' : 'flex-start', alignItems: 'stretch', gap: 2, overflow: 'hidden', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
                     <CardBody f={face} tier={tier} size="lg" look={look} />
+                    {isFresh && <NewTag vi={vi} />}
                   </button>
                 );
               })}
@@ -1083,6 +1126,11 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
       {sheetEl}
     </div>
   );
+}
+
+/** "New" on a card just booked from the phone sheet (canvas board 5). */
+function NewTag({ vi }: { vi: boolean }) {
+  return <span style={{ position: 'absolute', right: 6, bottom: 6, padding: '2px 8px', borderRadius: 999, background: '#4f46e5', color: '#fff', fontSize: 11, fontWeight: 700, pointerEvents: 'none' }}>{vi ? 'Mới' : 'New'}</span>;
 }
 
 function chip(active: boolean): React.CSSProperties {

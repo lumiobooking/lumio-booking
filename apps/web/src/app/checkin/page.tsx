@@ -653,7 +653,7 @@ export default function CheckInKiosk() {
               <QrCard url={menu.checkinUrl} accent={accent} eyebrow="Someone using the tablet?" title="Check in on your phone" note="Point your camera here — no app needed." />
             )}
             {menu.reviewUrl && (
-              <QrCard url={menu.reviewUrl} accent={accent} eyebrow="Love your nails?" title="Review us on Google" note="Takes a minute — it means the world to us." stars />
+              <QrCard url={menu.reviewUrl} accent={accent} eyebrow="Loved your visit?" title="Review us on Google" note="Takes a minute — it means the world to us." stars />
             )}
             {!menu.checkinUrl && !menu.reviewUrl && (
               <span style={{ fontSize: 18, color: C.ink2, lineHeight: 1.5 }}>Welcome! Tap the screen to let us know you’re here.</span>
@@ -792,7 +792,7 @@ export default function CheckInKiosk() {
                 <img src={qrSrc(qrUrl, 300)} alt={qrKind === 'checkin' ? 'QR code to check in on your phone' : 'QR code to review us on Google'}
                   style={{ width: 'clamp(92px, 15vh, 120px)', height: 'auto', aspectRatio: '1 / 1', display: 'block', flexShrink: 0 }} />
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                  <span style={{ ...eyebrow, color: accent }}>{qrKind === 'checkin' ? 'Skip the line' : 'Love your nails?'}</span>
+                  <span style={{ ...eyebrow, color: accent }}>{qrKind === 'checkin' ? 'Skip the line' : 'Loved your visit?'}</span>
                   <b style={{ fontSize: 17, lineHeight: 1.2, color: C.ink }}>{qrKind === 'checkin' ? 'Check in on your phone' : 'Review us on Google'}</b>
                   <span style={{ fontSize: 13.5, lineHeight: 1.4, color: C.ink2 }}>{qrKind === 'checkin' ? 'Point your camera here.' : 'Takes a minute — thank you!'}</span>
                 </span>
@@ -813,7 +813,7 @@ export default function CheckInKiosk() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={qrSrc(qrUrl, 240)} alt={qrKind === 'checkin' ? 'QR code to check in on your phone' : 'QR code to review us on Google'} style={{ width: 84, height: 84, flexShrink: 0, display: 'block' }} />
                   <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                    <span style={{ ...eyebrow, color: accent }}>{qrKind === 'checkin' ? 'Skip the line' : 'Love your nails?'}</span>
+                    <span style={{ ...eyebrow, color: accent }}>{qrKind === 'checkin' ? 'Skip the line' : 'Loved your visit?'}</span>
                     <b style={{ fontSize: 17, color: C.ink }}>{qrKind === 'checkin' ? 'Check in on your phone' : 'Review us on Google'}</b>
                   </span>
                 </div>

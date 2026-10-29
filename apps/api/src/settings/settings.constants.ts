@@ -887,9 +887,9 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
     subject: 'Thank you for visiting %salon_name%!',
     body:
       'Hi %customer_name%,\n\n' +
-      'Thank you for visiting %salon_name%! We hope you love your nails. ' +
+      'Thank you for visiting %salon_name%! We hope you enjoyed your visit. ' +
       "We'd love your feedback, and we can't wait to see you again.\n\n%salon_name%",
-    smsBody: 'Thanks for visiting %salon_name%! We hope you love your nails. Come back soon! Reply STOP to unsubscribe.',
+    smsBody: 'Thanks for visiting %salon_name%! We hope you enjoyed your visit. Come back soon! Reply STOP to unsubscribe.',
   }),
   customer_birthday: t({
     enabled: false,
@@ -1020,6 +1020,23 @@ export const LEGACY_TEMPLATE_DEFAULTS: Record<string, Partial<Record<'subject' |
     ],
     smsBody: ['New booking: %service_name% for %customer_name% on %appointment_date% %appointment_time%.'],
   },
+  // Until 29/10/2026 the thank-you assumed a nail salon ("We hope you love your nails").
+  // Lash studios, spas and restaurants send it too, so it now speaks of the visit.
+  customer_followup: {
+    body: [
+      toHtmlBody(
+        'Hi %customer_name%,\n\n' +
+        'Thank you for visiting %salon_name%! We hope you love your nails. ' +
+        "We'd love your feedback, and we can't wait to see you again.\n\n%salon_name%",
+      ),
+      toHtmlBody(
+        'Chào %customer_name%,\n\n' +
+        'Cảm ơn bạn đã ghé %salon_name%! Mong bạn hài lòng với bộ nail của mình. ' +
+        'Tiệm rất mong nhận được góp ý của bạn, và sớm được gặp lại bạn.\n\n%salon_name%',
+      ),
+    ],
+    smsBody: ['Thanks for visiting %salon_name%! We hope you love your nails. Come back soon! Reply STOP to unsubscribe.'],
+  },
 };
 
 export const VN_NOTIFICATION_TEXTS: Partial<NotificationSettings> = {
@@ -1102,8 +1119,8 @@ export const VN_TEMPLATE_TEXTS: Record<string, Partial<Pick<NotifTemplate, 'subj
     subject: 'Cảm ơn bạn đã ghé %salon_name%!',
     body: toHtmlBody(
       'Chào %customer_name%,\n\n' +
-      'Cảm ơn bạn đã ghé %salon_name%! Mong bạn hài lòng với bộ nail của mình. ' +
-      'Tiệm rất mong nhận được góp ý của bạn, và sớm được gặp lại bạn.\n\n%salon_name%',
+      'Cảm ơn bạn đã ghé %salon_name%! Mong bạn hài lòng với dịch vụ hôm nay. ' +
+      'Chúng tôi rất mong nhận được góp ý của bạn, và sớm được gặp lại bạn.\n\n%salon_name%',
     ),
     smsBody: '%salon_name%: Cam on ban da ghe tiem! Mong ban hai long va som gap lai ban.',
   },

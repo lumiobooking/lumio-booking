@@ -22,7 +22,7 @@ import { TableDayView } from './TableDayView';
 import { uiLocale } from '../../../lib/datetime';
 import { DateTimeField } from '../../../components/DateTimeField';
 import { ind } from '../../../lib/ui-industry';
-import { withHoursOverride } from '../../../lib/desk-hours';
+import { clockText, withHoursOverride } from '../../../lib/desk-hours';
 import { ListView, type ShiftStaffFull } from './ListView';
 import { C, Seg, IconBtn, Icon, btn, onIndigo, Popover, Sheet, DayStrip, MonthPicker, FilterBody, FilterFooter, ActiveChips, type DayInfo } from './CalParts';
 import { applyFilters, facetCounts, activeFilterCount, NO_FILTERS, stripDays, suggestStart, isClosedDay, capacityMinutes, loadOf, bookedMinutes, addDays, type CalFilters, type HoursDay } from '../../../lib/cal-day';
@@ -132,6 +132,13 @@ function Inner() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   /** The booking pop-up, with the time / technician the clicked link carried. */
   const [newBook, setNewBook] = useState<NewBookingPrefill | null>(null);
+  // Just booked from the phone sheet: the toast, and the card ringed on the calendar (canvas board 5).
+  const [justBooked, setJustBooked] = useState<{ id: string | null; text: string } | null>(null);
+  useEffect(() => {
+    if (!justBooked) return;
+    const h = window.setTimeout(() => setJustBooked(null), 7000);
+    return () => window.clearTimeout(h);
+  }, [justBooked]);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Booking | null>(null);
   // Right-click context menu on a booking chip: { screen position, booking }.
@@ -492,8 +499,23 @@ function Inner() {
       initial={newBook}
       bookings={bookings}
       onClose={() => setNewBook(null)}
-      onCreated={() => { setNewBook(null); void load(); }}
+      onCreated={(b) => {
+        setNewBook(null);
+        void load();
+        if (b) {
+          const at = clockText(Number(b.startLocal.slice(11, 13)) * 60 + Number(b.startLocal.slice(14, 16)), lang === 'vi');
+          setJustBooked({ id: b.id, text: lang === 'vi' ? `Đã đặt ${b.name} · ${at}${b.staffName ? ` với ${b.staffName}` : ''}.` : `Booked ${b.name} · ${at}${b.staffName ? ` with ${b.staffName}` : ''}.` });
+        }
+      }}
     />
+  );
+  const fresh = justBooked?.id ? bookings.find((x) => x.id === justBooked.id) ?? null : null;
+  const bookedToast = justBooked && (
+    <div role="status" style={{ position: 'fixed', left: 12, right: 12, bottom: 'calc(var(--tabbar-h, 0px) + 12px)', zIndex: 65, minHeight: 52, boxSizing: 'border-box', padding: '8px 8px 8px 14px', borderRadius: 14, background: '#101f36', color: '#fff', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 12px 28px -10px rgba(2,6,23,.5)', maxWidth: 560, margin: '0 auto' }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-11" /></svg>
+      <span style={{ flex: 1, fontSize: 13.5, lineHeight: 1.35 }}>{justBooked.text}</span>
+      {fresh && <button type="button" onClick={() => { setSelected(fresh); setJustBooked(null); }} style={{ height: 36, padding: '0 12px', borderRadius: 9, border: '1px solid #475569', background: 'transparent', color: '#fff', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{lang === 'vi' ? 'Mở' : 'Open'}</button>}
+    </div>
   );
   const rel = (d: Date) => (d.getTime() === today.getTime() ? L('Hôm nay', 'Today')
     : d.getTime() === addDays(today, 1).getTime() ? L('Ngày mai', 'Tomorrow')
@@ -676,6 +698,7 @@ function Inner() {
         {header}
         <FloorView token={token} lang={lang} />
         {bookModal}
+        {bookedToast}
       </section>
     );
   }
@@ -688,7 +711,7 @@ function Inner() {
         isRestaurant ? (
           <TableDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
         ) : (
-          <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} onBook={(staffId, at) => setNewBook({ staffId: staffId ?? undefined, startLocal: at })} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} />
+          <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} onBook={(staffId, at) => setNewBook({ staffId: staffId ?? undefined, startLocal: at })} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} freshId={justBooked?.id ?? null} />
         )
       ) : mode === 'day' ? (
         <ListView
@@ -840,6 +863,7 @@ function Inner() {
         <BookingDetail booking={selected} all={bookings} tz={tz} onClose={() => setSelected(null)} onAction={action} onReload={() => { setSelected(null); void load(); }} />
       )}
       {bookModal}
+      {bookedToast}
     </section>
   );
 }

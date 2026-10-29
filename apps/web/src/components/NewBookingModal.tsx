@@ -18,19 +18,28 @@ import { useIsMobile } from '../lib/responsive';
 import type { HoursRules } from '../lib/desk-hours';
 import { CreateBookingForm, type BookingFormBooking, type BookingFormService, type BookingFormStaff } from './CreateBookingForm';
 import { isBookable } from '../lib/bookable-staff';
+import { uiIndustry } from '../lib/ui-industry';
+import { QuickBookSheet, type QuickBookBooking, type QuickBooked } from './QuickBookSheet';
 
 export interface NewBookingPrefill { staffId?: string; startLocal?: string; firstName?: string; lastName?: string; phone?: string }
 
 export function NewBookingModal({ initial, bookings, onClose, onCreated }: {
   initial?: NewBookingPrefill;
-  bookings: BookingFormBooking[];
+  /** The calendar's bookings: who is busy when (and, for the phone sheet, recent customers and the usual services). */
+  bookings: (BookingFormBooking & Partial<QuickBookBooking>)[];
   onClose: () => void;
-  onCreated: () => void;
+  /** Booked. From the phone sheet it says who and when, for the calendar's toast. */
+  onCreated: (b?: QuickBooked) => void;
 }) {
   const { token, user } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
   const phone = useIsMobile(640);
+  // Phone calendar: the short sheet (who · what · when) unless the desk asks for the full form,
+  // or the trade needs an address (real estate, home services) — that lives in the full form.
+  const sheetSize = useIsMobile(768);
+  const [full, setFull] = useState(false);
+  const quick = sheetSize && !full && uiIndustry() !== 'REAL_ESTATE' && uiIndustry() !== 'SERVICE';
   const isOwner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
   const [services, setServices] = useState<BookingFormService[] | null>(null);
   const [staff, setStaff] = useState<BookingFormStaff[]>([]);
@@ -57,16 +66,39 @@ export function NewBookingModal({ initial, bookings, onClose, onCreated }: {
     return () => { alive = false; };
   }, [token]);
 
-  // Esc closes; the page behind does not scroll while the form is open.
+  // Esc closes; the page behind does not scroll while the form is open (the sheet does its own).
   useEffect(() => {
+    if (quick && services !== null) return;
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', key);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.removeEventListener('keydown', key); document.body.style.overflow = prev; };
-  }, [onClose]);
+  }, [onClose, quick, services]);
 
-  const box: React.CSSProperties = phone
+  if (quick && services !== null && token) {
+    return (
+      <QuickBookSheet
+        token={token}
+        vi={vi}
+        services={services}
+        staff={staff.filter(isBookable)}
+        bookings={bookings}
+        initial={{ staffId: initial?.staffId, startLocal: initial?.startLocal }}
+        salonTz={tz}
+        hours={hours}
+        isOwner={isOwner}
+        currency={currency}
+        onClose={onClose}
+        onCreated={onCreated}
+        onFullForm={() => setFull(true)}
+      />
+    );
+  }
+
+  const box: React.CSSProperties = quick
+    ? { position: 'fixed', left: 0, right: 0, bottom: 0, borderRadius: '22px 22px 0 0', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
+    : phone
     ? { position: 'fixed', inset: 0, borderRadius: 0 }
     : { position: 'relative', width: 'min(960px, calc(100vw - 48px))', maxHeight: 'calc(100dvh - 48px)', borderRadius: 16, border: '1px solid var(--c334155)', boxShadow: '0 32px 64px -16px rgba(0,0,0,.6)' };
 
@@ -94,7 +126,7 @@ export function NewBookingModal({ initial, bookings, onClose, onCreated }: {
             hours={hours}
             isOwner={isOwner}
             currency={currency}
-            onCreated={onCreated}
+            onCreated={() => onCreated()}
           />
         )}
       </div>

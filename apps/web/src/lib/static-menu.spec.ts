@@ -1,4 +1,4 @@
-import { cancelLine, clock, hoursRows, priceLabel, uses12h } from './static-menu';
+import { cancelLine, clock, hoursRows, priceLabel, uses12h, staticMenuHtml } from './static-menu';
 
 describe('the booking page a crawler reads', () => {
   it('writes real hours, Monday first, with split shifts and closed days', () => {
@@ -36,5 +36,37 @@ describe('the booking page a crawler reads', () => {
     expect(cancelLine({ selfCancel: true, cancelNoticeHours: 1 }, null)).toContain('up to 1 hour before');
     expect(cancelLine({ selfCancel: false, cancelNoticeHours: null }, '+1 210-971-7070')).toBe('To cancel or reschedule, call the salon at +1 210-971-7070.');
     expect(cancelLine(null, null)).toBe('To cancel or reschedule, contact the salon.');
+  });
+});
+
+
+describe('staticMenuHtml — the no-JavaScript menu as one HTML string', () => {
+  const salon = {
+    name: 'Amy’s Lash & <Brows>', address: '1 Main St', contactPhone: '(210) 555-0100', accentColor: '#e11d48', currency: 'USD',
+    hours: [{ day: 1, closed: false, open: '09:30', close: '19:00' }],
+    menu: [{ id: 's 1', name: 'Gel <b>Manicure</b>', priceCents: 3500, priceFrom: false, durationMinutes: 45, category: 'Nails' }],
+    policy: { selfCancel: true, cancelNoticeHours: 24 },
+  };
+
+  it('carries the same facts: name, price, hours, policy, who runs it', () => {
+    const h = staticMenuHtml(salon, 'https://lumiobooking.com');
+    expect(h).toContain('id="lumio-ssr-menu"');
+    expect(h).toContain('$35');
+    expect(h).toContain('45 min');
+    expect(h).toContain('9:30 AM');
+    expect(h).toContain('Cancellation policy');
+    expect(h).toContain('https://lumiobooking.com/privacy');
+    expect(h).toContain('?service=s%201#book');
+  });
+
+  it('escapes everything the salon typed', () => {
+    const h = staticMenuHtml(salon);
+    expect(h).toContain('Amy’s Lash &amp; &lt;Brows&gt;');
+    expect(h).toContain('Gel &lt;b&gt;Manicure&lt;/b&gt;');
+    expect(h).not.toContain('<b>Manicure');
+  });
+
+  it('is empty for a salon with no menu (no <noscript> at all)', () => {
+    expect(staticMenuHtml({ ...salon, menu: [] })).toBe('');
   });
 });

@@ -728,6 +728,7 @@ function Shell({ children, accent }: { children: React.ReactNode; accent: string
     try { emb = window.self !== window.top; } catch { emb = true; }
     setEmbedded(emb);
     if (!emb) return;
+    document.documentElement.classList.add('lumio-embed'); // the layout's light paint steps aside in an iframe
     document.documentElement.style.background = 'transparent';
     document.body.style.background = 'transparent';
     document.body.style.margin = '0';

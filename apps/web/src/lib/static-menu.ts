@@ -71,3 +71,76 @@ export function cancelLine(policy: SeoPolicy | null | undefined, phone: string |
   }
   return phone ? `To cancel or reschedule, call the salon at ${phone}.` : 'To cancel or reschedule, contact the salon.';
 }
+
+
+/** What the no-JavaScript menu needs from the salon (a subset of the SEO payload). */
+export interface StaticMenuInput {
+  name: string;
+  address: string | null;
+  contactPhone: string | null;
+  accentColor: string;
+  currency: string;
+  hours: SeoHours[];
+  menu?: { id: string; name: string; priceCents: number; priceFrom: boolean; durationMinutes: number; category: string | null }[];
+  policy?: SeoPolicy | null;
+}
+
+/** HTML-escape a value going into the static menu markup. */
+export const esc = (v: unknown) => String(v ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+/**
+ * The menu for crawlers that run no JavaScript, as an HTML STRING inside
+ * <noscript>.
+ *
+ * It used to be React elements inside <noscript>. A browser running
+ * JavaScript reads a noscript's contents as plain text, so React found text
+ * where it expected the elements it rendered, gave up on hydration ("Text
+ * content does not match", React errors 425/418/423) and threw the whole
+ * server-rendered page away to draw it again in the browser: the dark app
+ * background showed for a moment between the two — the black flash on every
+ * booking page load — and the page took longer to come up. As a string React
+ * never looks inside it. Same markup, same facts for the crawler.
+ */
+export function staticMenuHtml(s: StaticMenuInput, webUrl = 'https://lumiobooking.com'): string {
+  const menu = s.menu ?? [];
+  if (!menu.length) return '';
+  const accent = /^#[0-9a-f]{6}$/i.test(s.accentColor || '') ? s.accentColor : '#4f46e5';
+  const groups = new Map<string, typeof menu>();
+  for (const m of menu) { const k = m.category ?? ''; groups.set(k, [...(groups.get(k) ?? []), m]); }
+  const hours = hoursRows(s.hours, uses12h(s.currency));
+  const muted = '#475569';
+  const out: string[] = [];
+  out.push(`<section id="lumio-ssr-menu" aria-label="${esc(`${s.name} services`)}" style="max-width:760px;margin:0 auto;padding:20px 16px 32px;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0f172a;line-height:1.5">`);
+  out.push(`<h1 style="font-size:24px;margin:0 0 4px">${esc(s.name)}</h1>`);
+  out.push(`<p style="margin:0 0 12px;color:${muted};font-size:14px">`);
+  if (s.address) out.push(`<span>${esc(s.address)}</span>`);
+  if (s.contactPhone) out.push(`<span>${s.address ? ' · ' : ''}<a href="tel:${esc(s.contactPhone)}" style="color:#0f172a">${esc(s.contactPhone)}</a></span>`);
+  out.push('</p>');
+  out.push(`<a href="#book" style="display:inline-block;background:${accent};color:#ffffff;border-radius:10px;padding:10px 18px;font-weight:700;text-decoration:none;font-size:15px">Book an appointment</a>`);
+  out.push('<h2 style="font-size:17px;margin:20px 0 8px">Services &amp; prices</h2>');
+  for (const [cat, items] of groups.entries()) {
+    out.push('<div style="margin-bottom:12px">');
+    if (cat) out.push(`<h3 style="font-size:14px;margin:8px 0 4px;color:${muted};text-transform:uppercase;letter-spacing:0.5px">${esc(cat)}</h3>`);
+    out.push('<ul style="list-style:none;padding:0;margin:0">');
+    for (const m of items) {
+      out.push(`<li style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #e5e7eb;font-size:14px">`
+        + `<a href="?service=${encodeURIComponent(m.id)}#book" style="color:#0f172a;text-decoration:none;flex:1">${esc(m.name)}${m.durationMinutes ? `<span style="color:#64748b"> · ${esc(m.durationMinutes)} min</span>` : ''}</a>`
+        + `<b>${esc(priceLabel(m.priceCents, m.priceFrom, s.currency))}</b></li>`);
+    }
+    out.push('</ul></div>');
+  }
+  out.push('<p style="margin:4px 0 0;font-size:13px;color:#64748b">Prices are set by the salon. Tips are not included.</p>');
+  if (hours.length > 0) {
+    out.push('<h2 style="font-size:17px;margin:20px 0 8px">Opening hours</h2><table style="border-collapse:collapse;font-size:14px"><tbody>');
+    for (const h of hours) out.push(`<tr><td style="padding:3px 16px 3px 0;color:${muted}">${esc(h.day)}</td><td style="padding:3px 0">${esc(h.text)}</td></tr>`);
+    out.push('</tbody></table>');
+  }
+  out.push('<h2 style="font-size:17px;margin:20px 0 8px">Cancellation policy</h2>');
+  out.push(`<p style="margin:0;font-size:14px">${esc(cancelLine(s.policy, s.contactPhone))}</p>`);
+  out.push(`<p style="margin:28px 0 0;padding-top:14px;border-top:1px solid #e5e7eb;font-size:12.5px;color:#64748b">Online booking for ${esc(s.name)} is provided by <a href="${esc(webUrl)}" style="color:#4338ca">Lumio Booking</a>, operated by Lumio Agency LLC. `
+    + `<a href="${esc(webUrl)}/privacy" style="color:#4338ca">Privacy policy</a> · <a href="${esc(webUrl)}/terms" style="color:#4338ca">Terms</a> · <a href="${esc(webUrl)}/booking-policy" style="color:#4338ca">Booking policy</a></p>`);
+  out.push('</section>');
+  return out.join('');
+}
+

@@ -2549,7 +2549,11 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
   salon: Salon | null; slot: Slot; employee: Staff | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; party?: Party | null;
   depositCents: number; cardFee?: { enabled: boolean; percent: number }; rules: BookingRules; paymentType: 'PAY_ONLINE' | 'PAY_LATER'; setPaymentType: (v: 'PAY_ONLINE' | 'PAY_LATER') => void;
   form: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string };
-  setForm: (f: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string }) => void;
+  // Updated with the previous value (setForm((f) => …)), never a copy taken at
+  // render time: the browser's autofill writes name, phone and email in one
+  // burst, and each change built from the same stale copy wiped the others —
+  // so what was booked was not what the customer saw in the boxes.
+  setForm: React.Dispatch<React.SetStateAction<{ firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string }>>;
   smsConsent: boolean; setSmsConsent: (v: boolean) => void; accent: string; error: string | null; infoOk: boolean; isMobile: boolean;
   /** Home services: the client's address (undefined = not asked). */
   address?: string; setAddress?: (v: string) => void;
@@ -2606,16 +2610,16 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
 
       <Card title={bt("YOUR DETAILS")}>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-          <Field label={bt("First name")} required><input style={inputStyle} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></Field>
-          <Field label={bt("Last name")}><input style={inputStyle} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></Field>
+          <Field label={bt("First name")} required><input style={inputStyle} name="given-name" autoComplete="given-name" value={form.firstName} onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, firstName: v })); }} /></Field>
+          <Field label={bt("Last name")}><input style={inputStyle} name="family-name" autoComplete="family-name" value={form.lastName} onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, lastName: v })); }} /></Field>
           <Field label={bt("Phone")} required>
-            <input style={{ ...inputStyle, borderColor: showPhoneError ? '#ef4444' : '#dbe2ee' }} value={form.phone} inputMode="tel" placeholder={bt("e.g. (201) 555-0123")}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <input style={{ ...inputStyle, borderColor: showPhoneError ? '#ef4444' : '#dbe2ee' }} value={form.phone} inputMode="tel" type="tel" name="tel" autoComplete="tel" placeholder={bt("e.g. (201) 555-0123")}
+              onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, phone: v })); }} />
             {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{bt("Enter a valid phone number (8\u201315 digits).")}</div>}
           </Field>
           <Field label={bt("Email (optional)")}>
-            <input style={{ ...inputStyle, borderColor: showEmailError ? '#ef4444' : '#dbe2ee' }} type="email" value={form.email} placeholder="you@email.com"
-              onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <input style={{ ...inputStyle, borderColor: showEmailError ? '#ef4444' : '#dbe2ee' }} type="email" name="email" autoComplete="email" value={form.email} placeholder="you@email.com"
+              onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, email: v })); }} />
             {showEmailError
               ? <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{bt("Enter a valid email address.")}</div>
               : <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{bt('We’ll email your receipt 💌')}</div>}
@@ -2623,7 +2627,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           {address !== undefined && setAddress && (
             <Field label={bt('Service address (optional)')}><input style={inputStyle} value={address} maxLength={300} onChange={(e) => setAddress(e.target.value)} placeholder={bt('Street, city')} autoComplete="street-address" /></Field>
           )}
-          <Field label={bt("🎂 Birthday (optional)")}><BirthdayInput value={form.birthDate} onChange={(iso) => setForm({ ...form, birthDate: iso })} /></Field>
+          <Field label={bt("🎂 Birthday (optional)")}><BirthdayInput value={form.birthDate} onChange={(iso) => setForm((f) => ({ ...f, birthDate: iso }))} /></Field>
         </div>
 
         <div style={{ marginTop: 8, padding: '12px 14px', background: SOFT, border: '1px solid #e6eaf2', borderRadius: 12 }}>
@@ -3498,6 +3502,9 @@ function Shell({ children, accent, fullscreen }: { children: React.ReactNode; ac
     // Full-screen: the frame is the screen now. Stop reporting a height (the host
     // ignores it anyway) and let the document scroll like any normal page.
     if (!emb || fullscreen) return;
+    // The layout paints the page light from the first frame; inside a site's
+    // iframe it must stay see-through, so the light paint steps aside.
+    document.documentElement.classList.add('lumio-embed');
     document.documentElement.style.background = 'transparent';
     document.body.style.background = 'transparent';
     document.body.style.margin = '0';

@@ -46,6 +46,8 @@ describe('a public booking never rewrites an existing customer', () => {
         findUnique: async ({ where }: Row) => (known && where.tenantId_email.tenantId === known.tenantId && where.tenantId_email.email === known.email ? known : null),
         update: async (a: Row) => { calls.push({ op: 'update', ...a }); return { id: a.where.id }; },
         upsert: async (a: Row) => { calls.push({ op: 'upsert', ...a }); return { id: 'x' }; },
+        findFirst: async () => null,
+        create: async (a: Row) => { calls.push({ op: 'create', ...a }); return { id: 'new' }; },
       },
     };
     const svc = Object.create(BookingsService.prototype) as BookingsService;
@@ -57,11 +59,13 @@ describe('a public booking never rewrites an existing customer', () => {
   const mai = { id: 'c1', tenantId: 'A', email: 'mai@x.com', firstName: 'Mai', lastName: 'Tran', phone: '+15125550123' };
   const typed = { customerEmail: 'MAI@x.com', customerFirstName: 'Stranger', customerLastName: 'Z', customerPhone: '+19995550000' };
 
-  it('a typed email keeps the name and phone on file', async () => {
+  it("a typed email never touches the record on file — the stranger's booking goes under the stranger's own phone", async () => {
     const { upsert, calls } = make(mai);
     await upsert(typed, false);
+    expect(calls.some((c) => c.op === 'update' || c.op === 'upsert')).toBe(false);
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ op: 'update', where: { id: 'c1' }, data: { firstName: 'Mai', lastName: 'Tran', phone: '+15125550123' } });
+    expect(calls[0]).toMatchObject({ op: 'create', data: { tenantId: 'A', firstName: 'Stranger', phone: '+19995550000' } });
+    expect(calls[0].data.email).toBeUndefined();
   });
   it("the salon's staff still update the record", async () => {
     const { upsert, calls } = make(mai);

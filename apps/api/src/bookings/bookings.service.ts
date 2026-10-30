@@ -389,7 +389,13 @@ export class BookingsService {
     }
   }
 
-  private async upsertCustomer(tx: Tx, tenantId: string, dto: CreateBookingDto, trusted = false) {
+  /**
+   * `typedByCustomer`: the person on the salon's own booking form or plugin
+   * typed these details themselves, for THIS booking. Their name is then the
+   * name on the visit. (Not the hotline or a chat bot, which write down what
+   * they heard — those keep the name on file.)
+   */
+  private async upsertCustomer(tx: Tx, tenantId: string, dto: CreateBookingDto, trusted = false, typedByCustomer = false) {
     // Only ever upgrade consent to true (never silently revoke a prior opt-in
     // just because a returning customer left the box unchecked this time).
     const consent = dto.smsConsent === true ? { smsConsent: true, smsConsentAt: new Date() } : {};
@@ -406,6 +412,10 @@ export class BookingsService {
     const referredById = await this.referral.resolveReferrerId(tx, tenantId, dto.referralCode);
     const referredBy = referredById ? { referredById } : {};
     const phone = await this.normalizedPhone(tenantId, dto.customerPhone);
+    const digits = (v: unknown) => String(v ?? '').replace(/\D/g, '').slice(-10);
+    // An email already on another record whose phone is DIFFERENT from the one
+    // typed now: that record is not this booking's contact (see below).
+    let emailTaken = false;
     if (dto.customerEmail) {
       const email = dto.customerEmail.toLowerCase();
       // Anyone can type an email on the public page, the plugin or a chat. For
@@ -414,12 +424,20 @@ export class BookingsService {
       // reminders to a stranger's phone. The salon's own staff still update.
       if (!trusted) {
         const known = await tx.customer.findUnique({ where: { tenantId_email: { tenantId, email } }, select: { id: true, firstName: true, lastName: true, phone: true } });
-        if (known) {
+        // The email is on file with ANOTHER phone. Booking onto that record
+        // sent the confirmation, the reminders and the visit to the old number
+        // and the old name — "I typed my new details and it booked the old
+        // ones". The phone typed now is this booking's contact, so the booking
+        // follows the phone (below); the other record is left untouched.
+        if (known && known.phone && phone && digits(known.phone) !== digits(phone)) {
+          emailTaken = true;
+        } else if (known) {
+          const typedFirst = String(dto.customerFirstName ?? '').trim();
           return tx.customer.update({
             where: { id: known.id },
             data: {
-              firstName: String(known.firstName ?? '').trim() || dto.customerFirstName,
-              lastName: String(known.lastName ?? '').trim() || dto.customerLastName || null,
+              firstName: typedByCustomer && typedFirst ? typedFirst : (String(known.firstName ?? '').trim() || dto.customerFirstName),
+              lastName: typedByCustomer && typedFirst ? (dto.customerLastName?.trim() || String(known.lastName ?? '').trim() || null) : (String(known.lastName ?? '').trim() || dto.customerLastName || null),
               phone: known.phone || phone,
               ...consent,
               ...birthData,
@@ -427,7 +445,7 @@ export class BookingsService {
           });
         }
       }
-      return tx.customer.upsert({
+      if (!emailTaken) return tx.customer.upsert({
         where: { tenantId_email: { tenantId, email } },
         update: {
           firstName: dto.customerFirstName,
@@ -471,11 +489,13 @@ export class BookingsService {
         const known = await tx.customer.findUnique({ where: { id: existing.id }, select: { firstName: true, lastName: true } });
         const keepFirst = String(known?.firstName ?? '').trim();
         const keepLast = String(known?.lastName ?? '').trim();
+        // Typed on the booking form by the customer: what they typed is the name.
+        const typedFirst = typedByCustomer ? String(dto.customerFirstName ?? '').trim() : '';
         return tx.customer.update({
           where: { id: existing.id },
           data: {
-            firstName: keepFirst || dto.customerFirstName,
-            lastName: dto.customerLastName ?? (keepLast || null),
+            firstName: typedFirst || keepFirst || dto.customerFirstName,
+            lastName: typedFirst ? (dto.customerLastName?.trim() || keepLast || null) : (dto.customerLastName ?? (keepLast || null)),
             phone,
             ...consent,
             ...birthData,
@@ -849,7 +869,7 @@ export class BookingsService {
 
     const appointment = await this.prisma.$transaction(async (tx) => {
       const customer = (onFile && (await tx.customer.findFirst({ where: { id: onFile, tenantId } })))
-        || (await this.upsertCustomer(tx, tenantId, dto, !!actorUserId));
+        || (await this.upsertCustomer(tx, tenantId, dto, !!actorUserId, !actorUserId && !opts?.groupGuest && (source === 'hosted' || source === 'plugin')));
 
       if (dto.staffId) {
         await this.lockStaffSlot(tx, tenantId, dto.staffId);

@@ -61,7 +61,7 @@ export function SignForm({ tpl, initial, palette, vi, defaultName, nameLabel, su
       <FormRenderer tpl={tpl} answers={answers} onChange={(a) => { setAnswers(a); if (missing.length) setMissing(missingFields(tpl, a)); }} palette={p} vi={vi} missing={missing} />
       <div style={{ marginTop: 16, border: `1px solid ${p.line}`, background: p.card, borderRadius: 14, padding: '12px 14px' }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: p.ink }}>{nameLabel}</div>
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoComplete="name"
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoComplete="off"
           placeholder={vi ? 'Họ tên' : 'Full name'}
           style={{ marginTop: 8, width: '100%', boxSizing: 'border-box', minHeight: 44, borderRadius: 10, border: `1px solid ${p.line}`, background: p.field, color: p.ink, padding: '0 12px', fontSize: 16 }} />
         <div style={{ marginTop: 12 }}><SignaturePad onChange={(v) => { setSig(v); if (v && err) setErrState(null); }} palette={p} vi={vi} /></div>

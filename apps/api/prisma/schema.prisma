@@ -3812,8 +3812,10 @@ model TimeOffRequest {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  staffId String
-  staff   StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  // null = the WHOLE SALON is blocked (a block made from the Calendar for
+  // everyone: a private event, a power cut, training). Otherwise one technician.
+  staffId String?
+  staff   StaffMember? @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
   // Salon-local days, "YYYY-MM-DD", inclusive.
   startDate String

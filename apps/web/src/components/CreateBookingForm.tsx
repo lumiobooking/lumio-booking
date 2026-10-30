@@ -14,7 +14,7 @@ import { ui } from '../lib/ui';
 import { useLang, tr } from '../lib/i18n';
 import { NoShowWarning } from './NoShowWarning';
 import { RecordAlertByPhone } from './RecordAlert';
-import { deskHoursCheck, hoursMessage, wallLabel, type HoursRules } from '../lib/desk-hours';
+import { deskHoursCheck, hoursBlocks, hoursMessage, wallLabel, type HoursRules } from '../lib/desk-hours';
 import { ind, uiIndustry } from '../lib/ui-industry';
 import { SlotPicker } from './SlotPicker';
 import { hasHours } from '../lib/slot-picker';
@@ -221,7 +221,10 @@ export function CreateBookingForm({
   const staffShort = freeStaff !== null && partyN > freeStaff.free;
   // Opening hours, checked the moment a time is picked (the server checks too).
   const hoursCheck = form.startLocal ? deskHoursCheck(form.startLocal, hours, vi) : ({ ok: true } as const);
-  const outside = !hoursCheck.ok && overrideAt !== form.startLocal;
+  // Before opening / after closing: a reminder, the desk may still book.
+  // A closed day or a day off: refused unless the owner overrides.
+  const offHours = !hoursCheck.ok && !hoursBlocks(hoursCheck);
+  const outside = hoursBlocks(hoursCheck) && overrideAt !== form.startLocal;
   // Minutes since the chosen time, on the salon's clock. The desk may record a
   // customer already in the chair (up to 12 hours back — the server agrees);
   // older than that is a wrong day or an AM/PM slip.
@@ -265,7 +268,7 @@ export function CreateBookingForm({
     // customer's hour, not their own browser's. The salon's zone is passed in
     // explicitly: the stored one in the browser can be missing or another salon's.
     const startTime = wallToInstantISO(form.startLocal, salonTz || undefined);
-    const outsideOk = !hoursCheck.ok && overrideAt === form.startLocal;
+    const outsideOk = hoursBlocks(hoursCheck) && overrideAt === form.startLocal;
     const groupNote = partyN > 1 ? `${t('bk.groupNote')} (${partyN})` : undefined;
     // One id shared by the whole party. The note is for humans; this is what
     // the calendar and the till read.
@@ -482,9 +485,9 @@ export function CreateBookingForm({
               />
               {/* The picker reads the choice back; only a problem is repeated here
                   (an owner's out-of-hours time, or a salon with no hours set). */}
-              {form.startLocal && (outside || !hasHours(hours)) && (
-                <span style={{ display: 'block', marginTop: 5, fontSize: 12, fontWeight: 600, color: outside ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>
-                  {outside ? `⚠ ${hoursMessage(form.startLocal, hoursCheck, vi)}` : `🕒 ${wallLabel(form.startLocal, vi)}${ind(vi ? ' — giờ của tiệm' : ' — salon time')}`}
+              {form.startLocal && (outside || offHours || !hasHours(hours)) && (
+                <span style={{ display: 'block', marginTop: 5, fontSize: 12, fontWeight: 600, color: outside ? 'var(--ink-bad)' : offHours ? 'var(--ink-warn)' : 'var(--c94a3b8)' }}>
+                  {outside || offHours ? `${outside ? '⚠' : '🌙'} ${hoursMessage(form.startLocal, hoursCheck, vi)}` : `🕒 ${wallLabel(form.startLocal, vi)}${ind(vi ? ' — giờ của tiệm' : ' — salon time')}`}
                 </span>
               )}
               {form.startLocal && pastMin > 2 && (
@@ -504,7 +507,7 @@ export function CreateBookingForm({
               {outside && isOwner && (
                 <button type="button" onClick={() => { setOverrideAt(form.startLocal); setError(null); }}
                   style={{ marginTop: 6, padding: '5px 10px', fontSize: 12, borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
-                  {ind(vi ? 'Vẫn đặt ngoài giờ (chủ tiệm)' : 'Book outside hours anyway (owner)')}
+                  {ind(vi ? 'Vẫn đặt ngày này (chủ tiệm)' : 'Book this day anyway (owner)')}
                 </button>
               )}
             </div>

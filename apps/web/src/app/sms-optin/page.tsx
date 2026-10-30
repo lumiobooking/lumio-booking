@@ -64,7 +64,7 @@ export default function SmsOptInPage() {
               inputMode="tel"
               placeholder="(555) 123-4567"
               style={input}
-              autoComplete="tel"
+              autoComplete="off"
             />
 
             <label style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginTop: 18, cursor: 'pointer' }}>

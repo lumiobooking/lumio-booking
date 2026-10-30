@@ -157,6 +157,8 @@ interface Staff {
 interface ServiceAvail {
   eligibleStaffIds: string[];
   staffBusy: Record<string, { start: string; end: string }[]>;
+  /** Times the salon blocked for everyone (Calendar → Block): never offered. */
+  salonBusy?: { start: string; end: string }[];
   noStaff?: boolean;
   /** Salon has techs, but none lists this service — bookable via "Any" only. */
   unstaffed?: boolean;
@@ -164,6 +166,8 @@ interface ServiceAvail {
 interface Availability {
   eligibleStaffIds: string[];   // union across services (for the specific-tech path)
   staffBusy: Record<string, { start: string; end: string }[]>; // merged per tech
+  /** Whole-salon blocks for the day — no slot inside them, whoever the tech. */
+  salonBusy: { start: string; end: string }[];
   /** The salon has no technician on file at all — every open slot is bookable and the
    *  shop assigns someone afterwards. */
   noStaff?: boolean;
@@ -634,6 +638,7 @@ export default function PublicBookingPage() {
       setAvail({
         eligibleStaffIds: [...unionIds],
         staffBusy,
+        salonBusy: valid.flatMap((r) => r.salonBusy ?? []),
         noStaff: valid.every((r) => r.noStaff),
         // The booker's own services drive the single-visit logic…
         perService: ids
@@ -2346,6 +2351,8 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, dealOn, staffId, 
   // least one technician who can do every picked service is free.
   const isFree = useCallback((s: Slot) => {
     if (!avail) return true;
+    // The salon blocked this time for everyone (a private event, training…).
+    if (avail.salonBusy.length && overlapsTz(s, avail.salonBusy, salon?.timezone)) return false;
     if (avail.noStaff) return true;                 // no team on file — shop assigns later
 
     // Group: every person starts together, so the salon needs enough DIFFERENT
@@ -2610,22 +2617,22 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
 
       <Card title={bt("YOUR DETAILS")}>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-          <Field label={bt("First name")} required><input style={inputStyle} name="given-name" autoComplete="given-name" value={form.firstName} onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, firstName: v })); }} /></Field>
-          <Field label={bt("Last name")}><input style={inputStyle} name="family-name" autoComplete="family-name" value={form.lastName} onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, lastName: v })); }} /></Field>
+          <Field label={bt("First name")} required><input style={inputStyle} name="lb-first" autoComplete="off" value={form.firstName} onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, firstName: v })); }} /></Field>
+          <Field label={bt("Last name")}><input style={inputStyle} name="lb-last" autoComplete="off" value={form.lastName} onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, lastName: v })); }} /></Field>
           <Field label={bt("Phone")} required>
-            <input style={{ ...inputStyle, borderColor: showPhoneError ? '#ef4444' : '#dbe2ee' }} value={form.phone} inputMode="tel" type="tel" name="tel" autoComplete="tel" placeholder={bt("e.g. (201) 555-0123")}
+            <input style={{ ...inputStyle, borderColor: showPhoneError ? '#ef4444' : '#dbe2ee' }} value={form.phone} inputMode="tel" type="tel" name="lb-phone" autoComplete="off" placeholder={bt("e.g. (201) 555-0123")}
               onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, phone: v })); }} />
             {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{bt("Enter a valid phone number (8\u201315 digits).")}</div>}
           </Field>
           <Field label={bt("Email (optional)")}>
-            <input style={{ ...inputStyle, borderColor: showEmailError ? '#ef4444' : '#dbe2ee' }} type="email" name="email" autoComplete="email" value={form.email} placeholder="you@email.com"
+            <input style={{ ...inputStyle, borderColor: showEmailError ? '#ef4444' : '#dbe2ee' }} type="email" name="lb-email" autoComplete="off" value={form.email} placeholder="you@email.com"
               onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, email: v })); }} />
             {showEmailError
               ? <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{bt("Enter a valid email address.")}</div>
               : <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{bt('We’ll email your receipt 💌')}</div>}
           </Field>
           {address !== undefined && setAddress && (
-            <Field label={bt('Service address (optional)')}><input style={inputStyle} value={address} maxLength={300} onChange={(e) => setAddress(e.target.value)} placeholder={bt('Street, city')} autoComplete="street-address" /></Field>
+            <Field label={bt('Service address (optional)')}><input style={inputStyle} value={address} maxLength={300} onChange={(e) => setAddress(e.target.value)} placeholder={bt('Street, city')} autoComplete="off" /></Field>
           )}
           <Field label={bt("🎂 Birthday (optional)")}><BirthdayInput value={form.birthDate} onChange={(iso) => setForm((f) => ({ ...f, birthDate: iso }))} /></Field>
         </div>

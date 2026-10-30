@@ -7,15 +7,21 @@
  * here — the assignment engine, the online booking page, the desk's open
  * times, the party planner — so a day off is a day off everywhere at once.
  * Payroll reads the whole-day blocks as days off.
+ *
+ * A row with NO technician (staffId null) is a block on the WHOLE SALON, made
+ * from the Calendar ("block 2 hours / a day"): it takes every technician's
+ * time and the unassigned bookings' too. It is never anyone's day off on
+ * payroll.
  */
 import { wallTimeToUtcTz } from '../common/salon-time';
 
 export interface TimeOffLite {
-  staffId: string;
+  staffId: string | null; // null = the whole salon
   startDate: string; // YYYY-MM-DD
   endDate: string;
   startTime?: string | null; // HH:mm — with endTime, part of startDate only
   endTime?: string | null;
+  reason?: string | null;
 }
 
 export const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -24,6 +30,11 @@ export const HM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 export function hmToMinutes(hm: string): number {
   const m = HM_RE.exec(hm);
   return m ? Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5)) : NaN;
+}
+
+/** Does this block take this technician's time? (A whole-salon block takes everyone's.) */
+export function appliesTo(o: TimeOffLite, staffId: string | null | undefined): boolean {
+  return o.staffId == null || (!!staffId && o.staffId === staffId);
 }
 
 /** Is this a part-of-one-day block? */
@@ -50,12 +61,12 @@ export function blocksSlot(o: TimeOffLite, day: string, startMin: number, endMin
 }
 
 /** The blocks on one salon day as UTC busy spans, the shape availability already uses. */
-export function busySpansFor(offs: TimeOffLite[], staffId: string, day: string, tz: string): { start: Date; end: Date }[] {
+export function busySpansFor(offs: TimeOffLite[], staffId: string | null, day: string, tz: string): { start: Date; end: Date }[] {
   const out: { start: Date; end: Date }[] = [];
   const dayStart = wallTimeToUtcTz(day, '00:00', tz);
   const dayEnd = new Date(dayStart.getTime() + 24 * 3_600_000);
   for (const o of offs) {
-    if (o.staffId !== staffId || !coversDay(o, day)) continue;
+    if (!appliesTo(o, staffId) || !coversDay(o, day)) continue;
     if (!isPartial(o)) { out.push({ start: dayStart, end: dayEnd }); continue; }
     const s = wallTimeToUtcTz(day, o.startTime!, tz);
     const e = wallTimeToUtcTz(day, o.endTime!, tz);
@@ -68,7 +79,7 @@ export function busySpansFor(offs: TimeOffLite[], staffId: string, day: string, 
 export function wholeDaysOff(offs: TimeOffLite[], from: string, to: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const o of offs) {
-    if (isPartial(o)) continue;
+    if (isPartial(o) || o.staffId == null) continue;
     const days = out.get(o.staffId) ?? [];
     let d = o.startDate < from ? from : o.startDate;
     const last = o.endDate > to ? to : o.endDate;
@@ -77,7 +88,7 @@ export function wholeDaysOff(offs: TimeOffLite[], from: string, to: string): Map
       if (!days.includes(d)) days.push(d);
       d = nextDay(d);
     }
-    out.set(o.staffId, days);
+    out.set(o.staffId as string, days);
   }
   return out;
 }
@@ -117,17 +128,45 @@ export function daysBetween(a: string, b: string): number {
 }
 
 /**
+ * The block (time off, or a whole-salon block) that takes any part of
+ * [start, end) for this technician — or, with no technician, a whole-salon
+ * block. Every salon day the span touches is checked, in the salon's clock.
+ */
+export function blockingOff(offs: TimeOffLite[], staffId: string | null, start: Date, end: Date, tz: string): TimeOffLite | null {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const lastMs = Math.max(start.getTime(), end.getTime() - 1);
+  let day = fmt.format(start);
+  const lastDay = fmt.format(new Date(lastMs));
+  for (let guard = 0; day <= lastDay && guard < 32; guard++, day = nextDay(day)) {
+    for (const o of offs) {
+      if (!appliesTo(o, staffId)) continue;
+      for (const b of busySpansFor([o], staffId, day, tz)) {
+        if (b.start.getTime() < end.getTime() && start.getTime() < b.end.getTime()) return o;
+      }
+    }
+  }
+  return null;
+}
+
+/** "2026-10-31 13:00–15:00" / "2026-10-31" / "2026-10-31 → 2026-11-02". */
+export function offWhen(o: TimeOffLite): string {
+  if (o.startTime && o.endTime) return `${o.startDate} ${o.startTime}–${o.endTime}`;
+  return o.startDate === o.endDate ? o.startDate : `${o.startDate} → ${o.endDate}`;
+}
+
+/**
  * The APPROVED blocks of one salon that touch [from, to]. The loader every
  * availability path shares; `db` is the Prisma client (typed loosely because
  * the model is newer than some generated clients). Never throws: a salon
- * with no table yet simply has nobody on leave.
+ * with no table yet simply has nobody on leave. With `staffIds`, the
+ * whole-salon blocks come back too — they take those technicians' time.
  */
 export async function loadApprovedTimeOff(db: unknown, tenantId: string, from: string, to: string, staffIds?: string[]): Promise<TimeOffLite[]> {
   if (!tenantId) return [];
   try {
     const rows: TimeOffLite[] = await (db as any).timeOffRequest.findMany({ // eslint-disable-line @typescript-eslint/no-explicit-any
-      where: { tenantId, status: 'APPROVED', startDate: { lte: to }, endDate: { gte: from }, ...(staffIds ? { staffId: { in: staffIds } } : {}) },
-      select: { staffId: true, startDate: true, endDate: true, startTime: true, endTime: true },
+      where: { tenantId, status: 'APPROVED', startDate: { lte: to }, endDate: { gte: from }, ...(staffIds ? { OR: [{ staffId: { in: staffIds } }, { staffId: null }] } : {}) },
+      select: { staffId: true, startDate: true, endDate: true, startTime: true, endTime: true, reason: true },
       take: 1000,
     });
     return rows;

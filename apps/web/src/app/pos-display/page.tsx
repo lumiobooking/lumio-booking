@@ -826,13 +826,13 @@ function CheckInScreen({ st, salonName, logo, send }: {
         <div style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 700, color: 'var(--c0f172a)', marginBottom: 16 }}>Your details</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: 13, marginBottom: 26 }}>
           <label><span style={lbl}>First name <span style={{ color: '#ef4444' }}>*</span></span>
-            <input value={f.firstName} onChange={(e) => send('form', { firstName: e.target.value })} placeholder="Anna" style={input} autoCapitalize="words" autoComplete="given-name" enterKeyHint="next" /></label>
+            <input value={f.firstName} onChange={(e) => send('form', { firstName: e.target.value })} placeholder="Anna" style={input} autoCapitalize="words" autoComplete="off" enterKeyHint="next" /></label>
           <label><span style={lbl}>Last name</span>
-            <input value={f.lastName} onChange={(e) => send('form', { lastName: e.target.value })} placeholder="Nguyen" style={input} autoCapitalize="words" autoComplete="family-name" enterKeyHint="next" /></label>
+            <input value={f.lastName} onChange={(e) => send('form', { lastName: e.target.value })} placeholder="Nguyen" style={input} autoCapitalize="words" autoComplete="off" enterKeyHint="next" /></label>
           <label><span style={lbl}>Mobile number</span>
-            <input value={f.phone} onChange={(e) => send('form', { phone: e.target.value })} placeholder="+1 512 886 8189" style={input} inputMode="tel" type="tel" autoComplete="tel" enterKeyHint="next" /></label>
+            <input value={f.phone} onChange={(e) => send('form', { phone: e.target.value })} placeholder="+1 512 886 8189" style={input} inputMode="tel" type="tel" autoComplete="off" enterKeyHint="next" /></label>
           <label><span style={lbl}>Email</span>
-            <input value={f.email} onChange={(e) => send('form', { email: e.target.value })} placeholder="anna@email.com" style={input} inputMode="email" type="email" autoComplete="email" autoCapitalize="off" autoCorrect="off" enterKeyHint="next" /></label>
+            <input value={f.email} onChange={(e) => send('form', { email: e.target.value })} placeholder="anna@email.com" style={input} inputMode="email" type="email" autoComplete="off" autoCapitalize="off" autoCorrect="off" enterKeyHint="next" /></label>
           <label><span style={lbl}>Birthday</span>
             <input type="date" max={new Date().toISOString().slice(0, 10)} value={f.birthDate} onChange={(e) => send('form', { birthDate: e.target.value })} style={input} /></label>
           <label><span style={lbl}>How many of you?</span>

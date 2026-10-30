@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { uiLocale, wallToInstantISO } from '../lib/datetime';
-import { clockText, deskHoursCheck, hoursMessage, wallParts, type HoursRules } from '../lib/desk-hours';
+import { clockText, deskHoursCheck, hoursBlocks, hoursMessage, wallParts, type HoursRules } from '../lib/desk-hours';
 import { formatPrice } from '../lib/money';
 import { ind } from '../lib/ui-industry';
 import { EMPTY_CUSTOMER, type CustomerLookupRow, type PickedCustomer } from './CustomerPicker';
@@ -181,7 +181,9 @@ export function QuickBookSheet({ token, vi, services, staff, bookings, initial, 
     return bookings.some((b) => b.assignedStaff?.id === staffId && !DEAD.has(b.status) && Date.parse(b.startTime) < e && Date.parse(b.endTime) > s);
   })();
   const hoursCheck = startLocal ? deskHoursCheck(startLocal, hours, vi) : ({ ok: true } as const);
-  const outside = !hoursCheck.ok && overrideAt !== startLocal;
+  // Before opening / after closing: a reminder only. Closed day / day off: refused unless the owner overrides.
+  const offHours = !hoursCheck.ok && !hoursBlocks(hoursCheck);
+  const outside = hoursBlocks(hoursCheck) && overrideAt !== startLocal;
   const pastMin = (() => {
     if (!startLocal) return 0;
     const at = Date.parse(wallToInstantISO(startLocal, salonTz || undefined));
@@ -215,7 +217,7 @@ export function QuickBookSheet({ token, vi, services, staff, bookings, initial, 
           startTime: wallToInstantISO(startLocal, salonTz || undefined),
           staffId: staffId || undefined,
           autoAssign: staffId ? undefined : true,
-          ...(!hoursCheck.ok && overrideAt === startLocal ? { outsideHours: true } : {}),
+          ...(hoursBlocks(hoursCheck) && overrideAt === startLocal ? { outsideHours: true } : {}),
           customerId: mode === 'picked' ? cust.id ?? undefined : undefined,
           customerFirstName: cust.firstName,
           customerLastName: cust.lastName || undefined,
@@ -453,8 +455,11 @@ export function QuickBookSheet({ token, vi, services, staff, bookings, initial, 
             {startLocal && outside && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-bad)' }}>⚠ {hoursMessage(startLocal, hoursCheck, vi)}</span>
-                {isOwner && <button type="button" onClick={() => { setOverrideAt(startLocal); setError(null); }} style={{ ...linkBtn, minHeight: 36, fontSize: 13 }}>{ind(L('Vẫn đặt ngoài giờ (chủ tiệm)', 'Book outside hours anyway (owner)'))}</button>}
+                {isOwner && <button type="button" onClick={() => { setOverrideAt(startLocal); setError(null); }} style={{ ...linkBtn, minHeight: 36, fontSize: 13 }}>{ind(L('Vẫn đặt ngày này (chủ tiệm)', 'Book this day anyway (owner)'))}</button>}
               </div>
+            )}
+            {startLocal && offHours && (
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-warn)' }}>🌙 {hoursMessage(startLocal, hoursCheck, vi)}</span>
             )}
             {startLocal && pastMin > 2 && (
               <span style={{ fontSize: 12.5, fontWeight: 600, color: tooOld ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>

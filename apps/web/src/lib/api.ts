@@ -1,5 +1,5 @@
 // Thin client for the Lumio Booking backend API.
-import { outsideHoursText } from './desk-hours';
+import { blockText, outsideHoursText } from './desk-hours';
 import { writeKind, successText, cacheable, cacheKey, GetCache, SLOW_NOTICE_MS, slowText, preservesCache } from './api-feedback';
 import { notify } from './feedback';
 import { networkNotice, isAbortError, GET_RETRY_DELAY_MS } from './net-notice';
@@ -364,7 +364,7 @@ async function fetchOnce<T>(path: string, options: ApiOptions, key: string): Pro
     // The complaint this answers is "I pressed it and nothing told me anything"
     // — an error that only lands in a corner of one page is exactly that.
     // Codes the server puts in front of a refusal, made readable (body keeps the original).
-    const shown = outsideHoursText(message, toastVi);
+    const shown = blockText(outsideHoursText(message, toastVi), toastVi);
     if (method !== 'GET' && !(res.status === 401 && token)) notify('error', shown);
     throw new ApiError(shown, res.status, data);
   }

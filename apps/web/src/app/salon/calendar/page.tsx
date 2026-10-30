@@ -28,6 +28,8 @@ import { C, Seg, IconBtn, Icon, btn, onIndigo, Popover, Sheet, DayStrip, MonthPi
 import { applyFilters, facetCounts, activeFilterCount, NO_FILTERS, stripDays, suggestStart, isClosedDay, capacityMinutes, loadOf, bookedMinutes, addDays, type CalFilters, type HoursDay } from '../../../lib/cal-day';
 import { minutesInZone } from '../../../lib/salon-card';
 import { NewBookingModal, type NewBookingPrefill } from '../../../components/NewBookingModal';
+import { BlockTimeSheet } from './BlockTimeSheet';
+import { blockLabel, onDay, type CalBlock } from '../../../lib/cal-blocks';
 import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
 import { VisitContactEditor } from '../../../components/VisitContactEditor';
 import { notify } from '../../../lib/feedback';
@@ -187,6 +189,15 @@ function Inner() {
     setView(new Date(dd.getFullYear(), dd.getMonth(), 1)); // keep the month fetch covering this day
     setMode((m) => (m === 'staff' ? 'staff' : 'day')); // keep staff mode when just stepping days
   }, []);
+  // ?day=YYYY-MM-DD (from the Staff page's "Mở Lịch ngày này"): open that day by technician.
+  useEffect(() => {
+    try {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(new URLSearchParams(window.location.search).get('day') || '');
+      if (!m) return;
+      goDay(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+      setMode('staff');
+    } catch { /* ignore */ }
+  }, [goDay]);
   // Native month / date pickers (jump to a specific month or day).
   const monthInputRef = useRef<HTMLInputElement>(null);
   const dayInputRef = useRef<HTMLInputElement>(null);
@@ -257,6 +268,22 @@ function Inner() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Block tạm thời: hours/days blocked for a technician or the whole salon
+  // (approved time off included) — painted on the day, refused by the server.
+  const [blocks, setBlocks] = useState<CalBlock[]>([]);
+  const [blockSheet, setBlockSheet] = useState<{ staffId: string | null; from?: string } | null>(null);
+  const loadBlocks = useCallback(async () => {
+    if (!token) return;
+    const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const from = key(new Date(view.getFullYear(), view.getMonth() - 1, 1));
+    const to = key(new Date(view.getFullYear(), view.getMonth() + 1, 0));
+    try {
+      const r = await apiFetch<{ blocks: CalBlock[] }>(`/calendar-blocks?from=${from}&to=${to}`, { token });
+      setBlocks(r?.blocks ?? []);
+    } catch { /* no calendar right, or an older server: nothing painted */ }
+  }, [token, view]);
+  useEffect(() => { void loadBlocks(); }, [loadBlocks]);
+
   // Walk-ins live outside the appointment list; surface a live count so the
   // calendar's "today" line reflects them too (managed in the Floor view).
   useEffect(() => {
@@ -270,6 +297,7 @@ function Inner() {
     return () => { alive = false; window.clearInterval(iv); };
   }, [token]);
   useLiveRefresh(load, 15000); // new bookings appear within ~15s, no reload needed
+  useLiveRefresh(loadBlocks, 60000);
   // …and at once when another device books, checks in or takes a payment.
   useLiveTopics(['bookings', 'walkins', 'payments'], token, load);
 
@@ -496,6 +524,23 @@ function Inner() {
       firstName: txt('first'), lastName: txt('last'), phone: txt('phone'),
     });
   };
+  // The day's blocks, one line each — tap to manage them.
+  const dayBlocks = mode === 'month' ? [] : blocks.filter((b) => onDay(b, cellKey(dayDate)));
+  const blocksBar = dayBlocks.length > 0 && (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+      {dayBlocks.map((b) => (
+        <button key={b.id} type="button" onClick={() => setBlockSheet({ staffId: b.staffId })} title={L('Bấm để xem / gỡ khoá', 'Tap to view / remove')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 11px', borderRadius: 999, border: '1px solid var(--line)', background: 'var(--wash-amber)', color: 'var(--ink-warn)', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+          🔒 {blockLabel(b, vi)}
+        </button>
+      ))}
+    </div>
+  );
+  const blockModal = (
+    <BlockTimeSheet open={!!blockSheet} onClose={() => setBlockSheet(null)} day={cellKey(mode === 'month' ? (monthFocus ?? today) : dayDate)}
+      staff={staffList.filter((s) => s.isActive !== false && s.takesAppointments !== false).map((s) => ({ id: s.id, name: s.name }))}
+      blocks={blocks} onChanged={() => { void loadBlocks(); }} isMobile={isMobile} vi={vi} preset={blockSheet} />
+  );
   const bookModal = newBook && (
     <NewBookingModal
       initial={newBook}
@@ -584,6 +629,7 @@ function Inner() {
         <h1 style={{ fontSize: 22, margin: 0, flex: 1, minWidth: 0, letterSpacing: -0.3, color: C.ink }}>{t('cal.title')}</h1>
         {mode !== 'floor' && <IconBtn name="search" size={40} label={L('Tìm khách', 'Search')} active={searchOpen} onClick={() => { setSearchOpen((o) => !o); if (searchOpen) setSearch(''); }} />}
         {mode !== 'floor' && <IconBtn name="filter" size={40} label={L('Bộ lọc', 'Filters')} badge={nF} active={nF > 0} onClick={() => setFilterOpen(true)} />}
+        {mode !== 'floor' && <IconBtn name="lock" size={40} label={L('Khoá giờ', 'Block time')} onClick={() => setBlockSheet({ staffId: null })} />}
         <a href={newHref} aria-label={L('Đặt lịch', 'New booking')} title={L('Đặt lịch', 'New booking')} style={{ width: 40, height: 40, borderRadius: 10, ...onIndigo, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon name="plus" size={20} sw={2.4} /></a>
       </div>
       <Seg full h={40} items={viewItems} value={mode} onChange={(v) => setMode(v)} />
@@ -622,6 +668,7 @@ function Inner() {
       )}
       {error && <div style={ui.banner}>{error}</div>}
       {mode !== 'day' && mode !== 'floor' && <UnassignedBanner bookings={bookings} vi={vi} onDone={load} />}
+      {blocksBar}
       <Sheet open={dateOpen} onClose={() => setDateOpen(false)} title={L('Chọn ngày', 'Pick a day')}>{picker}</Sheet>
       <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} tall title={L('Bộ lọc', 'Filters')} sub={mode === 'month' ? monthLabel : dateTitle}
         footer={<FilterFooter f={filters} set={setFilters} result={resultCount} vi={vi} onDone={() => setFilterOpen(false)} />}>
@@ -653,6 +700,7 @@ function Inner() {
           </div>
         )}
         <IconBtn name={fullscreen ? 'shrink' : 'expand'} label={fullscreen ? L('Thoát toàn màn hình', 'Exit full screen') : L('Toàn màn hình', 'Full screen')} onClick={toggleFull} />
+        {mode !== 'floor' && <button type="button" onClick={() => setBlockSheet({ staffId: null })} style={btn(false)} title={L('Khoá vài giờ hoặc vài ngày — cho một thợ hoặc cả tiệm', 'Block hours or days — one technician or the whole salon')}><Icon name="lock" size={16} />{L('Khoá giờ', 'Block time')}</button>}
         <a href={newHref} style={btn(true)}><Icon name="plus" size={16} />{L('Đặt lịch', 'New booking')}</a>
       </div>
       {mode !== 'floor' && (
@@ -689,6 +737,7 @@ function Inner() {
       {mode !== 'floor' && mode !== 'day' && nF > 0 && <div style={{ marginBottom: 12 }}><ActiveChips f={filters} set={setFilters} staff={staffList} vi={vi} pad="8px 12px" rounded /></div>}
       {error && <div style={ui.banner}>{error}</div>}
       {mode !== 'day' && mode !== 'floor' && <UnassignedBanner bookings={bookings} vi={vi} onDone={load} />}
+      {blocksBar}
     </>
   );
 
@@ -700,6 +749,7 @@ function Inner() {
         {header}
         <FloorView token={token} lang={lang} />
         {bookModal}
+        {blockModal}
         {bookedToast}
       </section>
     );
@@ -713,7 +763,7 @@ function Inner() {
         isRestaurant ? (
           <TableDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
         ) : (
-          <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} onBook={(staffId, at) => setNewBook({ staffId: staffId ?? undefined, startLocal: at })} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} freshId={justBooked?.id ?? null} />
+          <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} onBook={(staffId, at) => setNewBook({ staffId: staffId ?? undefined, startLocal: at })} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} freshId={justBooked?.id ?? null} blocks={blocks} onBlock={(staffId, from) => setBlockSheet({ staffId, from })} />
         )
       ) : mode === 'day' ? (
         <ListView
@@ -865,6 +915,7 @@ function Inner() {
         <BookingDetail booking={selected} all={bookings} tz={tz} onClose={() => setSelected(null)} onAction={action} onReload={() => { setSelected(null); void load(); }} />
       )}
       {bookModal}
+      {blockModal}
       {bookedToast}
     </section>
   );

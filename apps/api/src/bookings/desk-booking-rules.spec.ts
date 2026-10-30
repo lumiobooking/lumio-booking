@@ -4,7 +4,8 @@
  * From the screenshots: a booking typed as "11:40" became 11:40 PM on a salon
  * that closes at 6 and nothing objected; and a desk booking with no technician
  * picked sat "unassigned" until someone pressed a button. Now:
- *  - the desk may only book a START time inside opening hours (owner may override);
+ *  - the desk may book before opening / after closing on an open day (the form
+ *    shows a reminder); a CLOSED day or a day off needs the owner, on purpose;
  *  - with no technician chosen, the engine picks one, as for an online booking.
  * Every read is the caller's own salon.
  */
@@ -18,10 +19,13 @@ const owner: AuthenticatedUser = { userId: 'u-own', email: 'o@a.test', role: Use
 const desk = { userId: 'u-desk', email: 'letan@a.test', role: UserRole.STAFF, tenantId: 'tenant-a', staffRole: 'RECEPTIONIST', capabilities: ['bookings'] } as unknown as AuthenticatedUser;
 const deskB = { ...desk, userId: 'u-desk-b', tenantId: 'tenant-b' } as AuthenticatedUser;
 
-// Los Angeles in June is UTC-7. Open 9:00–18:00 every day.
-const AT_1140_AM = '2099-06-20T18:40:00.000Z';
-const AT_1140_PM = '2099-06-21T06:40:00.000Z';
-const HOURS = { businessHours: Array(7).fill({ closed: false, openMinutes: 9 * 60, closeMinutes: 18 * 60 }), daysOff: [], assignmentMode: 'none' };
+// Los Angeles in June is UTC-7. Open 9:00–18:00, closed on Sundays.
+const AT_1140_AM = '2099-06-20T18:40:00.000Z'; // Sat 11:40 AM in LA
+const AT_1140_PM = '2099-06-21T06:40:00.000Z'; // Sat 11:40 PM in LA
+const SUNDAY_NOON = '2099-06-21T19:00:00.000Z'; // Sun 12:00 PM in LA
+const OPEN = { closed: false, openMinutes: 9 * 60, closeMinutes: 18 * 60 };
+const HOURS = { businessHours: [{ closed: true }, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN], daysOff: ['2099-06-19'], assignmentMode: 'none' };
+const FRIDAY_DAY_OFF = '2099-06-19T18:00:00.000Z'; // Fri 11:00 AM in LA, on the holiday list
 
 function make() {
   const tx = {
@@ -60,10 +64,11 @@ describe('the desk rule: the appointment must START while the salon is open', ()
 });
 
 describe('a receptionist booking at the desk', () => {
-  it('11:40 PM on a salon open 9–6 is refused, with the salon-time reason', async () => {
+  it('after closing on an open day goes through — the desk is flexible before/after hours', async () => {
     const { svc } = make();
-    await expect(svc.create(desk, dto(AT_1140_PM))).rejects.toThrow(BadRequestException);
-    await expect(svc.create(desk, dto(AT_1140_PM))).rejects.toThrow(/^OUTSIDE_HOURS: Sat 2099-06-20 23:40/);
+    const b: any = await svc.create(desk, dto(AT_1140_PM)); // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(b.id).toBe('appt-new');
+    expect(b.tenantId).toBe('tenant-a');
   });
 
   it('11:40 AM goes through', async () => {
@@ -72,19 +77,25 @@ describe('a receptionist booking at the desk', () => {
     expect(b.tenantId).toBe('tenant-a');
   });
 
-  it('a receptionist cannot override; the owner can, on purpose', async () => {
+  it('a CLOSED day is refused for the desk; the owner can book it on purpose', async () => {
     const { svc } = make();
-    await expect(svc.create(desk, dto(AT_1140_PM, { outsideHours: true }))).rejects.toThrow(/OUTSIDE_HOURS/);
-    const b: any = await svc.create(owner, dto(AT_1140_PM, { outsideHours: true })); // eslint-disable-line @typescript-eslint/no-explicit-any
+    await expect(svc.create(desk, dto(SUNDAY_NOON))).rejects.toThrow(BadRequestException);
+    await expect(svc.create(desk, dto(SUNDAY_NOON, { outsideHours: true }))).rejects.toThrow(/^OUTSIDE_HOURS: the salon is closed on Sun/);
+    const b: any = await svc.create(owner, dto(SUNDAY_NOON, { outsideHours: true })); // eslint-disable-line @typescript-eslint/no-explicit-any
     expect(b.id).toBe('appt-new');
+  });
+
+  it('a day off (holiday list) is refused for the desk too', async () => {
+    const { svc } = make();
+    await expect(svc.create(desk, dto(FRIDAY_DAY_OFF))).rejects.toThrow(/OUTSIDE_HOURS: 2099-06-19 is marked as a day off/);
   });
 
   it('reads the hours and timezone of HER salon only', async () => {
     const { svc, tenantFind } = make();
     await svc.create(desk, dto(AT_1140_AM));
     expect(tenantFind.mock.calls.every((c: any[]) => c[0].where.id === 'tenant-a')).toBe(true); // eslint-disable-line @typescript-eslint/no-explicit-any
-    // Same instant, another salon in another timezone (Vietnam: 01:40 on the 21st) — judged by ITS clock.
-    await expect(svc.create(deskB, dto(AT_1140_AM))).rejects.toThrow(/OUTSIDE_HOURS: Sun 2099-06-21 01:40/);
+    // Same instant, another salon in another timezone (Vietnam: Sunday 01:40) — judged by ITS clock: closed.
+    await expect(svc.create(deskB, dto(AT_1140_AM))).rejects.toThrow(/OUTSIDE_HOURS: the salon is closed on Sun/);
   });
 });
 
@@ -115,7 +126,7 @@ describe('no technician chosen at the desk: the system picks one', () => {
   });
 });
 
-describe('moving a booking at the desk is held to the same opening hours', () => {
+describe('moving a booking at the desk follows the same rule', () => {
   // A 10:00 AM booking (LA) for tenant-a, assigned to staff-1.
   const TEN_AM = new Date('2099-06-20T17:00:00.000Z');
   function withBooking() {
@@ -127,19 +138,20 @@ describe('moving a booking at the desk is held to the same opening hours', () =>
     return { ...m, tx };
   }
 
-  it('dragging it to 11:40 PM is refused for the receptionist', async () => {
+  it('dragging it to a closed Sunday is refused for the receptionist', async () => {
     const { svc, tx } = withBooking();
-    await expect(svc.reschedule(desk, 'b1', AT_1140_PM)).rejects.toThrow(/OUTSIDE_HOURS: Sat 2099-06-20 23:40/);
-    await expect(svc.move(desk, 'b1', AT_1140_PM, 'staff-2')).rejects.toThrow(/OUTSIDE_HOURS/);
+    await expect(svc.reschedule(desk, 'b1', SUNDAY_NOON)).rejects.toThrow(/OUTSIDE_HOURS: the salon is closed on Sun/);
+    await expect(svc.move(desk, 'b1', SUNDAY_NOON, 'staff-2')).rejects.toThrow(/OUTSIDE_HOURS/);
     expect(tx.appointment.updateMany).not.toHaveBeenCalled();
   });
 
-  it('11:40 AM moves; the owner may move it after hours on purpose; a receptionist’s override is ignored', async () => {
+  it('after hours on an open day moves; a closed day only for the owner on purpose; a receptionist’s override is ignored', async () => {
     const { svc, tx } = withBooking();
     await svc.reschedule(desk, 'b1', AT_1140_AM);
-    await expect(svc.reschedule(desk, 'b1', AT_1140_PM, true)).rejects.toThrow(/OUTSIDE_HOURS/);
-    await svc.reschedule(owner, 'b1', AT_1140_PM, true);
-    expect(tx.appointment.updateMany).toHaveBeenCalledTimes(2);
+    await svc.reschedule(desk, 'b1', AT_1140_PM);
+    await expect(svc.reschedule(desk, 'b1', SUNDAY_NOON, true)).rejects.toThrow(/OUTSIDE_HOURS/);
+    await svc.reschedule(owner, 'b1', SUNDAY_NOON, true);
+    expect(tx.appointment.updateMany).toHaveBeenCalledTimes(3);
   });
 
   it('handing it to another technician at the SAME time is never blocked', async () => {

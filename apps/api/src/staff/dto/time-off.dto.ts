@@ -11,11 +11,22 @@ export class TimeOffRequestDto {
   @IsOptional() @IsString() @MaxLength(300) reason?: string;
 }
 
+/** The owner records time off: one technician, or no staffId = the whole salon. */
 export class TimeOffCreateDto extends TimeOffRequestDto {
-  @IsString() staffId!: string;
+  @IsOptional() @IsString() staffId?: string | null;
+}
+
+/** A block from the Calendar: one technician, or no staffId = the whole salon. */
+export class CalendarBlockDto extends TimeOffRequestDto {
+  @IsOptional() @IsString() staffId?: string | null;
 }
 
 export class TimeOffDecisionDto {
   @IsIn(['APPROVED', 'DENIED']) decision!: 'APPROVED' | 'DENIED';
   @IsOptional() @IsString() @MaxLength(300) note?: string;
+}
+
+/** The owner's correction from the pop-up. staffId: omitted = unchanged, empty/null = the whole salon. */
+export class TimeOffEditDto extends TimeOffRequestDto {
+  @IsOptional() @IsString() staffId?: string | null;
 }

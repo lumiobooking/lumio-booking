@@ -42,7 +42,7 @@ export class PartyAvailabilityService {
    * assigned to them, hours outside their shift, and the bookings nobody is
    * assigned to yet (each of those will take somebody's chair).
    */
-  async staffDay(tenantId: string, dateStr: string, tz: string): Promise<{ techs: Tech[]; unassigned: { start: Date; end: Date }[] }> {
+  async staffDay(tenantId: string, dateStr: string, tz: string): Promise<{ techs: Tech[]; unassigned: { start: Date; end: Date }[]; salonBusy: { start: Date; end: Date }[] }> {
     const dayStart = wallTimeToUtc(dateStr, '00:00', tz);
     const dayEnd = new Date(dayStart.getTime() + 24 * 3_600_000);
     const dow = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
@@ -87,7 +87,9 @@ export class PartyAvailabilityService {
       return { id: st.id, name: st.firstName, skills: st.staffServices.map((x) => x.serviceId), busy };
     });
     const unassigned = appts.filter((a) => !a.assignedStaffId).map((a) => ({ start: a.startTime, end: a.endTime }));
-    return { techs, unassigned };
+    // A whole-salon block (Calendar) closes the time even for a salon with no team on file.
+    const salonBusy = busySpansFor(leave.filter((o) => o.staffId == null), null, dateStr, tz);
+    return { techs, unassigned, salonBusy };
   }
 
   /** The open start times one day has for this party: on the salon's grid, and every 5 minutes (to honour "2:10"). */
@@ -99,7 +101,7 @@ export class PartyAvailabilityService {
       const days = Math.round((Date.parse(`${dateStr}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
       if (days > adv) return { grid: [], fine: [], tooFar: adv };
     }
-    const { techs, unassigned } = await this.staffDay(tenantId, dateStr, tz);
+    const { techs, unassigned, salonBusy } = await this.staffDay(tenantId, dateStr, tz);
     const dow = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
     const base = {
       dateStr, tz, party, techs, unassigned,
@@ -107,8 +109,9 @@ export class PartyAvailabilityService {
       closedToday: (rules.daysOff ?? []).includes(dateStr),
       now: new Date(Date.now() + Math.max(0, Number(rules.minLeadHours ?? 0)) * 3_600_000),
     };
-    const grid = partyOpenTimes({ ...base, stepMinutes: Number((rules as { slotStepMinutes?: number }).slotStepMinutes ?? 15) || 15 });
-    const fine = partyOpenTimes({ ...base, stepMinutes: 5 });
+    const open = (t: Date) => !salonBusy.some((b) => t.getTime() >= b.start.getTime() && t.getTime() < b.end.getTime());
+    const grid = partyOpenTimes({ ...base, stepMinutes: Number((rules as { slotStepMinutes?: number }).slotStepMinutes ?? 15) || 15 }).filter(open);
+    const fine = partyOpenTimes({ ...base, stepMinutes: 5 }).filter(open);
     return { grid, fine, tooFar: null };
   }
 

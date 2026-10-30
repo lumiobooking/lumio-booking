@@ -1,11 +1,13 @@
 /**
- * THE DESK MAY ONLY BOOK WHILE THE SALON IS OPEN.
+ * OPENING HOURS AT THE DESK.
  *
- * A receptionist picked "11:40" in a 12-hour picker and got 11:40 PM: the
- * booking landed at 23:40 on a salon that closes at 6, and nothing said a word.
- * The booking form now checks the START time against the opening hours (same
- * rule as the server, see api settings/business-hours startsInBusinessHours)
- * and reads the chosen time back in words, so AM/PM mistakes are visible.
+ * A receptionist picked "11:40" in a 12-hour picker and got 11:40 PM, and
+ * nothing said a word. The form reads the chosen time back in words and
+ * checks it against the opening hours:
+ *  - before opening / after closing on an open day: a REMINDER only — the
+ *    desk may book an early regular or a late favour (reason 'outside');
+ *  - a closed day or a day off: refused, the owner may override on purpose
+ *    (same rule as the server, bookings.service createForTenant).
  *
  * The datetime-local value is the SALON's wall clock — no timezone maths here.
  */
@@ -72,6 +74,11 @@ export function deskHoursCheck(local: string, rules: HoursRules | null | undefin
   return { ok: false, reason: 'outside', open: wins.map((w) => `${clockText(w.open, vi)}–${clockText(w.close, vi)}`).join(', ') };
 }
 
+/** Does the check stop the booking? Only a closed day or a day off does; before/after hours is a reminder. */
+export function hoursBlocks(c: HoursCheck): boolean {
+  return !c.ok && c.reason !== 'outside';
+}
+
 /** The sentence the form shows when the check fails. */
 export function hoursMessage(local: string, c: HoursCheck, vi: boolean): string {
   if (c.ok) return '';
@@ -79,8 +86,8 @@ export function hoursMessage(local: string, c: HoursCheck, vi: boolean): string 
   if (c.reason === 'dayOff') return vi ? `${when}: tiệm nghỉ ngày này.` : `${when}: the salon is closed that day.`;
   if (c.reason === 'closed') return vi ? `${when}: tiệm không mở cửa ngày này.` : `${when}: the salon is not open that day.`;
   return vi
-    ? `${when} nằm ngoài giờ làm việc (${c.open}). Kiểm tra lại SA/CH (sáng/chiều) hoặc chọn giờ khác.`
-    : `${when} is outside opening hours (${c.open}). Check AM/PM, or pick another time.`;
+    ? `${when} — ngoài giờ mở cửa (${c.open}). Vẫn đặt được; kiểm tra lại sáng/chiều nếu nhầm.`
+    : `${when} — outside opening hours (${c.open}). You can still book it; check AM/PM if that was a slip.`;
 }
 
 // ---------------------------------------------------------------- server refusals
@@ -117,6 +124,28 @@ export function outsideHoursText(raw: string, vi: boolean): string {
 }
 
 /**
+ * The server's TIME OFF / BLOCK refusal, readable:
+ *   "TIME_OFF: Kim is off 2026-10-31 13:00–16:00. …" → "Kim nghỉ 31/10 13:00–16:00 — không đặt được. …"
+ *   "BLOCKED: the salon has blocked 2026-10-31. …"   → "Tiệm đã khoá 31/10 — không đặt được. …"
+ * Anything else comes back untouched.
+ */
+export function blockText(raw: string, vi: boolean): string {
+  const s = raw || '';
+  const day = (d: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d); return m ? `${Number(m[3])}/${Number(m[2])}` : d; };
+  const when = (w: string) => w.replace(/\d{4}-\d{2}-\d{2}/g, (d) => (vi ? day(d) : d));
+  const off = /^TIME_OFF:\s*(.+?) is off (.+?)\. /.exec(s);
+  if (off) return vi ? `${off[1]} nghỉ ${when(off[2])} — không đặt được. Chọn thợ khác hoặc giờ khác.` : s.replace(/^TIME_OFF:\s*/, '');
+  const blk = /^BLOCKED:\s*the salon has blocked (.+?)\. /.exec(s);
+  if (blk) return vi ? `Tiệm đã khoá ${when(blk[1])} — không đặt được. Chọn giờ khác (hoặc gỡ khoá trên Lịch).` : s.replace(/^BLOCKED:\s*/, '');
+  return s;
+}
+
+/** True for the server's time-off / block refusal. */
+export function isBlocked(raw: string): boolean {
+  return /^(TIME_OFF|BLOCKED):/.test(raw || '');
+}
+
+/**
  * Run a move/booking; when the server refuses it as outside opening hours and
  * the person is the OWNER, ask once and retry on purpose. Everyone else gets
  * the readable refusal. `ask` is window.confirm in the app, a stub in tests.
@@ -128,7 +157,11 @@ export async function withHoursOverride<T>(
   try {
     return await run(false);
   } catch (e) {
-    if (!isOutsideHours(e)) throw e;
+    if (!isOutsideHours(e)) {
+      const msg = (e as { body?: { message?: string } })?.body?.message ?? (e instanceof Error ? e.message : '');
+      if (typeof msg === 'string' && isBlocked(msg)) throw new Error(blockText(msg, o.vi));
+      throw e;
+    }
     const raw = (e as { body?: { message?: string } })?.body?.message ?? (e instanceof Error ? e.message : '');
     const text = outsideHoursText(raw, o.vi);
     const ask = o.ask ?? ((q: string) => (typeof window !== 'undefined' ? window.confirm(q) : false));

@@ -10,6 +10,7 @@ import { FeedbackToasts } from '../components/FeedbackToasts';
 import { NavProgress } from '../components/NavProgress';
 import { NativeBridge } from '../components/NativeBridge';
 import { ChatHeartbeat } from '../components/ChatHeartbeat';
+import { NoAutofill } from '../components/NoAutofill';
 
 /**
  * THE TYPEFACE.
@@ -99,7 +100,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           color: 'var(--ce2e8f0)',
         }}
       >
-        <AuthProvider><LangProvider>{children}<PwaRegister /><NativeBridge /><ChatHeartbeat /><ThemeSync /></LangProvider></AuthProvider>
+        <AuthProvider><LangProvider>{children}<PwaRegister /><NativeBridge /><ChatHeartbeat /><ThemeSync /><NoAutofill /></LangProvider></AuthProvider>
         <NavProgress />
         <FeedbackToasts />
       </body>

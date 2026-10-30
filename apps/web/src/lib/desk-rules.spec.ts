@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { arrivalState, clockIn, minutesText, salonDayLabel } from './desk-time';
-import { deskHoursCheck, hoursMessage, isOutsideHours, outsideHoursText, wallLabel, wallParts, withHoursOverride } from './desk-hours';
+import { blockText, deskHoursCheck, hoursBlocks, hoursMessage, isOutsideHours, outsideHoursText, wallLabel, wallParts, withHoursOverride } from './desk-hours';
 
 /**
  * The front desk from the screenshots: 10:00 AM bookings shown as "0:00", an
@@ -44,13 +44,25 @@ describe('who is about to arrive, who is late', () => {
   });
 });
 
-describe('the desk may only book while the salon is open', () => {
+describe('opening hours at the desk: before/after hours is a reminder, a closed day is a wall', () => {
   const hours = { businessHours: Array(7).fill({ closed: false, openMinutes: 9 * 60, closeMinutes: 18 * 60 }), daysOff: ['2026-11-26'] };
-  it('11:40 PM is refused with a sentence that says "evening"', () => {
+  it('11:40 PM on an open day is only a reminder, with a sentence that says "evening"', () => {
     const c = deskHoursCheck('2026-10-05T23:40', hours, true);
     expect(c.ok).toBe(false);
-    expect(hoursMessage('2026-10-05T23:40', c, true)).toBe('Thứ Hai 5/10 lúc 23:40 (tối) nằm ngoài giờ làm việc (9:00–18:00). Kiểm tra lại SA/CH (sáng/chiều) hoặc chọn giờ khác.');
-    expect(hoursMessage('2026-10-05T23:40', deskHoursCheck('2026-10-05T23:40', hours, false), false)).toMatch(/11:40 PM is outside opening hours \(9:00 AM–6:00 PM\)/);
+    expect(hoursBlocks(c)).toBe(false);
+    expect(hoursMessage('2026-10-05T23:40', c, true)).toBe('Thứ Hai 5/10 lúc 23:40 (tối) — ngoài giờ mở cửa (9:00–18:00). Vẫn đặt được; kiểm tra lại sáng/chiều nếu nhầm.');
+    expect(hoursMessage('2026-10-05T23:40', deskHoursCheck('2026-10-05T23:40', hours, false), false)).toMatch(/11:40 PM — outside opening hours \(9:00 AM–6:00 PM\)\. You can still book it/);
+  });
+  it('a closed day and a day off do stop the booking', () => {
+    expect(hoursBlocks(deskHoursCheck('2026-11-26T11:00', hours, true))).toBe(true);
+    const sundayOff = { businessHours: hours.businessHours.map((d, i) => (i === 0 ? { ...d, closed: true } : d)) };
+    expect(hoursBlocks(deskHoursCheck('2026-10-04T11:00', sundayOff, true))).toBe(true);
+  });
+  it('time off and blocks from the server read as a sentence', () => {
+    expect(blockText('TIME_OFF: Kim is off 2026-10-31 13:00–16:00. Pick another technician or another time.', true)).toBe('Kim nghỉ 31/10 13:00–16:00 — không đặt được. Chọn thợ khác hoặc giờ khác.');
+    expect(blockText('BLOCKED: the salon has blocked 2026-10-31 → 2026-11-01. Pick another time.', true)).toBe('Tiệm đã khoá 31/10 → 1/11 — không đặt được. Chọn giờ khác (hoặc gỡ khoá trên Lịch).');
+    expect(blockText('BLOCKED: the salon has blocked 2026-10-31. Pick another time.', false)).toBe('the salon has blocked 2026-10-31. Pick another time.');
+    expect(blockText('Conflict', true)).toBe('Conflict');
   });
   it('11:40 AM and 5:30 PM pass; 6:00 PM does not', () => {
     expect(deskHoursCheck('2026-10-05T11:40', hours, true).ok).toBe(true);

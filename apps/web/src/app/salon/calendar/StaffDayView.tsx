@@ -16,6 +16,7 @@ import { CardBody, CardColorSwitch, cardLook, cardPad, WIDE_CARD_PX, type CardFa
 import { arrange, moveTo as moveId, type StaffLayout } from '../../../lib/staff-order';
 import { StaffOrderSheet } from './StaffOrderSheet';
 import { isBookable } from '../../../lib/bookable-staff';
+import { bandsFor, blockLabel, type CalBlock } from '../../../lib/cal-blocks';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -116,7 +117,7 @@ function srcMeta(s: string | null | undefined, t: (k: string) => string): { icon
 // or down to change the time, sideways to change the tech (one POST /move, so a
 // clash leaves the booking where it was; "Hoàn tác" puts it back). Hours
 // outside a tech's shift, and breaks between split shifts, are hatched.
-export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, today, onChanged, onBook, onCtx, freshId }: {
+export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, today, onChanged, onBook, onCtx, freshId, blocks = [], onBlock }: {
   date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onChanged?: () => void;
   /** An empty slot was clicked: open the booking form in place (staffId null = unassigned column). Without it the page changes. */
   onBook?: (staffId: string | null, startLocal: string) => void;
@@ -124,6 +125,10 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
   onCtx?: (b: Booking, x: number, y: number) => void;
   /** Just booked from the phone sheet: ringed and tagged "New" for a few seconds. */
   freshId?: string | null;
+  /** Blocks (time off, temporary blocks) — painted, and nothing can be booked in them. */
+  blocks?: CalBlock[];
+  /** "Khoá giờ" from a column: that technician (null = whole salon), at that hour. */
+  onBlock?: (staffId: string | null, from?: string) => void;
 }) {
   const { token, user } = useAuth();
   const { lang } = useLang();
@@ -999,6 +1004,11 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                 if (cur < endH * 60) offBands.push({ s: cur, e: endH * 60 });
               }
               const g = ghost && ghost.col === c.id ? ghost : null;
+              const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+              const blockBands = bandsFor(blocks, un ? null : c.id, dayKey)
+                .map((x) => ({ ...x, s: Math.max(gStart, x.s), e: Math.min(endH * 60, x.e) }))
+                .filter((x) => x.e > x.s);
+              const inBlock = (m: number) => blockBands.some((x) => m >= x.s && m < x.e);
               return (
                 <div key={c.id}
                   onDragOver={(e) => {
@@ -1049,17 +1059,24 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                     ) : (
                       <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: AVATAR_BG[ci % AVATAR_BG.length], color: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>{c.name.charAt(0).toUpperCase()}</div>
                     )}
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
                       <div style={{ fontSize: 10.5, color: offToday ? 'var(--ink-warn)' : 'var(--c64748b)' }}>{load} {t('cal.apptWord')}{offToday ? (vi ? ' · nghỉ hôm nay' : ' · off today') : ''}</div>
                     </div>
+                    {onBlock && !un && !isPastDay && (
+                      <button type="button" draggable={false} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onBlock(c.id); }}
+                        aria-label={vi ? `Khoá giờ cho ${c.name}` : `Block time for ${c.name}`} title={vi ? `Khoá giờ cho ${c.name}` : `Block time for ${c.name}`}
+                        style={{ width: 24, height: 24, flexShrink: 0, padding: 0, border: 0, borderRadius: 6, background: 'transparent', color: 'var(--c64748b)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+                      </button>
+                    )}
                   </div>
                   <div data-body="1" style={{ position: 'relative', height: total, cursor: isPastDay ? 'default' : 'cell' }}
                     onMouseMove={(e) => {
                       if (dragId || isPastDay) return;
                       if ((e.target as HTMLElement).closest('[data-card]')) { if (g) setGhost(null); return; }
                       const m = Math.floor(minAt(e.currentTarget, e.clientY) / 15) * 15;
-                      if (isToday && m + 15 <= nowMin) { if (g) setGhost(null); return; }
+                      if ((isToday && m + 15 <= nowMin) || inBlock(m)) { if (g) setGhost(null); return; }
                       if (!g || g.min !== m || g.drag) setGhost({ col: c.id, min: m, dur: 30, drag: false });
                     }}
                     onMouseLeave={() => { if (!dragId) setGhost((gh) => (gh && gh.col === c.id ? null : gh)); }}
@@ -1067,11 +1084,18 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                       if (isPastDay || (e.target as HTMLElement).closest('[data-card]')) return;
                       const m = Math.floor(minAt(e.currentTarget, e.clientY) / 15) * 15;
                       if (isToday && m + 15 <= nowMin) return;
+                      if (inBlock(m)) { setNote(vi ? 'Giờ này đang khoá — gỡ khoá ở nút “Khoá giờ” nếu muốn đặt.' : 'This time is blocked — remove the block under “Block time” to book it.'); return; }
                       bookAt(c.id, m);
                     }}>
                     {offToday && <div style={{ position: 'absolute', inset: 0, background: hatch, pointerEvents: 'none' }} />}
                     {offBands.map((x) => (
                       <div key={x.s} style={{ position: 'absolute', left: 0, right: 0, top: (x.s - gStart) / 60 * HP, height: (x.e - x.s) / 60 * HP, background: hatch, pointerEvents: 'none' }} />
+                    ))}
+                    {blockBands.map((x) => (
+                      <div key={`blk-${x.b.id}`} data-block="1" title={blockLabel(x.b, vi)}
+                        style={{ position: 'absolute', left: 0, right: 0, top: (x.s - gStart) / 60 * HP, height: (x.e - x.s) / 60 * HP, boxSizing: 'border-box', background: 'repeating-linear-gradient(135deg, rgba(245,158,11,0.16) 0 6px, transparent 6px 12px)', borderTop: '2px solid rgba(245,158,11,0.55)', pointerEvents: 'none', overflow: 'hidden' }}>
+                        <span style={{ display: 'inline-block', margin: '3px 5px', padding: '1px 6px', borderRadius: 6, background: 'var(--wash-amber)', color: 'var(--ink-warn)', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 'calc(100% - 10px)', overflow: 'hidden', textOverflow: 'ellipsis' }}>🔒 {blockLabel(x.b, vi)}</span>
+                      </div>
                     ))}
                     {Array.from({ length: endH - startH }, (_, i) => i + 1).map((i) => (
                       <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--line)', pointerEvents: 'none' }} />

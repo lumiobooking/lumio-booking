@@ -5,7 +5,7 @@ import { AppointmentStatus, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BLOCKING_STATUSES, lineStaffIds } from '../bookings/booking.util';
 import { dayKeyTz } from '../common/salon-time';
-import { blocksSlot, loadApprovedTimeOff } from '../staff/time-off';
+import { appliesTo, blocksSlot, loadApprovedTimeOff } from '../staff/time-off';
 import {
   CandidateInput,
   DEFAULT_RULES,
@@ -128,7 +128,7 @@ export class AssignmentService {
       if (lineBusy.has(s.id)) continue;
       // Hard filter 1: must be working at that local time — on shift, and not on leave.
       if (!isWithinWorkingHours(slot, s.workingHours)) continue;
-      if (leave.some((o) => o.staffId === s.id && blocksSlot(o, dayKey, slot.startMinutes, slot.endMinutes))) continue;
+      if (leave.some((o) => appliesTo(o, s.id) && blocksSlot(o, dayKey, slot.startMinutes, slot.endMinutes))) continue;
 
       // Hard filter 2: must not already have a blocking overlapping booking —
       // nor one inside the salon's rest gap (bookings/buffer.ts).
@@ -207,7 +207,7 @@ export class AssignmentService {
     const dayKey = dayKeyTz(appt.startTime, tz);
     const leave = await loadApprovedTimeOff(this.prisma, tenantId, dayKey, dayKey, skilled.map((s) => s.id));
     const scheduled = skilled.filter((s) => isWithinWorkingHours(slot, s.workingHours));
-    const onShift = scheduled.filter((s) => !leave.some((o) => o.staffId === s.id && blocksSlot(o, dayKey, slot.startMinutes, slot.endMinutes)));
+    const onShift = scheduled.filter((s) => !leave.some((o) => appliesTo(o, s.id) && blocksSlot(o, dayKey, slot.startMinutes, slot.endMinutes)));
     const free: string[] = [];
     for (const s of onShift) {
       const clash = await this.prisma.appointment.findFirst({

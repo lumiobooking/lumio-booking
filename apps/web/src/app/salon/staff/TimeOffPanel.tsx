@@ -2,35 +2,44 @@
 
 // NGÀY NGHỈ — the owner's side of time off.
 //
-// Requests from the team wait at the top (duyệt / từ chối); below, everything
-// approved or recorded for the next months. The owner can also write leave in
-// directly (sick days, a holiday agreed in person): that is approved as it is
-// saved. An approved day is a day the engine, the booking page and the desk's
-// open times treat as off; whole days are days off on the payslip as well.
+// At a glance: how many requests wait, who is off today, what is coming.
+// Requests from the team wait at the top (duyệt / từ chối, each in a pop-up
+// with a note); below, every approved day off and block as a card with its
+// date, who, how long and why — "Sửa" and "Bỏ" open pop-ups too. Saving is
+// applying: an approved day is a day the engine, the booking page, the bots
+// and the desk treat as off (the server refuses bookings in it); whole days
+// are days off on the payslip as well.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { ind } from '../../../lib/ui-industry';
-import { daysOf, whenLabel } from '../../../lib/time-off-ui';
+import { dateTile, daysOf, phaseOf, spanSentence } from '../../../lib/time-off-ui';
+import { Avatar, ConfirmDialog, DecideDialog, TimeOffDialog, btnPrimary } from './TimeOffDialog';
 
 export interface TimeOffRow {
-  id: string; staffId: string; name: string; startDate: string; endDate: string; startTime: string | null; endTime: string | null;
+  id: string; staffId: string | null; name: string; startDate: string; endDate: string; startTime: string | null; endTime: string | null;
   reason: string | null; status: 'PENDING' | 'APPROVED' | 'DENIED' | 'CANCELLED'; decidedAt: string | null; decisionNote: string | null; createdAt: string; byOwner: boolean;
 }
 interface Data { today: string; from: string; to: string; pending: number; requests: TimeOffRow[] }
 interface StaffLite { id: string; firstName: string; lastName: string | null; isActive?: boolean }
+
+type Pop =
+  | { k: 'add' }
+  | { k: 'edit'; row: TimeOffRow }
+  | { k: 'decide'; row: TimeOffRow; decision: 'APPROVED' | 'DENIED' }
+  | { k: 'remove'; row: TimeOffRow };
+
+const smallBtn: CSSProperties = { height: 34, padding: '0 12px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' };
 
 export function TimeOffPanel({ vi, staff, onPending }: { vi: boolean; staff: StaffLite[]; onPending?: (n: number) => void }) {
   const { token } = useAuth();
   const L = (v: string, e: string) => ind(vi ? v : e);
   const [data, setData] = useState<Data | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [note, setNote] = useState<Record<string, string>>({});
   const [showPast, setShowPast] = useState(false);
-  const [add, setAdd] = useState<{ staffId: string; startDate: string; endDate: string; partial: boolean; startTime: string; endTime: string; reason: string } | null>(null);
+  const [pop, setPop] = useState<Pop | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -41,144 +50,164 @@ export function TimeOffPanel({ vi, staff, onPending }: { vi: boolean; staff: Sta
   }, [token, onPending]);
   useEffect(() => { void load(); }, [load]);
 
-  async function decide(id: string, decision: 'APPROVED' | 'DENIED') {
-    setBusy(id); setErr(null);
-    try { await apiFetch(`/time-off/${id}`, { method: 'PATCH', token, body: { decision, note: note[id] || undefined } }); await load(); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); } finally { setBusy(null); }
-  }
-  async function remove(id: string) {
-    setBusy(id); setErr(null);
-    try { await apiFetch(`/time-off/${id}`, { method: 'DELETE', token }); await load(); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); } finally { setBusy(null); }
-  }
-  async function save() {
-    if (!add) return;
-    setBusy('add'); setErr(null);
-    try {
-      await apiFetch('/time-off', { method: 'POST', token, body: {
-        staffId: add.staffId, startDate: add.startDate, endDate: add.partial ? add.startDate : add.endDate,
-        startTime: add.partial ? add.startTime : undefined, endTime: add.partial ? add.endTime : undefined, reason: add.reason.trim() || undefined,
-      } });
-      setAdd(null); await load();
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); } finally { setBusy(null); }
-  }
-
   const today = data?.today ?? '';
-  const rows = data?.requests ?? [];
-  const pending = rows.filter((r) => r.status === 'PENDING');
-  const approved = rows.filter((r) => r.status === 'APPROVED' && (showPast || r.endDate >= today)).sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const rows = useMemo(() => data?.requests ?? [], [data]);
+  const fullName = (s: StaffLite) => `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`;
+  const nameOf = (r: TimeOffRow) => (r.staffId == null ? L('Cả tiệm', 'Whole salon') : (r.name || fullName(staff.find((x) => x.id === r.staffId) ?? { id: '', firstName: '', lastName: null })));
+  const pending = rows.filter((r) => r.status === 'PENDING').sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const approvedAll = rows.filter((r) => r.status === 'APPROVED').sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const approved = approvedAll.filter((r) => showPast || phaseOf(r, today) !== 'past');
+  const offNow = approvedAll.filter((r) => phaseOf(r, today) === 'now');
+  const coming = approvedAll.filter((r) => phaseOf(r, today) === 'later');
   const closed = rows.filter((r) => r.status === 'DENIED' || r.status === 'CANCELLED').filter((r) => showPast || r.endDate >= today);
-  const active = staff.filter((s) => s.isActive !== false);
-  const nameOf = (id: string) => { const s = staff.find((x) => x.id === id); return s ? `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}` : ''; };
+  const people = staff.filter((s) => s.isActive !== false).map((s) => ({ id: s.id, name: fullName(s) }));
 
-  const statusPill = (r: TimeOffRow) => {
-    const m = {
-      PENDING: { t: L('Chờ duyệt', 'Pending'), c: 'var(--ink-warn)', b: 'var(--wash-amber-2)' },
-      APPROVED: { t: L('Đã duyệt', 'Approved'), c: 'var(--ink-good)', b: 'var(--c052e16)' },
-      DENIED: { t: L('Từ chối', 'Declined'), c: 'var(--ink-bad)', b: 'var(--wash-red)' },
-      CANCELLED: { t: L('Đã rút', 'Withdrawn'), c: 'var(--c94a3b8)', b: 'var(--c1e293b)' },
-    }[r.status];
-    return <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: m.c, background: m.b, whiteSpace: 'nowrap' }}>{m.t}</span>;
-  };
-  const line = (r: TimeOffRow, actions: React.ReactNode) => (
-    <div key={r.id} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
-      <div style={{ minWidth: 130, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{r.name || nameOf(r.staffId)}</div>
-      <div style={{ minWidth: 180, color: 'var(--ccbd5e1)', textTransform: 'capitalize' }}>{whenLabel(r, vi)} <span style={{ color: 'var(--c94a3b8)', textTransform: 'none' }}>· {daysOf(r)} {L('ngày', daysOf(r) === 1 ? 'day' : 'days')}</span></div>
-      <div style={{ flex: 1, minWidth: 120, fontSize: 13, color: 'var(--c94a3b8)' }}>
-        {r.reason || (r.byOwner ? L('Chủ tiệm ghi', 'Entered by owner') : '')}
-        {r.decisionNote && <span> · {L('Ghi chú', 'Note')}: {r.decisionNote}</span>}
+  async function remove(row: TimeOffRow) {
+    await apiFetch(`/time-off/${encodeURIComponent(row.id)}`, { method: 'DELETE', token });
+    await load();
+  }
+
+  const tile = (r: TimeOffRow, tone: 'warn' | 'now' | 'plain') => {
+    const t = dateTile(r.startDate, vi);
+    const multi = r.endDate !== r.startDate;
+    const c = tone === 'warn' ? { b: 'var(--wash-amber-2)', f: 'var(--ink-warn)' } : tone === 'now' ? { b: 'var(--wash-blue)', f: 'var(--ink-link)' } : { b: 'var(--c1e293b)', f: 'var(--ce2e8f0)' };
+    return (
+      <div aria-hidden="true" style={{ width: 54, flexShrink: 0, borderRadius: 12, overflow: 'hidden', textAlign: 'center', border: '1px solid var(--line)', background: c.b }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', padding: '3px 0', color: c.f, borderBottom: '1px solid var(--line)' }}>{t.dow}</div>
+        <div style={{ fontSize: 21, fontWeight: 800, lineHeight: 1.15, paddingTop: 3, color: 'var(--cf1f5f9)' }}>{t.day}</div>
+        <div style={{ fontSize: 10.5, fontWeight: 600, paddingBottom: 4, color: 'var(--c94a3b8)' }}>{t.month}{multi ? ' +' : ''}</div>
       </div>
-      {statusPill(r)}
-      {actions}
+    );
+  };
+
+  const badge = (text: string, f: string, b: string) => <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: f, background: b, whiteSpace: 'nowrap' }}>{text}</span>;
+
+  const card = (r: TimeOffRow, kind: 'pending' | 'approved' | 'closed') => {
+    const phase = phaseOf(r, today);
+    const tone = kind === 'pending' ? 'warn' : phase === 'now' ? 'now' : 'plain';
+    const n = daysOf(r);
+    return (
+      <div key={r.id} style={{ display: 'flex', gap: 12, padding: 12, borderRadius: 14, border: `1px solid ${kind === 'pending' ? 'var(--ink-warn)' : 'var(--line)'}`, background: kind === 'pending' ? 'var(--wash-amber)' : 'var(--c0f172a)', opacity: kind === 'closed' || phase === 'past' ? 0.7 : 1 }}>
+        {tile(r, tone)}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Avatar id={r.staffId} name={nameOf(r)} size={24} />
+            <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{nameOf(r)}</span>
+            {kind === 'pending' && badge(L('Chờ duyệt', 'Waiting'), 'var(--ink-warn)', 'var(--wash-amber-2)')}
+            {kind === 'approved' && phase === 'now' && badge(L('Đang nghỉ', 'Off now'), 'var(--ink-link)', 'var(--wash-blue)')}
+            {kind === 'approved' && phase === 'past' && badge(L('Đã qua', 'Past'), 'var(--c94a3b8)', 'var(--c1e293b)')}
+            {kind === 'closed' && badge(r.status === 'DENIED' ? L('Từ chối', 'Declined') : L('Đã rút', 'Withdrawn'), r.status === 'DENIED' ? 'var(--ink-bad)' : 'var(--c94a3b8)', r.status === 'DENIED' ? 'var(--wash-red)' : 'var(--c1e293b)')}
+            {r.staffId == null && badge(L('Khoá cả tiệm', 'Salon block'), 'var(--ink-warn)', 'var(--wash-amber-2)')}
+          </div>
+          <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)' }}>
+            🕒 {spanSentence(r, vi)}
+            {n === 0.5 && <span style={{ color: 'var(--c94a3b8)' }}> · {L('nửa ngày', 'part of a day')}</span>}
+          </div>
+          {(r.reason || r.decisionNote || r.byOwner) && (
+            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+              {r.reason ? `💬 ${r.reason}` : r.byOwner ? L('Chủ tiệm ghi', 'Entered by the salon') : ''}
+              {r.decisionNote && <span> · {L('Ghi chú', 'Note')}: {r.decisionNote}</span>}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center', flexShrink: 0 }}>
+          {kind === 'pending' && <>
+            <button type="button" onClick={() => setPop({ k: 'decide', row: r, decision: 'APPROVED' })} style={{ ...smallBtn, background: '#15803d', borderColor: '#15803d', color: '#fff' }}>✓ {L('Duyệt', 'Approve')}</button>
+            <button type="button" onClick={() => setPop({ k: 'decide', row: r, decision: 'DENIED' })} style={{ ...smallBtn, color: 'var(--ink-bad)' }}>{L('Từ chối', 'Decline')}</button>
+            <button type="button" onClick={() => setPop({ k: 'edit', row: r })} style={{ ...smallBtn, border: 0, background: 'transparent', color: 'var(--ink-link)', height: 26 }}>{L('Sửa', 'Edit')}</button>
+          </>}
+          {kind === 'approved' && <>
+            <button type="button" onClick={() => setPop({ k: 'edit', row: r })} style={smallBtn}>✎ {L('Sửa', 'Edit')}</button>
+            <button type="button" onClick={() => setPop({ k: 'remove', row: r })} style={{ ...smallBtn, color: 'var(--ink-bad)' }}>{L('Bỏ', 'Remove')}</button>
+          </>}
+          {kind === 'closed' && <button type="button" onClick={() => setPop({ k: 'remove', row: r })} style={{ ...smallBtn, color: 'var(--c94a3b8)' }}>{L('Xoá', 'Delete')}</button>}
+        </div>
+      </div>
+    );
+  };
+
+  const stat = (n: number, label: string, f: string, b: string, icon: string) => (
+    <div style={{ flex: '1 1 140px', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 14, border: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
+      <span aria-hidden="true" style={{ width: 38, height: 38, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, background: b, color: f }}>{icon}</span>
+      <div>
+        <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1, color: 'var(--cf1f5f9)' }}>{data ? n : '–'}</div>
+        <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
+      </div>
     </div>
   );
+  const section = (title: string, color: string, extra?: React.ReactNode) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 8px' }}>
+      <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: '0.05em', color }}>{title}</span>
+      <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+      {extra}
+    </div>
+  );
+  const grid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 380px), 1fr))', gap: 10 };
 
   return (
-    <div style={{ ...ui.card, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{L('Ngày nghỉ của thợ', 'Time off')}</div>
-          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>
-            {L('Ngày đã duyệt: hệ thống không giao khách, trang đặt lịch không mở giờ, và bảng lương tính là ngày nghỉ.', 'An approved day: no bookings are assigned, the booking page shows no times, and payroll counts it as a day off.')}
+    <div style={{ ...ui.card, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 280px' }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--cf1f5f9)' }}>🏖 {L('Ngày nghỉ của thợ', 'Time off')}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 3, lineHeight: 1.45 }}>
+            {L('Ngày đã duyệt áp dụng ngay: không giao khách, trang đặt lịch / bot / quầy đều không đặt được, bảng lương tính là ngày nghỉ.', 'Approved time off applies at once: no bookings are given, the booking page, bots and desk cannot book it, and payroll counts it as a day off.')}
           </div>
         </div>
-        <button type="button" onClick={() => setAdd({ staffId: active[0]?.id ?? '', startDate: today, endDate: today, partial: false, startTime: '13:00', endTime: '17:00', reason: '' })}
-          disabled={active.length === 0} style={{ ...ui.primaryBtn, marginLeft: 'auto' }}>{L('+ Ghi ngày nghỉ', '+ Record time off')}</button>
+        <button type="button" onClick={() => setPop({ k: 'add' })} disabled={people.length === 0} style={{ ...btnPrimary, marginLeft: 'auto' }}>＋ {L('Ghi ngày nghỉ', 'Record time off')}</button>
       </div>
-      {err && <div style={ui.banner}>{err}</div>}
 
-      {add && (
-        <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, alignItems: 'end' }}>
-          <label><span style={ui.label}>{L('Thợ', 'Tech')}</span>
-            <select value={add.staffId} onChange={(e) => setAdd({ ...add, staffId: e.target.value })} style={ui.input}>
-              {active.map((s) => <option key={s.id} value={s.id}>{s.firstName}{s.lastName ? ` ${s.lastName}` : ''}</option>)}
-            </select>
-          </label>
-          <label><span style={ui.label}>{add.partial ? L('Ngày', 'Day') : L('Từ ngày', 'From')}</span>
-            <input type="date" lang="en-US" value={add.startDate} onChange={(e) => setAdd({ ...add, startDate: e.target.value, endDate: add.endDate < e.target.value ? e.target.value : add.endDate })} style={ui.input} />
-          </label>
-          {!add.partial && (
-            <label><span style={ui.label}>{L('Đến ngày', 'To')}</span>
-              <input type="date" lang="en-US" min={add.startDate} value={add.endDate} onChange={(e) => setAdd({ ...add, endDate: e.target.value })} style={ui.input} />
-            </label>
-          )}
-          {add.partial && (<>
-            <label><span style={ui.label}>{L('Từ giờ', 'From')}</span><input type="time" value={add.startTime} onChange={(e) => setAdd({ ...add, startTime: e.target.value })} style={ui.input} /></label>
-            <label><span style={ui.label}>{L('Đến giờ', 'To')}</span><input type="time" value={add.endTime} onChange={(e) => setAdd({ ...add, endTime: e.target.value })} style={ui.input} /></label>
-          </>)}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ccbd5e1)', paddingBottom: 8 }}>
-            <input type="checkbox" checked={add.partial} onChange={(e) => setAdd({ ...add, partial: e.target.checked })} /> {L('Chỉ một phần ngày', 'Part of a day')}
-          </label>
-          <label style={{ gridColumn: '1 / -1' }}><span style={ui.label}>{L('Lý do (không bắt buộc)', 'Reason (optional)')}</span>
-            <input value={add.reason} maxLength={300} onChange={(e) => setAdd({ ...add, reason: e.target.value })} style={ui.input} placeholder={L('VD: ốm, về quê', 'e.g. sick, family trip')} />
-          </label>
-          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
-            <button type="button" onClick={save} disabled={busy === 'add' || !add.staffId || !add.startDate} style={ui.primaryBtn}>{busy === 'add' ? L('Đang lưu…', 'Saving…') : L('Lưu (đã duyệt)', 'Save as approved')}</button>
-            <button type="button" onClick={() => setAdd(null)} style={{ ...ui.input, width: 'auto', cursor: 'pointer' }}>{L('Huỷ', 'Cancel')}</button>
-          </div>
-        </div>
-      )}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {stat(pending.length, L('Đơn chờ duyệt', 'Waiting for you'), 'var(--ink-warn)', 'var(--wash-amber-2)', '📨')}
+        {stat(offNow.length, L('Đang nghỉ hôm nay', 'Off today'), 'var(--ink-link)', 'var(--wash-blue)', '🌴')}
+        {stat(coming.length, L('Sắp tới', 'Coming up'), 'var(--ink-good)', 'var(--c052e16)', '📅')}
+      </div>
+
+      {err && <div style={ui.banner}>{err}</div>}
 
       {pending.length > 0 && (
         <div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-warn)', letterSpacing: '0.04em', marginBottom: 6 }}>{L(`CHỜ DUYỆT · ${pending.length}`, `WAITING · ${pending.length}`)}</div>
-          <div style={{ borderRadius: 12, border: '1px solid var(--ink-warn)', background: 'var(--wash-amber)', overflow: 'hidden' }}>
-            {pending.map((r) => line(r, (
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <input value={note[r.id] ?? ''} onChange={(e) => setNote({ ...note, [r.id]: e.target.value })} placeholder={L('Ghi chú cho thợ…', 'Note to the tech…')} maxLength={300} style={{ ...ui.input, width: 160, padding: '6px 10px' }} />
-                <button type="button" disabled={busy === r.id} onClick={() => decide(r.id, 'APPROVED')} style={{ ...ui.primaryBtn, padding: '6px 12px', background: '#15803d' }}>{L('Duyệt', 'Approve')}</button>
-                <button type="button" disabled={busy === r.id} onClick={() => decide(r.id, 'DENIED')} style={{ ...ui.input, width: 'auto', cursor: 'pointer', padding: '6px 12px', color: 'var(--ink-bad)' }}>{L('Từ chối', 'Decline')}</button>
-              </div>
-            )))}
-          </div>
+          {section(L(`CHỜ DUYỆT · ${pending.length}`, `WAITING · ${pending.length}`), 'var(--ink-warn)')}
+          <div style={grid}>{pending.map((r) => card(r, 'pending'))}</div>
         </div>
       )}
 
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c94a3b8)', letterSpacing: '0.04em' }}>{L('ĐÃ DUYỆT', 'APPROVED')}</span>
-          <label style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--ccbd5e1)', display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="checkbox" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} /> {L('Cả ngày đã qua', 'Include past')}
+        {section(L('ĐÃ DUYỆT', 'APPROVED'), 'var(--c94a3b8)', (
+          <label style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} /> {L('Hiện cả ngày đã qua', 'Include past')}
           </label>
-        </div>
-        <div style={{ borderRadius: 12, border: '1px solid var(--line)', overflow: 'hidden' }}>
-          {approved.map((r) => line(r, (
-            <button type="button" disabled={busy === r.id} onClick={() => remove(r.id)} style={{ ...ui.input, width: 'auto', cursor: 'pointer', padding: '6px 12px', color: 'var(--ink-bad)' }}>{L('Bỏ', 'Remove')}</button>
-          )))}
-          {data && approved.length === 0 && <div style={{ padding: 12, fontSize: 13, color: 'var(--c94a3b8)' }}>{L('Chưa có ngày nghỉ nào sắp tới.', 'No upcoming time off.')}</div>}
-          {!data && !err && <div style={{ padding: 12, fontSize: 13, color: 'var(--c94a3b8)' }}>{L('Đang tải…', 'Loading…')}</div>}
-        </div>
+        ))}
+        {approved.length > 0 && <div style={grid}>{approved.map((r) => card(r, 'approved'))}</div>}
+        {data && approved.length === 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '22px 12px', borderRadius: 14, border: '1px dashed var(--c334155)', textAlign: 'center' }}>
+            <span aria-hidden="true" style={{ fontSize: 30 }}>🌤</span>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{L('Chưa có ngày nghỉ nào sắp tới', 'No upcoming time off')}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{L('Thợ xin nghỉ trong app sẽ hiện ở đây để bạn duyệt.', 'Requests from the team’s app appear here for you to approve.')}</div>
+            <button type="button" onClick={() => setPop({ k: 'add' })} disabled={people.length === 0} style={{ ...btnPrimary, height: 36, fontSize: 13, marginTop: 4 }}>＋ {L('Ghi ngày nghỉ', 'Record time off')}</button>
+          </div>
+        )}
+        {!data && !err && <div style={{ padding: 12, fontSize: 13, color: 'var(--c94a3b8)' }}>{L('Đang tải…', 'Loading…')}</div>}
       </div>
 
       {closed.length > 0 && (
         <details>
           <summary style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c94a3b8)', cursor: 'pointer' }}>{L(`Từ chối / đã rút · ${closed.length}`, `Declined / withdrawn · ${closed.length}`)}</summary>
-          <div style={{ borderRadius: 12, border: '1px solid var(--line)', overflow: 'hidden', marginTop: 6 }}>
-            {closed.map((r) => line(r, (
-              <button type="button" disabled={busy === r.id} onClick={() => remove(r.id)} style={{ ...ui.input, width: 'auto', cursor: 'pointer', padding: '6px 12px', color: 'var(--c94a3b8)' }}>{L('Xoá', 'Delete')}</button>
-            )))}
-          </div>
+          <div style={{ ...grid, marginTop: 8 }}>{closed.map((r) => card(r, 'closed'))}</div>
         </details>
+      )}
+
+      {pop?.k === 'add' && <TimeOffDialog vi={vi} staff={people} today={today} onClose={() => setPop(null)} onSaved={() => { void load(); }} />}
+      {pop?.k === 'edit' && <TimeOffDialog vi={vi} staff={people} today={today} row={pop.row} onClose={() => setPop(null)} onSaved={() => { void load(); }} />}
+      {pop?.k === 'decide' && <DecideDialog vi={vi} row={{ ...pop.row, name: nameOf(pop.row) }} today={today} decision={pop.decision} onClose={() => setPop(null)} onSaved={() => { void load(); }} />}
+      {pop?.k === 'remove' && (
+        <ConfirmDialog vi={vi}
+          title={pop.row.status === 'APPROVED' ? L('Bỏ ngày nghỉ này?', 'Remove this time off?') : L('Xoá đơn này?', 'Delete this request?')}
+          text={<>
+            <strong style={{ color: 'var(--cf1f5f9)' }}>{nameOf(pop.row)}</strong> · {spanSentence(pop.row, vi)}
+            {pop.row.status === 'APPROVED' && <div style={{ marginTop: 8 }}>{L('Sau khi bỏ, giờ này mở lại ngay cho khách đặt (trang đặt lịch, bot, quầy).', 'Once removed, this time opens again for bookings at once (booking page, bots, desk).')}</div>}
+          </>}
+          danger={pop.row.status === 'APPROVED' ? L('Bỏ ngày nghỉ', 'Remove') : L('Xoá', 'Delete')}
+          onClose={() => setPop(null)} onConfirm={() => remove(pop.row)} />
       )}
     </div>
   );

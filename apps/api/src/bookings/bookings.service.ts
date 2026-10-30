@@ -14,12 +14,12 @@ import { signingSecret } from '../common/secret.util';
 import { publicWebBase } from '../common/public-url.util';
 import { formatMoney, localeForCountry } from '../common/money';
 import { toE164, dialCodeFor } from '../common/phone';
-import { fitsBusinessHours, describeWindows, startsInBusinessHours } from '../settings/business-hours';
+import { fitsBusinessHours, describeWindows, windowsForDay } from '../settings/business-hours';
 import { NO_SHOW_BLOCK_MESSAGE, NO_SHOW_POLICY_KEY, NoShowPolicy, cleanNoShowPolicy, noShowVerdict, windowStart } from './no-show-policy';
 import { rebookCopy, recallDue, recallMonthsOf } from './recall';
 import { buildPreOrder, preOrderText } from './pre-order';
 import { skilledFor } from '../assignment/assignment.util';
-import { busySpansFor, loadApprovedTimeOff } from '../staff/time-off';
+import { blockingOff, busySpansFor, loadApprovedTimeOff, offWhen } from '../staff/time-off';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { buildClientCard, CardVisit } from './client-card';
 import { capabilitiesFor } from '../auth/capabilities';
@@ -217,6 +217,35 @@ export class BookingsService {
         ? `Staff member is already booked for this time slot (the salon keeps ${bufferMin} minutes between appointments)`
         : 'Staff member is already booked for this time slot');
     }
+    await this.assertNotOff(tx, tenantId, staffId, start, end);
+  }
+
+  /**
+   * TIME OFF IS NOT BOOKABLE — by anyone, the desk included.
+   *
+   * Approved time off already hid the technician from the booking page, the
+   * bots and the engine, but the desk could still type a booking straight onto
+   * her day off. A temporary block from the Calendar is the same row (with no
+   * technician for the whole salon). Every path that puts time on a
+   * technician runs assertNoOverlap, which ends here; a booking with no
+   * technician is checked against the whole-salon blocks only. No override:
+   * the owner removes the block instead. If the rows cannot be read, the
+   * booking goes through (the availability screens already hid the time).
+   */
+  private async assertNotOff(db: Tx | PrismaService, tenantId: string, staffId: string | null, start: Date, end: Date): Promise<void> {
+    const fmt = (tz: string, d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    let tz = 'UTC';
+    try { tz = (await db.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone || 'UTC'; } catch { /* keep UTC */ }
+    let from = '', to = '';
+    try { from = fmt(tz, new Date(start.getTime() - 86_400_000)); to = fmt(tz, new Date(end.getTime() + 86_400_000)); } catch { tz = 'UTC'; from = fmt(tz, start); to = fmt(tz, end); }
+    const offs = await loadApprovedTimeOff(db, tenantId, from, to, staffId ? [staffId] : []);
+    const hit = blockingOff(offs, staffId, start, end, tz);
+    if (!hit) return;
+    if (hit.staffId == null) {
+      throw new ConflictException(`BLOCKED: the salon has blocked ${offWhen(hit)}. Pick another time.`);
+    }
+    const st = await db.staffMember.findFirst({ where: { id: hit.staffId, tenantId }, select: { firstName: true } }).catch(() => null);
+    throw new ConflictException(`TIME_OFF: ${st?.firstName ?? 'This technician'} is off ${offWhen(hit)}. Pick another technician or another time.`);
   }
 
   /** The salon's rest gap between a technician's appointments, in minutes. */
@@ -795,9 +824,10 @@ export class BookingsService {
     // rule above uses: staff at the desk must still be able to write down a
     // walk-in at 8pm or a favour for a regular. This protects the salon from the
     // outside; it does not tell the owner what to do inside their own shop.
-    // The DESK is held to the start time (startsInBusinessHours): a typed
-    // 11:40 PM for 11:40 AM was going straight onto the calendar. The owner may
-    // still book outside hours on purpose (dto.outsideHours, owner-only — see create()).
+    // The DESK may book before opening or after closing on an open day (an
+    // early regular, a late favour) — the form shows a reminder, not a wall.
+    // A CLOSED day or a day off still needs the owner, on purpose
+    // (dto.outsideHours, owner-only — see create()).
     const deskHours = !isPublicBooking && dto.outsideHours !== true;
     const readHours = async () => {
       const [hoursTenant, hoursRules] = await Promise.all([
@@ -839,12 +869,8 @@ export class BookingsService {
         // hour12:false reports midnight as 24 in some environments.
         const startMinutes = (hh % 24) * 60 + mm;
         if (!isPublicBooking) {
-          if (!startsInBusinessHours({ day, startMinutes })) {
-            const open = describeWindows(day);
-            const at = `${wd} ${dateStr} ${String(hh % 24).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-            throw new BadRequestException(open === 'closed'
-              ? `OUTSIDE_HOURS: the salon is closed on ${at.split(' ')[0]}. Pick another day (the owner can still book it on purpose).`
-              : `OUTSIDE_HOURS: ${at} (salon time) is outside opening hours (${open}). Check AM/PM, or pick another time.`);
+          if (!windowsForDay(day).length) {
+            throw new BadRequestException(`OUTSIDE_HOURS: the salon is closed on ${wd}. Pick another day (the owner can still book it on purpose).`);
           }
         } else if (!fitsBusinessHours({ day, startMinutes, durationMin: totalDuration })) {
           const open = describeWindows(day);
@@ -859,6 +885,9 @@ export class BookingsService {
 
     if (dto.staffId) {
       await this.assertStaffActive(tenantId, dto.staffId);
+    } else {
+      // No technician yet: a whole-salon block still closes the time.
+      await this.assertNotOff(this.prisma, tenantId, null, start, end);
     }
 
     // Two fields only the till may use. A public request carrying them is
@@ -2505,6 +2534,9 @@ export class BookingsService {
           if (cursor.getTime() < dayEnd.getTime()) busy.push({ start: cursor, end: dayEnd });
         }
       }
+    } else {
+      // No technician: a whole-salon block still closes the time.
+      for (const b of busySpansFor(await loadApprovedTimeOff(this.prisma, tenantId, q.date, q.date, []), null, q.date, tz)) busy.push(b);
     }
     const times = openTimesFor({
       dateStr: q.date, tz, day: rules.businessHours[dayOfWeek] ?? null,
@@ -2550,6 +2582,7 @@ export class BookingsService {
       return {
         eligibleStaffIds: [],
         staffBusy: {} as Record<string, { start: string; end: string }[]>,
+        salonBusy: await this.salonBlockSpans(tenantId, dateStr),
         noStaff: allStaff.length === 0,
         // The salon HAS technicians but none of them lists this service. The
         // menu still sells it, so "Any tech" stays bookable (the booking lands
@@ -2639,7 +2672,16 @@ export class BookingsService {
       }
     }
 
-    return { eligibleStaffIds: ids, staffBusy };
+    return { eligibleStaffIds: ids, staffBusy, salonBusy: busySpansFor(leave.filter((o) => o.staffId == null), null, dateStr, tz).map((b) => ({ start: b.start.toISOString(), end: b.end.toISOString() })) };
+  }
+
+  /** The whole-salon blocks on one salon day, as UTC spans (the booking page hides them for "any tech" too). */
+  private async salonBlockSpans(tenantId: string, dateStr: string): Promise<{ start: string; end: string }[]> {
+    try {
+      const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone || 'UTC';
+      return busySpansFor(await loadApprovedTimeOff(this.prisma, tenantId, dateStr, dateStr, []), null, dateStr, tz)
+        .map((b) => ({ start: b.start.toISOString(), end: b.end.toISOString() }));
+    } catch { return []; }
   }
 
   /**
@@ -2828,10 +2870,9 @@ export class BookingsService {
 
   /**
    * The desk's opening-hours rule for a MOVE (same as for a new booking, see
-   * createForTenant): the new start must be while the salon is open. Only a
-   * change of time is checked — handing a booking to another technician at the
-   * time it already has is never blocked. The owner may override on purpose.
-   * If the hours cannot be read, the move goes through (a typo guard, not a lock).
+   * createForTenant): before opening or after closing is fine on an open day;
+   * a closed day or a day off needs the owner, on purpose. Only a change of
+   * time is checked. If the hours cannot be read, the move goes through.
    */
   private async assertDeskHours(user: AuthenticatedUser, tenantId: string, from: Date, to: Date, outsideHours: boolean): Promise<void> {
     if (from.getTime() === to.getTime()) return;
@@ -2860,11 +2901,8 @@ export class BookingsService {
     const dayIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
     const day = dayIndex >= 0 ? (read.rules.businessHours ?? [])[dayIndex] as never : undefined;
     if (dayIndex < 0 || !Number.isFinite(hh) || !Number.isFinite(mm) || !Array.isArray(read.rules.businessHours)) return;
-    if (!startsInBusinessHours({ day, startMinutes: hh * 60 + mm })) {
-      const open = describeWindows(day);
-      throw new BadRequestException(open === 'closed'
-        ? `OUTSIDE_HOURS: the salon is closed on ${wd}. Pick another day (the owner can still move it there on purpose).`
-        : `OUTSIDE_HOURS: ${at} (salon time) is outside opening hours (${open}). Check AM/PM, or pick another time.`);
+    if (!windowsForDay(day).length) {
+      throw new BadRequestException(`OUTSIDE_HOURS: the salon is closed on ${wd} (${at}). Pick another day (the owner can still move it there on purpose).`);
     }
   }
 
@@ -2892,6 +2930,8 @@ export class BookingsService {
       if (staffId) {
         await this.lockStaffSlot(tx, tenantId, staffId);
         await this.assertNoOverlap(tx, tenantId, staffId, newStart, newEnd, id);
+      } else {
+        await this.assertNotOff(tx, tenantId, null, newStart, newEnd);
       }
       await tx.appointment.updateMany({
         where: { id, tenantId },

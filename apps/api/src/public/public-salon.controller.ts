@@ -19,6 +19,9 @@ import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { seoTrade } from './seo-trade';
 import { appliesOn, dateRulesFor, programFor } from '../settings/promo-channel';
 import { partyGuests } from './party-guests';
+import { PictureCache, decodeRaster, pictureVersion, publicPicture } from './public-images';
+
+const pictures = new PictureCache();
 
 /**
  * Hosted "online booking link" flow. Unlike the WordPress plugin (which is
@@ -88,18 +91,16 @@ export class PublicSalonController {
       // Lines the salon takes walk-in only: shown as a note, never as a choice.
       this.bookings.walkInOnlyServices(tenant.id),
     ]);
-    // PICTURES LEAVE THE JSON. Service photos and staff avatars are stored
-    // as base64 data URIs when a salon has no file storage — up to 130 KB
-    // each — and they rode inline in this payload: thirty services and eight
-    // techs made the booking page's first request several megabytes that
-    // gzip cannot shrink. Each data URI is replaced by a URL the browser
-    // fetches on its own (and caches for a day); the JSON is back to a few KB.
+    // PICTURES LEAVE THE JSON — the heavy ones. Photos stored as base64 data
+    // URIs (up to 130 KB each) become a versioned URL the browser fetches and
+    // keeps; the 1 KB gradient tiles we draw ourselves stay inline (see
+    // public-images.ts — they used to become links that always 404'd).
     const base = this.publicBase(req, slug);
     const svc = (services as { id: string; imageUrl?: string | null }[]).map((x) => ({
-      ...x, imageUrl: x.imageUrl && x.imageUrl.startsWith('data:') ? `${base}/img/service/${x.id}` : x.imageUrl,
+      ...x, imageUrl: publicPicture(x.imageUrl, (v) => `${base}/img/service/${x.id}?v=${v}`),
     }));
     const stf = (staff as { id: string; avatarUrl?: string | null }[]).map((x) => ({
-      ...x, avatarUrl: x.avatarUrl && x.avatarUrl.startsWith('data:') ? `${base}/img/staff/${x.id}` : x.avatarUrl,
+      ...x, avatarUrl: publicPicture(x.avatarUrl, (v) => `${base}/img/staff/${x.id}?v=${v}`),
     }));
     return { salon, services: svc, categories, staff: stf, walkInOnly };
   }
@@ -116,11 +117,26 @@ export class PublicSalonController {
    * One stored picture, as bytes. Only ever reached by the URLs bootstrap
    * hands out, so it serves what is public on the booking page and nothing
    * else: an active service's photo or an active technician's avatar of THIS
-   * salon. Cached a day by the browser and the edge; a changed picture gets
-   * the same URL, so it shows within a day or on a hard refresh.
+   * salon. With the content version bootstrap puts in the URL (?v=) it is
+   * kept a year (a changed picture gets a new URL); without one, a day.
+   * Decoded pictures are kept in memory for a while, so a menu of photos is
+   * not a database read per picture per visitor. A menu loads dozens at once:
+   * the route's own budget is generous (one salon's Wi-Fi, many customers).
    */
   @Get(':slug/img/:kind/:id')
-  async image(@Param('slug') slug: string, @Param('kind') kind: string, @Param('id') id: string, @Res() res: Response) {
+  @RateLimit(1500, 60_000)
+  async image(@Param('slug') slug: string, @Param('kind') kind: string, @Param('id') id: string, @Res() res: Response, @Query('v') v?: string) {
+    const version = typeof v === 'string' && /^[A-Za-z0-9_-]{1,16}$/.test(v) ? v : '';
+    const key = `${slug}|${kind}|${id}|${version}`;
+    const send = (p: { type: string; buf: Buffer }, immutable: boolean) => {
+      res.setHeader('Content-Type', p.type);
+      res.setHeader('Content-Length', String(p.buf.length));
+      res.setHeader('Cache-Control', immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=86400, stale-while-revalidate=604800');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.end(p.buf);
+    };
+    const hit = version ? pictures.get(key) : null;
+    if (hit) { send(hit, true); return; }
     const tenant = await this.lookupOpenTenant(slug);
     let raw: string | null = null;
     if (kind === 'service') {
@@ -131,16 +147,16 @@ export class PublicSalonController {
       raw = row?.avatarUrl ?? null;
     }
     if (!raw) throw new NotFoundException('No image');
-    if (!raw.startsWith('data:')) { res.redirect(302, raw); return; }
-    const m = /^data:([a-z0-9.+/-]+);base64,(.+)$/i.exec(raw);
-    if (!m) throw new NotFoundException('No image');
-    const type = m[1].toLowerCase();
-    if (!/^image\/(png|jpe?g|webp|gif|avif)$/.test(type)) throw new NotFoundException('No image');
-    const buf = Buffer.from(m[2], 'base64');
-    res.setHeader('Content-Type', type);
-    res.setHeader('Content-Length', String(buf.length));
-    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-    res.end(buf);
+    if (!raw.startsWith('data:')) {
+      if (!/^https:\/\//i.test(raw)) throw new NotFoundException('No image');
+      res.redirect(302, raw); return;
+    }
+    const pic = decodeRaster(raw);
+    if (!pic) throw new NotFoundException('No image');
+    // An old URL (or a stale ?v=) still gets the current picture, just not kept for a year.
+    const current = !!version && version === pictureVersion(raw.trim());
+    if (current) pictures.set(key, pic);
+    send(pic, current);
   }
 
   private async lookupOpenTenant(slug: string) {

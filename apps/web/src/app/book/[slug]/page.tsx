@@ -2979,14 +2979,27 @@ function Avatar({ name, url, size, accent }: { name: string; url: string | null;
  */
 /** 40px thumbnail for the cart / confirm list. Hidden when there is no photo. */
 function CartThumb({ url }: { url?: string | null }) {
+  return <Thumb url={url} size={40} radius={9} />;
+}
+
+/**
+ * One service picture. While it loads, a soft light tile (fixed colour: the
+ * booking page is always light, and the themed variable turned the tile into
+ * a black square for anyone whose dashboard is in light mode); the picture
+ * fades in over it. A picture that fails takes its tile away with it.
+ */
+function Thumb({ url, size, radius }: { url?: string | null; size: number; radius: number }) {
   const clean = (url ?? '').trim();
   const [ok, setOk] = useState(okImageUrl(clean));
-  useEffect(() => { setOk(okImageUrl(clean)); }, [clean]);
+  const [shown, setShown] = useState(clean.startsWith('data:'));
+  useEffect(() => { setOk(okImageUrl(clean)); setShown(clean.startsWith('data:')); }, [clean]);
   if (!ok) return null;
   return (
-    <span style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: 'var(--cf1f5f9)', display: 'block' }}>
+    <span className={shown ? undefined : 'lumio-thumb-wait'} style={{ width: size, height: size, borderRadius: radius, overflow: 'hidden', flexShrink: 0, background: '#eef2f7', display: 'block' }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={clean} alt="" loading="lazy" onError={() => setOk(false)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      <img src={clean} alt="" width={size} height={size} loading="lazy" decoding="async"
+        onLoad={() => setShown(true)} onError={() => setOk(false)}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: shown ? 1 : 0, transition: 'opacity .25s ease' }} />
     </span>
   );
 }
@@ -3067,17 +3080,7 @@ function ServiceDescription({ text }: { text: string }) {
 }
 
 function ServiceThumb({ url }: { url?: string | null }) {
-  const clean = (url ?? '').trim();
-  const [ok, setOk] = useState(okImageUrl(clean));
-  useEffect(() => { setOk(okImageUrl(clean)); }, [clean]);
-  if (!ok) return null;
-  return (
-    <span style={{ width: 56, height: 56, borderRadius: 12, overflow: 'hidden', flexShrink: 0, background: 'var(--cf1f5f9)', display: 'block' }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={clean} alt="" loading="lazy" onError={() => setOk(false)}
-        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-    </span>
-  );
+  return <Thumb url={url} size={56} radius={12} />;
 }
 
 function PlusCheck({ on, accent }: { on: boolean; accent: string }) {
@@ -3280,6 +3283,8 @@ const BOOK_CSS = `
 @keyframes lumioShine { 0% { transform: translateX(-120%); } 60%, 100% { transform: translateX(220%); } }
 @keyframes lumioPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 @keyframes lumioSkeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.lumio-thumb-wait { background: linear-gradient(90deg, #eef2f7 25%, #f8fafc 50%, #eef2f7 75%) !important; background-size: 200% 100% !important; animation: lumioSkeleton 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .lumio-thumb-wait { animation: none; } }
 @keyframes lumioTick { 0% { transform: scale(.2); opacity: 0; } 55% { transform: scale(1.35); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 @keyframes lumioRing { 0% { transform: scale(.9); } 45% { transform: scale(1.12); } 100% { transform: scale(1); } }
 @keyframes lumioBump { 0% { transform: translateY(0); } 40% { transform: translateY(-3px) scale(1.02); } 100% { transform: translateY(0); } }

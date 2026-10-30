@@ -75,7 +75,7 @@ export function relayTwiml(o: {
   return '<?xml version="1.0" encoding="UTF-8"?><Response>'
     + `<Connect action="${xml(`${o.apiBase.replace(/\/+$/, '')}/api/voice/relay-end`)}" method="POST">`
     + `<ConversationRelay url="${xml(relaySocketUrl(o.apiBase))}" welcomeGreeting="${xml(o.greeting)}" language="${xml(o.lang)}"${ttsAttr(tts)}`
-    + ' interruptible="any" interruptSensitivity="medium" welcomeGreetingInterruptible="speech">'
+    + ' interruptible="any" interruptSensitivity="medium" welcomeGreetingInterruptible="speech" dtmfDetection="true">'
     + languages
     + `<Parameter name="lang" value="${xml(o.lang)}"/>`
     + '</ConversationRelay></Connect></Response>';
@@ -122,6 +122,8 @@ export interface RelayDeps {
 export const RELAY_FILLER_MS = 1_500;
 export const RELAY_STILL_MS = 6_000;
 export const RELAY_SILENCE_MS = 9_000;
+/** Keypad digits with no # are taken as finished after this pause. */
+export const RELAY_KEYPAD_PAUSE_MS = 3_000;
 
 export class RelaySession {
   private callSid = '';
@@ -163,6 +165,19 @@ export class RelaySession {
       if (this.busy) { this.queued.push(words); return; }
       return this.runTurn(words);
     }
+    if (type === 'dtmf') {
+      // The keypad: digits gather until # or a short pause, then count as one
+      // caller turn — exact, where a number spoken in pieces was misheard.
+      const digit = String(m.digit ?? '');
+      if (!/^[0-9#*]$/.test(digit)) return;
+      this.clearSilence();
+      if (this.keyTimer) clearTimeout(this.keyTimer);
+      if (digit === '#') return this.flushKeys();
+      if (digit !== '*') this.keys += digit;
+      this.keyTimer = setTimeout(() => { this.flushKeys().catch(() => undefined); }, RELAY_KEYPAD_PAUSE_MS);
+      (this.keyTimer as { unref?: () => void }).unref?.();
+      return;
+    }
     if (type === 'interrupt') {
       this.clearSilence();
       const heard = String(m.utteranceUntilInterrupt ?? '').trim();
@@ -172,7 +187,22 @@ export class RelaySession {
     if (type === 'error') this.d.log(`relay error from Twilio: ${String(m.description ?? '').slice(0, 200)}`);
   }
 
+  private keys = '';
+  private keyTimer: ReturnType<typeof setTimeout> | null = null;
+  private async flushKeys(): Promise<void> {
+    if (this.keyTimer) clearTimeout(this.keyTimer);
+    this.keyTimer = null;
+    const d = this.keys;
+    this.keys = '';
+    if (!d || this.ended) return;
+    const words = `(typed on the keypad) ${d}`;
+    this.misses = 0;
+    if (this.busy) { this.queued.push(words); return; }
+    return this.runTurn(words);
+  }
+
   onClose(): void {
+    if (this.keyTimer) clearTimeout(this.keyTimer);
     this.ended = true;
     this.clearSilence();
     this.openGate();

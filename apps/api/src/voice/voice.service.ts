@@ -22,6 +22,7 @@ import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { toE164 as normalizeE164, dialCodeFor } from '../common/phone';
 import { bookingPhone, spokenLast4 } from './phone-readback';
+import { asksForNumber, claimsDone, goodbyeLine, impossibleNanp, keypadHint, keypadLine, readBackOk, spokenNumber } from './booking-guards';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import { CallCache } from './call-cache';
 import { relayEnabledFor, relayTwiml, ttsFor } from './relay';
@@ -60,13 +61,16 @@ function wallToUtcISO(local: string, tz: string): string {
  * Twilio refuses speechTimeout="auto" together with a named model, so a
  * named model always gets a number. Remove the variable to go back.
  */
-export function speechAttrs(language: string, env: Record<string, string | undefined> = process.env): string {
+export function speechAttrs(language: string, env: Record<string, string | undefined> = process.env, opts: { longPause?: boolean } = {}): string {
   const vi = String(language).toLowerCase().startsWith('vi');
   const model = String((vi ? env.VOICE_SPEECH_MODEL_VI : env.VOICE_SPEECH_MODEL) ?? '').trim();
   const t = String(env.VOICE_SPEECH_TIMEOUT ?? '').trim();
   const secs = /^\d{1,2}$/.test(t) && Number(t) > 0 ? t : '';
-  if (!/^[a-z0-9_.-]{2,60}$/i.test(model)) return ' speechTimeout="auto"';
-  return ` speechModel="${model}" speechTimeout="${secs || '1'}"`;
+  // Asked for a phone number: people pause between digit groups ("604… 279…
+  // 8777"); the usual one-second end-of-speech cut the number into pieces.
+  const pause = opts.longPause ? '3' : '';
+  if (!/^[a-z0-9_.-]{2,60}$/i.test(model)) return pause ? ` speechTimeout="${pause}"` : ' speechTimeout="auto"';
+  return ` speechModel="${model}" speechTimeout="${pause || secs || '1'}"`;
 }
 
 /** Escape text going inside a TwiML <Say> element. */
@@ -122,7 +126,13 @@ export type TurnAction =
   | { kind: 'transfer'; text: string; lang: string; lgFlag: string | null; humans: string[] };
 /** Where one turn's time went (ms), and how much of the prompt came from cache (tokens). */
 interface TurnTiming { ctxMs: number; modelMs: number[]; toolMs: number; judgeMs: number; cacheRead: number; cacheWrite: number; uncached: number }
-interface ToolCtx { menu: MenuItem[]; staff: { id: string; firstName: string; lastName: string | null }[]; groupMode: boolean }
+interface ToolCtx {
+  menu: MenuItem[]; staff: { id: string; firstName: string; lastName: string | null }[]; groupMode: boolean;
+  /** What the assistant said last (the read-back the caller just answered "yes" to). */
+  lastSaid?: string;
+  /** The call's language, for keypad wording. */
+  lang?: string;
+}
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 export interface VoiceUsage {
   periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number;
@@ -278,7 +288,9 @@ export class VoiceService implements OnModuleInit {
     // English apology and hung up — on every single turn that carried the
     // language parameter. Everything in a TwiML document gets escaped.
     return this.twiml(
-      `<Gather input="speech" action="${xml(action)}" method="POST"${speechAttrs(language)} language="${xml(language)}">` +
+      // Speech OR the keypad: a phone number typed and ended with # is exact,
+      // where the same number spoken in pieces was misheard (30 Oct 2026).
+      `<Gather input="dtmf speech" finishOnKey="#" action="${xml(action)}" method="POST"${speechAttrs(language, process.env, { longPause: asksForNumber(text) })} language="${xml(language)}">` +
         `<Say${this.sayAttr(v.voice)}${langAttr}>${xml(text)}</Say>` +
       `</Gather>` +
       `<Redirect method="POST">${xml(redirect)}</Redirect>`,
@@ -876,7 +888,8 @@ export class VoiceService implements OnModuleInit {
   /** Each subsequent turn: caller's transcribed speech arrives in SpeechResult. */
   async handleTurn(body: Record<string, string>, missParam: string, lgParam?: string): Promise<string> {
     const callSid = String(body.CallSid || '');
-    const speech = String(body.SpeechResult || '').trim();
+    // Digits typed on the keypad count as words: "(typed on the keypad) 6047798777".
+    const speech = String(body.SpeechResult || '').trim() || keypadLine(String(body.Digits || ''));
     const miss = Number(missParam || '0') || 0;
 
     const s = await this.turnSetup(callSid, lgParam);
@@ -1352,7 +1365,9 @@ export class VoiceService implements OnModuleInit {
     onInterim?: (text: string) => void,
   ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; stuck?: boolean; toolCalls?: number; failure?: string | null; timing?: TurnTiming }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
-    const acc = { wantEnd: false, booked: false, appointmentId: null as string | null, langSwitch: null as string | null, transfer: false, toolCalls: 0, failure: null as string | null, callSid, callerPhone };
+    const acc = { wantEnd: false, booked: false, changed: false, appointmentId: null as string | null, langSwitch: null as string | null, transfer: false, toolCalls: 0, failure: null as string | null, callSid, callerPhone };
+    // One correction round when the model claims a booking no tool made (./booking-guards).
+    let claimChecked = false;
     // Where the time of this turn went — logged per turn, so "slow" is a number.
     const timing = { ctxMs: 0, modelMs: [] as number[], toolMs: 0, judgeMs: 0, cacheRead: 0, cacheWrite: 0, uncached: 0 };
     if (!key) {
@@ -1379,24 +1394,26 @@ export class VoiceService implements OnModuleInit {
       ? `\nTHE ${persona.venueNoun.toUpperCase()} OWNER'S INSTRUCTIONS — follow these on every call. They are this ${persona.venueNoun}'s own rules: when one says to quote a price a certain way or to ask a question for a certain service, do exactly that at that point in the booking steps (one question per turn), in the caller's language:\n${ownerNote}\n`
       : '';
 
-    const ctx: ToolCtx = { menu, staff, groupMode };
+    // The read-back the caller answered: the assistant's last line on this call.
+    const lastSaid = [...history].reverse().find((h) => h.role === 'assistant')?.content ?? '';
+    const ctx: ToolCtx = { menu, staff, groupMode, lastSaid: String(lastSaid), lang };
 
     const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
     // HOW IT SOUNDS. Owners reported a hotline that "talks too long and never
     // books": every reply carried a compliment, a restatement of what the
     // caller had just said and a question. A receptionist says one thing.
     const style = `Your words are read aloud on a live phone call. Keep EVERY reply short: one sentence, two at most, under 30 words, and ask only ONE thing at a time. Do not repeat back what the caller just said (the only read-back is the final one before booking), do not list the menu unless asked, and never explain what you are doing. One brief warm touch is fine ("Sure!", "Of course."); no long thank-yous. No lists, emojis, special characters or URLs.
-The call has already been answered with the ${persona.venueNoun}'s greeting — do not greet again; go straight to helping. If the caller is not ready to book ("just asking", "I'll call back"), answer their question, say they are welcome to call any time, and do not push. Quote a price in one short sentence; never walk through arithmetic unless they ask for a total. Thank the caller when the booking is made, and thank them for calling in the goodbye.`;
+The call has already been answered with the ${persona.venueNoun}'s greeting — do not greet again; go straight to helping. If the caller is not ready to book ("just asking", "I'll call back"), answer their question, say they are welcome to call any time, and do not push. Quote a price in one short sentence; never walk through arithmetic unless they ask for a total. Thank the caller when the booking is made, and thank them for calling in the goodbye. When the caller says bye / goodbye / that's all, say ONE short thank-you-and-goodbye and call end_call — never ask another question after a goodbye. When they ask you to wait ("wait a minute", "let me ask her"), say "Sure, take your time" and nothing else.`;
     const groupScript = `BOOKING A NEW ${persona.bookableNoun.toUpperCase()} — collect only what is still missing; when the caller gives several details at once, take them all and move on:
 - WHO and WHAT: the service or services for each person. One person can have several services ("gel manicure and a pedicure"). A group is several people at the SAME time, each with their own technician. If the caller says "we", "us", "my friend", "my mom and I" or a number of people, find out how many people and what each person wants; otherwise it is just the caller — do not ask how many. If their words could mean more than one menu item (e.g. "manicure" when the menu has a regular and a gel manicure), ask which one; never choose for them. If something is not on the menu, call get_services before saying so.
 - WHEN: the day and time. As soon as you know everyone's services and the day or time, call check_availability. Only offer times it says are open; if theirs is taken, offer the times it gives you.
 - NAMES: the first name of each person, asked once for everybody ("And the first names for each of you?"). Never invent, guess or reuse a name. Do not ask the caller to read out a phone number — it is confirmed in the read-back below.
-- TECHNICIAN: only if the caller asks for someone by name, pass that name; otherwise anyone is fine — do not ask.
+- TECHNICIAN: do not ask. If the caller wants a particular technician, or asks who there is, name up to five of the technicians below and let them choose, then pass that first name as the person's "technician" in check_availability and create_booking. Choosing a technician NEVER needs a call back: for a booking that is already made, call find_appointment and then change_technician.
 - REQUESTS: if they mention anything the salon should know (an allergy, a design, being late), pass it in create_booking's "request" — do not ask for it.
-- CONFIRM: read everything back in ONE sentence INCLUDING the last four digits of the phone number, and wait for a clear yes, e.g. "So Anna for a gel manicure and pedicure and Lisa for a pedicure, Saturday October 10 at 2 PM, under the number ending in 0, 1, 4, 7 — is that right?" If they give a different number, pass it as customerPhone and read back once more with ITS last four digits.
+- CONFIRM: read everything back in ONE sentence INCLUDING the last four digits of the phone number, and wait for a clear yes, e.g. "So Anna for a gel manicure and pedicure and Lisa for a pedicure, Saturday October 10 at 2 PM, under the number ending in 0, 1, 4, 7 — is that right?" If they give a different number (a friend's, a new one), pass it as customerPhone and read the WHOLE new number back digit by digit in groups (e.g. "6, 0, 4 — 2, 7, 9 — 8, 7, 7, 7"), never only its ending and never digits they did not say; if you did not catch all of it, ask them to ${keypadHint('en-US')}.
 - BOOK: after the yes, call create_booking ONCE with everyone in it and phoneConfirmed: true. Then say in one short sentence that it is booked and a text confirmation is on the way, and ask if there is anything else.${staff.length ? `\nTechnicians here (first names): ${staff.map((s) => s.firstName).join(', ')}.` : ''}`;
     const singleScript = `${persona.voiceGoal}
-BOOKING, STEP BY STEP — one question per turn, skipping anything the caller already said: (1) which service; if their words could mean more than one service on the menu, ask which one ("a regular manicure, or the gel manicure?") instead of choosing; if it is not on the menu, call get_services before you answer; (2) the day and time; (3) their first name — never invent or reuse a name; (4) read all of it back in ONE short sentence INCLUDING "under the number ending in" and the phone's last four digits, and wait for a clear yes — if they give a different number, pass it as customerPhone and read back once more with its last four digits; (5) only then call create_booking with the service's code and phoneConfirmed: true.`;
+BOOKING, STEP BY STEP — one question per turn, skipping anything the caller already said: (1) which service; if their words could mean more than one service on the menu, ask which one ("a regular manicure, or the gel manicure?") instead of choosing; if it is not on the menu, call get_services before you answer; (2) the day and time; (3) their first name — never invent or reuse a name; (4) read all of it back in ONE short sentence INCLUDING "under the number ending in" and the phone's last four digits, and wait for a clear yes — if they give a different number, pass it as customerPhone and read the WHOLE new number back digit by digit in groups (never only its ending, never digits they did not say; if you missed some, ask them to ${keypadHint('en-US')}); (5) only then call create_booking with the service's code and phoneConfirmed: true. If the caller wants a particular technician, name up to five and pass the chosen first name as "technician"; for a booking already made, use change_technician — never promise a call back for that.${staff.length ? `\nTechnicians here (first names): ${staff.map((s) => s.firstName).join(', ')}.` : ''}`;
     const bookedNote = alreadyBooked ? '\nEarlier on this call a booking was already made. Do NOT book the same people again; for a change, use find_appointment and reschedule_appointment.' : '';
     // THE PROMPT IN TWO PARTS, for speed. Everything that is the same for
     // every call of this salon comes first and is CACHED by the model API — it
@@ -1405,7 +1422,7 @@ BOOKING, STEP BY STEP — one question per turn, skipping anything the caller al
     // so it changed between turns and the cache almost never hit. Those, and
     // anything else about THIS call or THIS turn, now follow in the second part.
     const callerLine = callerPhone && spokenLast4(callerPhone)
-      ? `The caller is calling from ${callerPhone} (ending in ${spokenLast4(callerPhone)}). Do NOT ask them to read out a phone number. Instead, in the read-back before booking, say the booking will be "under the number ending in ${spokenLast4(callerPhone)}" so they can confirm it or give another. If they give another, take it as customerPhone; if it sounds incomplete, ask them to repeat it digit by digit. Always say the four digits one at a time.`
+      ? `The caller is calling from ${callerPhone} (ending in ${spokenLast4(callerPhone)}). Do NOT ask them to read out a phone number. Instead, in the read-back before booking, say the booking will be "under the number ending in ${spokenLast4(callerPhone)}" so they can confirm it or give another. If they give another (a friend's or a new number), take it as customerPhone and read the WHOLE number back digit by digit in groups; if it sounds incomplete, ask them to ${keypadHint(lang)} — never fill in digits yourself. Always say digits one at a time.`
       : 'The caller\'s number is hidden. Before the read-back, ask for a good callback number, then include its last four digits (one at a time) in the read-back.';
     const system = `You are the warm, professional phone receptionist for "${salonName}", ${persona.identity}. ${style}
 ${groupMode ? groupScript : singleScript}
@@ -1461,6 +1478,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
                 customerPhone: { type: 'string', description: 'Optional. Defaults to the caller’s own number; only set if they give a different callback number.' },
                 phoneConfirmed: { type: 'boolean', description: 'true ONLY after the caller said yes to a read-back that included the last four digits of the number this booking goes under.' },
                 request: { type: 'string', description: 'Optional. Anything the caller asked the salon to know, in their words: an allergy, a design they want, "running 10 minutes late". Leave out if nothing.' },
+                secondBooking: { type: 'boolean', description: 'Only true when the tool said a booking already exists at that time from an earlier call AND the caller confirmed they want another one as well.' },
               },
               required: ['localDateTime', 'people', 'phoneConfirmed'],
             },
@@ -1475,6 +1493,8 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
               properties: {
                 customerFirstName: { type: 'string' },
                 serviceId: { type: 'string', description: 'The menu code, e.g. S3.' },
+                technician: { type: 'string', description: 'The technician the caller chose, by first name. Leave out when anyone is fine.' },
+                secondBooking: { type: 'boolean', description: 'Only true when the tool said a booking already exists at that time from an earlier call AND the caller confirmed they want another one as well.' },
                 localDateTime: { type: 'string', description: 'Salon local time in ISO form, e.g. 2026-07-10T14:00' },
                 customerPhone: { type: 'string', description: 'Optional. Defaults to the caller’s own number; only set if they give a different callback number.' },
                 phoneConfirmed: { type: 'boolean', description: 'true ONLY after the caller said yes to a read-back that included the last four digits of the number this booking goes under.' },
@@ -1516,6 +1536,19 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
             customerPhone: { type: 'string', description: 'Optional. Defaults to the number they are calling from.' },
           },
           required: ['appointmentId', 'localDateTime'],
+        },
+      },
+      {
+        name: 'change_technician',
+        description: 'Put the technician the caller asks for on one of their EXISTING appointments (from find_appointment) — right now, on this call. Never tell the caller a staff member will call back to add a technician.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            appointmentId: { type: 'string', description: 'The id from find_appointment. Never guessed, never read aloud.' },
+            technician: { type: 'string', description: 'The technician\'s first name, as the caller chose it.' },
+            customerPhone: { type: 'string', description: 'Optional. Only if the booking is under a number they gave on this call.' },
+          },
+          required: ['appointmentId', 'technician'],
         },
       },
       {
@@ -1616,7 +1649,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         // one — EXCEPT anything that writes (a booking, a move, a cancel),
         // which keeps its place in line.
         const uses = outBlocks.filter((b) => b.type === 'tool_use');
-        const writes = (n: string | undefined) => /^(create_booking|reschedule_appointment|cancel_appointment|request_callback)$/.test(String(n));
+        const writes = (n: string | undefined) => /^(create_booking|reschedule_appointment|cancel_appointment|change_technician|request_callback)$/.test(String(n));
         const outs: string[] = new Array(uses.length);
         const reads = uses.map((blk, i) => ({ blk, i })).filter(({ blk }) => !writes(blk.name));
         await Promise.all(reads.map(async ({ blk, i }) => { outs[i] = await this.runTool(tenantId, tz, callerPhone, blk.name || '', blk.input || {}, acc, ctx); }));
@@ -1627,14 +1660,34 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         for (const [i, blk] of uses.entries()) {
           acc.toolCalls += 1;
           const out = outs[i];
-          if (/^(NOT BOOKED|ERROR|Could not complete)/.test(out)) acc.failure = `${blk.name}: ${out.slice(0, 140)}`;
+          if (/^(NOT BOOKED|NOT CHANGED|ERROR|Could not complete)/.test(out)) acc.failure = `${blk.name}: ${out.slice(0, 140)}`;
           results.push({ type: 'tool_result', tool_use_id: blk.id, content: out });
         }
         timing.toolMs += Date.now() - tTools;
         messages.push({ role: 'user', content: results });
         continue;
       }
-      const text = outBlocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      let text = outBlocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      // SAID BOOKED, BUT NOTHING WAS BOOKED (Saigon Spa, 30 Oct: "Tenny's all
+      // set… a text confirmation is on the way!" — no booking existed). The
+      // model gets one correction round to make the call it skipped; if it
+      // still claims without a tool's SUCCESS, the caller hears the truth.
+      if (text && !acc.booked && !acc.changed && !alreadyBooked && claimsDone(text) && !acc.wantEnd && !acc.transfer) {
+        if (!claimChecked && loop < MAX_TOOL_LOOPS - 1) {
+          claimChecked = true;
+          this.logger.warn(`voice claim without a booking, correcting: ${text.slice(0, 120)}`);
+          messages.push({ role: 'assistant', content: outBlocks });
+          messages.push({ role: 'user', content: 'SYSTEM CHECK (not the caller): you just told the caller it is booked / changed, but no create_booking, reschedule_appointment or change_technician succeeded on this call. If the caller has already said yes to the full read-back, call the right tool NOW. If something is still missing, do not say it is done — ask for exactly what is missing. Reply to the caller only after that.' });
+          continue;
+        }
+        acc.failure = `claimed without booking: ${text.slice(0, 120)}`;
+        text = /^vi/i.test(acc.langSwitch || lang)
+          ? 'Dạ xin lỗi, em chưa lưu được lịch này. Anh chị xác nhận lại giúp em dịch vụ, ngày giờ và tên một lần nữa nhé?'
+          : 'Sorry, I have not been able to save that booking yet. Could you confirm the service, day, time and name once more?';
+      }
+      // end_call with no words after it: say goodbye — never "How else can I
+      // help you book?" right before hanging up (Oakville, 30 Oct).
+      if (!text && acc.wantEnd) text = goodbyeLine(acc.langSwitch || lang);
       if (acc.transfer) {
         return { reply: text || transferLines(acc.langSwitch || lang).connecting, done: true, transfer: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure, timing };
       }
@@ -1670,7 +1723,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
 
   private async runTool(
     tenantId: string, tz: string, callerPhone: string, name: string, input: Record<string, unknown>,
-    acc: { wantEnd: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; callSid?: string | null; callerPhone?: string },
+    acc: { wantEnd: boolean; booked: boolean; changed?: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; callSid?: string | null; callerPhone?: string },
     ctx: ToolCtx = { menu: [], staff: [], groupMode: false },
   ): Promise<string> {
     try {
@@ -1722,7 +1775,11 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         if (!pd.ok) return pd.say;
         const phone = pd.phone;
         const startTime = wallToUtcISO(local, tz);
-        const dto = { serviceId, startTime, customerFirstName: firstName, customerPhone: phone } as CreateBookingDto;
+        const pre = await this.bookingPreflight(tenantId, callerPhone, phone, startTime, ctx, input, acc.callSid);
+        if (pre) return pre;
+        const wantTech = String(input.technician || '').trim().toLowerCase();
+        const tech = wantTech ? ctx.staff.find((x) => x.firstName.toLowerCase() === wantTech || x.firstName.toLowerCase().startsWith(wantTech)) : null;
+        const dto = { serviceId, startTime, customerFirstName: firstName, customerPhone: phone, ...(tech ? { staffId: tech.id, preferredStaffId: tech.id } : {}) } as CreateBookingDto;
         const booking = await this.bookings.createForTenant(tenantId, dto, null, 'hotline');
         const b = booking as { id?: string };
         // Auto-assign a technician (fair rotation) when the salon runs in auto mode —
@@ -1738,18 +1795,21 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         return `SUCCESS. The appointment is booked (id ${b.id}). Warmly confirm the service, day and time back to the caller and let them know a text confirmation is on the way. Do NOT end the call yet: after confirming, ask if there is anything else you can help with, and wait for their reply.`;
       }
       if (name === 'find_appointment') {
-        const { dial } = await this.localeInfo(tenantId);
-        const phone = toE164(String(input.customerPhone || ''), dial) || toE164(callerPhone, dial);
-        if (!phone) return 'No phone number available; politely ask the caller for the number they booked with.';
-        const rows = await this.bookings.upcomingForPhone(tenantId, phone);
+        // Every booking this caller can mean: under the number they call from,
+        // any number they give, AND anything booked from this phone line on an
+        // earlier call — a friend's booking, or one under a new number. On
+        // 30 Oct a caller booked under her new number, called back from her
+        // old one and heard only her other appointments.
+        const rows = await this.callerAppointments(tenantId, callerPhone, [String(input.customerPhone || '')]);
         if (!rows.length) {
-          return 'No upcoming appointment found for that number. Ask gently whether they booked under a different number; do NOT tell them they have no booking.';
+          return 'No upcoming appointment found for that number or for anything booked from this phone. Ask gently whether they booked under a different number; do NOT tell them they have no booking.';
         }
         const fmt = (d: Date) => new Intl.DateTimeFormat('en-US', {
           timeZone: tz, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
         }).format(d);
         return JSON.stringify(rows.map((r) => ({
-          appointmentId: r.id, service: r.service?.name ?? '', when: fmt(r.startTime),
+          appointmentId: r.id, for: r.firstName, service: r.service, when: fmt(r.startTime),
+          technician: r.tech || 'not chosen yet', phoneEnding: r.phone ? spokenLast4(r.phone) : '',
         })));
       }
 
@@ -1757,7 +1817,9 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         const id = String(input.appointmentId || '').trim();
         const local = String(input.localDateTime || '').trim();
         const { dial: rDial } = await this.localeInfo(tenantId);
-        const phone = toE164(String(input.customerPhone || ''), rDial) || toE164(callerPhone, rDial);
+        // A booking this line made (any number) proves itself with its own phone.
+        const mineR = id ? (await this.callerAppointments(tenantId, callerPhone, [String(input.customerPhone || '')])).find((a) => a.id === id) : null;
+        const phone = (mineR?.phone ?? '') || toE164(String(input.customerPhone || ''), rDial) || toE164(callerPhone, rDial);
         if (!id || !local) return 'Missing the appointment or the new time; ask the caller for what is missing.';
         if (!phone) return 'No phone number available; ask the caller for the number they booked with.';
         const r = await this.bookings.selfReschedule({
@@ -1771,13 +1833,15 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         const when = new Intl.DateTimeFormat('en-US', {
           timeZone: tz, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
         }).format(r.startTime as Date);
+        acc.changed = true;
         return `SUCCESS. The appointment now sits at ${when} and the salon calendar is already updated. Warmly repeat the new day and time back, say a text confirmation is on the way, then ask if there is anything else — do not end the call yet.`;
       }
 
       if (name === 'cancel_appointment') {
         const id = String(input.appointmentId || '').trim();
         const { dial: cDial } = await this.localeInfo(tenantId);
-        const phone = toE164(String(input.customerPhone || ''), cDial) || toE164(callerPhone, cDial);
+        const mineC = id ? (await this.callerAppointments(tenantId, callerPhone, [String(input.customerPhone || '')])).find((a) => a.id === id) : null;
+        const phone = (mineC?.phone ?? '') || toE164(String(input.customerPhone || ''), cDial) || toE164(callerPhone, cDial);
         if (!id) return 'Missing the appointment; use find_appointment first.';
         if (!phone) return 'No phone number available; ask the caller for the number they booked with.';
         const r = await this.bookings.selfCancel({ tenantId, appointmentId: id, phone, by: 'hotline' });
@@ -1789,9 +1853,26 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         const when = r.startTime ? new Intl.DateTimeFormat('en-US', {
           timeZone: tz, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
         }).format(r.startTime) : 'that appointment';
+        acc.changed = true;
         return `SUCCESS. The appointment on ${when} is cancelled and the salon calendar is already updated. Confirm it warmly in one sentence, say they are welcome to book again any time, then ask if there is anything else — do not end the call yet.`;
       }
 
+      if (name === 'change_technician') {
+        // "I want Alex" for a booking already made: done here and now — never
+        // "a staff member will call you back to add Alex" (Oakville, 30 Oct).
+        const id = String(input.appointmentId || '').trim();
+        const want = String(input.technician || '').trim().toLowerCase();
+        if (!id || !want) return 'Missing the appointment or the technician; use find_appointment first and ask which technician.';
+        const mine = (await this.callerAppointments(tenantId, callerPhone, [String(input.customerPhone || '')])).find((a) => a.id === id);
+        if (!mine) return 'That appointment is not one of this caller\'s; use find_appointment and pick from what it returns.';
+        const tech = ctx.staff.find((x) => x.firstName.toLowerCase() === want || `${x.firstName} ${x.lastName ?? ''}`.trim().toLowerCase() === want)
+          ?? ctx.staff.find((x) => x.firstName.toLowerCase().startsWith(want) || want.startsWith(x.firstName.toLowerCase()));
+        if (!tech) return `No technician called "${input.technician}". The technicians are: ${ctx.staff.map((x) => x.firstName).join(', ')}. Ask which one.`;
+        const r = await this.bookings.selfChangeTech({ tenantId, appointmentId: id, staffId: tech.id, by: 'hotline' });
+        if (!r.ok) return `NOT CHANGED (${r.code}): ${r.say} Tell the caller this in your own words and offer another technician or another time — do not promise a call back.`;
+        acc.changed = true;
+        return `SUCCESS. ${r.staffName} is now the technician for ${mine.firstName}'s ${mine.service}. Confirm it in one short sentence, then ask if there is anything else.`;
+      }
       if (name === 'end_call') {
         acc.wantEnd = true;
         return 'Say ONE short, warm goodbye now: thank them for calling, use their name if you know it.';
@@ -1805,6 +1886,77 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
   // ---- party booking (one person or a group) --------------------------------
   // The arithmetic lives in bookings/party-availability.service.ts, shared
   // with the chat bot; the hotline only phrases it for a phone call.
+
+  /**
+   * Upcoming bookings this caller can mean, newest phone rules last: under the
+   * caller ID, under any number they gave, and every booking made from this
+   * phone line on an earlier call (a friend's, one under a new number) —
+   * group members included. Only THIS salon's rows, only live ones.
+   */
+  private async callerAppointments(tenantId: string, callerPhone: string, extra: string[] = []): Promise<{ id: string; startTime: Date; service: string; firstName: string; phone: string; tech: string }[]> {
+    const ids = new Set<string>();
+    const { dial } = await this.localeInfo(tenantId);
+    const caller = toE164(callerPhone, dial);
+    if (caller) {
+      const calls = await Promise.resolve().then(() => this.prisma.voiceCall.findMany({
+        where: { tenantId, fromNumber: caller, appointmentId: { not: null }, createdAt: { gte: new Date(Date.now() - 90 * 86_400_000) } },
+        select: { appointmentId: true }, take: 50,
+      })).catch(() => [] as { appointmentId: string | null }[]);
+      for (const c of calls) if (c.appointmentId) ids.add(c.appointmentId);
+    }
+    for (const p of [caller, ...extra.map((x) => toE164(x, dial))].filter((x): x is string => !!x)) {
+      for (const r of await this.bookings.upcomingForPhone(tenantId, p, 10).catch(() => [] as { id: string }[])) ids.add(r.id);
+    }
+    if (!ids.size) return [];
+    const live: AppointmentStatus[] = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED];
+    const base = await this.prisma.appointment.findMany({ where: { tenantId, id: { in: [...ids] } }, select: { id: true, groupId: true } as never }).catch(() => []) as unknown as { id: string; groupId: string | null }[];
+    const groups = [...new Set(base.map((b) => b.groupId).filter((g): g is string => !!g))];
+    const rows = await this.prisma.appointment.findMany({
+      where: { tenantId, startTime: { gte: new Date() }, status: { in: live }, OR: [{ id: { in: [...ids] } }, ...(groups.length ? [{ groupId: { in: groups } }] : [])] } as never,
+      select: { id: true, startTime: true, service: { select: { name: true } }, customer: { select: { firstName: true, phone: true } }, assignedStaff: { select: { firstName: true } } } as never,
+      orderBy: { startTime: 'asc' }, take: 10,
+    }).catch(() => []) as unknown as { id: string; startTime: Date; service: { name: string } | null; customer: { firstName: string; phone: string | null } | null; assignedStaff: { firstName: string } | null }[];
+    return rows.map((r) => ({ id: r.id, startTime: r.startTime, service: r.service?.name ?? '', firstName: r.customer?.firstName ?? '', phone: r.customer?.phone ?? '', tech: r.assignedStaff?.firstName ?? '' }));
+  }
+
+  /**
+   * Before any booking is written: the number must be one that can exist, it
+   * must have been read back (a new number: every digit), and the same time
+   * must not already be booked from this phone line on an earlier call
+   * (./booking-guards). Null = go ahead; otherwise what to tell the model.
+   */
+  private async bookingPreflight(tenantId: string, callerPhone: string, phone: string, startIso: string, ctx: ToolCtx, input: Record<string, unknown>, callSid?: string | null): Promise<string | null> {
+    const { dial } = await this.localeInfo(tenantId);
+    const caller = toE164(callerPhone, dial) || '';
+    const newNumber = !caller || caller.replace(/\D/g, '').slice(-10) !== phone.replace(/\D/g, '').slice(-10);
+    if (newNumber && impossibleNanp(phone, dial)) {
+      return `NOT BOOKED: ${spokenNumber(phone, dial)} cannot be a real phone number here — it was probably misheard. Ask for the number again and tell them they can ${keypadHint(ctx.lang ?? 'en-US')}.`;
+    }
+    if (ctx.lastSaid !== undefined && !readBackOk({ said: ctx.lastSaid, phone, callerPhone: caller, dial })) {
+      return newNumber
+        ? `NOT BOOKED YET: this is a NEW number, so read the WHOLE number back digit by digit — "${spokenNumber(phone, dial)}" — together with the name, service, day and time, and wait for a clear yes. If any digit is wrong, ask them to ${keypadHint(ctx.lang ?? 'en-US')}.`
+        : `NOT BOOKED YET: read everything back in ONE sentence including "under the number ending in ${spokenLast4(phone)}" and wait for a clear yes.`;
+    }
+    if (input.secondBooking !== true && caller) {
+      const start = new Date(startIso);
+      // A failed look-up never blocks a booking: the guard only ever ADDS a question.
+      const earlier = await Promise.resolve().then(() => this.prisma.voiceCall.findMany({
+        where: { tenantId, fromNumber: caller, appointmentId: { not: null }, createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) }, ...(callSid ? { NOT: { callSid } } : {}) },
+        select: { appointmentId: true }, take: 50,
+      })).catch(() => [] as { appointmentId: string | null }[]);
+      const ids = earlier.map((c) => c.appointmentId).filter((x): x is string => !!x);
+      if (ids.length) {
+        const same = await Promise.resolve().then(() => this.prisma.appointment.findFirst({
+          where: { tenantId, id: { in: ids }, startTime: start, status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.REJECTED, AppointmentStatus.NO_SHOW] } },
+          select: { id: true, service: { select: { name: true } }, customer: { select: { firstName: true, phone: true } } },
+        })).catch(() => null);
+        if (same) {
+          return `NOT BOOKED: a booking already exists at that exact time from an earlier call on this phone — ${same.customer?.firstName ?? 'someone'} for ${same.service?.name ?? 'a service'}, under the number ending in ${spokenLast4(same.customer?.phone ?? '')}. Ask whether they mean that booking (then use find_appointment / reschedule / change_technician on it) or really want a SECOND one at the same time; only then call again with secondBooking: true.`;
+        }
+      }
+    }
+    return null;
+  }
 
   private async toolCheckAvailability(tenantId: string, tz: string, input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
     return this.parties.describe(tenantId, tz, input, ctx);
@@ -1829,7 +1981,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
 
   private async toolBookParty(
     tenantId: string, tz: string, callerPhone: string, input: Record<string, unknown>,
-    acc: { booked: boolean; appointmentId: string | null }, ctx: ToolCtx,
+    acc: { booked: boolean; appointmentId: string | null; callSid?: string | null }, ctx: ToolCtx,
   ): Promise<string> {
     const parsed = this.parties.parseParty(input, ctx, true);
     if ('error' in parsed) return parsed.error;
@@ -1849,6 +2001,8 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
     // The same wall-clock arithmetic the open-times grid uses, so "14:00" here is the very instant offered there.
     const start = wallTimeToUtc(dateStr, `${lm[2]}:${lm[3]}`, tz);
     if (start.getTime() < Date.now()) return 'That time has already passed. Ask for another time.';
+    const pre = await this.bookingPreflight(tenantId, callerPhone, phone, start.toISOString(), ctx, input, (acc as { callSid?: string | null }).callSid);
+    if (pre) return pre;
 
     // A repeated turn (a slow line, a caller saying "yes" twice) must not book twice.
     const dupe = await this.prisma.appointment.findFirst({

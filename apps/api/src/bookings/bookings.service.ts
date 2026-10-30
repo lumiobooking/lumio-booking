@@ -1091,6 +1091,58 @@ export class BookingsService {
    * Prisma, so the same rule serves both bots and can be tested without a
    * database. What is left here is everything that needs the database.
    */
+  /**
+   * A caller (hotline / chat bot) asks for a particular technician on a
+   * booking they already have. Before, the bot had no way to do it and told
+   * the customer "a staff member will call you back to add Alex" — and the
+   * customer had to call again and insist. Same checks as the desk's assign:
+   * this salon only, a live booking, an active bookable technician who does
+   * the service, free then (bookings, time off and blocks — assertNoOverlap).
+   * The caller's right to this booking is checked by the caller of this
+   * method (the hotline: the booking is on a number confirmed on this line).
+   */
+  async selfChangeTech(input: { tenantId: string; appointmentId: string; staffId: string; by: 'messenger' | 'hotline' }): Promise<{ ok: boolean; code: string; say: string; staffName?: string }> {
+    const { tenantId, appointmentId, staffId, by } = input;
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId },
+      select: { id: true, startTime: true, endTime: true, status: true, assignedStaffId: true, serviceId: true },
+    }).catch(() => null);
+    if (!appt) return { ok: false, code: 'not-found', say: 'That booking was not found.' };
+    if (!BookingsService.ACTIONABLE.includes(appt.status)) return { ok: false, code: 'not-live', say: 'That booking is no longer active, so its technician cannot be changed.' };
+    const st = await this.prisma.staffMember.findFirst({
+      where: { id: staffId, tenantId, isActive: true },
+      select: { id: true, firstName: true, takesAppointments: true, staffServices: { select: { serviceId: true } } } as never,
+    }).catch(() => null) as unknown as { id: string; firstName: string; takesAppointments?: boolean; staffServices?: { serviceId: string }[] } | null;
+    if (!st || st.takesAppointments === false) return { ok: false, code: 'no-tech', say: 'That technician is not taking appointments.' };
+    const skills = st.staffServices ?? [];
+    if (skills.length && appt.serviceId && !skills.some((x) => x.serviceId === appt.serviceId)) {
+      return { ok: false, code: 'not-skilled', say: `${st.firstName} does not do this service.` };
+    }
+    if (appt.assignedStaffId === st.id) return { ok: true, code: 'same', say: `${st.firstName} is already on this booking.`, staffName: st.firstName };
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.lockStaffSlot(tx, tenantId, st.id);
+        await this.assertNoOverlap(tx, tenantId, st.id, appt.startTime, appt.endTime, appt.id);
+        const keepStatus = appt.status === AppointmentStatus.CONFIRMED || appt.status === AppointmentStatus.ARRIVED;
+        await tx.appointment.updateMany({
+          where: { id: appt.id, tenantId },
+          data: {
+            assignedStaffId: st.id, preferredStaffId: st.id, assignedAt: new Date(), rejectedAt: null,
+            ...(keepStatus ? {} : { status: AppointmentStatus.ASSIGNED, responseDeadline: addMinutes(new Date(), 30) }),
+          } as never,
+        });
+      });
+    } catch (e) {
+      const msg = String((e as Error).message || e);
+      const say = /TIME_OFF|BLOCKED/.test(msg) ? `${st.firstName} is off at that time.` : /already booked/i.test(msg) ? `${st.firstName} already has a booking at that time.` : 'That change could not be made.';
+      return { ok: false, code: 'busy', say };
+    }
+    await this.audit.log({ tenantId, userId: null as never, action: 'booking.tech_changed_by_customer', resourceType: 'appointment', resourceId: appt.id, metadata: { staffId: st.id, from: appt.assignedStaffId, by } });
+    await this.followOnFloor(tenantId, appt.id, appt.assignedStaffId, st.id).catch(() => undefined);
+    this.sendStaffAssignmentEmail(tenantId, appt.id).catch(() => undefined);
+    return { ok: true, code: 'changed', say: `${st.firstName} is now on this booking.`, staffName: st.firstName };
+  }
+
   async selfReschedule(input: {
     tenantId: string;
     appointmentId: string;

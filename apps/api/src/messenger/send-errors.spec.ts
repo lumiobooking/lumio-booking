@@ -1,4 +1,4 @@
-import { AD_HOLD_RETRY_MS, adGreetingHold, readSendRefusal } from './send-errors';
+import { AD_HOLD_RETRY_MS, FRESH_RETRY_AFTER_MIN, adGreetingHold, describeRefusal, freshWindowReason, freshWindowRefusal, readSendRefusal, retryableRefusal } from './send-errors';
 
 describe('reading what Meta said when it refused our message', () => {
   it('another app holding the thread is recognised, so we can take it back', () => {
@@ -52,5 +52,50 @@ describe('the ad greeting hold (Zb Nails & Spa, 25 Oct)', () => {
   it('other refusals are not held', () => {
     expect(adGreetingHold(readSendRefusal(400, { code: 190 }), 10_000)).toBe(false);
     expect(adGreetingHold(readSendRefusal(400, { code: 2022, error_subcode: 1404078 }), 10_000)).toBe(false);
+  });
+});
+
+describe('a refusal seconds after the customer wrote is reported as Meta said it — no guessed cause (Lumio Agency, 30 Oct)', () => {
+  const windowErr = { code: 10, error_subcode: 2018278, message: '(#10) This message is sent outside of allowed window.', fbtrace_id: 'AbC123' };
+  it('keeps Meta\'s own words and trace id', () => {
+    const r = readSendRefusal(400, windowErr);
+    expect(r.meta).toBe('This message is sent outside of allowed window.');
+    expect(r.trace).toBe('AbC123');
+    expect(freshWindowRefusal(r, 70_000)).toBe(true);
+  });
+  it('the sentence quotes Meta, says when the customer wrote and what the bot will do — and never blames an ad greeting', () => {
+    const r = readSendRefusal(400, windowErr);
+    const s = freshWindowReason(r, 70_000, { tries: 3, nextAt: new Date('2026-10-30T06:37:55Z'), tz: 'Asia/Ho_Chi_Minh' });
+    expect(s).toContain('mã 10/2018278');
+    expect(s).toContain('“This message is sent outside of allowed window.”');
+    expect(s).toContain('70 giây trước');
+    expect(s).toContain('sẽ tự gửi lại lúc 13:37');
+    expect(s).not.toMatch(/câu chào/);
+    const end = freshWindowReason(r, 3_600_000, { tries: 9 });
+    expect(end).toMatch(/thử 9 lần không được — nhân viên trả lời giúp/);
+  });
+  it('a scheduled resend plan exists beyond the first minute', () => {
+    expect(FRESH_RETRY_AFTER_MIN[0]).toBeGreaterThanOrEqual(2);
+    expect(FRESH_RETRY_AFTER_MIN[FRESH_RETRY_AFTER_MIN.length - 1]).toBeLessThanOrEqual(23 * 60);
+  });
+});
+
+describe('which refused replies are kept and sent again later', () => {
+  it('Meta busy, a thread held by another tool, a token to reconnect → kept', () => {
+    expect(retryableRefusal(readSendRefusal(500, { code: 2 }), 30_000)).toBe(true);
+    expect(retryableRefusal(readSendRefusal(400, { code: 10, error_subcode: 2018300, message: 'thread owner' }), 30_000)).toBe(true);
+    expect(retryableRefusal(readSendRefusal(400, { code: 190 }), 30_000)).toBe(true);
+  });
+  it('a customer who blocked the Page, an unknown person, or a window really closed → not kept', () => {
+    expect(retryableRefusal(readSendRefusal(400, { code: 551, error_subcode: 1545041 }), 30_000)).toBe(false);
+    expect(retryableRefusal(readSendRefusal(400, { code: 100, error_subcode: 2018001 }), 30_000)).toBe(false);
+    expect(retryableRefusal(readSendRefusal(400, { code: 10, error_subcode: 2018278 }), 25 * 3600 * 1000)).toBe(false);
+  });
+  it('every sentence carries Meta’s own words and code, and what happens next', () => {
+    const r = readSendRefusal(400, { code: 190, message: '(#190) Error validating access token: Session has expired' });
+    const s = describeRefusal(r, 30_000, { tries: 1, nextAt: new Date('2026-10-30T06:40:00Z'), tz: 'Asia/Ho_Chi_Minh' });
+    expect(s).toContain('Error validating access token');
+    expect(s).toContain('mã 190');
+    expect(s).toContain('sẽ tự gửi lại lúc 13:40');
   });
 });

@@ -56,10 +56,12 @@ import { BookingsService, walkInOnlyMessage } from '../bookings/bookings.service
 import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { mergeBurst, alreadySaid, BURST_MS, repeatCount, repeatVerdict } from './burst';
+import { mergeBurst, alreadySaid, BURST_MS, repeatCount, repeatVerdict, repeatWasAnswered } from './burst';
 import { mayAnswerMirrored, rescueVerdict } from './rescue-stuck';
-import { isMetaAdGreeting, isMetaSystemLine } from './meta-system-lines';
-import { AD_HOLD_REASON, AD_HOLD_RETRY_MS, adGreetingHold, readSendRefusal, type GraphError } from './send-errors';
+import { isMetaAdGreeting, isMetaSystemLine, isMetaAiLine } from './meta-system-lines';
+import { AD_HOLD_RETRY_MS, FRESH_RETRY_AFTER_MIN, describeRefusal, freshWindowRefusal, readSendRefusal, retryableRefusal, retryNote, type GraphError } from './send-errors';
+import { nextRetry, resendVerdict } from './late-resend';
+import { echoKind, lastStampOf, maxOf, ownEcho } from './automation-echo';
 import { publishGrantFrom } from './publish-grant';
 import { classifyPageError, pageHealthText, shouldAlert as shouldAlertPage, type PageHealth } from './page-health';
 import { AiUsageService } from '../common/ai-usage.service';
@@ -103,11 +105,25 @@ type Turn = {
   role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean;
   /** Meta's refusal of this reply, in plain words (./send-errors). */
   sendError?: string | null;
+  /**
+   * A reply Meta refused seconds after the customer wrote ("outside of allowed
+   * window"): kept and sent again on a schedule (send-errors FRESH_RETRY_AFTER_MIN)
+   * by the rescue sweep. `first` = the first refusal, `n` = resends done, `next` = when.
+   */
+  retry?: { first: string; n: number; next: string; customerAt?: string | null; tries?: number } | null;
+  /** Delivered by a later resend (after Meta first refused it). */
+  lateAt?: string | null;
   /** First name of the teammate who typed a manual reply. Inbox only - the
    *  public web-chat view and the model's prompt never read it. */
   by?: string | null;
-  /** 'page': sent from the Page outside Lumio (Business Suite, Meta's agent, another tool) and mirrored in by the sync. */
-  source?: 'page';
+  /**
+   * Who sent a line Lumio did not write: 'page' = mirrored in from the Page
+   * (Business Suite, another tool); 'automation' = the Page's own automation
+   * (welcome message, instant/FAQ reply — it echoed seconds after the
+   * customer or a Meta notice, faster than anyone types); 'meta-ai' = Meta's
+   * Business AI ("Your AI agent will respond.").
+   */
+  source?: 'page' | 'automation' | 'meta-ai';
   /** A follow-up the bot sent after the customer went quiet (see ./followup). */
   nudge?: boolean;
   /** Set on a customer turn written the moment it arrived (before the bot's
@@ -1279,8 +1295,8 @@ export class MessengerService implements OnModuleInit {
     return { unanswered, parked };
   }
 
-  /** (thread id : customer line time) already rescued by this process — one try each. */
-  private readonly rescued = new Set<string>();
+  /** (thread id : customer line time) → rescue attempts by this process (at most RESCUE_TRIES each). */
+  private readonly rescued = new Map<string, number>();
 
   /**
    * The safety net under every in-memory timer: a customer whose line is still
@@ -1290,17 +1306,86 @@ export class MessengerService implements OnModuleInit {
    * process, so a reply that fails for a real reason is not retried forever.
    * Every salon, each thread with its own salon's connection and Page only.
    */
+  /**
+   * Replies Meta refused seconds after the customer wrote, sent again when
+   * due (./late-resend): the same text, through the same salon's Page token.
+   * The thread is re-read right before writing, and only its last turn — if
+   * it is still that same refused reply — is changed.
+   */
+  async resendRefused(now = Date.now()): Promise<number> {
+    const rows = await this.prisma.messengerThread.findMany({
+      where: { status: 'open', lastCustomerAt: { gte: new Date(now - 24 * 3600 * 1000) }, channel: { in: ['messenger', 'instagram', 'zalo'] } } as never,
+      select: { id: true, tenantId: true, pageId: true, senderId: true, history: true, handoff: true, handoffMode: true, status: true, lastCustomerAt: true, channel: true, updatedAt: true } as never,
+      orderBy: { lastCustomerAt: 'desc' } as never,
+      take: 300,
+    }).catch(() => []) as unknown as { id: string; tenantId: string; pageId: string; senderId: string; history: unknown; handoff: boolean; handoffMode: string | null; status: string | null; lastCustomerAt: Date | null; channel: string | null; updatedAt: Date }[];
+    const botOn = new Map<string, boolean>();
+    let n = 0;
+    for (const t of rows) {
+      const hist = (Array.isArray(t.history) ? t.history : []) as Turn[];
+      const last = hist[hist.length - 1];
+      if (!last?.failed || !last.retry) continue;
+      if (!botOn.has(t.tenantId)) botOn.set(t.tenantId, !!(await this.prisma.messengerConnection.findUnique({ where: { tenantId: t.tenantId }, select: { enabled: true } }).catch(() => null))?.enabled);
+      const v = resendVerdict(last, t, botOn.get(t.tenantId) ?? false, now);
+      if (!v.send) continue;
+      // The page must belong to THIS salon — a thread never borrows another tenant's token.
+      const page = await this.pageByEntry(t.pageId).catch(() => null);
+      if (!page || !page.enabled || page.tenantId !== t.tenantId) continue;
+      // More than one API process may run this sweep: only the one that claims the row sends.
+      if (!(await this.claimRow(t.id, t.updatedAt))) continue;
+      const customerAt = Date.parse(String(last.retry.customerAt ?? t.lastCustomerAt ?? last.retry.first));
+      const r = await this.sendText(page.pageToken, t.senderId, String(last.content ?? ''), t.channel === 'instagram' ? 'instagram' : t.channel === 'zalo' ? 'zalo' : 'messenger', t.tenantId, { customerAt: Number.isFinite(customerAt) ? customerAt : null, quick: true });
+      const live = await this.prisma.messengerThread.findUnique({ where: { id: t.id }, select: { history: true } }).catch(() => null);
+      const liveHist = (Array.isArray(live?.history) ? live!.history : []) as Turn[];
+      const cur = liveHist[liveHist.length - 1];
+      if (!cur || cur.role !== 'assistant' || cur.at !== last.at || cur.content !== last.content) continue; // the thread moved on meanwhile
+      const age = Date.now() - customerAt;
+      let updated: Turn;
+      if (r.ok) {
+        updated = { ...cur, failed: false, sendError: null, retry: null, lateAt: new Date().toISOString() };
+        this.countBotReply(t.tenantId);
+        this.logger.log(`late resend: delivered on thread ${t.id} (${t.tenantId}) after ${last.retry.n + 1} scheduled tries`);
+        n++;
+      } else {
+        const nx = nextRetry(last.retry, Date.now());
+        const tz = await this.tzOf(t.tenantId).catch(() => undefined);
+        const ref = r.refusal ?? { code: '?', meta: '', reason: 'Gửi lại không được.', windowClosed: false };
+        const keep = !!r.retryable && !!nx.next;
+        updated = {
+          ...cur,
+          retry: keep ? { ...last.retry, n: nx.n, next: nx.next as string } : null,
+          sendError: describeRefusal(ref, Number.isFinite(age) ? age : null, { tries: (last.retry.tries ?? 3) + nx.n, nextAt: keep ? new Date(nx.next as string) : null, tz }),
+        };
+      }
+      await this.prisma.messengerThread.update({ where: { id: t.id }, data: { history: [...liveHist.slice(0, -1), updated] as unknown as Prisma.InputJsonValue } as never }).catch(() => undefined);
+      this.events.publish(t.tenantId, 'message');
+    }
+    return n;
+  }
+
+  /**
+   * Compare-and-set on the thread row: true for exactly one caller among the
+   * API processes that read the same version. Every in-memory map (timers,
+   * sent ids) is per process; the sweeps that SEND must not rely on them.
+   */
+  private async claimRow(threadId: string, seenUpdatedAt: Date | null | undefined): Promise<boolean> {
+    if (!seenUpdatedAt) return true;
+    const r = await this.prisma.messengerThread.updateMany({ where: { id: threadId, updatedAt: seenUpdatedAt } as never, data: { updatedAt: new Date() } as never }).catch(() => ({ count: 0 }));
+    return r.count === 1;
+  }
+
   async rescueStuck(now = Date.now()): Promise<number> {
+    await this.resendRefused(now).catch((e) => this.logger.warn(`late resend failed: ${String(e).slice(0, 120)}`));
     const since = new Date(now - 24 * 3600 * 1000);
     const until = new Date(now - 3 * 60_000);
     const rows = await this.prisma.messengerThread.findMany({
       where: { status: 'open', lastCustomerAt: { gte: since, lte: until } } as never,
-      select: { id: true, tenantId: true, pageId: true, senderId: true, history: true, handoff: true, handoffAt: true, handoffMode: true, assignedUserId: true, status: true, lastCustomerAt: true, channel: true } as never,
+      select: { id: true, tenantId: true, pageId: true, senderId: true, history: true, handoff: true, handoffAt: true, handoffMode: true, assignedUserId: true, status: true, lastCustomerAt: true, channel: true, updatedAt: true } as never,
       orderBy: { lastCustomerAt: 'desc' } as never,
       take: 300,
     }).catch(() => []) as unknown as {
       id: string; tenantId: string; pageId: string; senderId: string; history: unknown; handoff: boolean; handoffAt: Date | null;
-      handoffMode: string | null; assignedUserId: string | null; status: string | null; lastCustomerAt: Date | null; channel: string | null;
+      handoffMode: string | null; assignedUserId: string | null; status: string | null; lastCustomerAt: Date | null; channel: string | null; updatedAt: Date;
     }[];
     type ConnRow = { enabled?: boolean; tenantId: string; aiInstruction: string | null; botFacts: unknown; graceMins?: number };
     const conns = new Map<string, ConnRow | null>();
@@ -1308,7 +1393,7 @@ export class MessengerService implements OnModuleInit {
     for (const t of rows) {
       if (this.bursts.has(t.id) || this.graceTimers.has(t.id)) continue; // a reply is on its way
       const key = `${t.id}:${t.lastCustomerAt ? new Date(t.lastCustomerAt).getTime() : 0}`;
-      if (this.rescued.has(key)) continue;
+      if ((this.rescued.get(key) ?? 0) >= RESCUE_TRIES) continue;
       if (!conns.has(t.tenantId)) conns.set(t.tenantId, await this.prisma.messengerConnection.findUnique({ where: { tenantId: t.tenantId } }).catch(() => null) as unknown as ConnRow | null);
       const conn = conns.get(t.tenantId);
       if (!conn) continue;
@@ -1322,7 +1407,9 @@ export class MessengerService implements OnModuleInit {
       if (!verdict.rescue || !last) continue;
       const page = await this.pageByEntry(t.pageId).catch(() => null);
       if (!page || !page.enabled || page.tenantId !== t.tenantId) continue;
-      this.rescued.add(key);
+      // Two API processes must not both answer the same waiting customer.
+      if (!(await this.claimRow(t.id, t.updatedAt))) continue;
+      this.rescued.set(key, (this.rescued.get(key) ?? 0) + 1);
       if (verdict.release) {
         await this.prisma.messengerThread.update({ where: { id: t.id }, data: { handoff: false, handoffAt: null } as never }).catch(() => undefined);
       }
@@ -1821,8 +1908,10 @@ export class MessengerService implements OnModuleInit {
           // Whether the customer actually got it. Dropped here before, so a reply
           // Meta refused looked exactly like one it delivered.
           ...(t.failed ? { failed: true, sendError: (t as { sendError?: string | null }).sendError ?? null } : {}),
+          // Delivered by a later resend, after Meta first refused it (./late-resend).
+          ...((t as { lateAt?: string | null }).lateAt ? { lateAt: (t as { lateAt?: string | null }).lateAt } : {}),
           ...((t as { undelivered?: boolean }).undelivered ? { undelivered: true } : {}),
-          ...((t as { source?: string }).source === 'page' ? { source: 'page' } : {}),
+          ...(['page', 'automation', 'meta-ai'].includes(String((t as { source?: string }).source)) ? { source: (t as { source?: string }).source } : {}),
           // An automatic reminder, not an answer: its "Fix" edits the reminder
           // wording (settings › chat-followup), which no AI instruction reaches.
           // Meta's copy drops our flag, so the local buffer and the known lines decide.
@@ -2694,6 +2783,8 @@ export class MessengerService implements OnModuleInit {
       // The last event Facebook delivered for this Page since the server
       // started (null = nothing yet), and how many conversations are stored.
       lastEvent: trace ? { at: new Date(trace.at).toISOString(), count: trace.count, lane: trace.lane, preview: trace.preview } : null,
+      // The same, as ANY API process saw it (the line above is this process only).
+      lastEventAny: ((await this.prisma.setting.findFirst({ where: { tenantId, key: WEBHOOK_LAST_KEY }, select: { value: true } }).catch(() => null))?.value ?? null) as { at: string; lane: string } | null,
       serverStartedAt: new Date(this.startedAt).toISOString(),
       threads,
       // Where Meta actually delivers this app's events, and whether that is THIS
@@ -2713,6 +2804,8 @@ export class MessengerService implements OnModuleInit {
       echoOk: appSub.echoOk && fields.includes('message_echoes'),
       // The bot's last send to Meta: delivered, or Meta's refusal in plain words.
       lastSend: ((await this.prisma.setting.findFirst({ where: { tenantId, key: META_SEND_TRACE_KEY }, select: { value: true } }).catch(() => null))?.value ?? null) as { at: string; ok: boolean; code: string; error: string } | null,
+      // Meta's Business AI seen answering on this Page ("Your AI agent will respond.") — the bot yields to it.
+      metaAi: ((await this.prisma.setting.findFirst({ where: { tenantId, key: META_AI_SEEN_KEY }, select: { value: true } }).catch(() => null))?.value ?? null) as { at: string; threadId: string; text: string } | null,
       verifiedAt: new Date().toISOString(),
       webhookUrl: `${this.apiBase()}/api/messenger/webhook`,
     };
@@ -3143,24 +3236,55 @@ export class MessengerService implements OnModuleInit {
     const thread = await this.prisma.messengerThread.findFirst({ where: { pageId: page.pageId, senderId: customerId } });
     if (!thread) return;
     const body = (text || '').trim();
+    const now = Date.now();
+    const histNow = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+    // OUR OWN reply echoing back on another API process (Instagram drops our
+    // tag, and the sent-id memory is per process): never a person — the bot
+    // used to stand aside for fifteen minutes because it heard itself.
+    if (body && ownEcho(histNow, body, now)) return;
+    // What this echo is (./automation-echo): Meta's notice, Meta's AI, the
+    // Page's own automation, or a person. Only a person holds the chat.
+    // The thread's own history is read too, because the notice may have been
+    // handled by another API process a second earlier.
+    const metaAi = !!body && isMetaAiLine(body);
+    const notice = !!body && (isMetaAdGreeting(body) || isMetaSystemLine(body));
+    if (metaAi) this.metaAiThreads.set(thread.id, now);
+    if (notice) this.noticeAt.set(thread.id, now);
+    const fromHist = lastStampOf(histNow, (t) => t.role === 'assistant' && (isMetaAdGreeting(t.content) || isMetaSystemLine(t.content)));
+    const aiHist = lastStampOf(histNow, (t) => t.role === 'assistant' && isMetaAiLine(t.content));
+    const custAt = (thread as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt;
+    const kind = echoKind({
+      notice, metaAi,
+      nowMs: now,
+      lastNoticeMs: notice ? null : maxOf(this.noticeAt.get(thread.id), fromHist),
+      lastCustomerMs: custAt ? new Date(custAt).getTime() : null,
+      metaAiMs: metaAi ? null : maxOf(this.metaAiThreads.get(thread.id), aiHist),
+    });
+    if (metaAi) void this.noteMetaAi(page.tenantId, thread.id, body);
     if (body) {
-      // Meta's ad greeting is not a staff member answering a question — never a "staff answer" for the bot to learn.
-      if (!isMetaAdGreeting(body) && !isMetaSystemLine(body)) this.noteStaffAnswer(page.tenantId, thread as unknown as { id: string; history?: unknown }, body);
+      // Only a PERSON's answer is something the bot may learn from — never Meta's lines or the Page's automation.
+      if (kind === 'person') this.noteStaffAnswer(page.tenantId, thread as unknown as { id: string; history?: unknown }, body);
       const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
       const last = hist[hist.length - 1];
       // sendManual already stored this exact message — its echo must not duplicate it
       if (!(last && last.role === 'assistant' && last.content.slice(0, 1000) === body.slice(0, 1000))) {
         await this.appendTurns(thread.id, hist, this.threadSummary(thread), [
-          { role: 'assistant', content: body.slice(0, 1000), manual: true, at: new Date().toISOString() },
+          { role: 'assistant', content: body.slice(0, 1000), manual: true, at: new Date().toISOString(),
+            ...(kind === 'automation' ? { source: 'automation' as const } : kind === 'meta-ai' ? { source: 'meta-ai' as const } : {}) },
         ]);
       }
     }
-    // Meta's own lines — a click-to-Messenger ad's greeting ("Hi Stephany!
-    // Please let us know how we can help you.") or its "replied to an ad"
-    // notice — echo like a person typing in Business Suite. They are kept in
-    // the history above, but nobody is holding the chat: the bot must not
-    // stand aside for five minutes because an ad said hello.
-    if (body && (isMetaAdGreeting(body) || isMetaSystemLine(body))) return;
+    // Meta's own lines (an ad's greeting, "replied to an ad / a post / your
+    // welcome message", "Your AI agent will respond.") and the Page's own
+    // automation (a welcome message or instant reply that echoed seconds after
+    // the customer wrote) are kept in the history above, but nobody is
+    // holding the chat: the bot must not stand aside because a robot spoke.
+    // Meta's AI answering is the one exception: two AIs answering the same
+    // customer is worse, so the bot yields — and the salon is told (noteMetaAi).
+    if (kind === 'notice' || kind === 'automation') {
+      if (kind === 'automation') this.logger.log(`echo treated as the Page's automation (no yield) on thread ${thread.id}: "${body.slice(0, 60)}"`);
+      return;
+    }
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
       data: { handoff: true, handoffAt: new Date() } as never,
@@ -3402,7 +3526,15 @@ export class MessengerService implements OnModuleInit {
       // now — the customer never waits on somebody finishing a fill. With it
       // off, the conversation is the person's and the bot stays quiet; the
       // reassignment rules pass it on if they do not answer in time.
-      if (assignTo && !turnSettingsOf(conn as never).botFirst) return;
+      if (assignTo && !turnSettingsOf(conn as never).botFirst) {
+        // The person answers — but the customer's line is still written into
+        // the conversation now (it used to be left out until a later sync).
+        const histA = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+        const inIsoA = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+        await this.appendTurns(thread.id, histA, this.threadSummary(thread), [{ role: 'user', content: text, at: inIsoA, ...imgTurn }]).catch(() => undefined);
+        this.events.publish(page.tenantId, 'message');
+        return;
+      }
     }
 
     if (thread.handoff && !botOff) {
@@ -3532,6 +3664,36 @@ export class MessengerService implements OnModuleInit {
   // Yield windows are per-tenant settings now (humanActiveMins / graceMins on
   // the connection); 15 and 5 minutes are just the defaults.
   private readonly graceTimers = new Map<string, NodeJS.Timeout>();
+  /** Thread → when one of Meta's notices last echoed in (./automation-echo). */
+  private readonly noticeAt = new Map<string, number>();
+  /** Thread → when Meta's Business AI last announced itself there. */
+  private readonly metaAiThreads = new Map<string, number>();
+  /** Tenant → when its owner was last told Meta's AI is answering. */
+  private readonly metaAiAlerts = new Map<string, number>();
+
+  /**
+   * Meta's Business AI is answering this salon's customers ("Your AI agent will
+   * respond."). Lumio's bot yields to it — two AIs on one customer is worse —
+   * so the salon must know, or it reads as "the AI stopped answering":
+   * remembered for the Messenger page (webhook-status.metaAi) and pushed to
+   * the salon's phones at most once a day.
+   */
+  private async noteMetaAi(tenantId: string, threadId: string, text: string): Promise<void> {
+    const value = { at: new Date().toISOString(), threadId, text: text.slice(0, 200) } as unknown as Prisma.InputJsonValue;
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: META_AI_SEEN_KEY } },
+      update: { value }, create: { tenantId, key: META_AI_SEEN_KEY, value },
+    }).catch(() => undefined);
+    const last = this.metaAiAlerts.get(tenantId) ?? 0;
+    if (Date.now() - last < 24 * 3600_000) return;
+    this.metaAiAlerts.set(tenantId, Date.now());
+    this.logger.warn(`Meta Business AI is answering on tenant ${tenantId} (thread ${threadId})`);
+    void this.push.sendToTenant(tenantId, {
+      title: '⚠ AI của Meta đang trả lời thay Lumio',
+      body: 'Trang Facebook đang bật “AI của Meta” (Business AI). Tắt trong Meta Business Suite để AI Lumio trả lời khách.',
+      url: '/salon/messenger', tag: 'lumio-meta-ai',
+    }).catch(() => undefined);
+  }
   /** Thread → when staff were last told a bot reply did not reach Meta. */
   private readonly sendFailAlerts = new Map<string, number>();
   /** Message ids WE sent. Instagram echoes drop the metadata tag, so the tag
@@ -3629,7 +3791,8 @@ export class MessengerService implements OnModuleInit {
     if (arrived.length && photoNote) await this.noteOnTurns(threadId, ridSet, photoNote).catch(() => undefined);
     // The same words for the third time in half an hour get no answer; the fifth
     // time the thread goes to Spam (./burst repeatVerdict). A photo is never a repeat.
-    const verdict = inImages.length ? 'answer' : repeatVerdict(repeatCount(prior, text));
+    // Only a question that WAS answered (a delivered reply after an earlier copy) counts as a repeat.
+    const verdict = inImages.length || !repeatWasAnswered(prior, text) ? 'answer' : repeatVerdict(repeatCount(prior, text));
     if (verdict !== 'answer') {
       if (!userAlready) {
         await this.prisma.messengerThread.update({
@@ -3799,7 +3962,7 @@ export class MessengerService implements OnModuleInit {
         if (!th) return false;
         if (th.handoff && String(th.handoffMode ?? '') === 'locked') return false;
         const turns = (Array.isArray(th.history) ? th.history : []) as Turn[];
-        return !turns.some((t) => t.role === 'assistant' && t.manual && !t.failed
+        return !turns.some((t) => t.role === 'assistant' && t.manual && !t.failed && t.source !== 'automation'
           && new Date(t.at ?? 0).getTime() > sendStart
           && !isMetaAdGreeting(t.content) && !isMetaSystemLine(t.content));
       },
@@ -3833,7 +3996,10 @@ export class MessengerService implements OnModuleInit {
     // A reply the mouth refused is kept, flagged, so the activity log shows
     // "Failed" instead of a "Sent" nobody received — and so the repeat guard
     // lets the bot try again when the customer writes the same thing.
-    const outTurn: Turn = sent.ok ? { role: 'assistant', content: reply, at: outAt } : ({ role: 'assistant', content: reply, at: outAt, failed: true, sendError: sent.error ?? null } as Turn);
+    const outTurn: Turn = sent.ok ? { role: 'assistant', content: reply, at: outAt } : ({
+      role: 'assistant', content: reply, at: outAt, failed: true, sendError: sent.error ?? null,
+      ...(sent.retryable ? { retry: { first: outAt, n: 0, next: new Date(Date.parse(outAt) + FRESH_RETRY_AFTER_MIN[0] * 60_000).toISOString(), customerAt: customerAt != null ? new Date(customerAt).toISOString() : null, tries: sent.tries ?? 1 } } : {}),
+    } as Turn);
     const photoTurns: Turn[] = (agentCtx?.photos ?? []).map((p, i) => ({
       role: 'assistant', content: `[Đã gửi ${p.urls.length} ảnh: ${p.label}]`, at: new Date(new Date(outAt).getTime() - (agentCtx!.photos!.length - i)).toISOString(), images: p.urls,
     }));
@@ -6137,7 +6303,20 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
   private traceWebhook(entryId: string, lane: 'messaging' | 'standby' | 'echo' | 'other' | 'feed', preview: string) {
     const cur = this.webhookTrace.get(entryId);
     this.webhookTrace.set(entryId, { at: Date.now(), count: (cur?.count ?? 0) + 1, lane, preview: preview.slice(0, 60) });
+    // Also in the database, at most once a minute per Page: the webhook may
+    // land on one API process while the Messenger page asks another, which
+    // then showed "no event yet" for a Page that was receiving fine. Never the text.
+    const last = this.webhookPersistAt.get(entryId) ?? 0;
+    if (Date.now() - last < 60_000) return;
+    this.webhookPersistAt.set(entryId, Date.now());
+    void (async () => {
+      const page = await this.pageByEntry(entryId).catch(() => null);
+      if (!page) return;
+      const value = { at: new Date().toISOString(), lane, entryId } as unknown as Prisma.InputJsonValue;
+      await this.prisma.setting.upsert({ where: { tenantId_key: { tenantId: page.tenantId, key: WEBHOOK_LAST_KEY } }, update: { value }, create: { tenantId: page.tenantId, key: WEBHOOK_LAST_KEY, value } });
+    })().catch(() => undefined);
   }
+  private readonly webhookPersistAt = new Map<string, number>();
 
   /**
    * Names for many conversations in ONE call, the way Business Suite gets them.
@@ -6571,15 +6750,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
   private async sendText(
     pageToken: string, recipientId: string, text: string, channel?: Channel, tenantId?: string,
     /** When the customer last wrote, and a check that sending is still wanted — for the ad-greeting retry (./send-errors). */
-    hold?: { customerAt?: number | null; stillWanted?: () => Promise<boolean> },
-  ): Promise<{ ok: boolean; error?: string }> {
+    hold?: { customerAt?: number | null; stillWanted?: () => Promise<boolean>; /** one resend, no waiting (the scheduled resend) */ quick?: boolean },
+  ): Promise<{ ok: boolean; error?: string; retryable?: boolean; tries?: number; refusal?: { code: string; meta: string; reason: string; windowClosed: boolean } }> {
     // Zalo is a different mouth entirely: its own endpoint, its own auth
     // header, no echo/mid machinery (Zalo webhooks do not echo our sends).
     if (channel === 'zalo') {
       const r = await sendZaloText(pageToken, recipientId, text);
-      if (!r.ok) this.logger.warn(`Zalo send failed: ${String(r.error).slice(0, 120)}`);
       if (tenantId) await this.traceZaloSend(tenantId, r);
-      return r;
+      if (r.ok) return r;
+      this.logger.warn(`Zalo send failed: ${String(r.error).slice(0, 120)}`);
+      // Kept and sent again on the schedule, like Messenger (./late-resend).
+      const zr = { code: 'zalo', meta: String(r.error ?? '').slice(0, 200), reason: 'Zalo không nhận tin của bot.', windowClosed: false };
+      const tz = tenantId ? await this.tzOf(tenantId).catch(() => undefined) : undefined;
+      return { ok: false, error: describeRefusal(zr, null, hold?.quick ? null : { tries: 1, nextAt: new Date(Date.now() + FRESH_RETRY_AFTER_MIN[0] * 60_000), tz }), retryable: true, tries: 1, refusal: zr };
     }
     // The website has no send: the reply appended to the thread's history is
     // what the visitor's browser reads on its next poll.
@@ -6599,28 +6782,33 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: GraphError };
       return { status: res.status, ok: res.ok && !out.error && !!out.message_id, out };
     };
+    let tries = 0;
     try {
-      let r = await send();
+      let r = await send(); tries++;
       if (!r.ok) {
         const first = readSendRefusal(r.status, r.out.error);
         if (first.threadControl) {
           // An ad's automation, Meta's Business AI or another tool holds the
           // conversation. The salon turned the bot on: take it back, once.
           await this.claimThread(pageToken, recipientId).catch(() => undefined);
-          r = await send();
+          r = await send(); tries++;
         } else if (first.transient) {
           await new Promise((ok) => { const t = setTimeout(ok, 1500); t.unref?.(); });
-          r = await send();
-        } else if (adGreetingHold(first, hold?.customerAt != null ? Date.now() - hold.customerAt : null)) {
-          // The customer wrote moments ago, yet Meta calls the window closed:
-          // a click-to-Messenger ad's welcome flow is still running. Wait for
-          // Meta's greeting to go out, then send again (twice, about a minute
-          // in all) — unless someone has answered meanwhile.
-          for (const wait of AD_HOLD_RETRY_MS) {
-            await new Promise((ok) => { const t = setTimeout(ok, wait); t.unref?.(); });
+          r = await send(); tries++;
+        } else if (freshWindowRefusal(first, hold?.customerAt != null ? Date.now() - hold.customerAt : null)) {
+          // The customer wrote moments ago, yet Meta calls the window closed.
+          // The cause is Meta's (see ./send-errors — not guessed here). Take
+          // thread control in case another app or Meta's own tools hold the
+          // conversation, then send again twice within a minute — unless a
+          // person has answered meanwhile. Still refused: the reply is kept
+          // and the rescue sweep resends it on a schedule.
+          this.logger.warn(`fresh-window refusal (${first.code}) tenant=${tenantId ?? '?'}: ${first.meta} [trace ${first.trace || '-'}]`);
+          await this.claimThread(pageToken, recipientId).catch(() => undefined);
+          for (const wait of hold?.quick ? [0] : [0, ...AD_HOLD_RETRY_MS]) {
+            if (wait) await new Promise((ok) => { const t = setTimeout(ok, wait); t.unref?.(); });
             if (hold?.stillWanted && !(await hold.stillWanted().catch(() => true))) break;
-            r = await send();
-            if (r.ok) { this.logger.log(`ad-greeting hold: delivered after waiting (${recipientId.slice(-4)})`); break; }
+            r = await send(); tries++;
+            if (r.ok) { this.logger.log(`fresh-window refusal: delivered on resend (${recipientId.slice(-4)})`); break; }
           }
         }
       }
@@ -6630,15 +6818,24 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         return { ok: true };
       }
       const why = readSendRefusal(r.status, r.out.error);
-      if (adGreetingHold(why, hold?.customerAt != null ? Date.now() - hold.customerAt : null)) why.reason = AD_HOLD_REASON;
-      this.logger.warn(`Send API refused (${why.code}) tenant=${tenantId ?? '?'}: ${String(r.out.error?.message ?? '').slice(0, 160)}`);
+      const age = hold?.customerAt != null ? Date.now() - hold.customerAt : null;
+      // Kept and sent again on the schedule unless it cannot succeed (./send-errors retryableRefusal).
+      const retryable = retryableRefusal(why, age);
+      const tz = tenantId ? await this.tzOf(tenantId).catch(() => undefined) : undefined;
+      const plan = retryable && !hold?.quick ? { tries, nextAt: new Date(Date.now() + FRESH_RETRY_AFTER_MIN[0] * 60_000), tz } : (retryable ? null : { tries, tz });
+      const base = why.reason;
+      why.reason = describeRefusal(why, age, plan);
+      this.logger.warn(`Send API refused (${why.code}) tenant=${tenantId ?? '?'}: ${String(r.out.error?.message ?? '').slice(0, 160)} [trace ${why.trace || '-'}]`);
       if (tenantId) void this.traceMetaSend(tenantId, { ok: false, code: why.code, error: why.reason });
-      return { ok: false, error: why.reason };
+      return { ok: false, error: why.reason, retryable, tries, refusal: { code: why.code, meta: why.meta, reason: base, windowClosed: why.windowClosed } };
     } catch (e) {
       this.logger.warn(`Send API failed: ${String(e).slice(0, 120)}`);
-      const reason = 'Không gọi được Meta (mạng chậm hoặc Meta không phản hồi).';
+      // The network or Meta did not answer at all: the reply is kept and sent again on the schedule.
+      const base = 'Không gọi được Meta (mạng chậm hoặc Meta không phản hồi).';
+      const tz = tenantId ? await this.tzOf(tenantId).catch(() => undefined) : undefined;
+      const reason = hold?.quick ? base : `${base} ${retryNote({ tries: Math.max(1, tries), nextAt: new Date(Date.now() + FRESH_RETRY_AFTER_MIN[0] * 60_000), tz })}`;
       if (tenantId) void this.traceMetaSend(tenantId, { ok: false, code: 'network', error: reason });
-      return { ok: false, error: reason };
+      return { ok: false, error: reason, retryable: true, tries: Math.max(1, tries), refusal: { code: 'network', meta: '', reason: base, windowClosed: false } };
     }
   }
 
@@ -6684,6 +6881,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 const CATCH_UP_DEBOUNCE_MS = 20_000;
 /** Setting row: the last Messenger/Instagram bot send of a salon (ok, or Meta's refusal). */
 const META_SEND_TRACE_KEY = 'messenger_send_trace';
+/** A dropped customer line is rescued up to this many times per process (a rescue that itself failed is tried again on the next sweep). */
+const RESCUE_TRIES = 3;
+/** Setting row: when any API process last received a webhook event for the salon's Page (≤ once a minute). */
+const WEBHOOK_LAST_KEY = 'messenger_webhook_last';
+/** Setting row: when Meta's Business AI was last seen answering on the salon's Page. */
+const META_AI_SEEN_KEY = 'messenger_meta_ai_seen';
 /** Meta's own Page Inbox (Business Suite / the Messenger app): a human typing there echoes with this app_id. */
 const PAGE_INBOX_APP_ID = '263902037430900';
 

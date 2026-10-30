@@ -117,6 +117,30 @@ export function repeatCount(
   return n;
 }
 
+/**
+ * Did the customer get a DELIVERED answer after an earlier copy of this text?
+ * A customer repeating a question because the bot's replies never reached them
+ * (Meta refused them — failed turns) is not a spammer and must be answered:
+ * silencing them is the "AI stopped answering" this guard must never cause.
+ */
+export function repeatWasAnswered(
+  history: { role?: string; content?: unknown; at?: string; failed?: boolean }[],
+  text: string,
+): boolean {
+  const want = norm(text);
+  if (!want) return false;
+  let seenCopy = false;
+  for (const turn of history ?? []) {
+    if (turn?.role === 'user') {
+      const lines = String(turn.content ?? '').split('\n').map(norm);
+      if (lines.includes(want) || norm(turn.content) === want) seenCopy = true;
+    } else if (seenCopy && turn?.role === 'assistant' && !turn.failed) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** What the bot does with this message: answer, stay quiet, or stay quiet and move the thread to Spam. */
 export function repeatVerdict(priorRepeats: number): 'answer' | 'silent' | 'spam' {
   if (priorRepeats >= REPEAT_SPAM_AT) return 'spam';

@@ -33,6 +33,10 @@ export interface SendRefusal {
   pageRestricted: boolean;
   /** Meta says the reply window is closed ("outside of allowed window"). */
   windowClosed: boolean;
+  /** Meta's own words, as it sent them (trimmed) — shown to the salon next to ours, never replaced by a guess. */
+  meta: string;
+  /** Meta's trace id, for a support ticket with Meta. */
+  trace: string;
 }
 
 export function readSendRefusal(status: number, err: GraphError | null | undefined): SendRefusal {
@@ -59,26 +63,91 @@ export function readSendRefusal(status: number, err: GraphError | null | undefin
   else if (code === 100 && (sub === 2018001 || /no matching user/i.test(msg))) reason = 'Meta không tìm thấy khách này trên Page.';
   else if (transient) reason = 'Meta tạm thời không nhận tin — thử lại sau ít phút.';
   else reason = msg ? `Meta từ chối: ${msg.slice(0, 160)}` : `Meta từ chối tin nhắn (HTTP ${status}).`;
-  return { code: tag, reason, threadControl, transient: transient && !pageRestricted, pageRestricted, windowClosed };
+  return { code: tag, reason, threadControl, transient: transient && !pageRestricted, pageRestricted, windowClosed, meta: msg.replace(/^\(#\d+\)\s*/, '').slice(0, 200), trace: String(err?.fbtrace_id ?? '').slice(0, 40) };
 }
 
 /**
- * "Outside of allowed window" ten seconds after the customer wrote.
+ * "Outside of allowed window" while the customer wrote moments ago.
  *
- * Seen on Zb Nails & Spa, 25 Oct 2026: a customer tapped a click-to-Messenger
- * ad's ready-made question ("Do I need to book an appointment in advance?") at
- * 13:01:21, the bot answered at 13:01:31 and Meta refused it as outside the
- * 24-hour window. Meta's own ad greeting ("Hi Stephany! Please let us know how
- * we can help you.") only went out at 13:02:01, and from then on every send
- * worked. While an ad's welcome flow is still running, the Page cannot answer
- * through the API. So when the window "closed" on a customer who wrote minutes
- * ago, it is not closed: wait for the greeting and send again.
+ * Seen on Zb Nails & Spa (25 Oct 2026, the ad's greeting went out a little
+ * later and sends worked after it) and on Lumio Agency (30 Oct 2026, Demy
+ * Nguyen: an ad conversation with NO greeting configured — the owner said so
+ * — refused for over a minute). The first explanation written here blamed an
+ * ad greeting still going out; that was a guess from one case and it was
+ * wrong for the second. We do not know why Meta refuses a reply seconds after
+ * a customer wrote, so we do not say we do: the inbox shows what Meta itself
+ * answered (its code and words), and the bot keeps trying.
+ *
+ * What the bot does about it: take thread control (in case another app or
+ * Meta's own tools hold the conversation), resend twice within a minute, and
+ * then keep the reply and resend it on a schedule (FRESH_RETRY_AFTER_MIN)
+ * while the customer's 24 hours last — unless a person answers or takes the
+ * chat first.
  */
 export const AD_HOLD_RETRY_MS = [20_000, 30_000];
-export const AD_HOLD_REASON = 'Khách vừa nhắn từ quảng cáo và Meta còn đang gửi câu chào tự động của quảng cáo, nên chưa cho bot trả lời. Bot đã thử lại 2 lần trong 1 phút — nhân viên trả lời giúp trong Hộp thư.';
+/** Minutes after the first refusal at which the kept reply is sent again. */
+export const FRESH_RETRY_AFTER_MIN = [2, 4, 8, 15, 30, 60];
 
-export function adGreetingHold(r: Pick<SendRefusal, 'windowClosed'>, customerAgeMs: number | null | undefined): boolean {
+/** A "window closed" refusal on a customer who wrote less than 23 hours ago. */
+export function freshWindowRefusal(r: Pick<SendRefusal, 'windowClosed'>, customerAgeMs: number | null | undefined): boolean {
   if (!r.windowClosed) return false;
   if (customerAgeMs === null || customerAgeMs === undefined || !Number.isFinite(customerAgeMs)) return false;
   return customerAgeMs >= 0 && customerAgeMs < 23 * 3600 * 1000;
+}
+/** @deprecated the old name — the cause is not known to be an ad greeting. */
+export const adGreetingHold = freshWindowRefusal;
+
+/**
+ * May a refused reply be sent again later? Everything except what cannot
+ * change by itself or must not be retried:
+ *   - the customer is not reachable (blocked the Page / no such person);
+ *   - the window is really closed (the customer wrote 23 h+ ago).
+ * Meta being busy, a thread held by another tool, a token or permission the
+ * salon fixes by reconnecting, a Page restriction that lifts — all of these
+ * are tried again on the schedule, so a reply is not lost to a bad minute.
+ */
+export function retryableRefusal(r: Pick<SendRefusal, 'code' | 'windowClosed'>, customerAgeMs: number | null | undefined): boolean {
+  if (/^551\b|1545041|2018001/.test(r.code)) return false;
+  if (r.windowClosed) return freshWindowRefusal(r, customerAgeMs);
+  if (customerAgeMs !== null && customerAgeMs !== undefined && Number.isFinite(customerAgeMs) && customerAgeMs > 23 * 3600 * 1000) return false;
+  return true;
+}
+
+/** The plan line: "Bot sẽ tự gửi lại lúc 13:37 (đã thử 3 lần)." or the hand-over line. */
+export function retryNote(plan: { tries: number; nextAt?: Date | null; tz?: string }): string {
+  if (plan.nextAt) {
+    const at = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false, ...(plan.tz ? { timeZone: plan.tz } : {}) }).format(plan.nextAt);
+    return `Bot đã thử ${plan.tries} lần và sẽ tự gửi lại lúc ${at}. Nhân viên có thể trả lời trước trong Hộp thư hoặc Business Suite.`;
+  }
+  return `Bot đã thử ${plan.tries} lần không được — nhân viên trả lời giúp trong Hộp thư hoặc Business Suite.`;
+}
+
+/**
+ * The whole sentence for the inbox: our plain reading, Meta's own words and
+ * code (never only our reading), and what happens next.
+ */
+export function describeRefusal(r: Pick<SendRefusal, 'code' | 'meta' | 'reason' | 'windowClosed'>, customerAgeMs: number | null, plan: { tries: number; nextAt?: Date | null; tz?: string } | null): string {
+  if (r.windowClosed && customerAgeMs !== null && freshWindowRefusal(r, customerAgeMs)) {
+    return freshWindowReason(r, customerAgeMs, plan ?? { tries: 1 });
+  }
+  const meta = r.meta && !r.reason.includes(r.meta) ? ` (Meta: “${r.meta}”, mã ${r.code})` : ` (mã ${r.code})`;
+  return `${r.reason}${meta}${plan ? ` ${retryNote(plan)}` : ''}`;
+}
+
+/** "70 giây" / "3 phút" / "2 giờ". */
+function ago(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 90) return `${s} giây`;
+  if (s < 5400) return `${Math.round(s / 60)} phút`;
+  return `${Math.round(s / 3600)} giờ`;
+}
+
+/**
+ * The sentence for a fresh-window refusal: what Meta answered, when the
+ * customer wrote, and what the bot will do next — no guessed cause.
+ */
+export function freshWindowReason(r: Pick<SendRefusal, 'code' | 'meta'>, customerAgeMs: number, next: { tries: number; nextAt?: Date | null; tz?: string }): string {
+  const metaSaid = r.meta ? ` — Meta trả lời: “${r.meta}”` : '';
+  const head = `Meta từ chối tin của bot (mã ${r.code}${metaSaid}) dù khách vừa nhắn ${ago(customerAgeMs)} trước.`;
+  return `${head} ${retryNote(next)}`;
 }

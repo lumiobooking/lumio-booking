@@ -648,22 +648,35 @@ export function composerNotice(
  * a Get Started tap. Both are events, not messages, and are drawn as a small
  * grey line in the middle of the conversation.
  */
-export type SystemEvent = 'ad-reply' | 'opened-chat';
+export type SystemEvent = 'ad-reply' | 'opened-chat' | 'welcome-reply' | 'post-reply' | 'meta-nudge' | 'meta-ai';
 
 const AD_REPLY = /^(?:[^\n]{1,80}\s)?replied to (?:an|your) ad\.?$/i;
 const OPENED_CHAT = /^(?:\u{1F44B}\s*)?\(opened chat\)$/iu;
 /** The same notice when the Page admin's Facebook is in Vietnamese. */
 const AD_REPLY_VI = /^(?:[^\n]{1,80}\s)?đã trả lời (?:một |1 )?quảng cáo(?: của bạn)?\.?$/i;
+// Read off live transcripts (30 Oct 2026) — mirrors api messenger/meta-system-lines.ts.
+const WELCOME = /^[^\n]{1,80}\s(?:replied to your automated welcome message|đã trả lời tin nhắn chào mừng tự động của bạn)\.(?:\s[\s\S]{0,200})?$/i;
+const POST = /^[^\n]{1,80}\s(?:replied to (?:a|your) (?:post|story|comment)|đã trả lời (?:về )?(?:một |1 )?(?:bài viết|bình luận)(?: của bạn)?)\.(?:\s*(?:View|Xem) [\s\S]{0,700})?$/i;
+const NUDGE = /^(?:Bạn đã trả lời [^\n]{1,80} chưa\? Họ đang chờ bạn(?: đấy)?\.?|(?:Have|Did) you repl(?:y|ied) to [^\n]{1,80}\? (?:They(?:'|’)re|They are) waiting(?: for you)?\.?)$/i;
+const META_AI = /^(?:Your AI agent will respond\.?|Your AI Agent transferred this chat to you\b[\s\S]{0,240}|(?:Tác tử|Trợ lý) AI của bạn sẽ (?:trả lời|phản hồi)\.?)$/i;
 
 export function systemEventOf(text: unknown): SystemEvent | null {
   const t = String(text ?? '').trim();
-  if (!t || t.length > 120) return null;
-  if (AD_REPLY.test(t) || AD_REPLY_VI.test(t)) return 'ad-reply';
+  if (!t || t.length > 900) return null;
+  if (t.length <= 140 && (AD_REPLY.test(t) || AD_REPLY_VI.test(t))) return 'ad-reply';
   if (OPENED_CHAT.test(t)) return 'opened-chat';
+  if (WELCOME.test(t)) return 'welcome-reply';
+  if (POST.test(t)) return 'post-reply';
+  if (NUDGE.test(t)) return 'meta-nudge';
+  if (META_AI.test(t)) return 'meta-ai';
   return null;
 }
 
 export function systemEventLabel(kind: SystemEvent, vi: boolean): string {
   if (kind === 'ad-reply') return vi ? 'Khách trả lời quảng cáo của tiệm' : 'Replied to your ad';
+  if (kind === 'welcome-reply') return vi ? 'Khách trả lời tin chào tự động của Page' : 'Replied to the Page’s welcome message';
+  if (kind === 'post-reply') return vi ? 'Khách nhắn từ một bài viết' : 'Messaged from a post';
+  if (kind === 'meta-nudge') return vi ? 'Meta nhắc Page trả lời khách' : 'Meta reminded the Page to reply';
+  if (kind === 'meta-ai') return vi ? '⚠ AI của Meta nhận trả lời cuộc này (Lumio nhường)' : '⚠ Meta’s AI took this chat (Lumio stood back)';
   return vi ? 'Khách mở cuộc trò chuyện' : 'Opened the chat';
 }

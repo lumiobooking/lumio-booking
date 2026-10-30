@@ -57,6 +57,8 @@ interface WebhookStatus {
   connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; appFields?: string[]; echoOk?: boolean; verifiedAt?: string; webhookUrl?: string;
   /** The last event Facebook delivered for this Page since the server started; null = nothing yet. */
   lastEvent?: { at: string; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other' | 'feed'; preview: string } | null;
+  /** The last event as ANY API process saw it (lastEvent is the answering process only). */
+  lastEventAny?: { at: string; lane: string } | null;
   /** Conversations stored for this salon. */
   threads?: number;
   serverStartedAt?: string;
@@ -64,6 +66,8 @@ interface WebhookStatus {
   rejected?: { count: number; at: string } | null; unrouted?: { count: number; at: string } | null;
   /** The bot's last send to Meta: delivered, or Meta's refusal in plain words (api: messenger/send-errors.ts). */
   lastSend?: { at: string; ok: boolean; code: string; error: string } | null;
+  /** Meta's Business AI seen answering on this Page (the bot yields to it). */
+  metaAi?: { at: string; threadId: string; text: string } | null;
   /** Instagram DMs: the API's verdict from what Facebook-Login delivery really depends on (api: messenger/instagram-status.ts). */
   instagram?: {
     igUsername?: string | null; state?: 'not_linked' | 'ok' | 'not_receiving' | 'unknown'; receiving?: boolean;
@@ -896,6 +900,23 @@ function Inner() {
         </div>
       )}
 
+      {/* Meta's own AI is answering this Page's customers ("Your AI agent will
+          respond."). Lumio's bot stands back so the customer does not get two
+          AIs — which reads as "the AI stopped answering" unless it is said. */}
+      {fbConnected && wh?.metaAi && Date.now() - Date.parse(wh.metaAi.at) < 7 * 86_400_000 && (
+        <div role="alert" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', background: 'var(--wash-amber)', border: '1px solid var(--ink-warn)', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: 'var(--ink-warn)', fontSize: 14.5 }}>⚠ {L('AI của Meta đang trả lời khách thay AI Lumio', 'Meta’s AI is answering customers instead of Lumio')}</div>
+            <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 4, lineHeight: 1.5 }}>
+              {L('Trang Facebook này đang bật “AI của Meta” (Business AI) — Meta ghi “Your AI agent will respond.” vào cuộc trò chuyện và tự trả lời. Lumio nhường để khách không nhận hai câu trả lời. Muốn AI Lumio trả lời: vào Meta Business Suite → Hộp thư → Tự động hoá → tắt AI của Meta (Business AI).',
+                'This Page has “Meta AI” (Business AI) on — Meta writes “Your AI agent will respond.” into the chat and answers by itself. Lumio stands back so the customer does not get two answers. For Lumio to answer: Meta Business Suite → Inbox → Automations → turn off Meta’s AI (Business AI).')}
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{L('Thấy lần cuối', 'Last seen')} {fmtInTz(wh.metaAi.at, { dateStyle: 'short', timeStyle: 'short' })}</div>
+          </div>
+          <a href="https://business.facebook.com/latest/inbox/automated_responses" target="_blank" rel="noopener noreferrer" style={{ ...ghost, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>{L('Mở Business Suite', 'Open Business Suite')}</a>
+        </div>
+      )}
+
       {/* Every channel on one line: account, state, one action. */}
       <div style={{ ...ui.card, padding: 0, marginBottom: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', overflow: 'hidden' }}>
         {tiles.map(({ key, ...tl }) => <StatusTile key={key} {...tl} />)}
@@ -1576,9 +1597,14 @@ function Inner() {
               // warning only speaks once the server has been up half an hour.
               const upMin = wh.serverStartedAt ? (Date.now() - new Date(wh.serverStartedAt).getTime()) / 60000 : 999;
               const quietIsNormal = !wh.lastEvent && upMin < 30;
+              // Another API process received it: the Page IS delivering.
+              const elsewhere = !wh.lastEvent && wh.lastEventAny && Date.now() - Date.parse(wh.lastEventAny.at) < 6 * 3600_000 ? wh.lastEventAny : null;
               return (
-              <div style={{ marginTop: 6, color: wh.lastEvent || quietIsNormal ? 'var(--ce2e8f0)' : 'var(--ink-warn)' }}>
-                {wh.lastEvent
+              <div style={{ marginTop: 6, color: wh.lastEvent || elsewhere || quietIsNormal ? 'var(--ce2e8f0)' : 'var(--ink-warn)' }}>
+                {elsewhere ? (lang === 'vi'
+                  ? `✓ Sự kiện gần nhất từ Facebook: ${fmtInTz(elsewhere.at, { dateStyle: 'short', timeStyle: 'short' })} (máy chủ khác của Lumio nhận) · kênh "${elsewhere.lane}"`
+                  : `✓ Last event from Facebook: ${fmtInTz(elsewhere.at, { dateStyle: 'short', timeStyle: 'short' })} (received by another Lumio server) · lane "${elsewhere.lane}"`)
+                : wh.lastEvent
                   ? (lang === 'vi'
                     ? `✓ Sự kiện gần nhất từ Facebook: ${fmtInTz(wh.lastEvent.at, { dateStyle: 'short', timeStyle: 'short' })} · ${wh.lastEvent.count} sự kiện từ lúc máy chủ chạy · kênh "${wh.lastEvent.lane}"${wh.lastEvent.lane === 'standby' ? ' (app khác đang giữ hội thoại — Lumio tự giành lại)' : ''}${wh.lastEvent.preview ? ` · "${wh.lastEvent.preview}"` : ''}`
                     : `✓ Last event from Facebook: ${fmtInTz(wh.lastEvent.at, { dateStyle: 'short', timeStyle: 'short' })} · ${wh.lastEvent.count} since the server started · lane "${wh.lastEvent.lane}"${wh.lastEvent.lane === 'standby' ? ' (another app holds the thread — Lumio takes it back)' : ''}${wh.lastEvent.preview ? ` · "${wh.lastEvent.preview}"` : ''}`)

@@ -268,7 +268,7 @@ const Avatar = memo(function Avatar(
   );
 });
 
-interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Meta refused it; sendError says why. */ failed?: boolean; sendError?: string | null; /** Ours, minutes old, and missing from Meta's copy: the customer most likely never got it. */ undelivered?: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite / Meta's agent), mirrored in. */ source?: 'page'; /** First name of the teammate who typed it. */ by?: string | null; /** An automatic follow-up after the customer went quiet — not an AI answer. */ nudge?: boolean }
+interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Meta refused it; sendError says why. */ failed?: boolean; sendError?: string | null; /** Ours, minutes old, and missing from Meta's copy: the customer most likely never got it. */ undelivered?: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite, another tool), mirrored in; 'automation': the Page's own automatic reply (welcome / instant reply); 'meta-ai': Meta's Business AI. */ source?: 'page' | 'automation' | 'meta-ai'; /** First name of the teammate who typed it. */ by?: string | null; /** An automatic follow-up after the customer went quiet — not an AI answer. */ nudge?: boolean; /** Meta refused it at first; a later resend delivered it at this time. */ lateAt?: string | null }
 interface ApptCtx {
   id: string;
   startTime: string;
@@ -1535,7 +1535,7 @@ export function InboxView() {
               const prev = i > 0 ? detail.history[i - 1] : null;
               const newDay = Boolean(t.at) && (!prev?.at || dayKeyInTz(t.at as string) !== dayKeyInTz(prev.at as string));
               const ev = t.images?.length ? null : systemEventOf(t.content);
-              const who = mine ? (t.source === 'page' ? (vi ? 'Từ Page (ngoài Lumio)' : 'From the Page (outside Lumio)') : t.manual ? (t.by || (vi ? 'Nhân viên' : 'Staff')) : 'Bot') : (vi ? 'Khách' : 'Customer');
+              const who = mine ? (t.source === 'page' ? (vi ? 'Từ Page (ngoài Lumio)' : 'From the Page (outside Lumio)') : t.source === 'automation' ? (vi ? 'Tự động của Page (ngoài Lumio)' : 'Page automation (outside Lumio)') : t.source === 'meta-ai' ? (vi ? 'AI của Meta (ngoài Lumio)' : 'Meta’s AI (outside Lumio)') : t.manual ? (t.by || (vi ? 'Nhân viên' : 'Staff')) : 'Bot') : (vi ? 'Khách' : 'Customer');
               return (
                 <Fragment key={i}>
                   {newDay && (
@@ -1583,10 +1583,15 @@ export function InboxView() {
                             : (vi ? 'Không thấy tin này trên Messenger — có thể khách chưa nhận được.' : 'Not found on Messenger — the customer may not have received it.')}
                         </span>
                       )}
+                      {mine && !t.failed && t.lateAt && (
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-good)', padding: '0 4px', maxWidth: 360, textAlign: 'right', lineHeight: 1.35 }}>
+                          ✓ {vi ? `Meta từ chối lần đầu — bot tự gửi lại được lúc ${bubbleStampLabel(t.lateAt, vi)}.` : `Meta refused it at first — the bot resent it at ${bubbleStampLabel(t.lateAt, vi)}.`}
+                        </span>
+                      )}
                       <span style={{ fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5, padding: '0 4px' }}>
                         {mine && !t.manual && <span style={{ width: 14, height: 14, borderRadius: 4, background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 8, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>AI</span>}
                         {who}{mine && t.nudge && <span title={vi ? 'Tin nhắc tự động khi khách im lặng' : 'Sent automatically after the customer went quiet'} style={{ marginLeft: 2, padding: '0 6px', borderRadius: 999, border: '1px solid var(--c475569)', fontSize: 10.5, fontWeight: 600, color: 'var(--c94a3b8)' }}>{vi ? 'Nhắc lại tự động' : 'Auto follow-up'}</span>}{t.at ? <span title={fmtInTz(t.at, { dateStyle: 'full', timeStyle: 'short' })}> · {bubbleStampLabel(t.at, vi)}</span> : null}
-                        {mine && !t.manual && t.source !== 'page' && mayTeach && (
+                        {mine && !t.manual && !t.source && mayTeach && (
                           <button type="button" onClick={() => {
                             let qi = i - 1;
                             while (qi >= 0 && detail.history[qi].role !== 'user') qi -= 1;

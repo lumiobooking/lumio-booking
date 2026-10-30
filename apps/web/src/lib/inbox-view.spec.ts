@@ -556,3 +556,17 @@ describe('Meta events that look like messages', () => {
     expect(systemEventLabel('opened-chat', false)).toBe('Opened the chat');
   });
 });
+
+describe('more of Meta’s own lines are drawn as events, not staff bubbles (30 Oct 2026)', () => {
+  it.each([
+    ['Roy Alex replied to your automated welcome message. To change or remove this greeting, visit Messaging settings.', 'welcome-reply'],
+    ['Roy Alex đã trả lời tin nhắn chào mừng tự động của bạn. Để thay đổi hoặc gỡ lời chào này, hãy truy cập phần Cài đặt tin nhắn.', 'welcome-reply'],
+    ['Ngân Lâm replied to a post. View post(https://www.facebook.com/1/posts/2)', 'post-reply'],
+    ['Ngân Lâm đã trả lời về một bài viết. Xem bài viết(https://www.facebook.com/1/posts/2)', 'post-reply'],
+    ['Bạn đã trả lời Mercedes chưa? Họ đang chờ bạn đấy.', 'meta-nudge'],
+    ['Your AI agent will respond.', 'meta-ai'],
+  ])('%s', (t, kind) => expect(systemEventOf(t)).toBe(kind));
+  it('a staff sentence is not an event', () => {
+    expect(systemEventOf('Em đã trả lời tin của chị.')).toBeNull();
+  });
+});

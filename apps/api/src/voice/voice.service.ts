@@ -23,6 +23,8 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { toE164 as normalizeE164, dialCodeFor } from '../common/phone';
 import { bookingPhone, spokenLast4 } from './phone-readback';
 import { formatMoneyShort, localeForCountry } from '../common/money';
+import { CallCache } from './call-cache';
+import { relayEnabledFor, relayTwiml, ttsFor } from './relay';
 
 /** Convert a salon-local wall time ("2026-07-10T14:00") to the correct UTC ISO
  *  instant for the salon's timezone (handles DST). Shared shape with messenger. */
@@ -44,6 +46,27 @@ function wallToUtcISO(local: string, tz: string): string {
   } catch {
     return new Date(asUtc).toISOString();
   }
+}
+
+/**
+ * How Twilio listens. Unset (the default) is exactly what every call has
+ * always used: speechTimeout="auto" on Twilio's default recogniser.
+ *
+ * A faster recogniser can be tried WITHOUT a deploy, per language, by setting
+ * on Render:
+ *   VOICE_SPEECH_MODEL      e.g. deepgram_nova-3      (English calls)
+ *   VOICE_SPEECH_MODEL_VI   e.g. deepgram_nova-3      (Vietnamese calls)
+ *   VOICE_SPEECH_TIMEOUT    seconds of silence that end the caller's turn (default 1)
+ * Twilio refuses speechTimeout="auto" together with a named model, so a
+ * named model always gets a number. Remove the variable to go back.
+ */
+export function speechAttrs(language: string, env: Record<string, string | undefined> = process.env): string {
+  const vi = String(language).toLowerCase().startsWith('vi');
+  const model = String((vi ? env.VOICE_SPEECH_MODEL_VI : env.VOICE_SPEECH_MODEL) ?? '').trim();
+  const t = String(env.VOICE_SPEECH_TIMEOUT ?? '').trim();
+  const secs = /^\d{1,2}$/.test(t) && Number(t) > 0 ? t : '';
+  if (!/^[a-z0-9_.-]{2,60}$/i.test(model)) return ' speechTimeout="auto"';
+  return ` speechModel="${model}" speechTimeout="${secs || '1'}"`;
 }
 
 /** Escape text going inside a TwiML <Say> element. */
@@ -91,6 +114,14 @@ export interface UpdateVoiceInput {
 }
 interface BotFact { label: string; value: string; on: boolean }
 /** What the tools need from the turn that called them: the coded menu, who works here, and which booking flow applies. */
+type AskRow = { id: string; name: string; priceCents: number; durationMinutes: number; currency: string; serviceId: string | null; categoryId: string | null; service: { name: string } | null; category: { name: string } | null };
+/** What a turn decided, for whichever engine carries it out (TwiML or the relay). */
+export type TurnAction =
+  | { kind: 'say'; text: string; lang: string; lgFlag: string | null }
+  | { kind: 'hangup'; text: string; lang: string }
+  | { kind: 'transfer'; text: string; lang: string; lgFlag: string | null; humans: string[] };
+/** Where one turn's time went (ms), and how much of the prompt came from cache (tokens). */
+interface TurnTiming { ctxMs: number; modelMs: number[]; toolMs: number; judgeMs: number; cacheRead: number; cacheWrite: number; uncached: number }
 interface ToolCtx { menu: MenuItem[]; staff: { id: string; firstName: string; lastName: string | null }[]; groupMode: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 export interface VoiceUsage {
@@ -131,7 +162,10 @@ const MAX_SILENCE = 3;
  * endpoint awaits. The filler also buys the brain more time than the old 9s:
  * the deadline is now measured from the filler, at RESULT_WAIT_MS.
  */
-const FAST_REPLY_MS = 1_200;
+// 1.8 s: now that a turn without tools usually lands inside it, the caller
+// hears the answer itself instead of "one moment" + the answer. Past it the
+// filler still comes, well before the silence feels like a dropped line.
+const FAST_REPLY_MS = 1_800;
 /** How long /turn-result waits for the brain before asking the caller to repeat. */
 const RESULT_WAIT_MS = 12_000;
 /** The brain's own deadline per turn, filler included. Under Twilio's 15s. */
@@ -244,7 +278,7 @@ export class VoiceService implements OnModuleInit {
     // English apology and hung up — on every single turn that carried the
     // language parameter. Everything in a TwiML document gets escaped.
     return this.twiml(
-      `<Gather input="speech" action="${xml(action)}" method="POST" speechTimeout="auto" language="${xml(language)}">` +
+      `<Gather input="speech" action="${xml(action)}" method="POST"${speechAttrs(language)} language="${xml(language)}">` +
         `<Say${this.sayAttr(v.voice)}${langAttr}>${xml(text)}</Say>` +
       `</Gather>` +
       `<Redirect method="POST">${xml(redirect)}</Redirect>`,
@@ -409,8 +443,9 @@ export class VoiceService implements OnModuleInit {
     const callerId = toE164(line.lumioNumber);
     const cid = callerId ? ` callerId="${xml(callerId)}"` : '';
     const list = nums.map((n) => `<Number>${xml(n)}</Number>`).join('');
+    // An empty line = it was already spoken (the relay says it before handing off).
     return this.twiml(
-      `<Say${this.sayAttr(v.voice)}${langAttr}>${xml(say)}</Say>` +
+      (say ? `<Say${this.sayAttr(v.voice)}${langAttr}>${xml(say)}</Say>` : '') +
       `<Dial timeout="${timeout}" answerOnBridge="true"${cid} action="${xml(action)}" method="POST">${list}</Dial>`,
     );
   }
@@ -469,7 +504,7 @@ export class VoiceService implements OnModuleInit {
       }
     } catch { /* a failed alert must never break the call */ }
 
-    return this.sayGather(lines.missed, 0, lang, line.voice || null, lgFlag);
+    return this.aiStart(line, callSid || null, lines.missed, lang, lgFlag);
   }
 
   /** Nobody is going to answer: leave a voicemail, play a notice, or hang up. */
@@ -547,10 +582,13 @@ export class VoiceService implements OnModuleInit {
     line: {
       tenantId: string; enabled: boolean; hardCap: boolean; includedMinutes: number; schedule: string;
       customHours: unknown; greeting: string | null; language: string; voice: string | null;
-      noAnswerAction: string; awayMessage: string | null;
+      noAnswerAction: string; awayMessage: string | null; lumioNumber?: string | null;
     },
     salonName: string,
     callSidOf: string | null = null,
+    // The call's id for the streaming engine only (after-dial passes it here
+    // without changing anything else it does).
+    relayCallSid: string | null = callSidOf,
   ): Promise<string> {
     if (!line.enabled) { await this.endReason(line.tenantId, callSidOf, 'off_hours'); return this.noAnswerTwiml(line, salonName); }
 
@@ -578,7 +616,112 @@ export class VoiceService implements OnModuleInit {
     const greeting = (brain?.channels.voice.greeting || brain?.persona.greeting || line.greeting || '').trim() || canned.defaultGreeting;
     const lgFlag = isBilingual(line.language) || (brain && brain.languages.allowed.length > 1) ? lang : null;
     if (lgFlag && callSidOf) await this.prisma.voiceCall.updateMany({ where: { callSid: callSidOf, tenantId: line.tenantId }, data: { language: lang } as never }).catch(() => undefined);
-    return this.sayGather(`${disclosure} ${greeting}`, 0, lang, line.voice || null, lgFlag);
+    return this.aiStart(line, relayCallSid, `${disclosure} ${greeting}`, lang, lgFlag);
+  }
+
+  /** Calls that fell back from the streaming engine stay on <Gather> until they end. */
+  private readonly relayOff = new Set<string>();
+
+  /** The public https address of this API (webhooks, and the relay's wss twin). */
+  publicApiBase(): string { return this.apiBase(); }
+
+  /**
+   * The assistant starts (or resumes) talking. A line on the streaming engine
+   * (relay.ts — opt-in per number via VOICE_RELAY_NUMBERS) opens the
+   * WebSocket conversation with this line as its greeting; every other line
+   * speaks it and listens with <Gather>, exactly as before.
+   */
+  private aiStart(
+    line: { voice: string | null; lumioNumber?: string | null },
+    callSid: string | null, text: string, lang: string, lgFlag: string | null,
+  ): string {
+    if (callSid && relayEnabledFor(line.lumioNumber) && !this.relayOff.has(callSid)) {
+      const codes = lgFlag ? [lang, lang === 'vi-VN' ? 'en-US' : 'vi-VN'] : [lang];
+      return relayTwiml({
+        apiBase: this.apiBase(), greeting: text, lang,
+        langs: codes.map((code) => ({ code, tts: ttsFor(voiceFor(code, line.voice || null).voice) })),
+      });
+    }
+    return this.sayGather(text, 0, lang, line.voice || null, lgFlag);
+  }
+
+  // ---- the streaming engine's side of a call (relay.ts drives these) --------
+
+  /** A relay socket says which call it is: is it a real call on a relay line, from our Twilio account? */
+  async relaySetup(callSid: string, accountSid: string): Promise<{ ok: boolean; lang: string; maxSilence: number }> {
+    const no = { ok: false, lang: 'en-US', maxSilence: MAX_SILENCE };
+    const acct = String(process.env.TWILIO_ACCOUNT_SID ?? '').trim();
+    if (acct && accountSid !== acct) return no;
+    if (!callSid || this.relayOff.has(callSid)) return no;
+    const s = await this.turnSetup(callSid);
+    if (!s || !relayEnabledFor(s.line.lumioNumber)) return no;
+    return { ok: true, lang: s.lang, maxSilence: s.maxSilence };
+  }
+
+  /** One relay turn: the same brain, transcript and rules as a <Gather> turn. */
+  async relayTurn(callSid: string, speech: string, interim?: (text: string) => void): Promise<TurnAction> {
+    const s = await this.turnSetup(callSid);
+    if (!s) return { kind: 'hangup', text: 'Sorry, something went wrong on our end. Please call again. Goodbye.', lang: 'en-US' };
+    return this.turnWork(s, callSid, speech, Date.now(), interim);
+  }
+
+  /** The caller has gone quiet on the relay: ask again, or — after enough — promise a call back and close. */
+  async relaySilence(callSid: string, misses: number): Promise<{ text: string; end: boolean; lang: string }> {
+    const s = await this.turnSetup(callSid);
+    if (!s) return { text: '', end: true, lang: 'en-US' };
+    if (misses >= s.maxSilence) return { text: await this.giveUpOnSilence(s, callSid), end: true, lang: s.lang };
+    return { text: cannedLines(s.lang).didntCatch, end: false, lang: s.lang };
+  }
+
+  /**
+   * The caller talked over the assistant: they heard only part of the last
+   * reply. The transcript says so, so the next turn does not assume they
+   * heard (and agreed to) the rest.
+   */
+  async relayInterrupted(callSid: string, heard: string): Promise<void> {
+    const call = await this.prisma.voiceCall.findUnique({ where: { callSid } }).catch(() => null);
+    if (!call) return;
+    const t = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
+    const i = t.length - 1;
+    if (i < 0 || t[i].role !== 'assistant') return;
+    const next = [...t.slice(0, i), { ...t[i], content: `${String(heard).slice(0, 600)}… (the caller cut in here and did not hear the rest)` }];
+    await this.prisma.voiceCall.updateMany({ where: { id: call.id, tenantId: call.tenantId }, data: { transcript: next as unknown as Prisma.InputJsonValue } }).catch(() => undefined);
+  }
+
+  /** What to say while the brain works: n=0 "one moment", n≥1 "still checking", n<0 "say that again?". */
+  relayFiller(lang: string, n: number): string {
+    if (n < 0) return cannedLines(lang).slowRetry;
+    if (n === 0) { const t = cannedLines(lang).thinking; return t[Math.floor(Math.random() * t.length)]; }
+    const still = callbackLines(lang).stillChecking;
+    return still[(n - 1) % still.length];
+  }
+
+  /**
+   * Twilio is done with the relay for this call (<Connect action>).
+   *   hangup   → the assistant said goodbye; hang up.
+   *   transfer → it said "connecting you now"; ring the salon's phones.
+   *   anything else — the socket was refused, dropped (a deploy), or failed —
+   *   → the call continues on the classic <Gather> engine, from where it was.
+   */
+  async handleRelayEnd(body: Record<string, string>): Promise<string> {
+    const callSid = String(body.CallSid || '');
+    const status = String(body.SessionStatus || '').toLowerCase();
+    let handoff: { do?: string; lang?: string } = {};
+    try { handoff = JSON.parse(String(body.HandoffData || '{}')) as { do?: string; lang?: string }; } catch { handoff = {}; }
+    if (handoff.do === 'hangup' || (status === 'completed' && !handoff.do)) return this.twiml('<Hangup/>');
+    const s = await this.turnSetup(callSid, handoff.lang || null);
+    if (!s) return this.twiml('<Hangup/>');
+    if (handoff.do === 'transfer') {
+      const { dial } = await this.callCache.get(s.call.tenantId, callSid, 'locale', () => this.localeInfo(s.call.tenantId));
+      const humans = this.transferTargets(s.line as unknown as { transferNumber?: string | null; forwardNumbers: string | null; lumioNumber: string | null }, dial);
+      if (humans.length) return this.transferTwiml('', humans, s.line, s.lang, s.voice, s.lgFlag);
+    }
+    if (callSid) {
+      if (this.relayOff.size > 2000) this.relayOff.clear();
+      this.relayOff.add(callSid);
+    }
+    this.logger.warn(`relay ended (${status || 'no status'}${body.ErrorCode ? ` ${body.ErrorCode}` : ''} ${String(body.ErrorMessage || '').slice(0, 120)}) — call continues on <Gather>`);
+    return this.sayGather(cannedLines(s.lang).slowRetry, 0, s.lang, s.voice, s.lgFlag);
   }
 
   /** Close this call's line in the session log (ai-brain) — best-effort, never in the caller's way. */
@@ -633,7 +776,7 @@ export class VoiceService implements OnModuleInit {
     // never the assistant.
     if (String(line.mode || 'ai') === 'forward') return this.noAnswerTwiml(line, salonName);
 
-    return this.aiOrNoAnswer(line, salonName);
+    return this.aiOrNoAnswer(line, salonName, null, callSid || null);
   }
 
   /** Twilio posts the finished voicemail recording here. Save it and text the salon. */
@@ -700,7 +843,34 @@ export class VoiceService implements OnModuleInit {
     // The menu already disclosed the assistant in English; repeat the
     // disclosure in Vietnamese for callers who picked Vietnamese.
     const open = choice === 'vi-VN' ? `${canned.disclosure(salonName)} ${greeting}` : greeting;
-    return this.sayGather(open, 0, choice, line.voice || null, choice);
+    return this.aiStart(line, callSid || null, open, choice, choice);
+  }
+
+  /** Each subsequent turn: caller's transcribed speech arrives in SpeechResult. */
+  /**
+   * Everything a turn needs to know about its call: the call row (read fresh —
+   * its transcript changes every turn), the line and the brain (the call's,
+   * read once — call-cache.ts), and the language this turn speaks. Shared by
+   * the classic <Gather> turn and the streaming relay (relay.ts).
+   */
+  private async turnSetup(callSid: string, lgParam?: string | null) {
+    const call = callSid ? await this.prisma.voiceCall.findUnique({ where: { callSid } }).catch((e: unknown) => { this.logger.error(`turn read failed: ${String(e).slice(0, 160)}`); return null; }) : null;
+    const [line, brainCfg] = call
+      ? await Promise.all([
+        this.callCache.get(call.tenantId, callSid, 'line', () => this.prisma.voiceLine.findUnique({ where: { tenantId: call.tenantId } })).catch(() => null),
+        this.brain ? this.callCache.get(call.tenantId, callSid, 'brain', () => this.brain!.getBrain(call.tenantId)).catch(() => null) : Promise.resolve(null),
+      ])
+      : [null, null];
+    if (!call || !line) return null;
+    const savedLang = (call as unknown as { language?: string | null }).language || lgParam || null;
+    const multi = !!brainCfg && brainCfg.languages.allowed.length > 1;
+    const biline = isBilingual(line.language) || multi;
+    const lang = multi ? (savedLang === 'vi-VN' || savedLang === 'en-US' ? savedLang : (brainCfg!.languages.primary === 'vi' ? 'vi-VN' : 'en-US')) : effectiveLang(line.language, savedLang);
+    const lgFlag = biline ? lang : null;
+    const voice = line.voice || null;
+    const maxSilence = brainCfg?.handoff.silenceRetries ?? MAX_SILENCE;
+    const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
+    return { call, line, brainCfg, multi, biline, lang, lgFlag, voice, maxSilence, history };
   }
 
   /** Each subsequent turn: caller's transcribed speech arrives in SpeechResult. */
@@ -709,21 +879,12 @@ export class VoiceService implements OnModuleInit {
     const speech = String(body.SpeechResult || '').trim();
     const miss = Number(missParam || '0') || 0;
 
-    const call = callSid ? await this.prisma.voiceCall.findUnique({ where: { callSid } }).catch((e: unknown) => { this.logger.error(`turn read failed: ${String(e).slice(0, 160)}`); return null; }) : null;
-    const line = call ? await this.prisma.voiceLine.findUnique({ where: { tenantId: call.tenantId } }).catch(() => null) : null;
-    if (!call || !line) {
+    const s = await this.turnSetup(callSid, lgParam);
+    if (!s) {
       return this.sayHangup('Sorry, something went wrong on our end. Please call again. Goodbye.', null);
     }
-    const savedLang = (call as unknown as { language?: string | null }).language || lgParam || null;
-    const brainCfg = this.brain ? await this.brain.getBrain(call.tenantId).catch(() => null) : null;
-    const multi = !!brainCfg && brainCfg.languages.allowed.length > 1;
-    const biline = isBilingual(line.language) || multi;
-    let lang = multi ? (savedLang === 'vi-VN' || savedLang === 'en-US' ? savedLang : (brainCfg!.languages.primary === 'vi' ? 'vi-VN' : 'en-US')) : effectiveLang(line.language, savedLang);
-    let lgFlag = biline ? lang : null;
-    const voice = line.voice || null;
-    let canned = cannedLines(lang);
-    const maxSilence = brainCfg?.handoff.silenceRetries ?? MAX_SILENCE;
-    const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
+    const { call, line, brainCfg, multi, lang, lgFlag, voice, maxSilence, history } = s;
+    const canned = cannedLines(lang);
 
     // No speech captured → reprompt, then PROMISE A CALL BACK — never "I lost
     // you, goodbye" to a customer who was just looking at her calendar.
@@ -737,119 +898,18 @@ export class VoiceService implements OnModuleInit {
         return this.sayGather(cannedLines(other).didntCatch, 0, other, voice, `${other}`);
       }
       if (miss >= maxSilence) {
-        const cb = callbackLines(lang);
-        await this.leaveCallback({ tenantId: call.tenantId, fromNumber: call.fromNumber, callSid, transcript: call.transcript }, 'silence', this.gist(history, ''));
-        await this.finalize(call.id, 'no_action', null, 'silence');
-        return this.sayHangup(cb.silence, voice, lang);
+        return this.sayHangup(await this.giveUpOnSilence(s, callSid), voice, lang);
       }
       return this.sayGather(canned.didntCatch, miss, lang, voice, lgFlag);
     }
 
     const t0 = Date.now();
-    // A real person to hand the caller to: the salon's own numbers, once per
-    // call (a second "please hold" after nobody answered the first is worse
-    // than taking a message).
-    const { dial: lineDial } = await this.localeInfo(call.tenantId);
-    const humans = String(line.mode || 'ai') === 'forward' ? [] : this.transferTargets(line as unknown as { transferNumber?: string | null; forwardNumbers: string | null; lumioNumber: string | null }, lineDial);
-    const canTransfer = humans.length > 0 && !history.some((h) => h.meta === 'transfer_missed');
-
     // Everything after "we have their words" — brain, transcript, next TwiML —
     // runs here, once, whether it finishes inside the fast window or is
     // collected later by /turn-result.
-    const work = (async (): Promise<string> => {
-      let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; stuck?: boolean; toolCalls?: number; failure?: string | null };
-      let lang2 = lang; let lgFlag2 = lgFlag; let canned2 = canned;
-      // What this call has already booked, so a repeated or late turn never books twice.
-      const alreadyBooked = call.outcome === 'booked' && call.appointmentId ? String(call.appointmentId) : null;
-      const agentRun = this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang2, biline, canTransfer, alreadyBooked, callSid);
-      agentRun.catch(() => undefined);
-      try {
-        // Twilio abandons a webhook after ~15 seconds and HANGS UP — the caller
-        // hears dead air, then nothing. Past the deadline we ask them to repeat
-        // themselves and the CALL SURVIVES. A phone conversation that dies is
-        // worse than one that says "sorry, once more?".
-        result = await Promise.race([
-          agentRun,
-          new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('turn-deadline')), TURN_DEADLINE_MS); (tm as { unref?: () => void }).unref?.(); }),
-        ]);
-      } catch (e) {
-        const msg = String(e);
-        this.logger.warn(`agent error after ${Date.now() - t0}ms: ${msg.slice(0, 160)}`);
-        // Past the deadline the brain is still WORKING — and may be halfway
-        // through writing a booking. Its answer used to be thrown away: the
-        // caller heard "sorry, once more?", the booking existed, and the next
-        // turn had no idea, so it asked for everything again. Keep it.
-        if (msg.includes('turn-deadline')) this.keepLateAnswer(call.id, speech, agentRun);
-        // ANY failure — deadline, model abort, tool crash — gets a polite
-        // "say that again?" and the call stays ALIVE. Goodbye is only earned by
-        // three failures in one call; one bad moment must not end a customer
-        // conversation in the wrong language ("Sorry… Goodbye" to a vi caller).
-        const fails = (this.turnFails.get(callSid) || 0) + 1;
-        if (this.turnFails.size > 500) this.turnFails.clear();
-        this.turnFails.set(callSid, fails);
-        if (this.brain) this.brain.noteTurn(call.tenantId, callSid, { ms: Date.now() - t0, failure: msg.slice(0, 160) }).catch(() => undefined);
-        if (fails < 3) return this.sayGather(canned2.slowRetry, 0, lang2, voice, lgFlag2);
-        this.turnFails.delete(callSid);
-        // Three strikes: the desk calls back — and is told so right now.
-        await this.leaveCallback({ tenantId: call.tenantId, fromNumber: call.fromNumber, callSid, transcript: call.transcript }, msg.includes('turn-deadline') ? 'deadline' : 'error', this.gist(history, speech));
-        await this.finalize(call.id, 'error', null, msg.includes('turn-deadline') ? 'deadline' : 'error');
-        return this.sayHangup(callbackLines(lang2).trouble, voice, lang2);
-      }
-      this.turnFails.delete(callSid);
-      // The agent may have DETECTED the caller's language mid-conversation (the
-      // menu's keypress can get lost on some carriers — this is the escape
-      // hatch). Speak this very reply, and listen from now on, in the new one.
-      if (biline && result.langSwitch && result.langSwitch !== lang2) {
-        lang2 = result.langSwitch;
-        lgFlag2 = lang2;
-        canned2 = cannedLines(lang2);
-        await this.prisma.voiceCall.update({ where: { id: call.id }, data: { language: lang2 } as never }).catch(() => undefined);
-        this.logger.log(`voice lang switched mid-call → ${lang2}`);
-      }
-      this.logger.log(`voice turn ${Date.now() - t0}ms lang=${lang2}`);
-      if (this.brain) this.brain.noteTurn(call.tenantId, callSid, { ms: Date.now() - t0, toolCalls: result.toolCalls ?? 0, failure: result.failure ?? null, bookedId: result.booked ? result.appointmentId : null, lang: brainLangOfVoice(lang2) }).catch(() => undefined);
-
-      // The assistant ran out of tool budget: the desk takes over — on a live
-      // line, not after a goodbye the caller never asked for.
-      if (result.stuck) {
-        await this.leaveCallback({ tenantId: call.tenantId, fromNumber: call.fromNumber, callSid, transcript: call.transcript }, 'tool_loop', this.gist(history, speech));
-      }
-
-      const nextHistory = [...history, { role: 'user', content: speech }, { role: 'assistant', content: result.reply }].slice(-MAX_TURNS);
-      await this.prisma.voiceCall.update({
-        where: { id: call.id },
-        data: {
-          transcript: nextHistory as unknown as Prisma.InputJsonValue,
-          ...(result.booked ? { outcome: 'booked', appointmentId: result.appointmentId } : {}),
-        },
-      }).catch(() => undefined);
-
-      // The caller asked for a person: say so, then ring the salon's phones
-      // with the caller still on the line. The AI's share of the call is
-      // stamped now — the minutes a human talks are never billed as AI.
-      if (result.transfer && canTransfer) {
-        const aiSec = Math.max(1, Math.round((Date.now() - new Date((call as unknown as { createdAt?: Date }).createdAt ?? Date.now()).getTime()) / 1000));
-        await this.prisma.voiceCall.update({
-          where: { id: call.id },
-          data: { outcome: 'transferring', durationSec: aiSec },
-        }).catch(() => undefined);
-        const say = result.reply || transferLines(lang2).connecting;
-        return this.transferTwiml(say, humans, line, lang2, voice, lgFlag2);
-      }
-
-      // THE ONLY WAY A CALL ENDS: the caller closed it (ai-brain/brain-rules).
-      // The model asking to end is not enough — it used to hang up on "ok".
-      const bookedNow = result.booked || call.outcome === 'booked';
-      if (result.done && mayHangUp({ wantEnd: true, booked: bookedNow, lastUser: speech, reply: result.reply })) {
-        if (!result.booked) await this.finalize(call.id, call.outcome === 'booked' ? 'booked' : 'info', null, bookedNow ? 'booked_done' : 'goodbye');
-        else await this.endReason(call.tenantId, callSid, 'booked_done', 'booked');
-        return this.sayHangup(result.reply, voice, lang2);
-      }
-      const reply = result.done && !/[?？]\s*$/.test(result.reply) ? `${result.reply} ${keepOpenLine(lang2)}` : result.reply;
-      return this.sayGather(reply, 0, lang2, voice, lgFlag2);
-    })();
+    const work = this.turnWork(s, callSid, speech, t0).then((a) => this.actionTwiml(a, line));
     // Never let a rejection go unobserved: the result endpoint (or nobody)
-    // reads it later, and the function above already answers every error.
+    // reads it later, and turnWork already answers every error.
     work.catch(() => undefined);
 
     // Fast enough → the answer itself. Otherwise a filler now, the answer next.
@@ -865,6 +925,133 @@ export class VoiceService implements OnModuleInit {
     const filler = canned.thinking[Math.floor(Math.random() * canned.thinking.length)];
     this.logger.log(`voice turn filler after ${Date.now() - t0}ms`);
     return this.fillerRedirect(filler, id, lang, voice, lgFlag);
+  }
+
+  /** The caller went quiet too many times: a call-back task, the call closed, and the goodbye to say. */
+  private async giveUpOnSilence(s: NonNullable<Awaited<ReturnType<VoiceService['turnSetup']>>>, callSid: string): Promise<string> {
+    const { call, history, lang } = s;
+    await this.leaveCallback({ tenantId: call.tenantId, fromNumber: call.fromNumber, callSid, transcript: call.transcript }, 'silence', this.gist(history, ''));
+    await this.finalize(call.id, 'no_action', null, 'silence');
+    return callbackLines(lang).silence;
+  }
+
+  /** A turn's outcome as TwiML, for the classic <Gather> engine. */
+  private actionTwiml(a: TurnAction, line: { voice: string | null; ringSeconds: number; lumioNumber: string | null }): string {
+    const voice = line.voice || null;
+    if (a.kind === 'hangup') return this.sayHangup(a.text, voice, a.lang);
+    if (a.kind === 'transfer') return this.transferTwiml(a.text, a.humans, line, a.lang, voice, a.lgFlag);
+    return this.sayGather(a.text, 0, a.lang, voice, a.lgFlag);
+  }
+
+  /**
+   * "We have their words" → what happens next: the brain thinks, the
+   * transcript is written, and the outcome comes back as an ACTION (say,
+   * hang up, transfer) that either engine carries out — TwiML for <Gather>,
+   * WebSocket messages for the relay. Never throws: every failure is a polite
+   * "say that again?" or, after three, a promised call back.
+   */
+  private async turnWork(s: NonNullable<Awaited<ReturnType<VoiceService['turnSetup']>>>, callSid: string, speech: string, t0: number, onInterim?: (text: string) => void): Promise<TurnAction> {
+    const { call, line, biline, history } = s;
+    // A real person to hand the caller to: the salon's own numbers, once per
+    // call (a second "please hold" after nobody answered the first is worse
+    // than taking a message).
+    const { dial: lineDial } = await this.callCache.get(call.tenantId, callSid, 'locale', () => this.localeInfo(call.tenantId));
+    const humans = String(line.mode || 'ai') === 'forward' ? [] : this.transferTargets(line as unknown as { transferNumber?: string | null; forwardNumbers: string | null; lumioNumber: string | null }, lineDial);
+    const canTransfer = humans.length > 0 && !history.some((h) => h.meta === 'transfer_missed');
+    const lang = s.lang; const lgFlag = s.lgFlag; const canned = cannedLines(lang);
+    let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; stuck?: boolean; toolCalls?: number; failure?: string | null; timing?: TurnTiming };
+    let lang2 = lang; let lgFlag2 = lgFlag; let canned2 = canned;
+    // What this call has already booked, so a repeated or late turn never books twice.
+    const alreadyBooked = call.outcome === 'booked' && call.appointmentId ? String(call.appointmentId) : null;
+    const agentRun = this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang2, biline, canTransfer, alreadyBooked, callSid, onInterim);
+    agentRun.catch(() => undefined);
+    try {
+      // Twilio abandons a webhook after ~15 seconds and HANGS UP — the caller
+      // hears dead air, then nothing. Past the deadline we ask them to repeat
+      // themselves and the CALL SURVIVES. A phone conversation that dies is
+      // worse than one that says "sorry, once more?".
+      result = await Promise.race([
+        agentRun,
+        new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('turn-deadline')), TURN_DEADLINE_MS); (tm as { unref?: () => void }).unref?.(); }),
+      ]);
+    } catch (e) {
+      const msg = String(e);
+      this.logger.warn(`agent error after ${Date.now() - t0}ms: ${msg.slice(0, 160)}`);
+      // Past the deadline the brain is still WORKING — and may be halfway
+      // through writing a booking. Its answer used to be thrown away: the
+      // caller heard "sorry, once more?", the booking existed, and the next
+      // turn had no idea, so it asked for everything again. Keep it.
+      if (msg.includes('turn-deadline')) this.keepLateAnswer(call.id, speech, agentRun);
+      // ANY failure — deadline, model abort, tool crash — gets a polite
+      // "say that again?" and the call stays ALIVE. Goodbye is only earned by
+      // three failures in one call; one bad moment must not end a customer
+      // conversation in the wrong language ("Sorry… Goodbye" to a vi caller).
+      const fails = (this.turnFails.get(callSid) || 0) + 1;
+      if (this.turnFails.size > 500) this.turnFails.clear();
+      this.turnFails.set(callSid, fails);
+      if (this.brain) this.brain.noteTurn(call.tenantId, callSid, { ms: Date.now() - t0, failure: msg.slice(0, 160) }).catch(() => undefined);
+      if (fails < 3) return { kind: 'say', text: canned2.slowRetry, lang: lang2, lgFlag: lgFlag2 };
+      this.turnFails.delete(callSid);
+      // Three strikes: the desk calls back — and is told so right now.
+      await this.leaveCallback({ tenantId: call.tenantId, fromNumber: call.fromNumber, callSid, transcript: call.transcript }, msg.includes('turn-deadline') ? 'deadline' : 'error', this.gist(history, speech));
+      await this.finalize(call.id, 'error', null, msg.includes('turn-deadline') ? 'deadline' : 'error');
+      return { kind: 'hangup', text: callbackLines(lang2).trouble, lang: lang2 };
+    }
+    this.turnFails.delete(callSid);
+    // The agent may have DETECTED the caller's language mid-conversation (the
+    // menu's keypress can get lost on some carriers — this is the escape
+    // hatch). Speak this very reply, and listen from now on, in the new one.
+    if (biline && result.langSwitch && result.langSwitch !== lang2) {
+      lang2 = result.langSwitch;
+      lgFlag2 = lang2;
+      canned2 = cannedLines(lang2);
+      await this.prisma.voiceCall.update({ where: { id: call.id }, data: { language: lang2 } as never }).catch(() => undefined);
+      this.logger.log(`voice lang switched mid-call → ${lang2}`);
+    }
+    const tm = result.timing;
+    this.logger.log(`voice turn ${Date.now() - t0}ms lang=${lang2}` + (tm
+      ? ` ctx=${tm.ctxMs} model=${tm.modelMs.join('+') || 0} tools=${tm.toolMs} judge=${tm.judgeMs} cache=${tm.cacheRead}/${tm.cacheRead + tm.cacheWrite + tm.uncached}tok`
+      : ''));
+    if (this.brain) this.brain.noteTurn(call.tenantId, callSid, { ms: Date.now() - t0, toolCalls: result.toolCalls ?? 0, failure: result.failure ?? null, bookedId: result.booked ? result.appointmentId : null, lang: brainLangOfVoice(lang2) }).catch(() => undefined);
+
+    // The assistant ran out of tool budget: the desk takes over — on a live
+    // line, not after a goodbye the caller never asked for.
+    if (result.stuck) {
+      await this.leaveCallback({ tenantId: call.tenantId, fromNumber: call.fromNumber, callSid, transcript: call.transcript }, 'tool_loop', this.gist(history, speech));
+    }
+
+    const nextHistory = [...history, { role: 'user', content: speech }, { role: 'assistant', content: result.reply }].slice(-MAX_TURNS);
+    await this.prisma.voiceCall.update({
+      where: { id: call.id },
+      data: {
+        transcript: nextHistory as unknown as Prisma.InputJsonValue,
+        ...(result.booked ? { outcome: 'booked', appointmentId: result.appointmentId } : {}),
+      },
+    }).catch(() => undefined);
+
+    // The caller asked for a person: say so, then ring the salon's phones
+    // with the caller still on the line. The AI's share of the call is
+    // stamped now — the minutes a human talks are never billed as AI.
+    if (result.transfer && canTransfer) {
+      const aiSec = Math.max(1, Math.round((Date.now() - new Date((call as unknown as { createdAt?: Date }).createdAt ?? Date.now()).getTime()) / 1000));
+      await this.prisma.voiceCall.update({
+        where: { id: call.id },
+        data: { outcome: 'transferring', durationSec: aiSec },
+      }).catch(() => undefined);
+      const say = result.reply || transferLines(lang2).connecting;
+      return { kind: 'transfer', text: say, lang: lang2, lgFlag: lgFlag2, humans };
+    }
+
+    // THE ONLY WAY A CALL ENDS: the caller closed it (ai-brain/brain-rules).
+    // The model asking to end is not enough — it used to hang up on "ok".
+    const bookedNow = result.booked || call.outcome === 'booked';
+    if (result.done && mayHangUp({ wantEnd: true, booked: bookedNow, lastUser: speech, reply: result.reply })) {
+      if (!result.booked) await this.finalize(call.id, call.outcome === 'booked' ? 'booked' : 'info', null, bookedNow ? 'booked_done' : 'goodbye');
+      else await this.endReason(call.tenantId, callSid, 'booked_done', 'booked');
+      return { kind: 'hangup', text: result.reply, lang: lang2 };
+    }
+    const reply = result.done && !/[?？]\s*$/.test(result.reply) ? `${result.reply} ${keepOpenLine(lang2)}` : result.reply;
+    return { kind: 'say', text: reply, lang: lang2, lgFlag: lgFlag2 };
   }
 
   /** Twilio comes back here after the filler for the answer the brain owes. */
@@ -969,7 +1156,10 @@ export class VoiceService implements OnModuleInit {
   async handleStatus(body: Record<string, string>): Promise<void> {
     const callSid = String(body.CallSid || '');
     const dur = Number(body.CallDuration || body.DialCallDuration || 0) || 0;
-    if (!callSid || !dur) return;
+    if (!callSid) return;
+    // The call is over: its cached salon context goes with it.
+    this.callCache.dropCall(callSid);
+    if (!dur) return;
     // A call handed to a person keeps the AI's share stamped at the hand-off;
     // the whole call's length would bill the salon's own staff time as AI.
     await this.prisma.voiceCall.updateMany({ where: { callSid, outcome: { notIn: ['transferred', 'transferring'] } }, data: { durationSec: dur } }).catch(() => undefined);
@@ -1034,27 +1224,21 @@ export class VoiceService implements OnModuleInit {
   }
 
   // ---- AI agent (tool use) — phone-tuned -----------------------------------
-  private async runAgent(
-    tenantId: string, callerPhone: string, aiInstruction: string, history: Turn[], userText: string, lang = 'en-US', bilingual = false, canTransfer = false,
-    alreadyBooked: string | null = null,
-    callSid: string | null = null,
-  ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; stuck?: boolean; toolCalls?: number; failure?: string | null }> {
-    const key = process.env.ANTHROPIC_API_KEY || '';
-    const acc = { wantEnd: false, booked: false, appointmentId: null as string | null, langSwitch: null as string | null, transfer: false, toolCalls: 0, failure: null as string | null, callSid, callerPhone };
-    if (!key) {
-      this.logger.error('ANTHROPIC_API_KEY is not set on this service — the voice agent cannot think. Every call will fail until it is added.');
-      throw new Error('no-anthropic-key');
-    }
+  /** The salon's side of the conversation, once per call — see call-cache.ts. */
+  private readonly callCache = new CallCache();
 
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true, businessType: true },
-    });
-    // The AI's identity, goal and vocabulary follow the tenant's line of
-    // business — a real-estate caller must never be offered a gel set, and a
-    // coffee shop must not open by offering a table reservation. The declared
-    // trade refines the type where it has something to say; where it does not,
-    // the type answers alone and nothing changes.
-    const [tradeRow, industryRow] = await Promise.all([
+  /**
+   * Everything the agent needs to know about the salon, in ONE parallel read.
+   * These used to be ~20 queries in a row on every turn of every call.
+   */
+  private async loadAgentContext(tenantId: string, aiInstruction: string, brainLang: ReturnType<typeof brainLangOfVoice>) {
+    const [tenant, tradeRow, industryRow, brainOut, ownerTurn, allRows, asksRaw, localeRow] = await Promise.all([
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true, businessType: true },
+      }),
+      // The AI's identity, goal and vocabulary follow the tenant's line of
+      // business — a real-estate caller must never be offered a gel set, and a
+      // coffee shop must not open by offering a table reservation.
       this.prisma.setting
         .findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } })
         .catch(() => null),
@@ -1062,6 +1246,23 @@ export class VoiceService implements OnModuleInit {
       this.prisma.setting
         .findFirst({ where: { tenantId, key: 'industry' }, select: { value: true } })
         .catch(() => null),
+      // The salon's brain (ai-brain/): persona, facts, rules, booking policy —
+      // the same words Messenger reads.
+      this.brain ? this.brain.promptBlocks(tenantId, 'voice', brainLang).catch(() => null) : Promise.resolve(null),
+      // The owner's instruction LIST; each turn matches its own sentence against it.
+      this.instructions ? this.instructions.forTurn(tenantId, 'voice', '').catch(() => null) : Promise.resolve(null),
+      this.prisma.service.findMany({
+        where: { tenantId, isActive: true },
+        select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true, categoryId: true, ...({ walkInOnly: true } as object) } as never,
+        orderBy: { name: 'asc' }, take: 250,
+      }) as unknown as Promise<{ id: string; name: string; priceCents: number; durationMinutes: number; currency: string; priceFrom: boolean; categoryId: string | null; walkInOnly?: boolean }[]>,
+      // "Ask before booking" extras (Design?) the salon requires on some services.
+      Promise.resolve().then(() => this.prisma.serviceAddon.findMany({
+        where: { tenantId, isActive: true, ...({ askAtBooking: true } as object) } as never,
+        select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, serviceId: true, categoryId: true, service: { select: { name: true } }, category: { select: { name: true } } } as never,
+        take: 20,
+      })).catch(() => []),
+      this.localeInfo(tenantId),
     ]);
     const persona = personaFor(
       (tenant as unknown as { businessType?: string } | null)?.businessType,
@@ -1070,71 +1271,50 @@ export class VoiceService implements OnModuleInit {
     );
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';
-    const infoBlock = await this.salonInfoBlock(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
-    const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    // The owner's own instructions used to be appended to the FAQ facts as
-    // "notes" at the very end of the prompt, where the step-by-step booking
-    // script above outweighed them: a salon wrote "when they want a full set,
-    // say acrylic full set is $60 and up and ask design or solid color" and
-    // the assistant never asked. They are now a named block the model is told
-    // to follow on every call — still one question per turn, and still never
-    // a price or service the salon did not give.
-    // The salon's shared rules (every AI door) come first, the hotline's own
-    // extras after — both are the owner's words, both are followed.
-    // The salon's brain (ai-brain/): persona, facts, rules, booking policy —
-    // the same words Messenger reads. Without the module (older specs) the
-    // old per-line note still applies.
-    const brainOut = this.brain ? await this.brain.promptBlocks(tenantId, 'voice', brainLangOfVoice(lang)).catch(() => null) : null;
     const blocks = brainOut?.blocks ?? null;
-    // The owner's instructions: the highest-priority section, the ones this
-    // sentence is about pinned for this turn, and a check before it is spoken.
-    const owner = this.instructions ? await this.instructions.forTurn(tenantId, 'voice', userText).catch(() => null) : null;
-    let shared = '';
-    if (!blocks) { try { shared = (await this.settings.getAiNotes(tenantId))?.text ?? ''; } catch { shared = ''; } }
-    const facts = blocks ? blocks.facts : await this.factsFor(tenantId);
-    const ownerNote = (blocks ? blocks.rules : [shared, String(aiInstruction ?? '').trim()].filter(Boolean).join('\n')).slice(0, 4000);
-    // Who is calling: the salon's own record and what every assistant remembers about them.
-    let knownBlock = '';
-    if (this.brain && callerPhone) {
-      const known = await this.brain.customerByPhone(tenantId, callerPhone).catch(() => null);
-      if (known) {
-        const mem = await this.brain.getMemory(tenantId, known.id).catch(() => null);
-        knownBlock = `KNOWN CALLER: this number belongs to ${[known.firstName, known.lastName].filter(Boolean).join(' ')}, a customer on file — greet them by first name and never ask for their name or number again.\n${this.brain.memoryBlock(mem)}`.trim();
-      }
-    }
-    const ownerRules = ownerNote
-      ? `\nTHE ${persona.venueNoun.toUpperCase()} OWNER'S INSTRUCTIONS — follow these on every call. They are this ${persona.venueNoun}'s own rules: when one says to quote a price a certain way or to ask a question for a certain service, do exactly that at that point in the booking steps (one question per turn), in the caller's language:\n${ownerNote}\n`
-      : '';
-
-    // The whole menu, once per turn, in one stable order. Every item gets a
+    // Group-aware booking is for businesses that book PEOPLE onto STAFF —
+    // salons and appointment businesses. A restaurant's party is one table,
+    // and keeps its own single-reservation flow.
+    const bizType = String((tenant as unknown as { businessType?: string } | null)?.businessType ?? 'SALON').toUpperCase();
+    const groupMode = bizType === 'SALON' || bizType === 'SERVICE';
+    const [infoBlock, sharedText, factsText, staff] = await Promise.all([
+      this.salonInfoBlock(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null),
+      // The owner's own instructions used to be appended to the FAQ facts as
+      // "notes" at the very end of the prompt, where the step-by-step booking
+      // script above outweighed them. They are now a named block the model is
+      // told to follow on every call. The salon's shared rules (every AI door)
+      // come first, the hotline's own extras after. Without the brain module
+      // (older specs) the old per-line note still applies.
+      blocks ? Promise.resolve('') : Promise.resolve().then(() => this.settings.getAiNotes(tenantId)).then((n) => n?.text ?? '').catch(() => ''),
+      blocks ? Promise.resolve(blocks.facts) : this.factsFor(tenantId),
+      // Best-effort: a missing team list only loses "ask for Kim", never the call.
+      groupMode
+        ? Promise.resolve()
+            .then(() => this.prisma.staffMember.findMany({
+              where: { tenantId, isActive: true, takesAppointments: true },
+              select: { id: true, firstName: true, lastName: true },
+              orderBy: { firstName: 'asc' }, take: 60,
+            }))
+            .catch(() => [] as { id: string; firstName: string; lastName: string | null }[])
+        : Promise.resolve([] as { id: string; firstName: string; lastName: string | null }[]),
+    ]);
+    const facts = factsText;
+    const ownerNote = (blocks ? blocks.rules : [sharedText, String(aiInstruction ?? '').trim()].filter(Boolean).join('\n')).slice(0, 4000);
+    const asks = asksRaw as unknown as AskRow[];
+    const menuLocale = localeRow.locale;
+    // The whole menu, once per call, in one stable order. Every item gets a
     // short code (S1, S2…) the model passes to the tools: it used to copy a
     // 25-character database id out of the prompt, and one wrong character was
     // "Service not found" read aloud to a customer who had just said yes.
-    const allRows = await this.prisma.service.findMany({
-      where: { tenantId, isActive: true },
-      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true, categoryId: true, ...({ walkInOnly: true } as object) } as never,
-      orderBy: { name: 'asc' }, take: 250,
-    }) as unknown as { id: string; name: string; priceCents: number; durationMinutes: number; currency: string; priceFrom: boolean; categoryId: string | null; walkInOnly?: boolean }[];
     // First come, first served: a walk-in-only line is never a code the model can book.
     const walkInRows = allRows.filter((s) => s.walkInOnly);
     const menuRows = allRows.filter((s) => !s.walkInOnly);
     const menu: MenuItem[] = menuRows.map((s) => ({ id: s.id, name: s.name, minutes: s.durationMinutes > 0 ? s.durationMinutes : 30 }));
-    // "Ask before booking" extras (Design?) the salon requires on some services.
-    type AskRow = { id: string; name: string; priceCents: number; durationMinutes: number; currency: string; serviceId: string | null; categoryId: string | null; service: { name: string } | null; category: { name: string } | null };
-    let asks: AskRow[] = [];
-    try {
-      asks = await this.prisma.serviceAddon.findMany({
-        where: { tenantId, isActive: true, ...({ askAtBooking: true } as object) } as never,
-        select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, serviceId: true, categoryId: true, service: { select: { name: true } }, category: { select: { name: true } } } as never,
-        take: 20,
-      }) as unknown as AskRow[];
-    } catch { asks = []; }
     // Prices are read ALOUD, so they are formatted in the salon's own money —
     // the old "$" + divide-by-100 read a 200,000₫ service as "two thousand
     // dollars". Only the first forty are written into the prompt; a longer
     // menu is searched with get_services, so the assistant never books "the
     // nearest thing it can see".
-    const { locale: menuLocale } = await this.localeInfo(tenantId);
     // The whole menu (up to 150 lines): with a 40-line cut, a 43-service salon's
     // "TAP Gel" sat at 42–43 — the assistant never saw it and could not book it.
     const shown = menuRows.slice(0, 150);
@@ -1150,21 +1330,55 @@ export class VoiceService implements OnModuleInit {
         }).join('\n') : '')
       : 'No services are configured yet; take a message and tell them someone will call back.';
 
-    // Group-aware booking is for businesses that book PEOPLE onto STAFF —
-    // salons and appointment businesses. A restaurant's party is one table,
-    // and keeps its own single-reservation flow.
-    const bizType = String((tenant as unknown as { businessType?: string } | null)?.businessType ?? 'SALON').toUpperCase();
-    const groupMode = bizType === 'SALON' || bizType === 'SERVICE';
-    // Best-effort: a missing team list only loses "ask for Kim", never the call.
-    const staff = groupMode
-      ? await Promise.resolve()
-          .then(() => this.prisma.staffMember.findMany({
-            where: { tenantId, isActive: true, takesAppointments: true },
-            select: { id: true, firstName: true, lastName: true },
-            orderBy: { firstName: 'asc' }, take: 60,
-          }))
-          .catch(() => [] as { id: string; firstName: string; lastName: string | null }[])
-      : [];
+
+    return { persona, salonName, tz, infoBlock, blocks, facts, ownerNote, servicesBlock, groupMode, staff, menu, ownerAll: ownerTurn?.all ?? null };
+  }
+
+  /** "KNOWN CALLER: …" — the caller's record and memory, or '' for a new number. */
+  private async knownCallerBlock(tenantId: string, callerPhone: string): Promise<string> {
+    if (!this.brain) return '';
+    const known = await this.brain.customerByPhone(tenantId, callerPhone).catch(() => null);
+    if (!known) return '';
+    const mem = await this.brain.getMemory(tenantId, known.id).catch(() => null);
+    return `KNOWN CALLER: this number belongs to ${[known.firstName, known.lastName].filter(Boolean).join(' ')}, a customer on file — greet them by first name and never ask for their name or number again.\n${this.brain.memoryBlock(mem)}`.trim();
+  }
+
+  private async runAgent(
+    tenantId: string, callerPhone: string, aiInstruction: string, history: Turn[], userText: string, lang = 'en-US', bilingual = false, canTransfer = false,
+    alreadyBooked: string | null = null,
+    callSid: string | null = null,
+    // The relay can speak while the tools run: any words the model says
+    // before reaching for a tool ("Let me check that") go out at once.
+    onInterim?: (text: string) => void,
+  ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; stuck?: boolean; toolCalls?: number; failure?: string | null; timing?: TurnTiming }> {
+    const key = process.env.ANTHROPIC_API_KEY || '';
+    const acc = { wantEnd: false, booked: false, appointmentId: null as string | null, langSwitch: null as string | null, transfer: false, toolCalls: 0, failure: null as string | null, callSid, callerPhone };
+    // Where the time of this turn went — logged per turn, so "slow" is a number.
+    const timing = { ctxMs: 0, modelMs: [] as number[], toolMs: 0, judgeMs: 0, cacheRead: 0, cacheWrite: 0, uncached: 0 };
+    if (!key) {
+      this.logger.error('ANTHROPIC_API_KEY is not set on this service — the voice agent cannot think. Every call will fail until it is added.');
+      throw new Error('no-anthropic-key');
+    }
+
+    const tLoad = Date.now();
+    const brainLang = brainLangOfVoice(lang);
+    // Everything about the salon is read ONCE per call (call-cache.ts): the
+    // first turn loads it, every later turn starts the model straight away.
+    const sc = await this.callCache.get(tenantId, callSid, `agent:${brainLang}`, () => this.loadAgentContext(tenantId, aiInstruction, brainLang));
+    const { persona, salonName, tz, infoBlock, blocks, facts, ownerNote, servicesBlock, groupMode, staff, menu } = sc;
+    const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    // The owner's instructions: the list is the call's (loaded above); which of
+    // them THIS sentence is about is pure matching, no database.
+    const owner = this.instructions ? await this.instructions.forTurn(tenantId, 'voice', userText, sc.ownerAll ?? undefined).catch(() => null) : null;
+    // Who is calling: the salon's own record and what every assistant remembers about them — also once per call.
+    const knownBlock = this.brain && callerPhone
+      ? await this.callCache.get(tenantId, callSid, `caller:${callerPhone}`, () => this.knownCallerBlock(tenantId, callerPhone)).catch(() => '')
+      : '';
+    timing.ctxMs = Date.now() - tLoad;
+    const ownerRules = ownerNote
+      ? `\nTHE ${persona.venueNoun.toUpperCase()} OWNER'S INSTRUCTIONS — follow these on every call. They are this ${persona.venueNoun}'s own rules: when one says to quote a price a certain way or to ask a question for a certain service, do exactly that at that point in the booking steps (one question per turn), in the caller's language:\n${ownerNote}\n`
+      : '';
+
     const ctx: ToolCtx = { menu, staff, groupMode };
 
     const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
@@ -1184,18 +1398,32 @@ The call has already been answered with the ${persona.venueNoun}'s greeting — 
     const singleScript = `${persona.voiceGoal}
 BOOKING, STEP BY STEP — one question per turn, skipping anything the caller already said: (1) which service; if their words could mean more than one service on the menu, ask which one ("a regular manicure, or the gel manicure?") instead of choosing; if it is not on the menu, call get_services before you answer; (2) the day and time; (3) their first name — never invent or reuse a name; (4) read all of it back in ONE short sentence INCLUDING "under the number ending in" and the phone's last four digits, and wait for a clear yes — if they give a different number, pass it as customerPhone and read back once more with its last four digits; (5) only then call create_booking with the service's code and phoneConfirmed: true.`;
     const bookedNote = alreadyBooked ? '\nEarlier on this call a booking was already made. Do NOT book the same people again; for a change, use find_appointment and reschedule_appointment.' : '';
+    // THE PROMPT IN TWO PARTS, for speed. Everything that is the same for
+    // every call of this salon comes first and is CACHED by the model API — it
+    // is read from cache in a fraction of the time, on every turn of every
+    // call. It used to carry the clock to the minute and the caller's number,
+    // so it changed between turns and the cache almost never hit. Those, and
+    // anything else about THIS call or THIS turn, now follow in the second part.
+    const callerLine = callerPhone && spokenLast4(callerPhone)
+      ? `The caller is calling from ${callerPhone} (ending in ${spokenLast4(callerPhone)}). Do NOT ask them to read out a phone number. Instead, in the read-back before booking, say the booking will be "under the number ending in ${spokenLast4(callerPhone)}" so they can confirm it or give another. If they give another, take it as customerPhone; if it sounds incomplete, ask them to repeat it digit by digit. Always say the four digits one at a time.`
+      : 'The caller\'s number is hidden. Before the read-back, ask for a good callback number, then include its last four digits (one at a time) in the read-back.';
     const system = `You are the warm, professional phone receptionist for "${salonName}", ${persona.identity}. ${style}
-${callerPhone && spokenLast4(callerPhone)
-  ? `The caller is calling from ${callerPhone} (ending in ${spokenLast4(callerPhone)}). Do NOT ask them to read out a phone number. Instead, in the read-back before booking, say the booking will be "under the number ending in ${spokenLast4(callerPhone)}" so they can confirm it or give another. If they give another, take it as customerPhone; if it sounds incomplete, ask them to repeat it digit by digit. Always say the four digits one at a time.`
-  : 'The caller\'s number is hidden. Before the read-back, ask for a good callback number, then include its last four digits (one at a time) in the read-back.'}
-${groupMode ? groupScript : singleScript}${bookedNote}
+${groupMode ? groupScript : singleScript}
 Never book a service the caller has not named back to you, and never guess between two services — a wrong service means a chair, a technician and a price the ${persona.venueNoun} did not agree to. Do not hang up right after booking.
 If the caller asks about a booking they already have ("when is my appointment", "can I move it"), call find_appointment first and read back what it returns — never answer from memory. To move it, call reschedule_appointment; that tool applies the ${persona.venueNoun}'s notice policy and hands you the reason when it refuses, so say THAT reason rather than inventing a policy.
-Speak times naturally ("two thirty PM on Friday"). The ${persona.venueNoun}'s local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
+Speak times naturally ("two thirty PM on Friday"). Interpret "today/tomorrow/this Friday" in the ${persona.venueNoun}'s timezone (${tz}); its local time right now is given under THIS CALL below.
 Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours.
 When the conversation is finished — they've booked and have nothing else, or their question is answered, or they say goodbye — call end_call. ${canTransfer ? 'If the caller asks for a real person — a staff member, the owner, a manager, "someone at the ' + persona.venueNoun + '" — or is upset and wants a human, do not argue or keep them: say ONE short sentence that you are connecting them now (no goodbye), and call transfer_to_human. If they ask something you cannot answer from what you were given here (never guess), say you are not sure and offer to connect them to the front desk; if they say yes, call transfer_to_human.' : 'If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. If they ask something you cannot answer from what you were given here, never guess: say a staff member will call them back with the answer.'} Never ask for payment or card details.
 ${blocks?.persona ? blocks.persona + '\n' : ''}${servicesBlock}
-${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\n' + facts + '\n' : ''}${ownerRules}${blocks?.booking ? blocks.booking + '\n' : ''}${knownBlock ? knownBlock + '\n' : ''}${blocks ? blocks.handoffNote + '\n' : ''}If you cannot help with something — a question not answered here, a request the ${persona.venueNoun} must handle — call request_callback with a one-line summary; a team member calls back. Never end the call on your own because you are stuck.${owner?.block ? `\n${owner.block}\nOn the phone: say an instruction's answer in one or two short spoken sentences.` : ''}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
+${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\n' + facts + '\n' : ''}${ownerRules}${blocks?.booking ? blocks.booking + '\n' : ''}${blocks ? blocks.handoffNote + '\n' : ''}If you cannot help with something — a question not answered here, a request the ${persona.venueNoun} must handle — call request_callback with a one-line summary; a team member calls back. Never end the call on your own because you are stuck.${owner?.block ? `\n${owner.block}\nOn the phone: say an instruction's answer in one or two short spoken sentences.` : ''}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
+    // THIS CALL, THIS TURN — never cached.
+    const turnPart = [
+      `THIS CALL: ${callerLine}`,
+      `The ${persona.venueNoun}'s local time right now: ${nowLocal} (timezone ${tz}).`,
+      bookedNote.trim(),
+      knownBlock,
+      owner?.matched ?? '',
+    ].filter(Boolean).join('\n');
 
     const personItem = (withName: boolean) => ({
       type: 'object',
@@ -1345,6 +1573,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
 
     let apiRetried = false;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
+      const tModel = Date.now();
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
@@ -1352,7 +1581,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
           model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
           max_tokens: 180, // keep replies short → faster generation + faster text-to-speech
           // Cache the (stable) system prompt so turns 2+ of the same call are faster.
-          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }, ...(owner?.matched ? [{ type: 'text', text: owner.matched }] : [])],
+          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }, { type: 'text', text: turnPart }],
           tools,
           messages,
         }),
@@ -1370,34 +1599,62 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         throw new Error(`anthropic ${res.status}`);
       }
       const data = (await res.json()) as { stop_reason?: string; content?: AnthropicBlock[]; model?: string; usage?: Record<string, number> };
+      timing.modelMs.push(Date.now() - tModel);
+      timing.cacheRead += Number(data.usage?.cache_read_input_tokens ?? 0) || 0;
+      timing.cacheWrite += Number(data.usage?.cache_creation_input_tokens ?? 0) || 0;
+      timing.uncached += Number(data.usage?.input_tokens ?? 0) || 0;
       this.meter(tenantId, data, true);
       const outBlocks = data.content || [];
       if (data.stop_reason === 'tool_use') {
         messages.push({ role: 'assistant', content: outBlocks });
+        if (onInterim) {
+          const said = outBlocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+          if (said) { try { onInterim(said); } catch { /* speaking early is a nicety */ } }
+        }
+        const tTools = Date.now();
+        // Several tools asked for in one round run side by side, not one by
+        // one — EXCEPT anything that writes (a booking, a move, a cancel),
+        // which keeps its place in line.
+        const uses = outBlocks.filter((b) => b.type === 'tool_use');
+        const writes = (n: string | undefined) => /^(create_booking|reschedule_appointment|cancel_appointment|request_callback)$/.test(String(n));
+        const outs: string[] = new Array(uses.length);
+        const reads = uses.map((blk, i) => ({ blk, i })).filter(({ blk }) => !writes(blk.name));
+        await Promise.all(reads.map(async ({ blk, i }) => { outs[i] = await this.runTool(tenantId, tz, callerPhone, blk.name || '', blk.input || {}, acc, ctx); }));
+        for (const [i, blk] of uses.entries()) {
+          if (writes(blk.name)) outs[i] = await this.runTool(tenantId, tz, callerPhone, blk.name || '', blk.input || {}, acc, ctx);
+        }
         const results: unknown[] = [];
-        for (const blk of outBlocks) {
-          if (blk.type !== 'tool_use') continue;
+        for (const [i, blk] of uses.entries()) {
           acc.toolCalls += 1;
-          const out = await this.runTool(tenantId, tz, callerPhone, blk.name || '', blk.input || {}, acc, ctx);
+          const out = outs[i];
           if (/^(NOT BOOKED|ERROR|Could not complete)/.test(out)) acc.failure = `${blk.name}: ${out.slice(0, 140)}`;
           results.push({ type: 'tool_result', tool_use_id: blk.id, content: out });
         }
+        timing.toolMs += Date.now() - tTools;
         messages.push({ role: 'user', content: results });
         continue;
       }
       const text = outBlocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
       if (acc.transfer) {
-        return { reply: text || transferLines(acc.langSwitch || lang).connecting, done: true, transfer: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure };
+        return { reply: text || transferLines(acc.langSwitch || lang).connecting, done: true, transfer: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure, timing };
       }
       // THE OWNER'S INSTRUCTIONS, checked before the line is spoken. No second
       // model round on the phone (the caller is waiting): a broken one is
       // replaced at once by the judge's corrected line, the owner's own words,
       // or an honest "let me check". A check that is slow or fails never holds
       // the caller — it is skipped.
+      //
+      // On the PHONE the check runs only on a turn the caller's words actually
+      // triggered an instruction (owner.matches). It used to run on every turn
+      // of every salon with any rule at all — up to 2.5 s of extra silence each
+      // time, mostly to confirm that "Sure, what day works?" broke nothing. The
+      // standing rules are in the prompt above every other instruction.
       let said = text;
-      if (owner && this.instructions && text) {
+      if (owner && this.instructions && text && owner.matches.length) {
         const insLang = brainLangOfVoice(acc.langSwitch || lang);
-        const chk = await this.instructions.check(tenantId, { turn: owner, channel: 'voice', customer: userText, draft: text, lang: insLang, timeoutMs: 2500 }).catch(() => null);
+        const tJudge = Date.now();
+        const chk = await this.instructions.check(tenantId, { turn: owner, channel: 'voice', customer: userText, draft: text, lang: insLang, timeoutMs: 1500 }).catch(() => null);
+        timing.judgeMs = Date.now() - tJudge;
         if (chk?.broken.length) {
           const sameLang = chk.broken.every((i) => { const l = detectBrainLanguage(i.text); return !l || l === insLang; });
           said = lastResort(chk.broken, chk.rewrite, sameLang) || checkingLine(insLang);
@@ -1405,10 +1662,10 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         }
         if (chk) this.instructions.noteUse(tenantId, chk.applied, chk.broken);
       }
-      return { reply: said || agentFallbackLines(acc.langSwitch || lang).keepGoing, done: acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure };
+      return { reply: said || agentFallbackLines(acc.langSwitch || lang).keepGoing, done: acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure, timing };
     }
     // Out of tool budget: NOT a goodbye. The desk is handed the thread and the line stays open.
-    return { reply: callbackLines(acc.langSwitch || lang).stuck, done: false, stuck: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure ?? 'tool loop exhausted' };
+    return { reply: callbackLines(acc.langSwitch || lang).stuck, done: false, stuck: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure ?? 'tool loop exhausted', timing };
   }
 
   private async runTool(

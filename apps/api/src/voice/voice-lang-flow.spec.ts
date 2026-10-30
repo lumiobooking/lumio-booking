@@ -297,7 +297,7 @@ describe('slow brain → filler now, answer next', () => {
 
   it('a slow brain gets a Vietnamese filler + a redirect, and the answer waits at /turn-result', async () => {
     const { svc } = makeSvc();
-    (svc as unknown as { runAgent: unknown }).runAgent = () => new Promise((r) => setTimeout(() => r(slowReply), 1_700));
+    (svc as unknown as { runAgent: unknown }).runAgent = () => new Promise((r) => setTimeout(() => r(slowReply), 2_300));
     const first = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'thứ ba được không' }, '0', 'vi-VN');
     expect(first).toContain('<Say');
     expect(first).toMatch(/để em xem|chờ em một chút|em kiểm tra ngay/);
@@ -320,7 +320,7 @@ describe('slow brain → filler now, answer next', () => {
 
   it('the English filler is English', async () => {
     const { svc } = makeSvc({ line: { language: 'en-US' } });
-    (svc as unknown as { runAgent: unknown }).runAgent = () => new Promise((r) => setTimeout(() => r({ ...slowReply, reply: 'Tuesday at two is open.' }), 1_700));
+    (svc as unknown as { runAgent: unknown }).runAgent = () => new Promise((r) => setTimeout(() => r({ ...slowReply, reply: 'Tuesday at two is open.' }), 2_300));
     const first = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'is tuesday open' }, '0');
     expect(first).toMatch(/one moment|Let me check|just a second/);
     expect(first).not.toContain('vi-VN');

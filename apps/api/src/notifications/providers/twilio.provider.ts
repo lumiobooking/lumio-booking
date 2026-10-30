@@ -14,6 +14,28 @@ export interface TwilioConfig {
 const logger = new Logger('TwilioSms');
 
 /**
+ * The sender in the E.164 form Twilio requires.
+ *
+ * A North-American number typed the local way — "(833) 719-5153",
+ * " 8337195153" — is +1 whatever the salon's country. It used to be put in
+ * +61 form for an Australian salon ("+8337195153"), which Twilio refused
+ * with error 21212 on every text: the owner's new-booking alert and every
+ * customer text from those salons. Only a number that is NOT North-American
+ * ("0485 085 339") takes the salon's own dial code. Anything that cannot be
+ * read is passed through unchanged, for Twilio to judge.
+ */
+export function normalizeFrom(raw: string, salonDial = '1'): string {
+  const t = String(raw ?? '').trim();
+  if (!t) return t;
+  if (/^MG[0-9a-f]{32}$/i.test(t)) return t;
+  const digits = t.replace(/\D/g, '');
+  if (t.startsWith('+')) return digits ? `+${digits}` : t;
+  if (digits.length === 10 && /^[2-9]\d{2}[2-9]/.test(digits)) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1') && /^1[2-9]\d{2}[2-9]/.test(digits)) return `+${digits}`;
+  return toE164(t, salonDial) ?? t;
+}
+
+/**
  * Real SMS over Twilio's REST API
  * (POST https://api.twilio.com/2010-04-01/Accounts/{Sid}/Messages.json).
  *
@@ -39,14 +61,7 @@ export class TwilioSmsProvider implements SmsProvider {
     if (message.statusCallback) params.set('StatusCallback', message.statusCallback);
     if (this.config.messagingServiceSid) params.set('MessagingServiceSid', this.config.messagingServiceSid);
     else if (this.config.fromNumber) {
-      // Outside North America a sender typed the local way ("0485 085 339")
-      // is not a number Twilio knows. Put it in +61… form with the salon's
-      // own dial code. North America (dial code 1) is sent exactly as typed,
-      // as it always has been.
-      const dial = String(message.defaultDialCode ?? '1');
-      const from = dial !== '1' && !this.config.fromNumber.trim().startsWith('+')
-        ? (toE164(this.config.fromNumber, dial) ?? this.config.fromNumber)
-        : this.config.fromNumber;
+      const from = normalizeFrom(this.config.fromNumber, String(message.defaultDialCode ?? '1'));
       params.set('From', from);
     }
     else return { success: false, error: 'No Twilio sender (set TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER)' };

@@ -70,6 +70,15 @@ export class VoiceWebhookController {
     return this.svc.handleAfterTransfer(body || {}, lg);
   }
 
+  /** The streaming relay ended for this call (<Connect action>): hang up, hand off, or continue on <Gather>. */
+  @Public()
+  @Post('relay-end')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/xml; charset=utf-8')
+  relayEnd(@Body() body: Record<string, string>) {
+    return this.svc.handleRelayEnd(body || {});
+  }
+
   /** The caller finished leaving a voicemail (Twilio <Record> action). */
   @Public()
   @Post('voicemail')

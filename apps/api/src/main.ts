@@ -3,6 +3,8 @@ import { ValidationPipe, Logger, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { VoiceService } from './voice/voice.service';
+import { attachVoiceRelay } from './voice/relay-server';
 
 async function bootstrap() {
   // rawBody: true keeps the raw request buffer so Stripe webhook signatures can
@@ -86,6 +88,10 @@ async function bootstrap() {
   // timeout, not as a refusal, so it reads like a slow app rather than a
   // missing listener. One argument removes the whole class of doubt.
   await app.listen(port, '0.0.0.0');
+
+  // The streaming AI hotline (Twilio ConversationRelay) talks over a
+  // WebSocket on this same server. Inert unless VOICE_RELAY_NUMBERS is set.
+  attachVoiceRelay(app.getHttpServer(), app.get(VoiceService));
 
   Logger.log(`Lumio Booking API is running on http://localhost:${port}/api`, 'Bootstrap');
 }

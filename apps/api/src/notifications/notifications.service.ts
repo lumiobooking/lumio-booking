@@ -8,7 +8,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { EmailProvider, SmsProvider } from './providers/notification-provider.interface';
 import { createEmailProvider, createSmsProvider } from './providers/notification-provider.factory';
 import { ESmsProvider } from './providers/esms.provider';
-import { senderForRecipient, twilioSenderFor, vnEsmsFor, platformEsmsFromEnv } from './providers/sms-routing';
+import { senderForRecipient, twilioSenderFor, vnEsmsFor, platformEsmsFromEnv, type TwilioSender } from './providers/sms-routing';
 import { toE164 } from '../common/phone';
 import { toGsm7 } from './sms-text';
 import { HOLD_LOOKBACK_MS, twilioOutcome, undeliveredError, undeliveredHold } from './sms-delivery';
@@ -17,7 +17,7 @@ import { ZnsProvider } from './providers/zns.provider';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
 import { BrevoConfig, BrevoEmailProvider } from './providers/brevo.provider';
 import { GmailOAuthConfig, GmailOAuthProvider } from './providers/gmail-oauth.provider';
-import { TwilioSmsProvider } from './providers/twilio.provider';
+import { TwilioSmsProvider, normalizeFrom } from './providers/twilio.provider';
 
 /** Build a platform Gmail-OAuth provider from env vars, or null if not configured. */
 function envGmailProvider(senderName?: string, replyTo?: string): GmailOAuthProvider | null {
@@ -387,20 +387,36 @@ export class NotificationsService {
     // Outside North America the platform's +1 number is the wrong sender —
     // see twilioSenderFor. Looked up only for an SMS that is going to the
     // platform Twilio account (no eSMS, no salon-owned credentials).
-    const ownTwilio = !!(input.twilio?.accountSid && input.twilio?.authToken && (input.twilio.fromNumber || input.twilio.messagingServiceSid));
+    // A salon whose "own" Twilio settings are really a COPY of the platform
+    // account (the same Account SID — how most salons were set up) is sent
+    // on the platform path, with the platform's live auth token. Copies go
+    // stale: on 27–29 Oct a changed token left every copy failing with
+    // Twilio 20003 for a day and a half, while the platform itself was fine.
+    // And only the platform path knows to text Australia from the +61 number.
+    const envSid = String(process.env.TWILIO_ACCOUNT_SID ?? '').trim();
+    const platformCopy = !!envSid && String(input.twilio?.accountSid ?? '').trim() === envSid;
+    const ownTwilio = !platformCopy && !!(input.twilio?.accountSid && input.twilio?.authToken && (input.twilio.fromNumber || input.twilio.messagingServiceSid));
     // Only when the platform really sends through Twilio: the mock provider
     // used in development and tests keeps accepting everything.
     const platformTwilio = input.channel === NotificationChannel.SMS && !vnKeys && !ownTwilio && this.sms.name === 'twilio';
     const dialCode = input.channel === NotificationChannel.SMS ? await this.dialCodeForTenant(input.tenantId) : '1';
     // Then the person: a +61 customer goes out on the Australian number even
     // when the salon is American (the US toll-free cannot reach Australia).
-    const sender = platformTwilio
+    const toNumber = toE164(input.recipient, dialCode);
+    let sender: TwilioSender = platformTwilio
       ? senderForRecipient(
         await this.twilioSenderForTenant(input.tenantId),
-        toE164(input.recipient, dialCode),
+        toNumber,
         process.env.TWILIO_FROM_NUMBER_AU ?? null,
       )
       : { kind: 'default' as const };
+    // A copy that names a DIFFERENT number of ours (a salon's own line on the
+    // platform account) keeps sending from it — to North America, where it can.
+    if (platformTwilio && platformCopy && sender.kind === 'default' && input.twilio?.fromNumber && !String(toNumber ?? '').startsWith('+61')) {
+      const theirs = normalizeFrom(input.twilio.fromNumber, '1');
+      const ours = normalizeFrom(String(process.env.TWILIO_FROM_NUMBER ?? ''), '1');
+      if (/^\+1\d{10}$/.test(theirs) && theirs !== ours) sender = { kind: 'from', from: theirs };
+    }
 
     // Every non-Vietnamese text goes out on the GSM-7 alphabet: one curly
     // apostrophe or emoji otherwise bills the whole text at 70 characters a
@@ -466,7 +482,7 @@ export class NotificationsService {
       }
 
       const t = input.twilio;
-      if (t?.accountSid && t?.authToken && (t.fromNumber || t.messagingServiceSid)) {
+      if (ownTwilio && t?.accountSid && t?.authToken && (t.fromNumber || t.messagingServiceSid)) {
         return new TwilioSmsProvider({
           accountSid: t.accountSid,
           authToken: t.authToken,
@@ -552,6 +568,16 @@ export class NotificationsService {
     if (input.channel === NotificationChannel.SMS && providerName === 'mock' && process.env.NODE_ENV === 'production') {
       status = NotificationStatus.FAILED;
       error = 'SMS not sent — no Twilio number is connected for this salon. Connect Twilio in Settings -> SMS gateway (and make sure the plan includes SMS).';
+    }
+    // The same for email. A salon with no mail service of its own, on a server
+    // with no platform sender (BREVO_* / GMAIL_* env), used to log every email
+    // as SENT through the mock — the owner's new-booking alerts and the
+    // customers' confirmations went nowhere, and the history said they went.
+    if (input.channel === NotificationChannel.EMAIL && providerName === 'mock' && process.env.NODE_ENV === 'production') {
+      status = NotificationStatus.FAILED;
+      error = input.mailService === 'off'
+        ? 'Email not sent — email sending is turned off in Settings -> Email.'
+        : 'Email not sent — no email service is connected for this salon (Settings -> Email: Brevo, Gmail or SMTP) and no platform sender is configured.';
     }
 
     return this.prisma.notification.create({

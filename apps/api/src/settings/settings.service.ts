@@ -901,6 +901,17 @@ export class SettingsService implements OnApplicationBootstrap {
     } as NotificationSettings;
     delete merged.market; // runtime-only — attached at read time, never stored
     await this.writeKey(tenantId, NOTIFICATION_SETTINGS_KEY, merged);
+    // Keep the "Booking confirmed" template's Email / SMS boxes in step with
+    // these switches — two places for one choice is how owners ended up
+    // believing customers were texted when they were not.
+    const d = dto as { emailCustomerOnBooking?: unknown; smsCustomerOnBooking?: unknown };
+    if (typeof d.emailCustomerOnBooking === 'boolean' || typeof d.smsCustomerOnBooking === 'boolean') {
+      const tpls = await this.readKey<NotificationTemplates>(tenantId, NOTIFICATION_TEMPLATES_KEY, {});
+      const conf = { ...(tpls.customer_booking_confirmed ?? {}) } as Partial<NotifTemplate>;
+      if (typeof d.emailCustomerOnBooking === 'boolean') conf.email = d.emailCustomerOnBooking;
+      if (typeof d.smsCustomerOnBooking === 'boolean') conf.sms = d.smsCustomerOnBooking;
+      await this.writeKey(tenantId, NOTIFICATION_TEMPLATES_KEY, { ...tpls, customer_booking_confirmed: conf } as NotificationTemplates);
+    }
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.notifications_updated', resourceType: 'tenant', resourceId: tenantId });
     return this.get(user);
   }
@@ -957,6 +968,18 @@ export class SettingsService implements OnApplicationBootstrap {
       if (incoming[id]) merged[id] = { ...cur[id], ...incoming[id] };
     }
     await this.writeKey(tenantId, NOTIFICATION_TEMPLATES_KEY, merged);
+    // …and the other way: the template's boxes are the Settings switches too.
+    const inc = incoming['customer_booking_confirmed'] as Partial<NotifTemplate> | undefined;
+    if (inc && (typeof inc.email === 'boolean' || typeof inc.sms === 'boolean')) {
+      // Only the two fields change; everything else is written back exactly as
+      // stored (a failed read throws here rather than saving over the rest).
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: NOTIFICATION_SETTINGS_KEY } } });
+      const next = { ...((row?.value as Record<string, unknown> | null) ?? {}) };
+      if (typeof inc.email === 'boolean') next.emailCustomerOnBooking = inc.email;
+      if (typeof inc.sms === 'boolean') next.smsCustomerOnBooking = inc.sms;
+      delete next.market;
+      await this.writeKey(tenantId, NOTIFICATION_SETTINGS_KEY, next);
+    }
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.notification_templates_updated', resourceType: 'tenant', resourceId: tenantId });
     return this.get(user);
   }

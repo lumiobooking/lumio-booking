@@ -1387,6 +1387,25 @@ export class BookingsService {
   }
 
   /**
+   * Where the owner's booking emails go: the first real address among the
+   * salon's own settings, then the salon owner's login email. Never a
+   * no-reply address, never something that is not an email. Tenant-scoped.
+   */
+  private async ownerAlertEmail(tenantId: string, candidates: Array<string | null | undefined>): Promise<string> {
+    const real = (v: unknown) => {
+      const e = String(v ?? '').trim();
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && !/^(no-?reply|do-?not-?reply)@/i.test(e) ? e : '';
+    };
+    for (const c of candidates) { const e = real(c); if (e) return e; }
+    const owner = await this.prisma.user.findFirst({
+      where: { tenantId, role: 'SALON_ADMIN' as never, isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: { email: true },
+    }).catch(() => null);
+    return real(owner?.email);
+  }
+
+  /**
    * Notifies the customer and/or the salon admin about a new booking with a
    * polished, branded HTML email and/or SMS, using the salon's templates.
    */
@@ -1584,8 +1603,14 @@ export class BookingsService {
     // The technician update rides the channels the confirmation uses; never the
     // VN carrier SMS (its text must match a registered template).
     const confOn = confirmTpl && confirmTpl.enabled ? { email: confirmTpl.email, sms: confirmTpl.sms } : { email: n.emailCustomerOnBooking, sms: n.smsCustomerOnBooking };
-    const emailCustomer = opts.techUpdate ? Boolean(tpl?.email && confOn.email) : tpl ? tpl.email : n.emailCustomerOnBooking;
-    const smsCustomer = opts.techUpdate ? Boolean(tpl?.sms && confOn.sms && (n.market ?? 'US').toUpperCase() !== 'VN') : tpl ? tpl.sms : n.smsCustomerOnBooking;
+    // TWO SWITCHES, ONE MEANING. Settings → Notifications has "Email / SMS the
+    // customer when they book"; the "Booking confirmed" template has its own
+    // Email / SMS boxes. Only the template's used to count — so an owner who
+    // turned "SMS the customer" ON in Settings sent nothing, because the
+    // template's SMS box was still at its default (off). Either one turned on
+    // now sends it (and saving either now keeps the other in step).
+    const emailCustomer = opts.techUpdate ? Boolean(tpl?.email && confOn.email) : tpl ? Boolean(tpl.email || n.emailCustomerOnBooking) : n.emailCustomerOnBooking;
+    const smsCustomer = opts.techUpdate ? Boolean(tpl?.sms && confOn.sms && (n.market ?? 'US').toUpperCase() !== 'VN') : tpl ? Boolean(tpl.sms || n.smsCustomerOnBooking) : n.smsCustomerOnBooking;
 
     if (emailCustomer && custEmail) {
       if (tpl) {
@@ -1641,9 +1666,10 @@ export class BookingsService {
     }
     // The technician update is for the customer only: the salon made the change.
     if (opts.techUpdate) { await Promise.allSettled(jobs); return; }
-    // Admin notification: who gets it = the Admin email, falling back to the
-    // sender email so the salon is never left un-notified.
-    const adminTo = n.adminEmail || n.senderEmail || n.gmail.senderEmail || '';
+    // Admin notification: the Admin email, then the sender, the salon's contact
+    // email and the owner's own login — never a no-reply address (an owner who
+    // never filled in "Admin email" had alerts mailed to noreply@lumiobooking.com).
+    const adminTo = await this.ownerAlertEmail(tenantId, [n.adminEmail, n.senderEmail, n.gmail.senderEmail, tenant?.contactEmail]);
     if (n.emailAdminOnBooking && adminTo) {
       // The owner's copy is a work order, not a courtesy note: it carries the
       // customer's phone and email, the technician on each service, the note
@@ -3132,7 +3158,7 @@ export class BookingsService {
     // The salon's own alert goes where its new-booking alert goes, under the
     // same two switches — the owner who asked to be emailed about bookings is
     // emailed about their cancellation too.
-    const adminTo = n.adminEmail || n.senderEmail || n.gmail.senderEmail || '';
+    const adminTo = await this.ownerAlertEmail(tenantId, [n.adminEmail, n.senderEmail, n.gmail.senderEmail, tenant?.contactEmail]);
     const targets = changeNoticeTargets({
       kind, market: n.market ?? 'US',
       customer: { email: appt.customer?.email ?? null, phone: appt.customer?.phone ?? null },

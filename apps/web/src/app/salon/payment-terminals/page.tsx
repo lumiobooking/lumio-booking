@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { TerminalRequestCard } from '../../../components/TerminalRequestCard';
+import { readerHowTo } from '../../../lib/reader-howto';
 
 // ---- Types (mirror the payments-hub API) ----
 interface HubStatus { enabled: boolean; encryption: boolean; providers: string[]; webhookBase?: string | null }
@@ -240,7 +241,7 @@ function Inner() {
               <button onClick={() => doDisconnect(c.provider)} style={ui.dangerBtn}>{L.disconnect}</button>
             </div>
           </div>
-          {c.capabilities?.terminal !== false && <Readers provider={c.provider} token={token} L={L} />}
+          {c.capabilities?.terminal !== false && <Readers provider={c.provider} token={token} L={L} vi={vi} />}
           {c.capabilities?.terminal !== false && <TestCharge provider={c.provider} token={token} L={L} vi={vi} />}
           {/* Connected, but the key cannot drive readers: say why the reader section is missing and how to get it. */}
           {c.capabilities?.terminal === false && !ONLINE_ONLY.includes(c.provider) && (
@@ -392,7 +393,8 @@ const ONLINE_ONLY = ['paypal', 'clover'];
 
 const ghost: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14, cursor: 'pointer' };
 
-function Readers({ provider, token, L }: { provider: string; token: string | null; L: any }) {
+function Readers({ provider, token, L, vi }: { provider: string; token: string | null; L: any; vi?: boolean }) {
+  const how = readerHowTo(provider, !!vi);
   const [readers, setReaders] = useState<Device[]>([]);
   const [code, setCode] = useState('');
   const [rlabel, setRLabel] = useState('');
@@ -438,7 +440,7 @@ function Readers({ provider, token, L }: { provider: string; token: string | nul
       </div>
       {err && <div style={{ color: 'var(--cfca5a5)', fontSize: 12, marginTop: 6 }}>{err}</div>}
       {note && <div style={{ color: 'var(--c86efac)', fontSize: 12, marginTop: 6 }}>{note}</div>}
-      {readers.length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>—</p> : (
+      {readers.length === 0 ? <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '6px 0' }}>{vi ? 'Chưa có máy nào — thêm máy ở khung bên dưới.' : 'No card reader yet — add one in the box below.'}</p> : (
         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0' }}>
           {readers.map((r) => (
             <li key={r.id} style={{ fontSize: 13, color: 'var(--ce2e8f0)', padding: '5px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -454,14 +456,34 @@ function Readers({ provider, token, L }: { provider: string; token: string | nul
           ))}
         </ul>
       )}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-        <input style={{ ...input, width: 200 }} value={code} onChange={(e) => setCode(e.target.value)} placeholder={provider === 'dejavoo' ? 'TPN' : L.code} />
-        <input style={{ ...input, width: 150 }} value={rlabel} onChange={(e) => setRLabel(e.target.value)} placeholder={L.readerLabel} />
-        <input style={{ ...input, width: 150 }} value={rlocation} onChange={(e) => setRLocation(e.target.value)} placeholder={L.readerLocation} />
-        {provider === 'dejavoo' && (
-          <input style={{ ...input, width: 190 }} type="password" value={rkey} onChange={(e) => setRKey(e.target.value)} placeholder={L.readerKey} autoComplete="off" />
-        )}
-        <button onClick={add} disabled={!code.trim()} style={{ ...ui.primaryBtn, opacity: code.trim() ? 1 : 0.6 }}>{L.addReader}</button>
+      <div style={{ marginTop: 10, padding: 14, borderRadius: 12, border: '1.5px dashed #6366f1', background: 'var(--c1e1b4b)' }}>
+        <strong style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>{vi ? '＋ Thêm máy cà thẻ' : '＋ Add a card reader'}</strong>
+        <ol style={{ margin: '6px 0 10px', paddingLeft: 18, fontSize: 12.5, lineHeight: 1.55, color: 'var(--ccbd5e1)' }}>
+          {how.steps.map((x, i) => <li key={i}>{x}</li>)}
+        </ol>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          {how.needsCode && (
+            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--ccbd5e1)' }}>
+              <span>{how.codeLabel}</span>
+              <input style={{ ...input, width: 220, background: 'var(--c0f172a)', borderColor: '#6366f1' }} value={code} onChange={(e) => setCode(e.target.value)} placeholder={how.codePlaceholder} autoComplete="off" spellCheck={false} />
+            </label>
+          )}
+          <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--ccbd5e1)' }}>
+            <span>{vi ? 'Tên máy (tuỳ chọn)' : 'Name (optional)'}</span>
+            <input style={{ ...input, width: 170 }} value={rlabel} onChange={(e) => setRLabel(e.target.value)} placeholder={vi ? 'Quầy 1' : 'Front desk'} />
+          </label>
+          <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--ccbd5e1)' }}>
+            <span>{L.readerLocation}</span>
+            <input style={{ ...input, width: 170 }} value={rlocation} onChange={(e) => setRLocation(e.target.value)} placeholder={provider === 'square' ? 'L…' : ''} />
+          </label>
+          {provider === 'dejavoo' && (
+            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--ccbd5e1)' }}>
+              <span>{L.readerKey}</span>
+              <input style={{ ...input, width: 190 }} type="password" value={rkey} onChange={(e) => setRKey(e.target.value)} autoComplete="off" />
+            </label>
+          )}
+          <button onClick={add} disabled={how.needsCode && !code.trim()} style={{ ...ui.primaryBtn, opacity: how.needsCode && !code.trim() ? 0.6 : 1 }}>{how.button}</button>
+        </div>
       </div>
     </div>
   );

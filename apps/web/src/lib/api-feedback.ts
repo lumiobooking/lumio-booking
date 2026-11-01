@@ -113,6 +113,7 @@ const NEVER_CACHE: RegExp[] = [
   /^\/client-forms\/(visit|customers)(\/|$)/,             // signed / missing — must flip to ✓ the moment the client signs
   /^\/(tiktok|google-reviews|messenger)$/,               // connection status — must show a connect the moment it lands
   /^\/print-devices(\/|\?|$)/,                          // printers: a computer that just paired must show up
+  /^\/payments-hub\/square-pos(\/|\?|$)/,             // Square POS sync: the result of "Sync now" must show at once
   /^\/restaurant\/(floor|checks|kitchen)(\/|\?|$)/,      // the floor, an open bill (bank transfer landing), the kitchen screen
   /^\/restaurant\//,                                      // every restaurant screen is live (tables, tickets, the till)
   /^\/display\//,                                         // the customer's iPad polls this every second — 15 s of memory was the 10 s lag

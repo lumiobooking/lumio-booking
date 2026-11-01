@@ -48,6 +48,6 @@ import { StripeTerminalAdapter, SquareTerminalAdapter } from './adapters/existin
     UsbTerminalAdapter,
     BluetoothTerminalAdapter,
   ],
-  exports: [PaymentOrchestrator],
+  exports: [PaymentOrchestrator, CredentialStore],
 })
 export class PaymentsHubModule {}

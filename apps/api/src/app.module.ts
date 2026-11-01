@@ -37,6 +37,7 @@ import { PosModule } from './pos/pos.module';
 import { FinanceModule } from './finance/finance.module';
 import { BillingModule } from './billing/billing.module';
 import { PaymentsHubModule } from './payments-hub/payments-hub.module';
+import { SquarePosModule } from './square-pos/square-pos.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { FeedbackModule } from './feedback/feedback.module';
@@ -114,6 +115,7 @@ import { AiUsageModule } from './common/ai-usage.module';
     // Self-serve SaaS billing: public signup, Stripe/PayPal checkout + webhooks.
     BillingModule,
     PaymentsHubModule,
+    SquarePosModule,
     UploadsModule,
     // Review-reward program: customer feedback → staff & customer points.
     ReviewsModule,

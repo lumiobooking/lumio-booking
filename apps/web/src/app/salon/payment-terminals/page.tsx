@@ -8,6 +8,7 @@ import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { TerminalRequestCard } from '../../../components/TerminalRequestCard';
 import { readerHowTo } from '../../../lib/reader-howto';
+import { SquarePosSync } from '../../../components/SquarePosSync';
 
 // ---- Types (mirror the payments-hub API) ----
 interface HubStatus { enabled: boolean; encryption: boolean; providers: string[]; webhookBase?: string | null }
@@ -243,6 +244,7 @@ function Inner() {
           </div>
           {c.capabilities?.terminal !== false && <Readers provider={c.provider} token={token} L={L} vi={vi} />}
           {c.capabilities?.terminal !== false && <TestCharge provider={c.provider} token={token} L={L} vi={vi} />}
+          {c.provider === 'square' && <SquarePosSync token={token} vi={vi} />}
           {/* Connected, but the key cannot drive readers: say why the reader section is missing and how to get it. */}
           {c.capabilities?.terminal === false && !ONLINE_ONLY.includes(c.provider) && (
             <div style={{ marginTop: 12, background: 'var(--wash-amber)', border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', fontSize: 13, lineHeight: 1.55, color: 'var(--ce2e8f0)' }}>

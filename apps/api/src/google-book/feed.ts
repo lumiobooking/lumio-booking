@@ -72,9 +72,21 @@ export function bookingUrl(webUrl: string, slug: string, serviceId?: string): st
   return serviceId ? `${base}?service=${encodeURIComponent(serviceId)}` : base;
 }
 
-/** The services a feed carries: active, bookable online, priced and timed. */
+/**
+ * The services a feed carries: active, bookable online and priced. A service
+ * with no length set is still bookable (the booking engine gives it the
+ * default length), so it goes too — Google's feed says "duration not
+ * displayed" for it rather than inventing a number.
+ */
 export function feedableServices(t: FeedTenant): FeedService[] {
-  return t.services.filter((s) => s.isActive !== false && !s.walkInOnly && s.priceCents > 0 && s.durationMinutes > 0);
+  return t.services.filter((s) => s.isActive !== false && !s.walkInOnly && s.priceCents > 0 && s.durationMinutes >= 0);
+}
+
+/** Google's ServiceDuration: exact when the salon set a length, INTERPRETATION_NOT_DISPLAYED when it did not. */
+export function serviceDuration(minutes: number): { duration_interpretation: string; min_duration_sec?: number } {
+  return minutes > 0
+    ? { duration_interpretation: 'INTERPRETATION_EXACT', min_duration_sec: Math.round(minutes * 60) }
+    : { duration_interpretation: 'INTERPRETATION_NOT_DISPLAYED' };
 }
 
 function text(value: string, locale: string) {
@@ -136,7 +148,7 @@ export function buildServicesFeed(tenants: FeedTenant[], webUrl: string) {
           min_price: { price_micros: priceMicros(s.priceCents, t.currency), currency_code: (t.currency || 'USD').toUpperCase() },
         },
         action_link: [{ url: bookingUrl(webUrl, t.slug, s.id) }],
-        service_duration: { duration_interpretation: 'INTERPRETATION_EXACT', min_duration_sec: s.durationMinutes * 60 },
+        service_duration: serviceDuration(s.durationMinutes),
         ranking_hint: { score: i },
         bookability_info: bookability(t),
         ...(policy ? { policy_info: { policies: [policy] } } : {}),

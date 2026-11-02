@@ -20,8 +20,14 @@ interface Issue { code: string; level: 'error' | 'warn'; message: string; servic
 interface BookingLink { state: 'linked' | 'skipped' | 'error' | 'removed'; uri: string | null; at: string; reason?: string; others?: number }
 interface Row { id: string; name: string; slug: string; status: 'ready' | 'fix' | 'off'; feedable: number; issues: Issue[]; profileTitle: string | null; profileAt: string | null; mapsUrl: string | null; bookingLink?: BookingLink | null }
 interface LinkRun { at: string; linked: number; skipped: number; failed: number; removed: number }
-interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string }
-interface Board { rows: Row[]; lastRun: RunReport | null; lastLinkRun?: LinkRun | null; sftpConfigured: boolean; partnerId: string | null }
+interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string; hint?: string; sandbox?: boolean; user?: string | null }
+interface SftpInfo { host: string | null; user: string | null; port: number; dir: string; missing: string[]; keyProblem: string | null }
+interface Board { rows: Row[]; lastRun: RunReport | null; lastLinkRun?: LinkRun | null; sftpConfigured: boolean; sftp?: SftpInfo; sandbox?: boolean; countries?: string[]; partnerId: string | null }
+interface SftpTest { ok: boolean; at: string; host: string | null; user: string | null; port: number; sandbox: boolean; files?: number; ms?: number; error?: string; hint?: string; missing?: string[] }
+
+/** Baked into this web build: what the booking page sends Google when a booking from the button completes. */
+const WEB_PARTNER_ID = (process.env.NEXT_PUBLIC_RWG_PARTNER_ID ?? '').trim();
+const WEB_SANDBOX = process.env.NEXT_PUBLIC_RWG_SANDBOX === '1';
 
 /** The salon's own "Book" link on Google (Place Actions API), as the last run left it. */
 const LINK_LOOK: Record<BookingLink['state'] | 'none', { label: string; ink: string; bg: string }> = {
@@ -52,6 +58,7 @@ export default function AgencyGoogleBookPage() {
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'fix' | 'ready' | 'off'>('all');
   const [q, setQ] = useState('');
+  const [sftpTest, setSftpTest] = useState<SftpTest | null>(null);
 
   useEffect(() => {
     if (!ready) return;
@@ -69,6 +76,14 @@ export default function AgencyGoogleBookPage() {
     if (!token) return;
     setBusy(key); setError(null);
     try { await apiFetch(path, { method: 'POST', token, body: body ?? {} }); load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'error'); }
+    finally { setBusy(null); }
+  };
+
+  const testSftp = async () => {
+    if (!token) return;
+    setBusy('sftp'); setError(null);
+    try { setSftpTest(await apiFetch<SftpTest>('/support/google-book/sftp-test', { method: 'POST', token, body: {} })); }
     catch (e) { setError(e instanceof Error ? e.message : 'error'); }
     finally { setBusy(null); }
   };
@@ -146,8 +161,18 @@ export default function AgencyGoogleBookPage() {
           <span style={{ flex: 1 }} />
           <button type="button" onClick={() => act('links', '/support/google-book/booking-links/sync')} disabled={busy === 'links'} style={primary}>{busy === 'links' ? 'Đang gắn…' : '🔗 Gắn nút Đặt lịch cho mọi tiệm'}</button>
           <button type="button" onClick={download} disabled={busy === 'dl'} style={ghost}>{busy === 'dl' ? '…' : '⬇ Tải 6 file feed hôm nay'}</button>
-          <button type="button" onClick={() => act('run', '/support/google-book/run')} disabled={busy === 'run'} style={primary}>{busy === 'run' ? 'Đang chạy…' : '▶ Tạo & upload ngay'}</button>
+          <button type="button" onClick={testSftp} disabled={busy === 'sftp'} style={ghost}>{busy === 'sftp' ? 'Đang thử…' : '🔌 Thử kết nối SFTP'}</button>
+          <button type="button" onClick={() => act('run', '/support/google-book/run?links=0')} disabled={busy === 'run'} style={primary}>{busy === 'run' ? 'Đang chạy…' : '▶ Tạo & upload ngay'}</button>
         </div>
+
+        {sftpTest && (
+          <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 12, background: sftpTest.ok ? 'rgba(34,197,94,.14)' : 'var(--wash-red)', color: sftpTest.ok ? 'var(--ink-good)' : 'var(--ink-bad)', fontSize: 13, lineHeight: 1.5 }}>
+            <b>{sftpTest.ok ? `✓ Đăng nhập được Google SFTP (${sftpTest.sandbox ? 'SANDBOX' : 'PRODUCTION'}) với user ${sftpTest.user} — thư mục có ${sftpTest.files ?? 0} file, ${sftpTest.ms ?? 0} ms.` : `✗ Không đăng nhập được: ${sftpTest.error ?? ''}`}</b>
+            {sftpTest.hint && <div style={{ marginTop: 4, color: C.ink2 }}>{sftpTest.hint}</div>}
+          </div>
+        )}
+
+        <RwgChecklist board={board} test={sftpTest} />
 
         <section style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
@@ -165,9 +190,10 @@ export default function AgencyGoogleBookPage() {
         </section>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 14 }}>
-          <Tile label="Lần chạy cuối" value={run ? when(run.at) : 'chưa chạy'} sub={run ? `${run.ready} tiệm vào feed · ${run.held} giữ lại${run.error ? ` · ${run.error}` : ''}` : 'chạy hằng đêm ~03:00 UTC khi RWG_FEED_AUTORUN=true'} tone={run?.error ? 'warn' : 'ok'} />
-          <Tile label="Upload SFTP" value={board.sftpConfigured ? 'đã cấu hình' : 'chưa cấu hình'} sub={board.sftpConfigured ? 'RWG_SFTP_HOST / USER / KEY' : 'lấy host, user, SSH key trong Partner Portal → Configuration → Feeds; đặt env RWG_SFTP_HOST, RWG_SFTP_USER, RWG_SFTP_KEY'} tone={board.sftpConfigured ? 'ok' : 'warn'} />
-          <Tile label="Conversion partner id" value={board.partnerId ? board.partnerId : 'chưa có'} sub={board.partnerId ? 'NEXT_PUBLIC_RWG_PARTNER_ID — trang đặt lịch gửi rwg_token khi khách đặt xong' : 'Google cấp sau khi nhận đối tác; đặt NEXT_PUBLIC_RWG_PARTNER_ID rồi deploy'} tone={board.partnerId ? 'ok' : 'warn'} />
+          <Tile label="Lần chạy cuối" value={run ? `${when(run.at)}${run.uploaded ? ' · đã upload' : ''}` : 'chưa chạy'} sub={run ? `${run.ready} tiệm vào feed · ${run.held} giữ lại${run.uploaded ? ` · ${run.sandbox ? 'SANDBOX' : 'PRODUCTION'}` : ''}${run.error ? ` · ${run.error}` : ''}${run.hint ? ` — ${run.hint}` : ''}` : 'chạy hằng đêm ~03:00 UTC khi RWG_FEED_AUTORUN=true'} tone={run?.error ? 'warn' : 'ok'} />
+          <Tile label={`Upload SFTP · ${board.sandbox ? 'SANDBOX' : 'PRODUCTION'}`} value={board.sftpConfigured ? `đã cấu hình · ${board.sftp?.user ?? ''}` : 'chưa cấu hình'} sub={board.sftpConfigured ? `${board.sftp?.host}:${board.sftp?.port} · bấm “Thử kết nối SFTP” để kiểm tra` : board.sftp?.keyProblem ?? `Thiếu ${(board.sftp?.missing ?? ['RWG_SFTP_HOST', 'RWG_SFTP_USER', 'RWG_SFTP_KEY']).join(', ')} trên Render (service API) — host partnerupload.google.com, user ở Partner Portal → Feeds, khoá riêng lumio_rwg`} tone={board.sftpConfigured ? 'ok' : 'warn'} />
+          <Tile label="Conversion partner id" value={WEB_PARTNER_ID || board.partnerId || 'chưa có'} sub={partnerNote(WEB_PARTNER_ID, board.partnerId, WEB_SANDBOX, Boolean(board.sandbox))} tone={WEB_PARTNER_ID && (!board.partnerId || board.partnerId === WEB_PARTNER_ID) && WEB_SANDBOX === Boolean(board.sandbox) ? 'ok' : 'warn'} />
+          <Tile label="Khu vực vào feed" value={(board.countries ?? ['US', 'CA']).join(' · ')} sub="Google duyệt Lumio cho Bắc Mỹ (29/10). Tiệm nước khác ‘Tắt’ trong feed nhưng vẫn được gắn link Đặt lịch trên hồ sơ. Mở rộng: env RWG_COUNTRIES." tone="ok" />
         </div>
 
         <section style={{ background: C.panel, border: `2px solid ${proof.merchants.length >= GOOGLE_MINIMUM ? 'rgba(34,197,94,.6)' : 'rgba(245,158,11,.6)'}`, borderRadius: 14, padding: '14px 16px', marginBottom: 14 }}>
@@ -303,6 +329,49 @@ export default function AgencyGoogleBookPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+/** The web build and the API should agree: the web one is what actually reaches Google. */
+function partnerNote(web: string, api: string | null, webSandbox: boolean, apiSandbox: boolean): string {
+  if (!web && !api) return 'Google cấp trong Partner Portal (Conversion tracking). Đặt NEXT_PUBLIC_RWG_PARTNER_ID trên Render cho CẢ service web và API — web tự build lại.';
+  if (!web) return `API có ${api} nhưng bản web chưa có — đặt NEXT_PUBLIC_RWG_PARTNER_ID ở service WEB rồi để Render build lại (biến NEXT_PUBLIC_ được đóng vào lúc build).`;
+  if (api && api !== web) return `Web gửi ${web} nhưng API ghi ${api} — sửa cho trùng.`;
+  if (webSandbox !== apiSandbox) return `Web đang gửi conversion tới ${webSandbox ? 'SANDBOX' : 'PRODUCTION'} còn feed đang ở ${apiSandbox ? 'SANDBOX' : 'PRODUCTION'} — đặt NEXT_PUBLIC_RWG_SANDBOX giống nhau ở web và API.`;
+  return `Trang đặt lịch gửi rwg_token tới Google ${webSandbox ? '(SANDBOX — /debug/collect)' : '(PRODUCTION)'} khi khách đặt xong.`;
+}
+
+/**
+ * Thursday's setup, in order, with what the board can see ticked by itself.
+ * The two steps only a person can do in the Partner Portal (ToS, public key)
+ * stay unticked — the SFTP test proves the key went in.
+ */
+function RwgChecklist({ board, test }: { board: Board; test: SftpTest | null }) {
+  const run = board.lastRun;
+  const steps: { done: boolean | null; title: string; how: string }[] = [
+    { done: null, title: 'Đăng nhập actionscenter.google.com bằng lumioagency.com@gmail.com, chấp nhận Điều khoản (ToS)', how: 'Chủ Lumio tự đọc và bấm chấp nhận.' },
+    { done: test?.ok ? true : null, title: 'Partner Portal → Onboarding Tasks: dán khoá CÔNG KHAI rồi Submit', how: 'Nội dung file .secrets/google-rwg/lumio_rwg.pub (một dòng, bắt đầu “ssh-rsa”, kết thúc “partners@lumiobooking.com”).' },
+    { done: board.sftpConfigured, title: 'Render › service API › Environment: RWG_SFTP_HOST, RWG_SFTP_USER, RWG_SFTP_KEY, RWG_SANDBOX=1', how: `HOST = partnerupload.google.com · USER = user SANDBOX ở Partner Portal → Feeds · KEY = nội dung lumio_rwg.b64 (một dòng) hoặc nguyên file lumio_rwg.${board.sftp?.keyProblem ? ` ⚠ ${board.sftp.keyProblem}` : ''}` },
+    { done: test ? test.ok : null, title: 'Bấm “🔌 Thử kết nối SFTP”', how: test && !test.ok ? (test.hint ?? test.error ?? '') : 'Phải báo “Đăng nhập được … SANDBOX”.' },
+    { done: run ? run.uploaded : null, title: 'Bấm “▶ Tạo & upload ngay”, rồi xem Partner Portal → Feeds › History', how: run?.error ? `Lần trước: ${run.error}${run.hint ? ` — ${run.hint}` : ''}` : 'Ba feed (entity, service, action) phải “Success”; lỗi ở dòng nào thì gửi Claude.' },
+    { done: Boolean(WEB_PARTNER_ID), title: 'Conversion partner id: NEXT_PUBLIC_RWG_PARTNER_ID + NEXT_PUBLIC_RWG_SANDBOX=1 ở service WEB (và API)', how: 'Lấy trong Partner Portal (Conversion tracking). Web build lại sau khi lưu.' },
+    { done: null, title: 'Onboarding Plan xanh hết → Request Sandbox Review → (Google duyệt) → đổi sang user PRODUCTION, bỏ RWG_SANDBOX và NEXT_PUBLIC_RWG_SANDBOX → Production Review', how: 'Feed tự upload mỗi đêm ~03:00 UTC.' },
+  ];
+  return (
+    <section style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px', marginBottom: 14 }}>
+      <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Cài đặt Actions Center (Partner Portal) — làm theo thứ tự</div>
+      <ol style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 8 }}>
+        {steps.map((st, i) => (
+          <li key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span aria-hidden="true" style={{ flex: '0 0 24px', height: 24, borderRadius: 999, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, background: st.done ? 'rgba(34,197,94,.18)' : st.done === false ? 'var(--wash-red)' : 'var(--c1e293b)', color: st.done ? 'var(--ink-good)' : st.done === false ? 'var(--ink-bad)' : C.sub }}>{st.done ? '✓' : st.done === false ? '!' : i + 1}</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink2 }}>{st.title}</div>
+              <div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.5, wordBreak: 'break-word' }}>{st.how}</div>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

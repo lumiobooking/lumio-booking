@@ -85,7 +85,7 @@ describe('the Google feed, salon by salon', () => {
     expect(r.ready).toBe(1);
     expect(r.held).toBe(1);
     expect(r.uploaded).toBe(false);
-    expect(r.error).toBe('SFTP not configured');
+    expect(r.error).toMatch(/^SFTP chưa cấu hình \(thiếu RWG_SFTP_HOST/);
     expect(svc.getLastRun()).toEqual(r);
   });
 

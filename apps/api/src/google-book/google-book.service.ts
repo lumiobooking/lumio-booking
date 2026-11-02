@@ -7,7 +7,8 @@ import { AuditService } from '../audit/audit.service';
 import { toE164, dialCodeFor } from '../common/phone';
 import { namesMatch } from '../google-reviews/location-match';
 import { buildUpload, type FeedTenant } from './feed';
-import { cleanForFeed, isAllCaps, lintTenant, titleCase, type TenantLint } from './feed-lint';
+import { readSftpEnv, sftpErrorHint, type SftpConfig } from './sftp-config';
+import { allowedCountries, cleanForFeed, isAllCaps, lintTenant, titleCase, type TenantLint } from './feed-lint';
 
 /**
  * GOOGLE "BOOK ONLINE" FOR EVERY SALON — the daily feed to Actions Center.
@@ -32,7 +33,11 @@ export const GBP_PROFILE_KEY = 'gbp_profile';
 export interface GoogleBookSetting { enabled: boolean }
 const DEFAULT: GoogleBookSetting = { enabled: true };
 
-export interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string }
+export interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string; hint?: string; sandbox?: boolean; user?: string | null }
+export interface SftpTestResult { ok: boolean; at: string; host: string | null; user: string | null; port: number; dir: string; sandbox: boolean; files?: number; ms?: number; error?: string; hint?: string; missing?: string[] }
+
+/** Which Google environment the credentials point at — the agency sets RWG_SANDBOX=1 while on the sandbox user. */
+export function rwgSandbox(env: Record<string, string | undefined>): boolean { return env.RWG_SANDBOX === '1' || env.NEXT_PUBLIC_RWG_SANDBOX === '1'; }
 
 /**
  * THE "BOOK" LINK ON EACH SALON'S GOOGLE PROFILE — the part that does not wait
@@ -47,7 +52,8 @@ export interface LinkRunReport { at: string; linked: number; skipped: number; fa
 
 /** Why a salon gets no Book link: switched off, nothing to book, or the Google profile is not hers. Null = it gets one. */
 export function bookingLinkBlock(lint: TenantLint): string | null {
-  if (lint.status === 'off') return lint.issues[0]?.message ?? 'Đang tắt';
+  // Outside the partner region is about the Actions Center feed only — the salon's own Book link still goes on.
+  if (lint.status === 'off' && !lint.issues.some((i) => i.code === 'outside_region')) return lint.issues[0]?.message ?? 'Đang tắt';
   const hit = lint.issues.find((i) => i.code === 'google_not_linked' || i.code === 'google_mismatch' || i.code === 'no_services');
   return hit ? hit.message : null;
 }
@@ -230,7 +236,7 @@ export class GoogleBookService {
     const listedAs = profile?.title || gbr.locationTitle || '';
     const googleMismatch = googleLinked && Boolean(listedAs) && !sameBusinessName(listedAs, t.name);
     const notAppointments = t.businessType === 'RESTAURANT' || t.businessType === 'REAL_ESTATE';
-    const lint = lintTenant(feedTenant, { googleLinked, googleMismatch, notAppointments, enabled: setting.enabled && t.status === TenantStatus.ACTIVE });
+    const lint = lintTenant(feedTenant, { googleLinked, googleMismatch, notAppointments, enabled: setting.enabled && t.status === TenantStatus.ACTIVE, countries: allowedCountries(process.env.RWG_COUNTRIES) });
     return { tenant: feedTenant, lint, profile };
   }
 
@@ -268,22 +274,30 @@ export class GoogleBookService {
    * key = private key PEM; RWG_SFTP_PORT optional). Without them the feeds are
    * only built — the agency can download them from the readiness screen.
    */
-  async runDaily(now = new Date()): Promise<RunReport> {
+  async runDaily(now = new Date(), opts: { links?: boolean } = {}): Promise<RunReport> {
     const report: RunReport = { at: now.toISOString(), tenants: 0, ready: 0, held: 0, files: [], uploaded: false };
     // The Book link on each salon's own profile does not depend on the partner
-    // feed (or on SFTP): it runs first, every night.
-    try { await this.syncAllBookingLinks(); } catch (e) { this.logger.warn(`Booking links: ${String(e).slice(0, 160)}`); }
+    // feed (or on SFTP): it runs first, every night. The agency's "upload now"
+    // skips it (it has its own button) so the upload answers in seconds.
+    if (opts.links !== false) {
+      try { await this.syncAllBookingLinks(); } catch (e) { this.logger.warn(`Booking links: ${String(e).slice(0, 160)}`); }
+    }
     try {
       const { files, ready, held } = await this.buildFeeds(now);
       report.tenants = ready.length + held.length; report.ready = ready.length; report.held = held.length; report.files = files.map((f) => f.name);
       if (!ready.length) { report.error = 'no salon ready'; this.lastRun = report; return report; }
-      const host = process.env.RWG_SFTP_HOST; const user = process.env.RWG_SFTP_USER; const key = process.env.RWG_SFTP_KEY;
-      if (!host || !user || !key) { report.error = 'SFTP not configured'; this.lastRun = report; return report; }
-      await this.sftpUpload({ host, user, key, port: Number(process.env.RWG_SFTP_PORT || 19321), dir: process.env.RWG_SFTP_DIR || '/' }, files);
+      const env = readSftpEnv(process.env);
+      report.sandbox = rwgSandbox(process.env); report.user = env.user;
+      if (!env.config) {
+        report.error = env.keyProblem ?? `SFTP chưa cấu hình (thiếu ${env.missing.join(', ')})`;
+        this.lastRun = report; return report;
+      }
+      await this.sftpUpload(env.config, files);
       report.uploaded = true;
-      this.logger.log(`Uploaded ${files.length} feed files for ${ready.length} salons (${held.length} held back).`);
+      this.logger.log(`Uploaded ${files.length} feed files for ${ready.length} salons (${held.length} held back) to ${report.sandbox ? 'SANDBOX' : 'PRODUCTION'} as ${env.user}.`);
     } catch (e) {
-      report.error = String(e).slice(0, 300);
+      report.error = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      report.hint = sftpErrorHint(report.error);
       this.logger.error(`Feed run failed: ${report.error}`);
     }
     this.lastRun = report;
@@ -292,13 +306,40 @@ export class GoogleBookService {
 
   getLastRun(): RunReport | null { return this.lastRun; }
 
-  private async sftpUpload(conn: { host: string; user: string; key: string; port: number; dir: string }, files: { name: string; body: string }[]): Promise<void> {
-    // Loaded on demand so an environment without the library still boots.
+  /** Loaded on demand so an environment without the library still boots. */
+  private async sftpClient(conn: SftpConfig): Promise<SftpLike> {
     const modName = 'ssh2-sftp-client';
     const mod = (await import(modName)) as { default?: new () => SftpLike } & (new () => SftpLike);
     const Client = (mod.default ?? mod) as new () => SftpLike;
     const sftp = new Client();
-    await sftp.connect({ host: conn.host, port: conn.port, username: conn.user, privateKey: conn.key.replace(/\\n/g, '\n') });
+    await sftp.connect({ host: conn.host, port: conn.port, username: conn.user, privateKey: conn.key, readyTimeout: 20_000 });
+    return sftp;
+  }
+
+  /**
+   * "Thử kết nối": log in to Google's drop with today's credentials and list
+   * it — nothing is written. The first thing to press after pasting the key.
+   */
+  async sftpTest(): Promise<SftpTestResult> {
+    const env = readSftpEnv(process.env);
+    const base = { at: new Date().toISOString(), host: env.host, user: env.user, port: env.port, dir: env.dir, sandbox: rwgSandbox(process.env) };
+    if (!env.config) return { ...base, ok: false, missing: env.missing, error: env.keyProblem ?? `Thiếu ${env.missing.join(', ')}`, hint: env.keyProblem ? undefined : 'Đặt các biến này trên Render (service API) rồi Save — Render tự deploy lại.' };
+    const t0 = Date.now();
+    let sftp: SftpLike | null = null;
+    try {
+      sftp = await this.sftpClient(env.config);
+      const list = await sftp.list(env.config.dir);
+      return { ...base, ok: true, files: Array.isArray(list) ? list.length : 0, ms: Date.now() - t0 };
+    } catch (e) {
+      const error = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      return { ...base, ok: false, ms: Date.now() - t0, error, hint: sftpErrorHint(error) };
+    } finally {
+      await sftp?.end().catch(() => undefined);
+    }
+  }
+
+  private async sftpUpload(conn: SftpConfig, files: { name: string; body: string }[]): Promise<void> {
+    const sftp = await this.sftpClient(conn);
     try {
       // Data files first, descriptors last: Google reads the descriptor and expects its files to be there.
       const ordered = [...files.filter((f) => !f.name.includes('.filesetdesc.')), ...files.filter((f) => f.name.includes('.filesetdesc.'))];
@@ -336,7 +377,8 @@ export class GoogleBookService {
 }
 
 interface SftpLike {
-  connect(o: { host: string; port: number; username: string; privateKey: string }): Promise<unknown>;
+  connect(o: { host: string; port: number; username: string; privateKey: string; readyTimeout?: number }): Promise<unknown>;
+  list(dir: string): Promise<unknown[]>;
   put(data: Buffer, remotePath: string): Promise<unknown>;
   end(): Promise<unknown>;
 }

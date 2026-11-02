@@ -4,7 +4,9 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { SUPPORT_ROLE } from '../support/support.service';
-import { GoogleBookService } from './google-book.service';
+import { GoogleBookService, rwgSandbox } from './google-book.service';
+import { allowedCountries } from './feed-lint';
+import { readSftpEnv } from './sftp-config';
 
 /**
  * The agency's "Google Book button" board. Support and Super Admin only: this
@@ -19,7 +21,16 @@ export class GoogleBookController {
   @Get('readiness')
   async readiness() {
     const rows = await this.svc.readiness();
-    return { rows, lastRun: this.svc.getLastRun(), lastLinkRun: this.svc.getLastLinkRun(), sftpConfigured: Boolean(process.env.RWG_SFTP_HOST && process.env.RWG_SFTP_USER && process.env.RWG_SFTP_KEY), partnerId: process.env.NEXT_PUBLIC_RWG_PARTNER_ID ?? null };
+    const sftp = readSftpEnv(process.env);
+    return {
+      rows, lastRun: this.svc.getLastRun(), lastLinkRun: this.svc.getLastLinkRun(),
+      sftpConfigured: Boolean(sftp.config),
+      // Never the key — only whether it is set, who logs in, and what is wrong.
+      sftp: { host: sftp.host, user: sftp.user, port: sftp.port, dir: sftp.dir, missing: sftp.missing, keyProblem: sftp.keyProblem },
+      sandbox: rwgSandbox(process.env),
+      countries: allowedCountries(process.env.RWG_COUNTRIES),
+      partnerId: process.env.RWG_PARTNER_ID ?? process.env.NEXT_PUBLIC_RWG_PARTNER_ID ?? null,
+    };
   }
 
   /** One salon in detail, optionally re-reading its Google listing. */
@@ -61,9 +72,15 @@ export class GoogleBookController {
     return this.svc.buildFeeds();
   }
 
+  /** Log in to Google's SFTP drop and list it — writes nothing. */
+  @Post('sftp-test')
+  sftpTest() {
+    return this.svc.sftpTest();
+  }
+
   /** Build and upload now, instead of waiting for the nightly run. */
   @Post('run')
-  run() {
-    return this.svc.runDaily();
+  run(@Query('links') links?: string) {
+    return this.svc.runDaily(new Date(), { links: links !== '0' });
   }
 }

@@ -71,7 +71,8 @@ export function lintService(s: FeedService): LintIssue[] {
     if (PROMO_RE.test(d)) out.push({ code: 'svc_desc_promo', level: 'warn', message: `Mô tả “${name}” có từ quảng cáo`, ...tag });
   }
   if (!(s.priceCents > 0)) out.push({ code: 'svc_no_price', level: 'error', message: `“${name}” chưa có giá — Google không nhận dịch vụ 0đ`, ...tag });
-  if (!(s.durationMinutes > 0)) out.push({ code: 'svc_no_duration', level: 'error', message: `“${name}” chưa có thời lượng`, ...tag });
+  // No length: still bookable (default length) and Google shows no duration — say so, don't hold it back.
+  if (!(s.durationMinutes > 0)) out.push({ code: 'svc_no_duration', level: 'warn', message: `“${name}” chưa có thời lượng — Google sẽ không hiện thời lượng (nên điền)`, ...tag });
   return out;
 }
 
@@ -90,6 +91,7 @@ const NO_DESC_CODES = new Set(['svc_desc_emoji', 'svc_desc_contact']);
 export function cleanForFeed(t: FeedTenant): { tenant: FeedTenant; notes: LintIssue[] } {
   const notes: LintIssue[] = [];
   const kept: FeedService[] = [];
+  let untimed = 0;
   for (const s of feedableServices(t)) {
     const found = lintService(s);
     const tag = { serviceId: s.id, serviceName: s.name };
@@ -108,9 +110,12 @@ export function cleanForFeed(t: FeedTenant): { tenant: FeedTenant; notes: LintIs
       next = { ...next, description: null };
       notes.push({ code: 'svc_desc_skipped', level: 'warn', message: `Feed không gửi mô tả của “${name}” (có link / số điện thoại / emoji)`, ...tag });
     }
-    for (const i of found) if (i.level === 'warn') notes.push(i);
+    for (const i of found) if (i.level === 'warn' && i.code !== 'svc_no_duration') notes.push(i);
+    if (!(s.durationMinutes > 0)) untimed += 1;
     kept.push(next);
   }
+  // One line for the whole menu, not one per service (a salon can have 80).
+  if (untimed) notes.push({ code: 'svc_no_duration', level: 'warn', message: `${untimed} dịch vụ chưa có thời lượng — vẫn gửi lên Google, nhưng Google sẽ không hiện thời lượng (nên điền ở trang Dịch vụ)` });
   return { tenant: { ...t, services: kept }, notes };
 }
 
@@ -123,10 +128,25 @@ export interface TenantLint {
   feedable: number;
 }
 
-export function lintTenant(t: FeedTenant, opts: { googleLinked: boolean; googleMismatch?: boolean; enabled: boolean; notAppointments?: boolean } ): TenantLint {
+/**
+ * The countries Lumio told Google it serves (Actions Center questionnaire,
+ * 29/10/2026: North America). A salon elsewhere stays out of the feed until
+ * Google approves that region — `RWG_COUNTRIES` widens it.
+ */
+export function allowedCountries(env: string | undefined): string[] {
+  const list = String(env ?? '').split(/[\s,;]+/).map((c) => c.trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c));
+  return list.length ? list : ['US', 'CA'];
+}
+
+export function lintTenant(t: FeedTenant, opts: { googleLinked: boolean; googleMismatch?: boolean; enabled: boolean; notAppointments?: boolean; countries?: string[] } ): TenantLint {
   const issues: LintIssue[] = [];
   if (!opts.enabled) return { tenantId: t.id, status: 'off', issues: [{ code: 'disabled', level: 'warn', message: 'Nút Google đang tắt cho tiệm này' }], feedable: 0 };
   if (opts.notAppointments) return { tenantId: t.id, status: 'off', issues: [{ code: 'not_appointments', level: 'warn', message: 'Nhà hàng / bất động sản — không thuộc nhóm đặt hẹn (Appointments) của Google' }], feedable: 0 };
+  // Outside the approved region: judged like any salon (the Book link on its own
+  // profile still needs the checks), but never in the partner feed.
+  const country = (t.address?.country ?? '').toUpperCase();
+  const outside = Boolean(country && opts.countries?.length && !opts.countries.includes(country));
+  if (outside) issues.push({ code: 'outside_region', level: 'warn', message: `Tiệm ở ${country} — Google mới duyệt Lumio cho ${opts.countries!.join(', ')}; không vào feed Actions Center (thêm nước vào RWG_COUNTRIES khi Google mở)` });
   const name = (t.listingName || t.name).trim();
   if (!name) issues.push({ code: 'name_missing', level: 'error', message: 'Tiệm chưa có tên' });
   if (isAllCaps(name)) issues.push({ code: 'name_caps', level: 'error', message: `Tên tiệm viết HOA toàn bộ: “${name}” → “${titleCase(name)}” (Google yêu cầu tên pháp lý, viết thường/hoa đầu chữ)` });
@@ -141,9 +161,9 @@ export function lintTenant(t: FeedTenant, opts: { googleLinked: boolean; googleM
   const raw = feedableServices(t);
   const { tenant: clean, notes } = cleanForFeed(t);
   const feedable = clean.services;
-  if (!raw.length) issues.push({ code: 'no_services', level: 'error', message: 'Không có dịch vụ nào đặt online được (cần giá > 0, thời lượng > 0, không phải chỉ walk-in)' });
+  if (!raw.length) issues.push({ code: 'no_services', level: 'error', message: t.services.length && t.services.every((s) => s.isActive === false) ? `Cả ${t.services.length} dịch vụ đang tắt (ẩn) — bật lại các dịch vụ khách đặt được` : t.services.length ? 'Không có dịch vụ nào đặt online được (cần giá > 0, không phải chỉ walk-in)' : 'Tiệm chưa có dịch vụ nào trong menu' });
   else if (!feedable.length) issues.push({ code: 'no_clean_services', level: 'error', message: 'Mọi dịch vụ đều có giá / link / số điện thoại / emoji trong tên — sửa ít nhất một dịch vụ' });
   issues.push(...notes);
-  const status = issues.some((i) => i.level === 'error') ? 'fix' : 'ready';
+  const status = outside ? 'off' : issues.some((i) => i.level === 'error') ? 'fix' : 'ready';
   return { tenantId: t.id, status, issues, feedable: feedable.length };
 }

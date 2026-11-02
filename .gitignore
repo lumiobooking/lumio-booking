@@ -76,3 +76,7 @@ store-app/**/google-services.json
 *.p8
 *.p12
 *.mobileprovision
+
+# Local secrets (e.g. the Google Actions Center SFTP key pair made by
+# scripts on this machine). deploy.bat runs `git add -A` — never commit these.
+.secrets/

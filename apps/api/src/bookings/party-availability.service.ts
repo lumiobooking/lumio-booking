@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { wallTimeToUtc } from './booking.util';
 import { busySpansFor, loadApprovedTimeOff } from '../staff/time-off';
+import { loadExtraHours, withExtraHours } from '../staff/extra-hours';
 import { MenuItem, PartyMember, Tech, nearestTimes, partyOpenTimes, resolveService } from './group-booking';
 
 /** One person of a party, resolved against the menu and the team. */
@@ -62,6 +63,8 @@ export class PartyAvailabilityService {
       }),
     ]);
     const leave = await loadApprovedTimeOff(this.prisma, tenantId, dateStr, dateStr, staff.map((s) => s.id));
+    // Extra hours opened on the Calendar (staff/extra-hours.ts) count as on shift.
+    const extra = await loadExtraHours(this.prisma, tenantId, dateStr, dateStr, staff.map((s) => s.id));
     // The salon's rest gap between a technician's appointments (bookings/buffer.ts).
     const gap = bufferOf(await this.settings.getBookingRules(tenantId).catch(() => null));
     const techs: Tech[] = staff.map((st) => {
@@ -70,7 +73,7 @@ export class PartyAvailabilityService {
         .map((a) => padSpan({ start: a.startTime, end: a.endTime }, gap));
       // Approved time off (nghỉ phép) takes the day, or the part of it.
       busy.push(...busySpansFor(leave, st.id, dateStr, tz));
-      const hours = st.workingHours ?? [];
+      const hours = withExtraHours(st.workingHours ?? [], extra, st.id, dateStr);
       if (hours.length) {
         // A tech with a schedule is off outside it; one without follows the salon's hours.
         const spans = hours.filter((h) => h.dayOfWeek === dow)

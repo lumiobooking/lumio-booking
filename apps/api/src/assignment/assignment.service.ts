@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BLOCKING_STATUSES, lineStaffIds } from '../bookings/booking.util';
 import { dayKeyTz } from '../common/salon-time';
 import { appliesTo, blocksSlot, loadApprovedTimeOff } from '../staff/time-off';
+import { loadExtraHours, withExtraHours } from '../staff/extra-hours';
 import {
   CandidateInput,
   DEFAULT_RULES,
@@ -104,6 +105,8 @@ export class AssignmentService {
     // Approved time off (nghỉ phép) on that salon day: she is not on shift.
     const dayKey = dayKeyTz(appt.startTime, timeZone);
     const leave = await loadApprovedTimeOff(this.prisma, tenantId, dayKey, dayKey, staff.map((st) => st.id));
+    // Extra hours opened on the Calendar (staff/extra-hours.ts) count as on shift.
+    const extra = await loadExtraHours(this.prisma, tenantId, dayKey, dayKey, staff.map((st) => st.id));
 
     const rejWindow = rejectionWindowDays(rules);
     const noRespWindow = noResponseWindowDays(rules);
@@ -127,7 +130,7 @@ export class AssignmentService {
     for (const s of staff) {
       if (lineBusy.has(s.id)) continue;
       // Hard filter 1: must be working at that local time — on shift, and not on leave.
-      if (!isWithinWorkingHours(slot, s.workingHours)) continue;
+      if (!isWithinWorkingHours(slot, withExtraHours(s.workingHours, extra, s.id, dayKey) as never)) continue;
       if (leave.some((o) => appliesTo(o, s.id) && blocksSlot(o, dayKey, slot.startMinutes, slot.endMinutes))) continue;
 
       // Hard filter 2: must not already have a blocking overlapping booking —
@@ -206,7 +209,8 @@ export class AssignmentService {
     const slot = getLocalSlot(appt.startTime, Math.round((appt.endTime.getTime() - appt.startTime.getTime()) / 60_000), tz);
     const dayKey = dayKeyTz(appt.startTime, tz);
     const leave = await loadApprovedTimeOff(this.prisma, tenantId, dayKey, dayKey, skilled.map((s) => s.id));
-    const scheduled = skilled.filter((s) => isWithinWorkingHours(slot, s.workingHours));
+    const extra = await loadExtraHours(this.prisma, tenantId, dayKey, dayKey, skilled.map((s) => s.id));
+    const scheduled = skilled.filter((s) => isWithinWorkingHours(slot, withExtraHours(s.workingHours, extra, s.id, dayKey) as never));
     const onShift = scheduled.filter((s) => !leave.some((o) => appliesTo(o, s.id) && blocksSlot(o, dayKey, slot.startMinutes, slot.endMinutes)));
     const free: string[] = [];
     for (const s of onShift) {

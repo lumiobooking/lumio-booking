@@ -20,6 +20,7 @@ import { rebookCopy, recallDue, recallMonthsOf } from './recall';
 import { buildPreOrder, preOrderText } from './pre-order';
 import { skilledFor } from '../assignment/assignment.util';
 import { blockingOff, busySpansFor, loadApprovedTimeOff, offWhen } from '../staff/time-off';
+import { loadExtraHours, withExtraHours } from '../staff/extra-hours';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { buildClientCard, CardVisit } from './client-card';
 import { capabilitiesFor } from '../auth/capabilities';
@@ -2569,8 +2570,9 @@ export class BookingsService {
       for (const a of appts) busy.push({ start: a.startTime, end: a.endTime });
       // Approved time off blocks the day the same way it does on the online page.
       for (const b of busySpansFor(await loadApprovedTimeOff(this.prisma, tenantId, q.date, q.date, [st.id]), st.id, q.date, tz)) busy.push(b);
-      // Off-shift hours block the day the same way they do on the online page.
-      const hours = st.workingHours ?? [];
+      // Off-shift hours block the day the same way they do on the online page
+      // (extra hours opened on the Calendar count as on shift — staff/extra-hours.ts).
+      const hours = withExtraHours(st.workingHours ?? [], await loadExtraHours(this.prisma, tenantId, q.date, q.date, [st.id]), st.id, q.date);
       if (hours.length > 0) {
         const today = hours.filter((h) => h.dayOfWeek === dayOfWeek)
           .map((h) => ({ s: wallTimeToUtc(q.date, h.startTime, tz), e: wallTimeToUtc(q.date, h.endTime, tz) }))
@@ -2693,9 +2695,10 @@ export class BookingsService {
     const dayOfWeek = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
     // Approved time off (nghỉ phép): the day, or the part of it, is busy.
     const leave = await loadApprovedTimeOff(this.prisma, tenantId, dateStr, dateStr, ids);
+    const extra = await loadExtraHours(this.prisma, tenantId, dateStr, dateStr, ids);
     for (const st of eligible) {
       for (const b of busySpansFor(leave, st.id, dateStr, tz)) staffBusy[st.id].push({ start: b.start.toISOString(), end: b.end.toISOString() });
-      const hours = st.workingHours ?? [];
+      const hours = withExtraHours(st.workingHours ?? [], extra, st.id, dateStr);
       if (hours.length === 0) continue; // unconfigured -> follows salon hours only
       const today = hours.filter((h) => h.dayOfWeek === dayOfWeek);
       if (today.length === 0) {

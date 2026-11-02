@@ -324,6 +324,7 @@ model Tenant {
   payrollRuns          PayrollRun[]
   timeEntries          TimeEntry[]
   timeOffRequests      TimeOffRequest[]
+  staffExtraHours      StaffExtraHours[]
   turnAdjustments      TurnAdjustment[]
   voiceLine            VoiceLine?
   contentIdeas         ContentIdea[]
@@ -741,6 +742,7 @@ model StaffMember {
   tipLogs            TipLog[]
   timeEntries        TimeEntry[]
   timeOffRequests    TimeOffRequest[]
+  staffExtraHours    StaffExtraHours[]
   turnAdjustments    TurnAdjustment[]
 
   @@index([tenantId])
@@ -3838,6 +3840,31 @@ model TimeOffRequest {
   @@index([tenantId, staffId, startDate])
   @@index([tenantId, status, startDate])
   @@map("time_off_requests")
+}
+
+// MỞ LỊCH THÊM — extra hours for ONE technician on ONE day, outside her weekly
+// schedule ("Kim works until 8 tonight", or a day she is normally off). Made
+// by dragging over the hatched part of her column on the Calendar. Read by
+// every place that decides when she can be booked (desk, booking page, chat,
+// hotline, assignment) through staff/extra-hours.ts. One salon's rows only.
+model StaffExtraHours {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  staffId String
+  staff   StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  day       String // salon-local "YYYY-MM-DD"
+  startTime String // "HH:mm", salon time
+  endTime   String // "HH:mm"
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, day])
+  @@index([tenantId, staffId, day])
+  @@map("staff_extra_hours")
 }
 
 // CHIA TUA — a turn the owner added or took away by hand (a penalty, a

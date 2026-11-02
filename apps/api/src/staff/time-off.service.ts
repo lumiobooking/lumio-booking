@@ -5,6 +5,7 @@ import { PushService } from '../push/push.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { addDaysToKey, dayKeyTz, wallTimeToUtcTz } from '../common/salon-time';
 import { TimeOffLite, nextDay, overlaps, validateRequest } from './time-off';
+import { blockSpanOn, cutBlock, intersect, loadExtraHours, subtract, toHm, toMin, union, type Span } from './extra-hours';
 
 type Row = TimeOffLite & {
   id: string; tenantId: string; reason: string | null; status: string;
@@ -200,7 +201,94 @@ export class TimeOffService {
       include: { staff: { select: { firstName: true, lastName: true, userId: true } } },
       orderBy: { startDate: 'asc' }, take: 500,
     });
-    return { from, to, tz, blocks: rows.map((r) => this.shape(r)) };
+    // Extra hours opened from the Calendar ("mở lịch lại"): the column is not hatched there.
+    let open: { id: string; staffId: string; day: string; startTime: string; endTime: string }[] = [];
+    try {
+      open = await this.db.staffExtraHours.findMany({
+        where: { tenantId, day: { gte: from, lte: to } },
+        select: { id: true, staffId: true, day: true, startTime: true, endTime: true },
+        orderBy: [{ day: 'asc' }, { startTime: 'asc' }], take: 2000,
+      }) ?? [];
+    } catch { open = []; }
+    return { from, to, tz, blocks: rows.map((r) => this.shape(r)), open };
+  }
+
+  /**
+   * KÉO TRÊN LỊCH. The desk dragged over one technician's column, one day:
+   *  - close: the hours she works there become a block (extra hours there are
+   *    taken back first; time already blocked or off stays as it is);
+   *  - open: blocks the desk made are cut back, and the hours outside her
+   *    weekly schedule become extra hours for that day. Leave the technician
+   *    asked for, and whole-salon blocks, are NOT opened from a column — the
+   *    answer says so.
+   * One salon, one technician of that salon, today or later.
+   */
+  async rangeAction(user: AuthenticatedUser, dto: { staffId: string; day: string; startTime: string; endTime: string; action: 'close' | 'open' }, now = new Date()) {
+    const tenantId = this.tenantId(user);
+    const st = await this.prisma.staffMember.findFirst({
+      where: { id: dto.staffId, tenantId },
+      select: { id: true, firstName: true, workingHours: { select: { dayOfWeek: true, startTime: true, endTime: true, isActive: true } } },
+    });
+    if (!st) throw new NotFoundException('Staff member not found');
+    const s = toMin(dto.startTime), e = dto.endTime === '24:00' ? 24 * 60 : toMin(dto.endTime);
+    if (!(e > s)) throw new BadRequestException('The end must be after the start.');
+    const tz = await this.tz(tenantId);
+    if (dto.day < dayKeyTz(now, tz)) throw new BadRequestException('That day has passed.');
+    const day = dto.day;
+    const dow = new Date(`${day}T12:00:00Z`).getUTCDay();
+    const weekly = (st.workingHours ?? []).filter((h) => h.isActive !== false);
+    const hasHours = weekly.length > 0;
+    const regular: Span[] = union(weekly.filter((h) => h.dayOfWeek === dow).map((h) => ({ s: toMin(h.startTime), e: toMin(h.endTime) })));
+    const range: Span[] = [{ s, e }];
+    const extras: { id: string; startTime: string; endTime: string }[] = await this.db.staffExtraHours.findMany({ where: { tenantId, staffId: st.id, day }, select: { id: true, startTime: true, endTime: true } }).catch(() => []) ?? [];
+    const extraSpans = union(extras.map((x) => ({ s: toMin(x.startTime), e: toMin(x.endTime) })));
+    const blocks: Row[] = await this.db.timeOffRequest.findMany({
+      where: { tenantId, status: 'APPROVED', startDate: { lte: day }, endDate: { gte: day }, OR: [{ staffId: st.id }, { staffId: null }] },
+    });
+    const touching = blocks.filter((b) => { const sp = blockSpanOn(b, day); return !!sp && sp.s < e && sp.e > s; });
+    const rewriteExtras = async (tx: any, spans: Span[]) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      await tx.staffExtraHours.deleteMany({ where: { tenantId, staffId: st.id, day } });
+      for (const x of union(spans)) {
+        await tx.staffExtraHours.create({ data: { tenantId, staffId: st.id, day, startTime: toHm(x.s), endTime: x.e >= 24 * 60 ? '23:59' : toHm(x.e), createdByUserId: user.userId } });
+      }
+    };
+
+    if (dto.action === 'close') {
+      const working: Span[] = hasHours ? union([...regular, ...extraSpans]) : [{ s: 0, e: 24 * 60 }];
+      const already = union(touching.map((b) => blockSpanOn(b, day)!));
+      // Extra hours inside the range are simply taken back; the rest of her working time there is blocked.
+      const keepExtras = subtract(extraSpans, range);
+      const toBlock = subtract(intersect(range, hasHours ? regular : working), already);
+      await this.prisma.$transaction(async (tx) => {
+        if (subtract(extraSpans, keepExtras).length) await rewriteExtras(tx, keepExtras);
+        for (const x of toBlock) {
+          await (tx as any).timeOffRequest.create({ // eslint-disable-line @typescript-eslint/no-explicit-any
+            data: { tenantId, staffId: st.id, startDate: day, endDate: day, startTime: toHm(x.s), endTime: x.e >= 24 * 60 ? '23:59' : toHm(x.e), reason: null, status: 'APPROVED', requestedByUserId: user.userId, decidedByUserId: user.userId, decidedAt: now },
+          });
+        }
+      });
+      await this.audit.log({ tenantId, userId: user.userId, action: 'calendar.range_closed', resourceType: 'staff_member', resourceId: st.id, metadata: { day, from: dto.startTime, to: dto.endTime, blocked: toBlock.map((x) => `${toHm(x.s)}–${toHm(x.e)}`), extraTakenBack: subtract(extraSpans, keepExtras).length } });
+      const bookingsInside = toBlock.length ? await this.bookingsInside(tenantId, { staffId: st.id, startDate: day, endDate: day, startTime: toHm(Math.min(...toBlock.map((x) => x.s))), endTime: toHm(Math.min(24 * 60 - 1, Math.max(...toBlock.map((x) => x.e)))) }, tz) : 0;
+      return { ok: true, action: 'close', blocked: toBlock.length, bookingsInside };
+    }
+
+    // open
+    const mineByDesk = touching.filter((b) => b.staffId === st.id && !!b.requestedByUserId && b.requestedByUserId === b.decidedByUserId);
+    const leaveKept = touching.some((b) => b.staffId === st.id && !(b.requestedByUserId && b.requestedByUserId === b.decidedByUserId));
+    const salonKept = touching.some((b) => b.staffId == null);
+    const offParts = hasHours ? subtract(range, union([...regular, ...extraSpans])) : [];
+    await this.prisma.$transaction(async (tx) => {
+      const t = tx as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      for (const b of mineByDesk) {
+        await t.timeOffRequest.deleteMany({ where: { id: b.id, tenantId } });
+        for (const piece of cutBlock(b, day, s, e)) {
+          await t.timeOffRequest.create({ data: { tenantId, staffId: st.id, ...piece, reason: b.reason, status: 'APPROVED', requestedByUserId: b.requestedByUserId, decidedByUserId: b.decidedByUserId, decidedAt: b.decidedAt ?? now } });
+        }
+      }
+      if (offParts.length) await rewriteExtras(t, [...extraSpans, ...offParts]);
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'calendar.range_opened', resourceType: 'staff_member', resourceId: st.id, metadata: { day, from: dto.startTime, to: dto.endTime, unblocked: mineByDesk.map((b) => b.id), extra: offParts.map((x) => `${toHm(x.s)}–${toHm(x.e)}`), leaveKept, salonKept } });
+    return { ok: true, action: 'open', unblocked: mineByDesk.length, extraHours: offParts.length, leaveKept, salonKept };
   }
 
   /** A block made at the desk / by the owner (never a technician's own request — that is the Staff page's). */

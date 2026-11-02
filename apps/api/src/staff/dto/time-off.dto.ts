@@ -21,6 +21,15 @@ export class CalendarBlockDto extends TimeOffRequestDto {
   @IsOptional() @IsString() staffId?: string | null;
 }
 
+/** A drag over one technician's column on the Calendar: close (block) or open (unblock + extra hours). */
+export class CalendarRangeDto {
+  @IsString() staffId!: string;
+  @Matches(DAY) day!: string;
+  @Matches(HM) startTime!: string;
+  @Matches(/^(([01]\d|2[0-3]):[0-5]\d|24:00)$/) endTime!: string;
+  @IsIn(['close', 'open']) action!: 'close' | 'open';
+}
+
 export class TimeOffDecisionDto {
   @IsIn(['APPROVED', 'DENIED']) decision!: 'APPROVED' | 'DENIED';
   @IsOptional() @IsString() @MaxLength(300) note?: string;

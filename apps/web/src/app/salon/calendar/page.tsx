@@ -30,6 +30,7 @@ import { minutesInZone } from '../../../lib/salon-card';
 import { NewBookingModal, type NewBookingPrefill } from '../../../components/NewBookingModal';
 import { BlockTimeSheet } from './BlockTimeSheet';
 import { blockLabel, onDay, type CalBlock } from '../../../lib/cal-blocks';
+import type { OpenHours } from '../../../lib/cal-range';
 import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
 import { VisitContactEditor } from '../../../components/VisitContactEditor';
 import { notify } from '../../../lib/feedback';
@@ -271,6 +272,8 @@ function Inner() {
   // Block tạm thời: hours/days blocked for a technician or the whole salon
   // (approved time off included) — painted on the day, refused by the server.
   const [blocks, setBlocks] = useState<CalBlock[]>([]);
+  // Extra hours opened by dragging over a technician's off time (lib/cal-range).
+  const [openHours, setOpenHours] = useState<OpenHours[]>([]);
   const [blockSheet, setBlockSheet] = useState<{ staffId: string | null; from?: string } | null>(null);
   const loadBlocks = useCallback(async () => {
     if (!token) return;
@@ -278,8 +281,9 @@ function Inner() {
     const from = key(new Date(view.getFullYear(), view.getMonth() - 1, 1));
     const to = key(new Date(view.getFullYear(), view.getMonth() + 1, 0));
     try {
-      const r = await apiFetch<{ blocks: CalBlock[] }>(`/calendar-blocks?from=${from}&to=${to}`, { token });
+      const r = await apiFetch<{ blocks: CalBlock[]; open?: OpenHours[] }>(`/calendar-blocks?from=${from}&to=${to}`, { token });
       setBlocks(r?.blocks ?? []);
+      setOpenHours(r?.open ?? []);
     } catch { /* no calendar right, or an older server: nothing painted */ }
   }, [token, view]);
   useEffect(() => { void loadBlocks(); }, [loadBlocks]);
@@ -763,7 +767,7 @@ function Inner() {
         isRestaurant ? (
           <TableDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
         ) : (
-          <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} onBook={(staffId, at) => setNewBook({ staffId: staffId ?? undefined, startLocal: at })} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} freshId={justBooked?.id ?? null} blocks={blocks} onBlock={(staffId, from) => setBlockSheet({ staffId, from })} />
+          <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} onBook={(staffId, at) => setNewBook({ staffId: staffId ?? undefined, startLocal: at })} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} freshId={justBooked?.id ?? null} blocks={blocks} onBlock={(staffId, from) => setBlockSheet({ staffId, from })} openHours={openHours} onBlocksChanged={() => { void loadBlocks(); }} />
         )
       ) : mode === 'day' ? (
         <ListView

@@ -17,6 +17,8 @@ import { arrange, moveTo as moveId, type StaffLayout } from '../../../lib/staff-
 import { StaffOrderSheet } from './StaffOrderSheet';
 import { isBookable } from '../../../lib/bookable-staff';
 import { bandsFor, blockLabel, type CalBlock } from '../../../lib/cal-blocks';
+import { minToHm, offSpans, partsWithOpen, rangeChoices, rangeResultText, subtract as subtractSpans, union as unionSpans, type OpenHours, type Span } from '../../../lib/cal-range';
+import { RangeBox, RangeMenu, useRangeDrag, type RangeItem } from './RangeDrag';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -117,7 +119,7 @@ function srcMeta(s: string | null | undefined, t: (k: string) => string): { icon
 // or down to change the time, sideways to change the tech (one POST /move, so a
 // clash leaves the booking where it was; "Hoàn tác" puts it back). Hours
 // outside a tech's shift, and breaks between split shifts, are hatched.
-export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, today, onChanged, onBook, onCtx, freshId, blocks = [], onBlock }: {
+export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, today, onChanged, onBook, onCtx, freshId, blocks = [], onBlock, openHours = [], onBlocksChanged }: {
   date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onChanged?: () => void;
   /** An empty slot was clicked: open the booking form in place (staffId null = unassigned column). Without it the page changes. */
   onBook?: (staffId: string | null, startLocal: string) => void;
@@ -129,6 +131,10 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
   blocks?: CalBlock[];
   /** "Khoá giờ" from a column: that technician (null = whole salon), at that hour. */
   onBlock?: (staffId: string | null, from?: string) => void;
+  /** Extra hours opened on the Calendar (lib/cal-range): not hatched there. */
+  openHours?: OpenHours[];
+  /** A drag blocked or opened time: re-read the blocks and extra hours. */
+  onBlocksChanged?: () => void;
 }) {
   const { token, user } = useAuth();
   const { lang } = useLang();
@@ -303,9 +309,12 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
   // Each technician's hours on this weekday (several rows = a split shift).
   const dowD = date.getDay();
   const hhmm = (v: string) => { const [h, m] = v.split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+  const dayKeyTop = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  // Weekly hours plus the extra hours opened for this day by a drag (lib/cal-range).
   const deskShift = (st: StaffLite | undefined): { hasHours: boolean; parts: { s: number; e: number }[] } => {
     const all = st?.workingHours ?? [];
-    const parts = all.filter((w) => w.dayOfWeek === dowD && w.isActive).map((w) => ({ s: hhmm(w.startTime), e: hhmm(w.endTime) })).filter((x) => x.e > x.s).sort((a, b) => a.s - b.s);
+    const weekly = all.filter((w) => w.dayOfWeek === dowD && w.isActive).map((w) => ({ s: hhmm(w.startTime), e: hhmm(w.endTime) })).filter((x) => x.e > x.s);
+    const parts = st && all.length ? partsWithOpen(weekly, openHours, st.id, dayKeyTop) : weekly.sort((a, b) => a.s - b.s);
     return { hasHours: all.length > 0, parts };
   };
 
@@ -428,6 +437,53 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
     window.location.href = `/salon/bookings?${q.toString()}`;
   };
 
+  // ── hold and drag down a column: block the time, or open it again (lib/cal-range) ──
+  /** One technician's day as a drag sees it: off (hatched), blocked, booked. */
+  const colFacts = (colId: string) => {
+    const st = activeStaff.find((x) => x.id === colId) ?? staff.find((x) => x.id === colId);
+    const sh = deskShift(st);
+    const off = offSpans(sh.hasHours, sh.parts, 0, 24 * 60);
+    const blocksOn = bandsFor(blocks, colId, dayKeyTop);
+    const busy: Span[] = items.filter((b) => b.assignedStaff?.id === colId && !isGone(b.status) && b.status !== 'COMPLETED').map((b) => ({ s: minInTz(b.startTime), e: minInTz(b.startTime) + durOf(b) }));
+    return { name: st?.firstName ?? '', off, blocksOn, busy, closed: unionSpans([...off, ...blocksOn.map((x) => ({ s: x.s, e: x.e }))]) };
+  };
+  const [rangeMenu, setRangeMenu] = useState<{ col: string; r: Span; at: { x: number; y: number } } | null>(null);
+  const rangeDrag = useRangeDrag({
+    enabled: !isPastDay && !!token,
+    onDone: (col, r, at) => { if (col === '__un') { rangeDrag.clear(); return; } setRangeMenu({ col, r, at }); },
+  });
+  const closeRange = () => { setRangeMenu(null); rangeDrag.clear(); };
+  const runRange = async (action: 'close' | 'open') => {
+    const m = rangeMenu; if (!m) return;
+    const name = colFacts(m.col).name;
+    closeRange(); setBusy(true);
+    try {
+      const res = await apiFetch<{ blocked?: number; bookingsInside?: number; unblocked?: number; extraHours?: number; leaveKept?: boolean; salonKept?: boolean }>('/calendar-blocks/range', {
+        method: 'POST', token, body: { staffId: m.col, day: dayKeyTop, startTime: minToHm(m.r.s), endTime: minToHm(m.r.e), action },
+      });
+      flash(rangeResultText({ action, name, range: m.r, ...res }, vi), 6000);
+      onBlocksChanged?.();
+    } catch (e) {
+      flash(e instanceof Error ? e.message : (vi ? 'Không lưu được — thử lại.' : 'Could not save — try again.'), 5000);
+    } finally { setBusy(false); }
+  };
+  const rangeUi = rangeMenu ? (() => {
+    const f = colFacts(rangeMenu.col);
+    const c = rangeChoices(rangeMenu.r, { off: f.off, blocks: f.blocksOn, busy: f.busy });
+    const span = `${clock(rangeMenu.r.s)} – ${clock(rangeMenu.r.e)}`;
+    const its: RangeItem[] = [];
+    if (c.open) its.push({ key: 'open', tone: 'primary', label: vi ? `🔓 Mở lịch lại ${span}` : `🔓 Open ${span} again`, hint: vi ? `${f.name} nhận khách giờ này (cả đặt online)` : `${f.name} takes bookings then (online too)`, onClick: () => { void runRange('open'); } });
+    if (c.close) its.push({ key: 'close', tone: c.open ? 'plain' : 'warn', label: vi ? `🔒 Khoá giờ ${span} (thợ nghỉ)` : `🔒 Block ${span} (off)`, hint: vi ? `Không ai đặt được ${f.name} giờ này` : `Nobody can book ${f.name} then`, onClick: () => { void runRange('close'); } });
+    if (c.book) its.push({ key: 'book', tone: 'plain', label: vi ? `+ Đặt lịch lúc ${clock(rangeMenu.r.s)}` : `+ Book at ${clock(rangeMenu.r.s)}`, onClick: () => { const m = rangeMenu; closeRange(); bookAt(m.col, m.r.s); } });
+    if (!its.length) its.push({ key: 'none', tone: 'plain', label: c.leaveInside ? (vi ? 'Ngày nghỉ phép thợ xin — sửa ở trang Nhân viên' : 'Leave the technician asked for — change it on the Staff page') : (vi ? 'Giờ khoá cả tiệm — gỡ ở nút “Khoá giờ”' : 'Whole-salon block — remove it under “Block time”'), onClick: closeRange });
+    return <RangeMenu at={rangeMenu.at} title={`${f.name} · ${span}`} items={its} onClose={closeRange} sheet={isMobile} vi={vi} />;
+  })() : null;
+  /** The picked stretch in column `col`, drawn with that view's own minute → pixel rule. */
+  const rangeBoxFor = (col: string, yOf: (m: number) => number) => (rangeDrag.sel && rangeDrag.sel.col === col
+    ? <RangeBox top={yOf(rangeDrag.sel.s)} height={yOf(rangeDrag.sel.e) - yOf(rangeDrag.sel.s)} label={`${clock(rangeDrag.sel.s)} – ${clock(rangeDrag.sel.e)}`} />
+    : null);
+  const noSelect = { userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as const;
+
 
 
   // ── the technician line-up: the sheet (board 3B) and the header drag (3A) ──
@@ -474,9 +530,10 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
       return `${(h % 12) || 12}${mm ? ':' + String(mm).padStart(2, '0') : ''}${h < 12 ? 'a' : 'p'}`;
     };
     const shiftOf = (s: StaffLite): { s: number; e: number } | null => {
-      const rows = (s.workingHours ?? []).filter((w) => w.dayOfWeek === dow && w.isActive);
-      if (!rows.length) return null;
-      return { s: Math.min(...rows.map((w) => toMin(w.startTime))), e: Math.max(...rows.map((w) => toMin(w.endTime))) };
+      // Weekly hours + the extra hours opened for this day (deskShift).
+      const parts = deskShift(s).parts;
+      if (!parts.length) return null;
+      return { s: Math.min(...parts.map((w) => w.s)), e: Math.max(...parts.map((w) => w.e)) };
     };
     const span = (b: Booking) => {
       const s = minInTz(b.startTime);
@@ -641,21 +698,29 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                               <span style={{ fontSize: 11.5, color: toneColor(statusLine(r).tone), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusLine(r).text}</span>
                             </span>
                           </button>
-                          <div style={{ position: 'relative', height: gH, cursor: isPastDay ? 'default' : 'pointer' }}
+                          <div style={{ position: 'relative', height: gH, cursor: isPastDay ? 'default' : 'pointer', ...noSelect }}
+                            {...rangeDrag.bind(r.id, (el, cy) => aS + ((cy - el.getBoundingClientRect().top) / HG) * 60, aS, aE)}
                             onClick={(e) => {
                               // Tap empty time once to mark it, again to book (canvas board 1). Cards and the slot button handle their own taps.
+                              if (rangeDrag.justDragged()) return;
                               if ((e.target as HTMLElement).closest('button,a') || isPastDay) return;
                               const top = e.currentTarget.getBoundingClientRect().top;
                               const m = aS + Math.floor((((e.clientY - top) / HG) * 60) / 15) * 15;
                               if (m < aS || m >= aE) return;
                               if (isToday && m + 15 <= nowMin) { setPick(null); flash(vi ? 'Giờ này đã qua.' : 'That time has passed.'); return; }
-                              if (r.shift && (m < r.shift.s || m >= r.shift.e)) { setPick(null); flash(ind(vi ? `${r.name} không làm giờ này.` : `${r.name} is off at this time.`)); return; }
+                              const f = colFacts(r.id);
+                              if (f.closed.some((x) => m >= x.s && m < x.e)) { setPick(null); flash(ind(vi ? `${r.name} nghỉ giờ này — giữ ngón tay rồi kéo để mở lịch lại.` : `${r.name} is off then — press, hold and drag to open it.`), 4000); return; }
                               if (r.live.some((b) => { const sp = span(b); return sp.s < m + 15 && sp.e > m; })) return;
                               if (pick && pick.col === r.id && pick.min === m) { setPick(null); bookAt(r.id, m); return; }
                               setPick({ col: r.id, min: m });
                             }}>
-                            {r.shift && r.shift.s > aS && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: gy(r.shift.s), background: hatchBg }} />}
-                            {r.shift && r.shift.e < aE && <div style={{ position: 'absolute', left: 0, right: 0, top: gy(r.shift.e), bottom: 0, background: hatchBg }} />}
+                            {offSpans(r.hasHours, deskShift(activeStaff.find((x) => x.id === r.id)).parts, aS, aE).map((x) => <div key={`off-${x.s}`} style={{ position: 'absolute', left: 0, right: 0, top: gy(x.s), height: gy(x.e) - gy(x.s), background: hatchBg, pointerEvents: 'none' }} />)}
+                            {bandsFor(blocks, r.id, dayKeyTop).map((x) => ({ ...x, s: Math.max(aS, x.s), e: Math.min(aE, x.e) })).filter((x) => x.e > x.s).map((x) => (
+                              <div key={`blk-${x.b.id}`} title={blockLabel(x.b, vi)} style={{ position: 'absolute', left: 0, right: 0, top: gy(x.s), height: gy(x.e) - gy(x.s), boxSizing: 'border-box', background: 'repeating-linear-gradient(135deg, rgba(245,158,11,0.16) 0 6px, transparent 6px 12px)', borderTop: '2px solid rgba(245,158,11,0.55)', pointerEvents: 'none', overflow: 'hidden' }}>
+                                <span style={{ display: 'inline-block', margin: '3px 4px', padding: '1px 5px', borderRadius: 6, background: 'var(--wash-amber)', color: 'var(--ink-warn)', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 'calc(100% - 8px)', overflow: 'hidden', textOverflow: 'ellipsis' }}>🔒 {blockLabel(x.b, vi)}</span>
+                              </div>
+                            ))}
+                            {rangeBoxFor(r.id, gy)}
                             {hours.slice(1, -1).map((hh) => <div key={hh} style={{ position: 'absolute', top: gy(hh), left: 0, right: 0, borderTop: '1px solid var(--c1f2937)' }} />)}
                             {pick && pick.col === r.id && (() => {
                               // The marked slot: half an hour, cut short by the next booking or the end of the shift.
@@ -713,6 +778,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
             </button>
           ))}
           {sheetEl}
+          {rangeUi}
         </div>
       );
     }
@@ -738,6 +804,9 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
       for (const sp of spans) { if (sp.s - cursor >= 45) gaps.push({ s: cursor, e: sp.s }); cursor = Math.max(cursor, sp.e); }
       const end = r.shift?.e ?? cE;
       if (end - cursor >= 45) gaps.push({ s: cursor, e: end });
+      // Never offer "free" inside off or blocked time: those are opened by a drag first.
+      const kept = subtractSpans(gaps, colFacts(r.id).closed).filter((g) => g.e - g.s >= 45);
+      gaps.splice(0, gaps.length, ...kept);
     }
     const firstGap = gaps[0];
     const bookHref = `/salon/bookings?new=1&staff=${encodeURIComponent(r.id)}&at=${encodeURIComponent(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(Math.floor((firstGap?.s ?? cS) / 60)).padStart(2, '0')}:${String((firstGap?.s ?? cS) % 60).padStart(2, '0')}`)}`;
@@ -844,12 +913,23 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                 <span key={h} style={{ position: 'absolute', top: y(h) + 6, left: 8, fontSize: 11.5, fontWeight: 600, color: 'var(--c94a3b8)' }}>{hm(h)}</span>
               ))}
             </div>
-            <div style={{ flex: 1, position: 'relative', height: colH }}>
+            <div style={{ flex: 1, position: 'relative', height: colH, ...noSelect }}
+              {...rangeDrag.bind(r.id, (el, cy) => cS + ((cy - el.getBoundingClientRect().top) / H) * 60, cS, cE)}
+              onClick={(e) => {
+                if (rangeDrag.justDragged() || isPastDay || (e.target as HTMLElement).closest('button,a')) return;
+                const m = cS + Math.floor((((e.clientY - e.currentTarget.getBoundingClientRect().top) / H) * 60) / 15) * 15;
+                if (colFacts(r.id).closed.some((x) => m >= x.s && m < x.e)) flash(ind(vi ? `${r.name} nghỉ giờ này — giữ ngón tay rồi kéo để mở lịch lại.` : `${r.name} is off then — press, hold and drag to open it.`), 4000);
+              }}>
               {Array.from({ length: (cE - cS) / 60 - 1 }, (_, i) => i + 1).map((i) => (
                 <div key={i} style={{ position: 'absolute', top: i * H, left: 0, right: 0, borderTop: '1px solid var(--c1f2937)' }} />
               ))}
-              {r.shift && r.shift.s > cS && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: y(r.shift.s), background: 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(148,163,184,0.10) 6px 7px)' }} />}
-              {r.shift && r.shift.e < cE && <div style={{ position: 'absolute', left: 0, right: 0, top: y(r.shift.e), bottom: 0, background: 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(148,163,184,0.10) 6px 7px)' }} />}
+              {offSpans(r.hasHours, deskShift(activeStaff.find((x) => x.id === r.id)).parts, cS, cE).map((x) => <div key={`off-${x.s}`} style={{ position: 'absolute', left: 0, right: 0, top: y(x.s), height: y(x.e) - y(x.s), background: 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(148,163,184,0.10) 6px 7px)', pointerEvents: 'none' }} />)}
+              {bandsFor(blocks, r.id, dayKeyTop).map((x) => ({ ...x, s: Math.max(cS, x.s), e: Math.min(cE, x.e) })).filter((x) => x.e > x.s).map((x) => (
+                <div key={`blk-${x.b.id}`} title={blockLabel(x.b, vi)} style={{ position: 'absolute', left: 0, right: 0, top: y(x.s), height: y(x.e) - y(x.s), boxSizing: 'border-box', background: 'repeating-linear-gradient(135deg, rgba(245,158,11,0.16) 0 6px, transparent 6px 12px)', borderTop: '2px solid rgba(245,158,11,0.55)', pointerEvents: 'none', overflow: 'hidden' }}>
+                  <span style={{ display: 'inline-block', margin: '4px 8px', padding: '2px 8px', borderRadius: 6, background: 'var(--wash-amber)', color: 'var(--ink-warn)', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 'calc(100% - 16px)', overflow: 'hidden', textOverflow: 'ellipsis' }}>🔒 {blockLabel(x.b, vi)}</span>
+                </div>
+              ))}
+              {rangeBoxFor(r.id, y)}
               {gaps.map((g) => (
                 <a key={`${g.s}-${g.e}`} href={`/salon/bookings?new=1&staff=${encodeURIComponent(r.id)}&at=${encodeURIComponent(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(Math.floor(g.s / 60)).padStart(2, '0')}:${String(g.s % 60).padStart(2, '0')}`)}`}
                   style={{ position: 'absolute', left: 8, right: 8, top: y(g.s) + 4, height: Math.max(30, y(g.e) - y(g.s) - 8), boxSizing: 'border-box', borderRadius: 10, border: '1px dashed var(--c334155)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--c94a3b8)', textDecoration: 'none' }}>
@@ -885,6 +965,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
             </div>
           </div>
           {sheetEl}
+          {rangeUi}
           <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', padding: '2px 0 8px', textAlign: 'center', lineHeight: 1.5 }}>{ind(vi ? 'Vuốt lịch hoặc bấm ‹ › để sang thợ khác · Đổi thợ cho một lịch: mở lịch → “Đổi thợ”.' : 'Swipe the schedule, or tap ‹ ›, for the next technician · To reassign one booking: open it → “Change tech”.')}</span>
         </div>
       </div>
@@ -1009,6 +1090,9 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                 .map((x) => ({ ...x, s: Math.max(gStart, x.s), e: Math.min(endH * 60, x.e) }))
                 .filter((x) => x.e > x.s);
               const inBlock = (m: number) => blockBands.some((x) => m >= x.s && m < x.e);
+              // Off (hatched) time is not offered for booking: hold and drag over it to open it first.
+              const inOff = (m: number) => !un && (offToday || offBands.some((x) => m >= x.s && m < x.e));
+              const offHint = vi ? `${c.name} nghỉ giờ này — giữ chuột kéo qua để mở lịch lại.` : `${c.name} is off then — hold and drag over it to open it.`;
               return (
                 <div key={c.id}
                   onDragOver={(e) => {
@@ -1071,22 +1155,27 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                       </button>
                     )}
                   </div>
-                  <div data-body="1" style={{ position: 'relative', height: total, cursor: isPastDay ? 'default' : 'cell' }}
+                  <div data-body="1" style={{ position: 'relative', height: total, cursor: isPastDay ? 'default' : 'cell', ...noSelect }}
+                    {...(un ? {} : rangeDrag.bind(c.id, minAt, gStart, endH * 60))}
                     onMouseMove={(e) => {
                       if (dragId || isPastDay) return;
+                      if (rangeDrag.sel) { if (g) setGhost(null); return; }
                       if ((e.target as HTMLElement).closest('[data-card]')) { if (g) setGhost(null); return; }
                       const m = Math.floor(minAt(e.currentTarget, e.clientY) / 15) * 15;
-                      if ((isToday && m + 15 <= nowMin) || inBlock(m)) { if (g) setGhost(null); return; }
+                      if ((isToday && m + 15 <= nowMin) || inBlock(m) || inOff(m)) { if (g) setGhost(null); return; }
                       if (!g || g.min !== m || g.drag) setGhost({ col: c.id, min: m, dur: 30, drag: false });
                     }}
                     onMouseLeave={() => { if (!dragId) setGhost((gh) => (gh && gh.col === c.id ? null : gh)); }}
                     onClick={(e) => {
+                      if (rangeDrag.justDragged()) return;
                       if (isPastDay || (e.target as HTMLElement).closest('[data-card]')) return;
                       const m = Math.floor(minAt(e.currentTarget, e.clientY) / 15) * 15;
                       if (isToday && m + 15 <= nowMin) return;
-                      if (inBlock(m)) { setNote(vi ? 'Giờ này đang khoá — gỡ khoá ở nút “Khoá giờ” nếu muốn đặt.' : 'This time is blocked — remove the block under “Block time” to book it.'); return; }
+                      if (inBlock(m)) { flash(vi ? 'Giờ này đang khoá — giữ chuột kéo qua để mở lịch lại.' : 'This time is blocked — hold and drag over it to open it again.', 4000); return; }
+                      if (inOff(m)) { flash(offHint, 4000); return; }
                       bookAt(c.id, m);
                     }}>
+                    {rangeBoxFor(c.id, (m) => (m - gStart) / 60 * HP)}
                     {offToday && <div style={{ position: 'absolute', inset: 0, background: hatch, pointerEvents: 'none' }} />}
                     {offBands.map((x) => (
                       <div key={x.s} style={{ position: 'absolute', left: 0, right: 0, top: (x.s - gStart) / 60 * HP, height: (x.e - x.s) / 60 * HP, background: hatch, pointerEvents: 'none' }} />
@@ -1155,6 +1244,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
         <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('cal.staffHint')}</p>
       )}
       {sheetEl}
+          {rangeUi}
     </div>
   );
 }

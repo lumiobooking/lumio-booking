@@ -5,7 +5,7 @@ import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { TimeOffService } from './time-off.service';
-import { CalendarBlockDto, TimeOffCreateDto, TimeOffDecisionDto, TimeOffEditDto, TimeOffRequestDto } from './dto/time-off.dto';
+import { CalendarBlockDto, CalendarRangeDto, TimeOffCreateDto, TimeOffDecisionDto, TimeOffEditDto, TimeOffRequestDto } from './dto/time-off.dto';
 
 /** Nghỉ phép. A technician's own requests (me/*); the owner's list and decisions (the rest). */
 @Controller('time-off')
@@ -76,6 +76,13 @@ export class CalendarBlocksController {
   @Caps('calendar')
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CalendarBlockDto) { return this.timeOff.addBlock(user, dto); }
+
+  /** A drag on the Calendar: block the hours a technician works, or open hours she is off. */
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('calendar')
+  @Post('range')
+  @HttpCode(200)
+  range(@CurrentUser() user: AuthenticatedUser, @Body() dto: CalendarRangeDto) { return this.timeOff.rangeAction(user, dto); }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
   @Caps('calendar')

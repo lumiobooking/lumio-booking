@@ -94,6 +94,11 @@ export interface PublishResult {
   urlKind?: 'post' | 'profile';
   /** Something the person should know about how it went out (shown under the result). */
   note?: string;
+  /** Taken down from this network through Lumio ("Gỡ khỏi trang"), and by whom. */
+  removedAt?: string;
+  removedBy?: string | null;
+  /** The last take-down attempt failed — the network's own words. */
+  removeError?: string | null;
 }
 
 /**
@@ -839,6 +844,8 @@ export class SocialPublishService {
       sweep: { lastAt: sweepWas, stale: !sweepWas || now.getTime() - sweepWas.getTime() > SWEEP_STALE_MS },
       /** True for a Lumio support session: may delete published rows too. */
       canDeletePosted: isLumio,
+      // Taking a live post DOWN from Facebook / Instagram / Google: the owner or the Lumio team.
+      canTakeDown: isLumio || user.role === UserRole.SALON_ADMIN,
       crowding: crowding(live.map((p) => ({ id: p.id, scheduledAt: p.scheduledAt, channels: p.channels }))),
     };
   }
@@ -1181,6 +1188,88 @@ export class SocialPublishService {
     await this.posts?.deleteMany({ where: { id, tenantId } });
     // The caller says the sentence about Facebook; this says which case it was.
     return { ok: true, wasPosted: row.status === 'posted' };
+  }
+
+  /**
+   * GỠ KHỎI TRANG — take a published post DOWN from the networks it went to,
+   * from Lumio, without logging in to the client's Facebook / Instagram /
+   * Google. The row stays (it is the record of what went up, and the week's
+   * results read it); each network it was taken down from is marked
+   * "removed" with who and when, and the matching social_posts row gets its
+   * deletedAt. TikTok's API cannot delete a video: it is reported, with the
+   * link to delete it there.
+   *
+   * The owner or the Lumio team only. The page token comes from the tenant,
+   * never from the post. One salon's rows only.
+   */
+  async takeDown(user: AuthenticatedUser, id: string, opts: { channels?: string[] } = {}) {
+    const tenantId = this.tenantId(user);
+    const isLumio = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
+    if (!isLumio && user.role !== UserRole.SALON_ADMIN) {
+      throw new BadRequestException('Chỉ chủ tiệm hoặc team Lumio được gỡ bài đã đăng.');
+    }
+    const row = await this.posts?.findFirst({ where: { id, tenantId } }).catch(() => null) as PostRow | null;
+    if (!row) throw new NotFoundException('Không tìm thấy bài này.');
+    const results: PublishResult[] = Array.isArray(row.results) ? (row.results as PublishResult[]).map((r) => ({ ...r })) : [];
+    const asked = (opts.channels ?? []).map((c) => String(c).toLowerCase());
+    const live = results.filter((r) => r && r.id && !r.error && !r.removedAt && (!asked.length || asked.includes(r.channel)));
+    if (!live.length) throw new BadRequestException('Bài này không còn trên kênh nào để gỡ.');
+    const needsMeta = live.some((r) => r.channel === 'facebook' || r.channel === 'instagram');
+    const pg = needsMeta ? await this.pageFor(tenantId) : null;
+    const who = user.supportSession ? `Lumio${user.email ? ` · ${user.email}` : ''}` : (user.email ?? null);
+    const now = new Date().toISOString();
+    const removed: string[] = [];
+    const failed: { channel: string; error: string; url: string | null }[] = [];
+    for (const r of live) {
+      let err: string | null = null;
+      try {
+        if (r.channel === 'facebook' || r.channel === 'instagram') {
+          if (!pg) err = 'Tiệm chưa kết nối Facebook Page — không gỡ được từ Lumio.';
+          else err = await this.graphDelete(String(r.id), pg.token, r.channel === 'instagram' ? 'Instagram' : 'Facebook');
+        } else if (r.channel === 'google') {
+          if (!this.google) err = 'Google Business chưa được bật trên máy chủ.';
+          else await this.google.deleteLocalPost(tenantId, String(r.id));
+        } else if (r.channel === 'tiktok') {
+          err = 'TikTok không cho phần mềm khác gỡ video — mở TikTok để xoá bài này.';
+        } else {
+          err = 'Kênh này chưa hỗ trợ gỡ từ Lumio.';
+        }
+      } catch (e) {
+        err = e instanceof Error ? e.message.replace(/^Bad Request Exception:?\s*/i, '') : 'lỗi mạng';
+      }
+      if (err) { r.removeError = err; failed.push({ channel: r.channel, error: err, url: r.url ?? null }); }
+      else { r.removedAt = now; r.removedBy = who; r.removeError = null; removed.push(r.channel); }
+    }
+    await this.posts?.updateMany({ where: { id: row.id, tenantId }, data: { results: results as never } });
+    if (removed.length) {
+      const sp = (this.prisma as unknown as { socialPost?: { updateMany: (a: unknown) => Promise<unknown> } }).socialPost;
+      for (const r of live.filter((x) => x.removedAt)) {
+        await sp?.updateMany({ where: { tenantId, platform: r.channel, externalId: String(r.id) }, data: { deletedAt: new Date(now) } }).catch(() => undefined);
+      }
+    }
+    await this.prisma.auditLog.create({
+      data: { tenantId, userId: user.userId ?? null, action: 'content.post_taken_down', resourceType: 'scheduled_post', resourceId: row.id, metadata: { removed, failed: failed.map((f) => ({ channel: f.channel, error: f.error.slice(0, 160) })), by: who } as never } as never,
+    }).catch(() => undefined);
+    return { removed, failed };
+  }
+
+  /** DELETE one Page post / photo / video / IG media. Null = gone (or was already). */
+  private async graphDelete(objectId: string, token: string, network: string): Promise<string | null> {
+    if (!/^[0-9_]+$/.test(objectId)) return `${network}: mã bài không hợp lệ.`;
+    try {
+      const res = await fetch(`${GRAPH}/${objectId}?access_token=${encodeURIComponent(token)}`, {
+        method: 'DELETE',
+        signal: AbortSignal.timeout(20_000),
+      });
+      const json = await res.json().catch(() => null) as { success?: boolean; error?: { message?: string; code?: number; error_subcode?: number } } | null;
+      if (res.ok && json?.success !== false) return null;
+      // "Unsupported delete request / does not exist" for an object already gone counts as done.
+      const e = json?.error;
+      if (e && (e.code === 100 && (e.error_subcode === 33 || /does not exist|cannot be loaded/i.test(e.message ?? '')))) return null;
+      return metaErrorText(e, `${network} ${res.status}`);
+    } catch (e) {
+      return `${network}: ${(e as Error).name === 'TimeoutError' ? 'không trả lời kịp — mở trang kiểm tra bài đã gỡ chưa' : 'lỗi mạng'}`;
+    }
   }
 
   /** Send one now. Also the call that satisfies Meta's API-test requirement. */

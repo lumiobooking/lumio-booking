@@ -349,7 +349,7 @@ interface QueuedPost {
   errorIsStale: boolean;
   /** Due, not sent, no error: why, in words. Null otherwise. */
   waiting?: { vi: string; en: string } | null;
-  results: { channel: string; id: string | null; url: string | null; error: string | null; urlKind?: 'post' | 'profile'; note?: string }[];
+  results: { channel: string; id: string | null; url: string | null; error: string | null; urlKind?: 'post' | 'profile'; note?: string; removedAt?: string | null; removedBy?: string | null; removeError?: string | null }[];
   postedAt: string | null;
   createdByName: string | null;
   /** Why it cannot go out as it stands. Empty when it is fine. */
@@ -499,6 +499,8 @@ interface QueuePayload {
   crowding: { id: string; minutesApart: number; message: string }[];
   /** Lumio support session: may delete published rows too. */
   canDeletePosted?: boolean;
+  /** The owner or the Lumio team may take a published post down from Facebook / Instagram / Google. */
+  canTakeDown?: boolean;
   /** What a new post opens with, and the facts a draft is checked against. */
   postKit?: PostKit;
   /** When the server last swept the queue; stale = it had been asleep. */
@@ -885,6 +887,7 @@ function Inner() {
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [showPosted, setShowPosted] = useState(true);
   const [postErr, setPostErr] = useState<string | null>(null);
+  const [postNote, setPostNote] = useState<string | null>(null);
   // Set only when a person has looked at the warnings and said "post it anyway"
   // — a shop really can mention a partner's number. Cleared whenever the draft
   // closes, so the next post starts guarded again.
@@ -1643,6 +1646,34 @@ function Inner() {
     try {
       await apiFetch(`/content/posts/${id}/remove`, { method: 'DELETE', token });
       setPostDraft((d) => (d?.id === id ? null : d));
+      await loadQueue();
+    } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
+    finally { setQueueBusy(false); }
+  }
+
+  /**
+   * GỠ KHỎI TRANG: take a published post down from the networks it is still
+   * up on (or only the ones named) — from Lumio, without logging in to the
+   * client's Facebook / Instagram / Google. TikTok cannot be deleted through
+   * its API; the answer says so with the link. The record stays, marked.
+   */
+  async function takeDownPost(id: string, channels?: string[]) {
+    if (queueBusy) return;
+    const p = queue?.posts.find((x) => x.id === id);
+    if (!p || !queue?.canTakeDown) return;
+    const up = p.results.filter((r) => r.id && !r.error && !r.removedAt && (!channels || channels.includes(r.channel)));
+    if (!up.length) return;
+    const names = up.map((r) => CHANNEL_NAME[r.channel as Channel] ?? r.channel).join(', ');
+    const hasTikTok = up.some((r) => r.channel === 'tiktok');
+    const msg = T(`Gỡ bài này khỏi ${names}?\n\nKhách hàng sẽ không còn thấy bài trên trang. KHÔNG hoàn tác được — muốn có lại phải đăng lại.${hasTikTok ? '\n\nTikTok không cho gỡ từ phần mềm khác — Lumio sẽ đưa link để xoá trong TikTok.' : ''}\nBài vẫn còn trên lịch Lumio, ghi “Đã gỡ”.`,
+      `Take this post down from ${names}?\n\nCustomers will no longer see it. This CANNOT be undone — to have it back, post it again.${hasTikTok ? '\n\nTikTok does not allow other apps to delete — Lumio will give you the link to delete it in TikTok.' : ''}\nThe post stays on Lumio's calendar, marked “Taken down”.`);
+    if (!window.confirm(msg)) return;
+    setQueueBusy(true); setPostErr(null); setPostNote(null);
+    try {
+      const r = await apiFetch<{ removed: string[]; failed: { channel: string; error: string; url: string | null }[] }>(`/content/posts/${id}/take-down`, { method: 'POST', token, body: channels ? { channels } : {} });
+      const ok = r.removed.map((c) => CHANNEL_NAME[c as Channel] ?? c).join(', ');
+      if (ok) setPostNote(T(`Đã gỡ bài khỏi ${ok}.`, `Taken down from ${ok}.`));
+      if (r.failed.length) setPostErr(r.failed.map((f) => `${CHANNEL_NAME[f.channel as Channel] ?? f.channel}: ${f.error}${f.url ? ` — ${f.url}` : ''}`).join('\n'));
       await loadQueue();
     } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
     finally { setQueueBusy(false); }
@@ -3772,10 +3803,16 @@ function Inner() {
                 </div>)}
               </div>
 
+              {postNote && !(postDraft && composerOpen) && (
+                <div style={{
+                  ...ui.card, marginBottom: 14, padding: '11px 14px', borderColor: '#22c55e',
+                  fontSize: 13, color: 'var(--c86efac)', lineHeight: 1.55, display: 'flex', gap: 10, alignItems: 'flex-start',
+                }}><span style={{ flex: 1 }}>⤓ {postNote}</span><button type="button" onClick={() => setPostNote(null)} style={{ border: 0, background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button></div>
+              )}
               {postErr && !(postDraft && composerOpen) && (
                 <div style={{
                   ...ui.card, marginBottom: 14, padding: '11px 14px', borderColor: '#ef4444',
-                  fontSize: 13, color: 'var(--cfca5a5)', lineHeight: 1.55,
+                  fontSize: 13, color: 'var(--cfca5a5)', lineHeight: 1.55, whiteSpace: 'pre-line', wordBreak: 'break-word',
                 }}>{postErr}</div>
               )}
 
@@ -5143,7 +5180,9 @@ function Inner() {
                               if (!asked && !connected) return null;
                               return (
                                 <div key={c} style={{ fontSize: 12.5, lineHeight: 1.7 }}>
-                                  {!asked
+                                  {asked && r?.removedAt
+                                    ? <span style={{ color: 'var(--c94a3b8)' }}>⤓ {name} — {T('đã gỡ khỏi trang', 'taken down')} · {new Date(r.removedAt).toLocaleString(vi ? 'vi-VN' : 'en-US', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{r.removedBy ? ` · ${r.removedBy}` : ''}</span>
+                                    : !asked
                                     ? <span style={{ color: 'var(--c64748b)' }}>○ {name} — {T('không chọn đăng', 'not selected')}</span>
                                     : r?.url
                                       ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c60a5fa)' }}>
@@ -5153,6 +5192,13 @@ function Inner() {
                                       </a>
                                       : <span style={{ color: 'var(--ink-good)' }}>✓ {name}</span>}
                                   {asked && r?.note && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>ⓘ {r.note}</div>}
+                                  {asked && r?.id && !r.error && !r.removedAt && queue?.canTakeDown && (
+                                    <button type="button" onClick={() => { void takeDownPost(live.id, [c]); }} disabled={queueBusy}
+                                      style={{ marginLeft: 8, padding: '1px 9px', borderRadius: 7, border: '1px solid #ef4444', background: 'transparent', color: 'var(--ink-bad)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
+                                      ⤓ {T('Gỡ', 'Take down')}
+                                    </button>
+                                  )}
+                                  {asked && r?.removeError && !r.removedAt && <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', lineHeight: 1.45 }}>⚠ {T('Chưa gỡ được', 'Not taken down')}: {r.removeError}</div>}
                                 </div>
                               );
                             })}
@@ -5174,8 +5220,11 @@ function Inner() {
                         {live.status === 'posted' ? (
                           <div>
                             <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.6 }}>
-                              {T('Bài đã đăng được giữ lại làm sổ ghi. Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram; muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
-                                 'Published posts are kept as the record. To take one down, delete it on Facebook/Instagram; to tidy the calendar, untick “Show published posts”.')}
+                              {queue?.canTakeDown
+                                ? T('Bài đã đăng được giữ lại làm sổ ghi. Bấm “Gỡ” cạnh từng kênh để gỡ bài khỏi Facebook / Instagram / Google (TikTok phải xoá trong app); muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
+                                    'Published posts are kept as the record. Press “Take down” next to a channel to remove it from Facebook / Instagram / Google (TikTok: delete in the app); to tidy the calendar, untick “Show published posts”.')
+                                : T('Bài đã đăng được giữ lại làm sổ ghi. Muốn gỡ bài thì nhờ chủ tiệm bấm “Gỡ”, hoặc xoá trực tiếp trên Facebook/Instagram; muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
+                                    'Published posts are kept as the record. To take one down, ask the owner to press “Take down”, or delete it on Facebook/Instagram; to tidy the calendar, untick “Show published posts”.')}
                             </div>
                             {queue?.canDeletePosted && (
                               <button
@@ -5422,6 +5471,7 @@ function Inner() {
                         onPick={(id) => setDetailId(id)}
                         onDrop={movePost}
                         onDelete={removePost}
+                        onTakeDown={queue.canTakeDown ? (id) => { void takeDownPost(id); } : undefined}
                         onNew={(k) => newPost(`${k}T10:00`)}
                         vi={vi}
                         compact={isMobile}

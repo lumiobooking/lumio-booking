@@ -456,6 +456,17 @@ export class ContentController {
     return this.publisher.remove(user, id);
   }
 
+  /**
+   * Take a published post DOWN from Facebook / Instagram / Google (TikTok
+   * cannot be deleted through its API — reported). The row stays as the
+   * record. Owner or Lumio team (checked in the service).
+   */
+  @Caps('marketing')
+  @Post('posts/:id/take-down')
+  takeDown(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body?: { channels?: string[] }) {
+    return this.publisher.takeDown(user, id, { channels: Array.isArray(body?.channels) ? body!.channels.filter((c) => typeof c === 'string').slice(0, 4) : [] });
+  }
+
   /** Send one right now, instead of waiting for its slot. */
   @Caps('marketing')
   @Post('posts/:id/publish')

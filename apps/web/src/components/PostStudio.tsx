@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { moveItem } from '../lib/reorder';
 import { dayKeyInTz, hourInTz, fmtInTz } from '../lib/datetime';
 import { ind } from '../lib/ui-industry';
+import { stillUp, takenDown, type PostResult } from '../lib/post-takedown';
 
 /**
  * Planning a month of posts, and seeing what it will look like before it exists.
@@ -86,6 +87,8 @@ export type Stage = 'writing' | 'design' | 'ready';
 
 export interface StudioPost {
   id: string;
+  /** Per-network outcome (publish, and take-down). */
+  results?: PostResult[];
   channels: Channel[];
   message: string;
   media: MediaItem[];
@@ -134,11 +137,14 @@ export interface StudioPost {
  * — the post cannot go out as it stands — is the team's own problem and can
  * wait behind the client's. Green is history.
  */
-export type Tone = 'held' | 'failed' | 'blocked' | 'posted' | 'writing' | 'design' | 'approved' | 'ready' | 'plain';
-export function postTone(p: { held?: unknown; blockers: string[]; status: string; stage?: Stage; approvedAt?: string | null }): Tone {
+export { stillUp, takenDown, type PostResult };
+
+export type Tone = 'held' | 'failed' | 'blocked' | 'posted' | 'removed' | 'writing' | 'design' | 'approved' | 'ready' | 'plain';
+
+export function postTone(p: { held?: unknown; blockers: string[]; status: string; stage?: Stage; approvedAt?: string | null; results?: PostResult[] }): Tone {
   if (p.held) return 'held';
   if (p.status === 'failed' || p.status === 'expired') return 'failed';
-  if (p.status === 'posted') return 'posted';
+  if (p.status === 'posted') return takenDown(p) ? 'removed' : 'posted';
   // The team's own path, before anything the platform has to say about it: a
   // caption with no picture yet is "in design", not "blocked".
   if (p.stage === 'writing') return 'writing';
@@ -174,6 +180,7 @@ export const TONES: Record<Tone, { bg: string; border: string; fg: string; bar: 
   ready:   { bg: 'var(--c1e293b)', border: '#22c55e', fg: 'var(--ce2e8f0)', bar: '#22c55e', alarm: false, icon: '📅', vi: 'Đã chốt lịch · chờ khách duyệt', en: 'Scheduled · awaiting client' },
   approved: { bg: 'var(--c1e293b)', border: '#14b8a6', fg: 'var(--ce2e8f0)', bar: '#14b8a6', alarm: false, icon: '✅', vi: 'Khách đã duyệt', en: 'Client approved' },
   posted:  { bg: 'var(--c14532d)', border: '#22c55e', fg: 'var(--ce2e8f0)', bar: 'var(--c475569)', alarm: false, icon: '✓', vi: 'Đã đăng', en: 'Published' },
+  removed: { bg: 'var(--c1e293b)', border: 'var(--c475569)', fg: 'var(--c94a3b8)', bar: 'var(--c64748b)', alarm: false, icon: '⤓', vi: 'Đã gỡ khỏi trang', en: 'Taken down' },
   plain:   { bg: 'var(--c1e293b)', border: 'var(--c334155)', fg: 'var(--ce2e8f0)', bar: 'var(--c475569)', alarm: false, icon: '', vi: 'Nháp', en: 'Draft' },
 };
 
@@ -221,7 +228,7 @@ const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
  * with holes in the corners is harder to read than one with grey edges.
  */
 export function MonthCalendar({
-  posts, month, onMonth, onPick, onDrop, onDelete, onNew, vi, compact = false, canDeletePosted = false,
+  posts, month, onMonth, onPick, onDrop, onDelete, onNew, vi, compact = false, canDeletePosted = false, onTakeDown,
 }: {
   posts: StudioPost[];
   /**
@@ -246,6 +253,8 @@ export function MonthCalendar({
    * a gesture that does nothing at all is a gesture people conclude is broken.
    */
   canDeletePosted?: boolean;
+  /** "Gỡ khỏi trang": take a published post down from the networks it is still up on (owner / Lumio team). */
+  onTakeDown?: (id: string) => void;
 }) {
   const [over, setOver] = useState<string | null>(null);
   /** A day whose overflow the reader has opened. Busy days stay short by default. */
@@ -310,7 +319,7 @@ export function MonthCalendar({
       const t = postTone(p);
       if (TONES[t].alarm) alarm += 1;
       else if (t === 'writing' || t === 'design') doing += 1;
-      else if (t === 'posted') done += 1;
+      else if (t === 'posted' || t === 'removed') done += 1;
       else if (t === 'approved') approved += 1;
       else locked += 1;
     }
@@ -467,14 +476,28 @@ export function MonthCalendar({
       <button onClick={() => { onPick(m.id); setMenu(null); }} style={menuItem}>
         ✎ {m.posted ? T('Mở bài', 'Open post') : T('Sửa bài', 'Edit post')}
       </button>
+      {m.posted && onTakeDown && (() => {
+        const p = posts.find((x) => x.id === m.id);
+        const up = p ? stillUp(p) : [];
+        if (!up.length) return null;
+        const names = up.map((r) => ({ facebook: 'FB', instagram: 'IG', google: 'Google', tiktok: 'TikTok' } as Record<string, string>)[r.channel] ?? r.channel).join(' · ');
+        return (
+          <button onClick={() => { onTakeDown(m.id); setMenu(null); }} style={{ ...menuItem, color: 'var(--ink-bad)', fontWeight: 600 }}>
+            ⤓ {T('Gỡ khỏi trang', 'Take down')} ({names})
+          </button>
+        );
+      })()}
       {(!m.posted || canDeletePosted) ? (
         <button onClick={() => { onDelete(m.id); setMenu(null); }} style={{ ...menuItem, color: 'var(--ink-bad)' }}>
           🗑 {m.posted ? T('Xoá bản ghi khỏi lịch', 'Delete this record') : T('Xoá bài này', 'Delete this post')}
         </button>
       ) : (
         <div style={{ padding: '8px 11px', fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5, maxWidth: 215 }}>
-          {T('Bài đã đăng được giữ làm sổ ghi. Muốn gỡ hẳn thì xoá trực tiếp trên Facebook / Instagram / TikTok.',
-             'A published post is kept as the record. To take it down, delete it on Facebook / Instagram / TikTok itself.')}
+          {onTakeDown
+            ? T('Bài đã đăng được giữ làm sổ ghi. “Gỡ khỏi trang” gỡ bài trên Facebook / Instagram / Google; TikTok phải xoá trong app TikTok.',
+                'A published post is kept as the record. “Take down” removes it from Facebook / Instagram / Google; TikTok must be deleted in the TikTok app.')
+            : T('Bài đã đăng được giữ làm sổ ghi. Muốn gỡ bài thì nhờ chủ tiệm bấm “Gỡ khỏi trang”, hoặc xoá trực tiếp trên Facebook / Instagram / TikTok.',
+                'A published post is kept as the record. To take it down, ask the owner to use “Take down”, or delete it on Facebook / Instagram / TikTok itself.')}
         </div>
       )}
     </>
@@ -592,7 +615,7 @@ export function MonthCalendar({
   /** The key, as one wrapping row. On a phone it hides behind a tap. */
   const legend = (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 12px', fontSize: 11, color: 'var(--c94a3b8)', alignItems: 'center' }}>
-      {(['held', 'failed', 'blocked', 'writing', 'design', 'ready', 'approved', 'posted'] as Tone[]).map((k) => (
+      {(['held', 'failed', 'blocked', 'writing', 'design', 'ready', 'approved', 'posted', 'removed'] as Tone[]).map((k) => (
         <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: k === 'posted' ? 'var(--c64748b)' : 'var(--c94a3b8)' }}>
           <span style={{
             width: 13, height: 11, borderRadius: 3,

@@ -810,6 +810,32 @@ export class GoogleReviewsService {
     return { name: out.name ?? null };
   }
 
+  /**
+   * Take one of the shop's own local posts down ("Gỡ bài"). The name must sit
+   * under THIS salon's connected location — a name from anywhere else is
+   * refused before Google is asked. Already gone (404) counts as done.
+   */
+  async deleteLocalPost(tenantId: string, name: string): Promise<void> {
+    const s = await this.getSettings(tenantId);
+    const where = await this.postingLocation(tenantId);
+    if (!where) throw new BadRequestException('Tiệm chưa kết nối Google Business hoặc chưa chọn địa điểm.');
+    const clean = String(name ?? '').trim();
+    if (!/^accounts\/[^/]+\/locations\/[^/]+\/localPosts\/[^/?#]+$/.test(clean) || !clean.startsWith(`${where.parent}/localPosts/`)) {
+      throw new BadRequestException('Bài Google này không thuộc địa điểm đang kết nối của tiệm.');
+    }
+    const token = await this.accessToken(s);
+    const res = await fetch(`https://mybusiness.googleapis.com/v4/${clean}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (res.ok || res.status === 404) return;
+    const text = await res.text().catch(() => '');
+    let msg = text.slice(0, 200);
+    try { msg = (JSON.parse(text) as { error?: { message?: string } }).error?.message || msg; } catch { /* keep raw */ }
+    throw new BadRequestException(`Google ${res.status}: ${msg}`);
+  }
+
   async createLocalPost(tenantId: string, body: {
     summary: string; languageCode: 'vi' | 'en'; photoUrl: string | null;
     /** A video to TRY in the post itself. Google's post API has refused video

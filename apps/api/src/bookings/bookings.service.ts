@@ -1144,6 +1144,45 @@ export class BookingsService {
     return { ok: true, code: 'changed', say: `${st.firstName} is now on this booking.`, staffName: st.firstName };
   }
 
+  /**
+   * "Arms and legs instead of legs only" — a client changes WHAT is done at a
+   * booking she already has, from the hotline. Same day, same time, same
+   * technician; the new list is priced and timed like the desk's edit
+   * (editLines), and a longer visit that would run into the technician's next
+   * booking is refused, naming it. The caller's right to this booking is
+   * checked by the caller of this method.
+   */
+  async selfChangeServices(input: { tenantId: string; appointmentId: string; serviceIds: string[]; by: 'messenger' | 'hotline' }): Promise<{ ok: boolean; code: string; say: string; services: string[]; endsAt?: string }> {
+    const { tenantId, appointmentId, by } = input;
+    const ids = [...new Set((input.serviceIds ?? []).filter(Boolean))];
+    if (!ids.length) return { ok: false, code: 'empty', say: 'No service was given.', services: [] };
+    const b = await this.prisma.appointment.findFirst({ where: { id: appointmentId, tenantId }, select: { id: true, status: true, serviceId: true, startTime: true, addons: true } }).catch(() => null);
+    if (!b) return { ok: false, code: 'not-found', say: 'That booking was not found.', services: [] };
+    if (!BookingsService.ACTIONABLE.includes(b.status)) return { ok: false, code: 'not-live', say: 'That booking is no longer active.', services: [] };
+    if (b.startTime.getTime() <= Date.now()) return { ok: false, code: 'started', say: 'That visit has already started — the front desk changes it in the salon.', services: [] };
+    const found = await this.prisma.service.findMany({ where: { tenantId, id: { in: ids }, isActive: true }, select: { id: true } });
+    if (found.length !== ids.length) return { ok: false, code: 'unknown-service', say: 'One of those services is not on the menu.', services: [] };
+    type Line = { id?: string; kind?: string };
+    const lines: Line[] = Array.isArray(b.addons) ? (b.addons as unknown as Line[]) : [];
+    const [main, ...rest] = ids;
+    // Service lines not in the new list go; extras (add-ons) stay with the visit.
+    const removeIndexes = lines.map((l, i) => ((l.kind ?? 'service') === 'service' && !(l.id && rest.includes(l.id)) ? i : -1)).filter((i) => i >= 0);
+    const keptIds = new Set(lines.filter((l, i) => !removeIndexes.includes(i) && l.id).map((l) => l.id as string));
+    const addServiceIds = rest.filter((x) => !keptIds.has(x) && x !== main);
+    const actor = { userId: null, role: UserRole.SALON_ADMIN, tenantId } as unknown as AuthenticatedUser;
+    try {
+      await this.editLines(actor, appointmentId, { replaceMainServiceId: main !== b.serviceId ? main : undefined, removeIndexes, addServiceIds, lang: 'en' });
+    } catch (e) {
+      const msg = String((e as Error).message || e);
+      return { ok: false, code: /already|overlap|booked|next/i.test(msg) ? 'busy' : 'refused', say: msg.slice(0, 200), services: [] };
+    }
+    const after = await this.prisma.appointment.findFirst({ where: { id: appointmentId, tenantId }, select: { endTime: true, addons: true, service: { select: { name: true } }, tenant: { select: { timezone: true } } } as never }).catch(() => null) as unknown as { endTime: Date; addons: unknown; service: { name: string } | null; tenant: { timezone: string } | null } | null;
+    const names = [after?.service?.name, ...(Array.isArray(after?.addons) ? (after!.addons as { name?: string; kind?: string }[]).filter((l) => (l.kind ?? 'service') === 'service').map((l) => l.name) : [])].filter((x): x is string => !!x);
+    const endsAt = after?.endTime ? new Intl.DateTimeFormat('en-US', { timeZone: after.tenant?.timezone || 'UTC', hour: 'numeric', minute: '2-digit' }).format(after.endTime) : undefined;
+    await this.audit.log({ tenantId, userId: null as never, action: 'booking.services_changed_by_customer', resourceType: 'appointment', resourceId: appointmentId, metadata: { by, services: names } });
+    return { ok: true, code: 'changed', say: 'Changed.', services: names, endsAt };
+  }
+
   async selfReschedule(input: {
     tenantId: string;
     appointmentId: string;

@@ -244,6 +244,8 @@ const PATH_CAPS: [string, Capability][] = [
   ['client-forms', 'customers'],
   ['search', 'customers'],
   ['bookings', 'bookings'],
+  // Who the AI promised a call back (name, phone, what they asked) — client data.
+  ['calendar-callbacks', 'calendar'],
   ['walkins', 'walkins'],
   ['waitlist', 'waitlist'],
   ['activity', 'bookings'],

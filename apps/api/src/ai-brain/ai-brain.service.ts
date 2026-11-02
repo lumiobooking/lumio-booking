@@ -359,10 +359,15 @@ export class AiBrainService {
     // One open task per customer/phone per reason: a caller who hits silence twice is one task.
     const dupe: Row | null = await this.db.aiCallbackTask.findFirst({
       where: { tenantId: input.tenantId, doneAt: null, reason: input.reason, ...(phone ? { phone } : input.customerId ? { customerId: input.customerId } : input.threadId ? { threadId: input.threadId } : { id: '__none__' }), createdAt: { gte: new Date(Date.now() - 6 * 3600_000) } },
-      select: { id: true },
+      select: { id: true, summary: true },
     }).catch(() => null);
     if (dupe) {
-      await this.db.aiCallbackTask.updateMany({ where: { id: dupe.id, tenantId: input.tenantId }, data: { summary, sessionId: input.sessionId ?? undefined } }).catch(() => undefined);
+      // A second thing to call back about is ADDED to the open task — it used to
+      // replace it, and the first question was lost (2 Nov, Saigon Spa: services
+      // asked first, payment options second; only payment options were kept).
+      const prev = String(dupe.summary ?? '');
+      const merged = !summary || prev.includes(summary) ? prev : prev ? `${prev} • ${summary}` : summary;
+      await this.db.aiCallbackTask.updateMany({ where: { id: dupe.id, tenantId: input.tenantId }, data: { summary: merged.length > 500 ? `${merged.slice(0, 240)} … ${merged.slice(-250)}` : merged, sessionId: input.sessionId ?? undefined } }).catch(() => undefined);
       return { id: dupe.id };
     }
     const row: Row = await this.db.aiCallbackTask.create({
@@ -376,7 +381,7 @@ export class AiBrainService {
     const who = input.name || phone || (input.channel === 'voice' ? 'a caller' : 'a customer');
     const title = input.channel === 'voice' ? `📞 Gọi lại ${who}` : `💬 Trả lời ${who}`;
     if (this.push && (brain.handoff.notifyOwnerPush || brain.handoff.notifyDeskPush)) {
-      this.push.sendToTenant(input.tenantId, { title, body: summary || END_REASON_LABEL[(input.reason as EndReason)]?.vi || input.reason, url: '/salon/ai?tab=overview', tag: `ai-callback-${row.id}` }).catch(() => undefined);
+      this.push.sendToTenant(input.tenantId, { title, body: summary || END_REASON_LABEL[(input.reason as EndReason)]?.vi || input.reason, url: '/salon/calendar?callbacks=1', tag: `ai-callback-${row.id}` }).catch(() => undefined);
     }
     return { id: row.id };
   }
@@ -388,6 +393,21 @@ export class AiBrainService {
       orderBy: { createdAt: 'desc' }, take: 100,
     }).catch(() => []);
     return rows;
+  }
+
+  /**
+   * GỌI LẠI trên Lịch: the open callback tasks, for the front desk on the
+   * Calendar (calendar capability — no need to open the AI page). Only what
+   * a call back needs; one salon's tasks only.
+   */
+  async deskCallbacks(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const rows: Row[] = await this.db.aiCallbackTask.findMany({
+      where: { tenantId, doneAt: null },
+      orderBy: { createdAt: 'asc' }, take: 50,
+      select: { id: true, channel: true, reason: true, summary: true, phone: true, name: true, createdAt: true, dueAt: true },
+    }).catch(() => []);
+    return rows.map((r) => ({ ...r, label: END_REASON_LABEL[r.reason as EndReason] ?? null }));
   }
 
   async doneCallback(user: AuthenticatedUser, id: string, done = true) {

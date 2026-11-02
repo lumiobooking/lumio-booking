@@ -11,11 +11,11 @@
  * And none of it lets one salon's call touch another salon's data.
  */
 import {
-  asksForNumber, claimsDone, goodbyeLine, impossibleNanp, keypadLine, nationalDigits, readBackOk, spokenNumber,
+  asksForNumber, claimsDone, goodbyeLine, impossibleNanp, keypadLine, nationalDigits, promisesCallback, readBackOk, spokenNumber, typedNumbers,
 } from './booking-guards';
 import { VoiceService } from './voice.service';
 import { BookingsService } from '../bookings/bookings.service';
-import { RELAY_KEYPAD_PAUSE_MS, RelaySession, type RelayDeps } from './relay';
+import { RELAY_KEYPAD_PART_PAUSE_MS, RELAY_KEYPAD_PAUSE_MS, RelaySession, type RelayDeps } from './relay';
 import type { TurnAction } from './voice.service';
 import { AppointmentStatus } from '@prisma/client';
 
@@ -398,13 +398,155 @@ describe('a number typed on the keypad', () => {
       expect(turns).toEqual(['(typed on the keypad) 6042798777']);
     });
 
-    it('without #, a short pause ends the number', async () => {
+    it('without #, a whole number goes after a short pause; part of one waits for the rest', async () => {
       const { s, turns } = harness();
       await s.onMessage(JSON.stringify({ type: 'setup', callSid: 'CA1', accountSid: 'AC1', customParameters: {} }));
-      for (const d of '604279') await key(s, d);
+      await key(s, '8');
       jest.advanceTimersByTime(RELAY_KEYPAD_PAUSE_MS + 1);
       await flush();
-      expect(turns).toEqual(['(typed on the keypad) 604279']);
+      expect(turns).toEqual([]); // 2 Nov: "8" used to go alone, then "212504311"
+      for (const d of '212504311') await key(s, d);
+      jest.advanceTimersByTime(RELAY_KEYPAD_PAUSE_MS + 1);
+      await flush();
+      expect(turns).toEqual(['(typed on the keypad) 8212504311']);
+      for (const d of '604279') await key(s, d);
+      jest.advanceTimersByTime(RELAY_KEYPAD_PART_PAUSE_MS + 1);
+      await flush();
+      expect(turns).toEqual(['(typed on the keypad) 8212504311', '(typed on the keypad) 604279']);
     });
+  });
+});
+
+describe('2 Nov test calls: fewer confirmations, nothing lost', () => {
+  it('a typed number, or one read back in full earlier, needs only its last four in the final read-back', () => {
+    const base = { phone: '+18212504311', callerPhone: '+16042798799' };
+    expect(readBackOk({ ...base, said: 'Monday at 3 for Jenny, under the number ending in 4, 3, 1, 1?' })).toBe(false);
+    expect(readBackOk({ ...base, said: 'Monday at 3 for Jenny, under the number ending in 4, 3, 1, 1?', typed: ['8212504311'] })).toBe(true);
+    expect(readBackOk({ ...base, said: 'ending in 4, 3, 1, 1?', saidBefore: 'So that is 8, 2, 1 — 2, 5, 0 — 4, 3, 1, 1.' })).toBe(true);
+    expect(readBackOk({ ...base, said: 'ending in 9, 9, 9, 9?', typed: ['8212504311'] })).toBe(false);
+  });
+
+  it('keypad pieces that came one after another are one number', () => {
+    const h = [
+      { role: 'user', content: '(typed on the keypad) 8' },
+      { role: 'assistant', content: 'Any more digits?' },
+      { role: 'user', content: 'okay, let me' },
+      { role: 'user', content: '(typed on the keypad) 212504311' },
+    ];
+    expect(typedNumbers(h)).toContain('8212504311');
+  });
+
+  it('hears a promise to call back', () => {
+    expect(promisesCallback('A staff member will call Audacia back at 4119 to update her booking.')).toBe(true);
+    expect(promisesCallback('A team member will call you back shortly.')).toBe(true);
+    expect(promisesCallback('Dạ bên em sẽ gọi lại cho chị sau ạ.')).toBe(true);
+    expect(promisesCallback('You are booked for Friday at 4.')).toBe(false);
+  });
+});
+
+describe('the reply is never cut off inside a booking', () => {
+  let fetchSpy: jest.SpyInstance;
+  const reply = (o: Row) => ({ ok: true, json: async () => o }) as Response;
+  beforeEach(() => { process.env.ANTHROPIC_API_KEY = 'test-key'; fetchSpy = jest.spyOn(globalThis, 'fetch' as never); });
+  afterEach(() => { fetchSpy.mockRestore(); delete process.env.ANTHROPIC_API_KEY; });
+
+  it('a turn cut off at max_tokens is asked again with more room — never "How else can I help you book?"', async () => {
+    fetchSpy.mockResolvedValueOnce(reply({ stop_reason: 'max_tokens', content: [{ type: 'text', text: 'Let me book both of you' }] }) as never)
+      .mockResolvedValueOnce(reply({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Which day works for you both?' }] }) as never);
+    const r = await agentSvc().runAgent('t1', '+16042798799', '', [], 'yes', 'en-US', false, false, null, 'CA-9');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const bodies = fetchSpy.mock.calls.map((c) => JSON.parse(String((c[1] as RequestInit).body)));
+    expect(bodies[0].max_tokens).toBeGreaterThanOrEqual(600);
+    expect(bodies[1].max_tokens).toBeGreaterThan(bodies[0].max_tokens);
+    expect(r.reply).toBe('Which day works for you both?');
+  });
+
+  it('"a team member will call you back" without the tool still leaves a task for the desk', async () => {
+    const created: Row[] = [];
+    const prisma = {
+      voiceCall: { findUnique: async () => null, update: async () => ({}), updateMany: async () => ({ count: 1 }), findMany: async () => [] },
+      voiceLine: { findUnique: async () => null },
+      tenant: { findUnique: async () => ({ name: 'Salon', timezone: 'America/Los_Angeles', contactPhone: null, contactEmail: null, businessType: 'SALON' }) },
+      service: { findMany: async () => [] }, serviceAddon: { findMany: async () => [] }, staffMember: { findMany: async () => [] },
+      messengerConnection: { findUnique: async () => null }, setting: { findFirst: async () => null },
+    };
+    const brain = new Proxy({
+      customerByPhone: async () => null,
+      createCallback: async (a: Row) => { created.push(a); return { id: 'cb1' }; },
+    } as Row, { get: (t, k) => (k in t ? t[k as string] : async () => null) });
+    const svc = new VoiceService(prisma as never, {} as never, { getBookingRules: async () => ({ businessHours: [] }), getAiNotes: async () => ({ text: '' }) } as never, {} as never, undefined, undefined, brain as never);
+    fetchSpy.mockResolvedValue(reply({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'No problem — a staff member will call Audacia back at 4119 to update her booking.' }] }) as never);
+    await (svc as unknown as { runAgent: (...a: unknown[]) => Promise<unknown> }).runAgent('t1', '+16042798799', '', [], 'she wants arms and legs', 'en-US', false, false, null, 'CA-10');
+    expect(created).toEqual([expect.objectContaining({ tenantId: 't1', channel: 'voice', reason: 'callback', phone: '+16042798799' })]);
+    expect(created[0].summary).toMatch(/Audacia/);
+  });
+});
+
+describe('"arms and legs instead of legs only" on a booking already made', () => {
+  function svcFor(o: { result?: Row; mine?: Row[] } = {}) {
+    const asked: Row[] = [];
+    const prisma = {
+      tenant: { findUnique: async () => ({ timezone: TZ }) }, setting: { findFirst: async () => null },
+      voiceCall: { findMany: async () => [] },
+      appointment: { findMany: async (a: { where: Row }) => (o.mine ?? []).filter((x) => x.tenantId === a.where.tenantId) },
+    };
+    const bookings = {
+      upcomingForPhone: async (tenantId: string) => (o.mine ?? []).filter((x) => x.tenantId === tenantId).map((x) => ({ id: x.id })),
+      selfChangeServices: async (a: Row) => { asked.push(a); return o.result ?? { ok: true, code: 'changed', say: 'ok', services: ['Arm Wax', 'Leg Wax'], endsAt: '6:00 PM' }; },
+    };
+    const svc = new VoiceService(prisma as never, bookings as never, {} as never, {} as never);
+    const menu2 = [{ id: 'arm', name: 'Arm Wax', minutes: 30 }, { id: 'leg', name: 'Leg Wax', minutes: 45 }];
+    const tool = (input: Row) => (svc as unknown as { runTool: (...a: unknown[]) => Promise<string> }).runTool('t1', TZ, '+16042798799', 'change_services', input, { wantEnd: false, booked: false, appointmentId: null }, { menu: menu2, staff: [], groupMode: true });
+    return { tool, asked };
+  }
+  const row = { tenantId: 't1', id: 'ap-1', groupId: null, startTime: new Date('2030-03-09T21:00:00Z'), service: { name: 'Leg Wax' }, customer: { firstName: 'Audacia', phone: '+16042794119' }, assignedStaff: null };
+
+  it('is done on the call — never a call back', async () => {
+    const { tool, asked } = svcFor({ mine: [row] });
+    const out = await tool({ appointmentId: 'ap-1', services: ['S1', 'S2'] });
+    expect(out).toMatch(/^SUCCESS\. Audacia's visit is now: Arm Wax \+ Leg Wax, finishing about 6:00 PM/);
+    expect(asked).toEqual([{ tenantId: 't1', appointmentId: 'ap-1', serviceIds: ['arm', 'leg'], by: 'hotline' }]);
+  });
+
+  it('another salon\'s booking, or one not the caller\'s, is never touched', async () => {
+    const { tool, asked } = svcFor({ mine: [{ ...row, tenantId: 't2' }] });
+    expect(await tool({ appointmentId: 'ap-1', services: ['S1'] })).toMatch(/not one of this caller's/);
+    expect(asked).toHaveLength(0);
+  });
+
+  it('a longer visit that runs into the next booking: NOT CHANGED, said plainly', async () => {
+    const { tool } = svcFor({ mine: [row], result: { ok: false, code: 'busy', say: 'Kim already has a booking at 6:00 PM.', services: [] } });
+    expect(await tool({ appointmentId: 'ap-1', services: ['S1', 'S2'] })).toMatch(/^NOT CHANGED \(busy\): Kim already has a booking/);
+  });
+});
+
+describe('BookingsService.selfChangeServices', () => {
+  function make(o: { appt?: Row | null; services?: string[]; editErr?: Error } = {}) {
+    const edits: Row[] = [];
+    const audits: Row[] = [];
+    const where: Row[] = [];
+    const appt = o.appt === undefined ? { id: 'ap-1', status: AppointmentStatus.CONFIRMED, serviceId: 'leg', startTime: new Date(Date.now() + 86_400_000), addons: [{ id: 'leg-pol', kind: 'addon', name: 'Polish' }, { id: 'brow', kind: 'service', name: 'Brow Wax' }] } : o.appt;
+    const prisma = {
+      appointment: { findFirst: async (a: Row) => { where.push(a.where); return appt ? { ...appt, endTime: new Date(), service: { name: 'Arm Wax' }, tenant: { timezone: 'America/Chicago' } } : null; } },
+      service: { findMany: async (a: Row) => { where.push(a.where); return (o.services ?? ['arm', 'leg', 'brow']).filter((x) => a.where.id.in.includes(x)).map((id) => ({ id })); } },
+    };
+    const svc = new BookingsService(prisma as never, { log: async (a: Row) => { audits.push(a); } } as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+    (svc as unknown as Row).editLines = async (user: Row, id: string, dto: Row) => { if (o.editErr) throw o.editErr; edits.push({ tenantId: user.tenantId, userId: user.userId, id, dto }); };
+    return { svc, edits, audits, where };
+  }
+
+  it('swaps the main service, drops service lines not wanted, keeps the extras', async () => {
+    const { svc, edits, audits, where } = make();
+    const r = await svc.selfChangeServices({ tenantId: 't1', appointmentId: 'ap-1', serviceIds: ['arm', 'leg'], by: 'hotline' });
+    expect(r.ok).toBe(true);
+    expect(edits).toEqual([{ tenantId: 't1', userId: null, id: 'ap-1', dto: { replaceMainServiceId: 'arm', removeIndexes: [1], addServiceIds: ['leg'], lang: 'en' } }]);
+    expect(audits[0]).toMatchObject({ tenantId: 't1', action: 'booking.services_changed_by_customer' });
+    for (const w of where) expect(w.tenantId).toBe('t1');
+  });
+
+  it('another salon\'s booking or service is simply not found; a clash is refused with its reason', async () => {
+    expect(await make({ appt: null }).svc.selfChangeServices({ tenantId: 't2', appointmentId: 'ap-1', serviceIds: ['arm'], by: 'hotline' })).toMatchObject({ ok: false, code: 'not-found' });
+    expect(await make({ services: ['arm'] }).svc.selfChangeServices({ tenantId: 't1', appointmentId: 'ap-1', serviceIds: ['arm', 'zz-of-t2'], by: 'hotline' })).toMatchObject({ ok: false, code: 'unknown-service' });
+    expect(await make({ editErr: new Error('Kim already has a booking at 6:00 PM.') }).svc.selfChangeServices({ tenantId: 't1', appointmentId: 'ap-1', serviceIds: ['arm', 'leg'], by: 'hotline' })).toMatchObject({ ok: false, code: 'busy' });
   });
 });

@@ -22,7 +22,7 @@ import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { toE164 as normalizeE164, dialCodeFor } from '../common/phone';
 import { bookingPhone, spokenLast4 } from './phone-readback';
-import { asksForNumber, claimsDone, goodbyeLine, impossibleNanp, keypadHint, keypadLine, readBackOk, spokenNumber } from './booking-guards';
+import { asksForNumber, claimsDone, goodbyeLine, impossibleNanp, keypadHint, keypadLine, promisesCallback, readBackOk, spokenNumber, typedNumbers } from './booking-guards';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import { CallCache } from './call-cache';
 import { relayEnabledFor, relayTwiml, ttsFor } from './relay';
@@ -132,6 +132,10 @@ interface ToolCtx {
   lastSaid?: string;
   /** The call's language, for keypad wording. */
   lang?: string;
+  /** Numbers typed on the keypad this call (pieces joined in order) — exact, no digit-by-digit read-back needed. */
+  typed?: string[];
+  /** Everything the assistant said before its last line (a number read back in full earlier counts). */
+  saidBefore?: string;
 }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 export interface VoiceUsage {
@@ -1365,7 +1369,9 @@ export class VoiceService implements OnModuleInit {
     onInterim?: (text: string) => void,
   ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean; stuck?: boolean; toolCalls?: number; failure?: string | null; timing?: TurnTiming }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
-    const acc = { wantEnd: false, booked: false, changed: false, appointmentId: null as string | null, langSwitch: null as string | null, transfer: false, toolCalls: 0, failure: null as string | null, callSid, callerPhone };
+    const acc = { wantEnd: false, booked: false, changed: false, callbackNoted: false, appointmentId: null as string | null, langSwitch: null as string | null, transfer: false, toolCalls: 0, failure: null as string | null, callSid, callerPhone };
+    // A reply cut off mid-way (max_tokens) is asked again once with room to finish.
+    let roomy = false;
     // One correction round when the model claims a booking no tool made (./booking-guards).
     let claimChecked = false;
     // Where the time of this turn went — logged per turn, so "slow" is a number.
@@ -1396,18 +1402,20 @@ export class VoiceService implements OnModuleInit {
 
     // The read-back the caller answered: the assistant's last line on this call.
     const lastSaid = [...history].reverse().find((h) => h.role === 'assistant')?.content ?? '';
-    const ctx: ToolCtx = { menu, staff, groupMode, lastSaid: String(lastSaid), lang };
+    const said = history.filter((h) => h.role === 'assistant').map((h) => String(h.content ?? ''));
+    const ctx: ToolCtx = { menu, staff, groupMode, lastSaid: String(lastSaid), lang, typed: typedNumbers(history as never), saidBefore: said.slice(0, -1).join(' \n ') };
 
     const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
     // HOW IT SOUNDS. Owners reported a hotline that "talks too long and never
     // books": every reply carried a compliment, a restatement of what the
     // caller had just said and a question. A receptionist says one thing.
-    const style = `Your words are read aloud on a live phone call. Keep EVERY reply short: one sentence, two at most, under 30 words, and ask only ONE thing at a time. Do not repeat back what the caller just said (the only read-back is the final one before booking), do not list the menu unless asked, and never explain what you are doing. One brief warm touch is fine ("Sure!", "Of course."); no long thank-yous. No lists, emojis, special characters or URLs.
+    const style = `Your words are read aloud on a live phone call. Keep EVERY reply short: one sentence, two at most, under 30 words, and ask only ONE thing at a time. Do not repeat back what the caller just said and never ask "is that right?" about a single detail (a name, a time, a number) — the only confirmation question on the whole call is the ONE final read-back before booking or changing, and after a clear yes you act at once. Digits typed on the keypad may arrive in pieces ("(typed on the keypad) 8", then "(typed on the keypad) 212504311") — they are one number: join them in order, and a typed number is exact, so do not read it back digit by digit (its last four in the final read-back is enough) (the only read-back is the final one before booking), do not list the menu unless asked, and never explain what you are doing. One brief warm touch is fine ("Sure!", "Of course."); no long thank-yous. No lists, emojis, special characters or URLs.
 The call has already been answered with the ${persona.venueNoun}'s greeting — do not greet again; go straight to helping. If the caller is not ready to book ("just asking", "I'll call back"), answer their question, say they are welcome to call any time, and do not push. Quote a price in one short sentence; never walk through arithmetic unless they ask for a total. Thank the caller when the booking is made, and thank them for calling in the goodbye. When the caller says bye / goodbye / that's all, say ONE short thank-you-and-goodbye and call end_call — never ask another question after a goodbye. When they ask you to wait ("wait a minute", "let me ask her"), say "Sure, take your time" and nothing else.`;
     const groupScript = `BOOKING A NEW ${persona.bookableNoun.toUpperCase()} — collect only what is still missing; when the caller gives several details at once, take them all and move on:
 - WHO and WHAT: the service or services for each person. One person can have several services ("gel manicure and a pedicure"). A group is several people at the SAME time, each with their own technician. If the caller says "we", "us", "my friend", "my mom and I" or a number of people, find out how many people and what each person wants; otherwise it is just the caller — do not ask how many. If their words could mean more than one menu item (e.g. "manicure" when the menu has a regular and a gel manicure), ask which one; never choose for them. If something is not on the menu, call get_services before saying so.
 - WHEN: the day and time. As soon as you know everyone's services and the day or time, call check_availability. Only offer times it says are open; if theirs is taken, offer the times it gives you.
 - NAMES: the first name of each person, asked once for everybody ("And the first names for each of you?"). Never invent, guess or reuse a name. Do not ask the caller to read out a phone number — it is confirmed in the read-back below.
+- PHONE FOR OTHERS: a group that includes the caller is booked under the CALLER's number — never ask for the friends' numbers. Booking only for someone else: use the caller's number unless they offer the other person's; if that number does not come through clearly after one try, book it under the caller's number and put "for <name>, booked by the caller" in "request" — never ask for a number more than twice.
 - TECHNICIAN: do not ask. If the caller wants a particular technician, or asks who there is, name up to five of the technicians below and let them choose, then pass that first name as the person's "technician" in check_availability and create_booking. Choosing a technician NEVER needs a call back: for a booking that is already made, call find_appointment and then change_technician.
 - REQUESTS: if they mention anything the salon should know (an allergy, a design, being late), pass it in create_booking's "request" — do not ask for it.
 - CONFIRM: read everything back in ONE sentence INCLUDING the last four digits of the phone number, and wait for a clear yes, e.g. "So Anna for a gel manicure and pedicure and Lisa for a pedicure, Saturday October 10 at 2 PM, under the number ending in 0, 1, 4, 7 — is that right?" If they give a different number (a friend's, a new one), pass it as customerPhone and read the WHOLE new number back digit by digit in groups (e.g. "6, 0, 4 — 2, 7, 9 — 8, 7, 7, 7"), never only its ending and never digits they did not say; if you did not catch all of it, ask them to ${keypadHint('en-US')}.
@@ -1427,7 +1435,7 @@ BOOKING, STEP BY STEP — one question per turn, skipping anything the caller al
     const system = `You are the warm, professional phone receptionist for "${salonName}", ${persona.identity}. ${style}
 ${groupMode ? groupScript : singleScript}
 Never book a service the caller has not named back to you, and never guess between two services — a wrong service means a chair, a technician and a price the ${persona.venueNoun} did not agree to. Do not hang up right after booking.
-If the caller asks about a booking they already have ("when is my appointment", "can I move it"), call find_appointment first and read back what it returns — never answer from memory. To move it, call reschedule_appointment; that tool applies the ${persona.venueNoun}'s notice policy and hands you the reason when it refuses, so say THAT reason rather than inventing a policy.
+If the caller asks about a booking they already have ("when is my appointment", "can I move it"), call find_appointment first and read back what it returns — never answer from memory. To change what is done at it (other services, same time), call change_services; to change the technician, change_technician — both on this call, never a call back. To move it, call reschedule_appointment (one call per appointment — moving two visits is two calls); that tool applies the ${persona.venueNoun}'s notice policy and hands you the reason when it refuses, so say THAT reason rather than inventing a policy.
 Speak times naturally ("two thirty PM on Friday"). Interpret "today/tomorrow/this Friday" in the ${persona.venueNoun}'s timezone (${tz}); its local time right now is given under THIS CALL below.
 Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours.
 When the conversation is finished — they've booked and have nothing else, or their question is answered, or they say goodbye — call end_call. ${canTransfer ? 'If the caller asks for a real person — a staff member, the owner, a manager, "someone at the ' + persona.venueNoun + '" — or is upset and wants a human, do not argue or keep them: say ONE short sentence that you are connecting them now (no goodbye), and call transfer_to_human. If they ask something you cannot answer from what you were given here (never guess), say you are not sure and offer to connect them to the front desk; if they say yes, call transfer_to_human.' : 'If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. If they ask something you cannot answer from what you were given here, never guess: say a staff member will call them back with the answer.'} Never ask for payment or card details.
@@ -1552,6 +1560,19 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         },
       },
       {
+        name: 'change_services',
+        description: 'Change WHAT is done at one of the caller\'s EXISTING appointments (from find_appointment), same day and time — e.g. "arms and legs instead of legs only". Pass the COMPLETE new list of services. Done right now on this call; never promise a call back for this. Read the new services back once and get a yes first.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            appointmentId: { type: 'string', description: 'The id from find_appointment. Never guessed, never read aloud.' },
+            services: { type: 'array', items: { type: 'string' }, description: 'The full new list of menu codes for this visit (first one is the main service).' },
+            customerPhone: { type: 'string', description: 'Optional. Only if the booking is under a number they gave on this call.' },
+          },
+          required: ['appointmentId', 'services'],
+        },
+      },
+      {
         name: 'cancel_appointment',
         description: 'Cancel one of the caller’s appointments. ONLY call this after the caller has clearly confirmed they want it cancelled — read the day and time back to them and get a yes first, because this empties the salon’s chair and cannot be undone from this call. The tool checks the salon’s notice policy and hands back the exact reason when it refuses.',
         input_schema: {
@@ -1612,7 +1633,12 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
-          max_tokens: 180, // keep replies short → faster generation + faster text-to-speech
+          // Spoken replies are kept short by the prompt; this is ROOM, not length.
+          // At 180 a turn that books two people, or moves two visits and changes
+          // their technicians, was cut off INSIDE the tool call — nothing was
+          // written and the caller heard "How else can I help you book?" after
+          // saying yes (2 Nov: 2 of 4 friend bookings, a two-visit move).
+          max_tokens: roomy ? 1500 : 700,
           // Cache the (stable) system prompt so turns 2+ of the same call are faster.
           system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }, { type: 'text', text: turnPart }],
           tools,
@@ -1638,6 +1664,12 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
       timing.uncached += Number(data.usage?.input_tokens ?? 0) || 0;
       this.meter(tenantId, data, true);
       const outBlocks = data.content || [];
+      if (data.stop_reason === 'max_tokens' && !roomy) {
+        this.logger.warn(`voice reply cut off at max_tokens (${outBlocks.map((b) => b.type).join(',')}) — asking again with more room`);
+        roomy = true;
+        loop -= 1;
+        continue;
+      }
       if (data.stop_reason === 'tool_use') {
         messages.push({ role: 'assistant', content: outBlocks });
         if (onInterim) {
@@ -1649,7 +1681,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         // one — EXCEPT anything that writes (a booking, a move, a cancel),
         // which keeps its place in line.
         const uses = outBlocks.filter((b) => b.type === 'tool_use');
-        const writes = (n: string | undefined) => /^(create_booking|reschedule_appointment|cancel_appointment|change_technician|request_callback)$/.test(String(n));
+        const writes = (n: string | undefined) => /^(create_booking|reschedule_appointment|cancel_appointment|change_technician|change_services|request_callback)$/.test(String(n));
         const outs: string[] = new Array(uses.length);
         const reads = uses.map((blk, i) => ({ blk, i })).filter(({ blk }) => !writes(blk.name));
         await Promise.all(reads.map(async ({ blk, i }) => { outs[i] = await this.runTool(tenantId, tz, callerPhone, blk.name || '', blk.input || {}, acc, ctx); }));
@@ -1688,6 +1720,13 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
       // end_call with no words after it: say goodbye — never "How else can I
       // help you book?" right before hanging up (Oakville, 30 Oct).
       if (!text && acc.wantEnd) text = goodbyeLine(acc.langSwitch || lang);
+      // "A team member will call you back" — then there MUST be a callback task
+      // for the desk. The model sometimes promised it without calling
+      // request_callback (2 Nov, Saigon Spa: four promises, no task).
+      if (text && !acc.callbackNoted && promisesCallback(text)) {
+        acc.callbackNoted = true;
+        await this.leaveCallback({ tenantId, fromNumber: callerPhone || null, callSid }, 'callback', `Caller: ${userText.slice(0, 200)} · AI: ${text.slice(0, 260)}`).catch(() => undefined);
+      }
       if (acc.transfer) {
         return { reply: text || transferLines(acc.langSwitch || lang).connecting, done: true, transfer: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure, timing };
       }
@@ -1730,6 +1769,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
       if (name === 'request_callback') {
         const summary = String(input.summary ?? '').trim().slice(0, 500) || 'Caller needs a call back';
         await this.leaveCallback({ tenantId, fromNumber: callerPhone || null, callSid: acc.callSid ?? null }, String(input.reason ?? 'callback').slice(0, 40) || 'callback', summary);
+        (acc as { callbackNoted?: boolean }).callbackNoted = true;
         return 'NOTED for the front desk. Tell the caller in ONE sentence that a team member will call them back shortly at this number, then ask if there is anything else — do not end the call.';
       }
       if (name === 'check_availability') return await this.toolCheckAvailability(tenantId, tz, input, ctx);
@@ -1873,6 +1913,23 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         acc.changed = true;
         return `SUCCESS. ${r.staffName} is now the technician for ${mine.firstName}'s ${mine.service}. Confirm it in one short sentence, then ask if there is anything else.`;
       }
+      if (name === 'change_services') {
+        const id = String(input.appointmentId || '').trim();
+        const codes = Array.isArray(input.services) ? input.services.map((x) => String(x)) : [];
+        if (!id || !codes.length) return 'Missing the appointment or the services; use find_appointment first and ask what they want instead.';
+        const mine = (await this.callerAppointments(tenantId, callerPhone, [String(input.customerPhone || '')])).find((a) => a.id === id);
+        if (!mine) return 'That appointment is not one of this caller\'s; use find_appointment and pick from what it returns.';
+        const ids: string[] = [];
+        for (const c of codes) {
+          const hit = resolveService(c, ctx.menu);
+          if (!hit) return `"${c}" is not one exact menu item. Ask which one they mean (call get_services if needed).`;
+          if (!ids.includes(hit.id)) ids.push(hit.id);
+        }
+        const r = await this.bookings.selfChangeServices({ tenantId, appointmentId: id, serviceIds: ids, by: 'hotline' });
+        if (!r.ok) return `NOT CHANGED (${r.code}): ${r.say} Tell the caller this in your own words and offer another time or technician — do not promise a call back.`;
+        acc.changed = true;
+        return `SUCCESS. ${mine.firstName}'s visit is now: ${r.services.join(' + ')}${r.endsAt ? `, finishing about ${r.endsAt}` : ''}. Confirm it in one short sentence, then ask if there is anything else.`;
+      }
       if (name === 'end_call') {
         acc.wantEnd = true;
         return 'Say ONE short, warm goodbye now: thank them for calling, use their name if you know it.';
@@ -1932,7 +1989,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
     if (newNumber && impossibleNanp(phone, dial)) {
       return `NOT BOOKED: ${spokenNumber(phone, dial)} cannot be a real phone number here — it was probably misheard. Ask for the number again and tell them they can ${keypadHint(ctx.lang ?? 'en-US')}.`;
     }
-    if (ctx.lastSaid !== undefined && !readBackOk({ said: ctx.lastSaid, phone, callerPhone: caller, dial })) {
+    if (ctx.lastSaid !== undefined && !readBackOk({ said: ctx.lastSaid, phone, callerPhone: caller, dial, typed: ctx.typed, saidBefore: ctx.saidBefore })) {
       return newNumber
         ? `NOT BOOKED YET: this is a NEW number, so read the WHOLE number back digit by digit — "${spokenNumber(phone, dial)}" — together with the name, service, day and time, and wait for a clear yes. If any digit is wrong, ask them to ${keypadHint(ctx.lang ?? 'en-US')}.`
         : `NOT BOOKED YET: read everything back in ONE sentence including "under the number ending in ${spokenLast4(phone)}" and wait for a clear yes.`;

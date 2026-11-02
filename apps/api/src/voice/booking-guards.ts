@@ -38,13 +38,39 @@ export function nationalDigits(e164: string, dial = '1'): string {
  *  - ANY OTHER number (one the caller said): every digit of it, because that
  *    is the number speech recognition gets wrong.
  */
-export function readBackOk(o: { said: string; phone: string; callerPhone: string; dial?: string }): boolean {
+export function readBackOk(o: { said: string; phone: string; callerPhone: string; dial?: string; typed?: string[]; saidBefore?: string }): boolean {
   const said = digitsOf(o.said);
   const mine = nationalDigits(o.phone, o.dial);
   const caller = nationalDigits(o.callerPhone ?? '', o.dial);
   if (!mine) return false;
   if (caller && caller.slice(-10) === mine.slice(-10)) return said.includes(mine.slice(-4));
-  return said.includes(mine.slice(-10));
+  if (said.includes(mine.slice(-10))) return true;
+  // A number typed on the keypad is exact, and one already read back in full
+  // earlier on the call was heard once: the final read-back then only needs
+  // its last four (no second digit-by-digit round — 2 Nov: "confirm quá nhiều lần").
+  const ten = mine.slice(-10);
+  const earlier = (o.typed ?? []).some((t) => digitsOf(t).endsWith(ten)) || digitsOf(o.saidBefore ?? '').includes(ten);
+  return earlier && said.includes(ten.slice(-4));
+}
+
+/**
+ * Numbers typed on the keypad this call, as the caller meant them: each
+ * piece, and pieces that came one after another joined in order (a caller
+ * who pauses mid-number sends "8" then "212504311" — 2 Nov, Oakville).
+ */
+export function typedNumbers(history: { role: string; content: unknown }[]): string[] {
+  const pieces = history.filter((h) => h.role === 'user').map((h) => /\(typed on the keypad\)\s*([0-9]+)/.exec(String(h.content ?? ''))?.[1] ?? '').filter(Boolean);
+  const out = new Set<string>();
+  for (let i = 0; i < pieces.length; i++) {
+    let run = '';
+    for (let j = i; j < Math.min(pieces.length, i + 4); j++) { run += pieces[j]; out.add(run); }
+  }
+  return [...out];
+}
+
+/** Did the assistant promise that someone will call back? Then a callback task must exist. */
+export function promisesCallback(reply: string): boolean {
+  return /(call (?:you|her|him|them|\w+) back|will (?:give you a )?call back|reach out to (?:you|her|him)|get back to (?:you|her|him)|sẽ gọi lại|gọi lại cho|liên hệ lại)/i.test(String(reply ?? ''));
 }
 
 /** "6, 0, 4 — 2, 7, 9 — 8, 7, 7, 7": how a whole number is read back (groups of 3-3-4 for North America). */

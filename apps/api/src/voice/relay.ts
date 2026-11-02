@@ -124,6 +124,8 @@ export const RELAY_STILL_MS = 6_000;
 export const RELAY_SILENCE_MS = 9_000;
 /** Keypad digits with no # are taken as finished after this pause. */
 export const RELAY_KEYPAD_PAUSE_MS = 3_000;
+/** Fewer than ten digits so far: the caller is probably still typing. */
+export const RELAY_KEYPAD_PART_PAUSE_MS = 7_000;
 
 export class RelaySession {
   private callSid = '';
@@ -174,7 +176,9 @@ export class RelaySession {
       if (this.keyTimer) clearTimeout(this.keyTimer);
       if (digit === '#') return this.flushKeys();
       if (digit !== '*') this.keys += digit;
-      this.keyTimer = setTimeout(() => { this.flushKeys().catch(() => undefined); }, RELAY_KEYPAD_PAUSE_MS);
+      // A whole number (10+ digits) goes after a short pause; a part of one waits
+      // longer — people look at a card between groups (2 Nov: "8" … "212504311").
+      this.keyTimer = setTimeout(() => { this.flushKeys().catch(() => undefined); }, this.keys.length >= 10 ? RELAY_KEYPAD_PAUSE_MS : RELAY_KEYPAD_PART_PAUSE_MS);
       (this.keyTimer as { unref?: () => void }).unref?.();
       return;
     }

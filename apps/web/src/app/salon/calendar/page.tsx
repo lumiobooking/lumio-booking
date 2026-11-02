@@ -16,6 +16,7 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useLiveTopics } from '../../../lib/useLiveEvents';
 import { useIsMobile } from '../../../lib/responsive';
 import { StaffDayView } from './StaffDayView';
+import { CallbackStrip } from './CallbackStrip';
 import { wallToInstantISO, instantToWall } from '../../../lib/datetime';
 import { todayInZone } from '../../../lib/salon-clock';
 import { TableDayView } from './TableDayView';
@@ -671,6 +672,7 @@ function Inner() {
         </div>
       )}
       {error && <div style={ui.banner}>{error}</div>}
+      {!isRestaurant && <CallbackStrip token={token} vi={vi} isMobile={isMobile} />}
       {mode !== 'day' && mode !== 'floor' && <UnassignedBanner bookings={bookings} vi={vi} onDone={load} />}
       {blocksBar}
       <Sheet open={dateOpen} onClose={() => setDateOpen(false)} title={L('Chọn ngày', 'Pick a day')}>{picker}</Sheet>
@@ -740,6 +742,7 @@ function Inner() {
       )}
       {mode !== 'floor' && mode !== 'day' && nF > 0 && <div style={{ marginBottom: 12 }}><ActiveChips f={filters} set={setFilters} staff={staffList} vi={vi} pad="8px 12px" rounded /></div>}
       {error && <div style={ui.banner}>{error}</div>}
+      {!isRestaurant && <CallbackStrip token={token} vi={vi} isMobile={isMobile} />}
       {mode !== 'day' && mode !== 'floor' && <UnassignedBanner bookings={bookings} vi={vi} onDone={load} />}
       {blocksBar}
     </>

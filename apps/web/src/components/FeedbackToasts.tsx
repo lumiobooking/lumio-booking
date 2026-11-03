@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { FEEDBACK_EVENT, NoticeKind } from '../lib/feedback';
+import { useIsMobile } from '../lib/responsive';
 
 /**
  * The little receipts — "✓ Đã lưu", "✗ lỗi", "máy chủ đang khởi động".
@@ -45,11 +46,15 @@ export function FeedbackToasts() {
     return () => window.removeEventListener(FEEDBACK_EVENT, onNotify);
   }, []);
 
+  // On a phone the salon screens have a tab bar along the bottom (64 px): a
+  // receipt sitting at 18 px covered Home / Calendar / Checkout until it faded.
+  const phone = useIsMobile();
+
   if (!toasts.length) return null;
 
   return (
     <div style={{
-      position: 'fixed', bottom: 'calc(18px + env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)',
+      position: 'fixed', bottom: phone ? 'calc(78px + env(safe-area-inset-bottom))' : 'calc(18px + env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)',
       zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, pointerEvents: 'none',
       maxWidth: 'min(92vw, 460px)',
     }}>

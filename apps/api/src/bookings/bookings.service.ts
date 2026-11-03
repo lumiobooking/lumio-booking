@@ -187,6 +187,40 @@ export class BookingsService {
   }
 
   /**
+   * "Tìm khách" in the booking drawer: the booking is moved to ANOTHER client —
+   * one on file (picked by id, this salon's only) or a new one created from a
+   * name and a phone / email (an existing client with that phone is reused).
+   * The old client's record is not touched (updateContact corrects a record;
+   * this changes whose visit it is). A ticket already checked in follows.
+   */
+  async switchCustomer(user: AuthenticatedUser, id: string, dto: { customerId?: string; firstName?: string; lastName?: string; phone?: string; email?: string }) {
+    const tenantId = this.tenantId(user);
+    const appt = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { id: true, customerId: true } });
+    if (!appt) throw new NotFoundException('Booking not found');
+    let target: { id: string; firstName: string; lastName: string | null; phone: string | null } | null = null;
+    if (dto.customerId) {
+      target = await this.prisma.customer.findFirst({ where: { id: dto.customerId, tenantId }, select: { id: true, firstName: true, lastName: true, phone: true } });
+      if (!target) throw new NotFoundException('Customer not found');
+    } else {
+      if (!this.customers) throw new BadRequestException('Not available');
+      if (!(dto.firstName ?? '').trim()) throw new BadRequestException('Enter the client\'s name.');
+      if (dto.phone?.trim() && !isValidPhoneNumber(dto.phone.trim())) throw new BadRequestException('Please enter a valid phone number (8–15 digits).');
+      const made = await this.customers.findOrCreateByContact(tenantId, dto);
+      if (!made) throw new BadRequestException('A phone number or email is needed for a new client.');
+      target = { id: made.id, firstName: made.firstName, lastName: made.lastName ?? null, phone: made.phone ?? null };
+    }
+    if (target.id === appt.customerId) return { id: appt.id, customerId: target.id, changed: false };
+    await this.prisma.appointment.updateMany({ where: { id: appt.id, tenantId }, data: { customerId: target.id } });
+    const name = [target.firstName, target.lastName ?? ''].filter(Boolean).join(' ').trim().slice(0, 80);
+    await this.prisma.walkIn.updateMany({
+      where: { tenantId, appointmentId: appt.id },
+      data: { customerName: name, customerId: target.id, ...(target.phone ? { phone: target.phone } : {}) } as never,
+    }).catch(() => undefined);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'booking.customer_switched', resourceType: 'appointment', resourceId: appt.id, metadata: { from: appt.customerId, to: target.id, created: !dto.customerId } });
+    return { id: appt.id, customerId: target.id, changed: true };
+  }
+
+  /**
    * Throws ConflictException if the staff member already has a blocking
    * appointment overlapping [start, end). Half-open intervals: existingStart <
    * newEnd AND existingEnd > newStart.

@@ -5608,8 +5608,9 @@ function Inner() {
               {queue && !queue.posts.length && !postDraft && (
                 <div style={{ ...ui.card, padding: 20, textAlign: 'center' }}>
                   <div style={{ fontSize: 14, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
-                    {T('Chưa có bài nào trong hàng đợi. Vào tab Hôm nay, bấm "Hẹn giờ đăng" trên một ý tưởng là xong.',
-                       'Nothing queued yet. Open the Today tab and press “Schedule it” on an idea.')}
+                    {/* There is no "Today" tab on this screen any more — point at the button that is here. */}
+                    {T('Chưa có bài nào trong hàng đợi. Bấm “+ Bài mới” ở trên, hoặc chọn một ngày trong plan để lên lịch bài đầu tiên.',
+                       'Nothing queued yet. Press “+ New post” above, or pick a day in the plan, to schedule the first post.')}
                   </div>
                 </div>
               )}

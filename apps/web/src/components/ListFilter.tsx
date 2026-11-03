@@ -242,25 +242,28 @@ export function DateRangeBar({ range }: { range: DateRange }) {
           </button>
         ))}
       </div>
-      <input
-        lang="en-US"
-        type="date"
-        value={from}
-        max={to || today}
-        onChange={(e) => setFrom(e.target.value)}
-        style={dateInput}
-        aria-label="From date"
-      />
-      <span style={{ color: 'var(--c64748b)' }}>→</span>
-      <input
-        lang="en-US"
-        type="date"
-        value={to}
-        min={from || undefined}
-        onChange={(e) => setTo(e.target.value)}
-        style={dateInput}
-        aria-label="To date"
-      />
+      {/* From → To stay on one line together (on a phone they used to fall onto two rows). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 250px', minWidth: 0, maxWidth: 360 }}>
+        <input
+          lang="en-US"
+          type="date"
+          value={from}
+          max={to || today}
+          onChange={(e) => setFrom(e.target.value)}
+          style={{ ...dateInput, flex: '1 1 0', minWidth: 0 }}
+          aria-label="From date"
+        />
+        <span style={{ color: 'var(--c64748b)' }}>→</span>
+        <input
+          lang="en-US"
+          type="date"
+          value={to}
+          min={from || undefined}
+          onChange={(e) => setTo(e.target.value)}
+          style={{ ...dateInput, flex: '1 1 0', minWidth: 0 }}
+          aria-label="To date"
+        />
+      </div>
     </div>
   );
 }

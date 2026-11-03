@@ -39,7 +39,7 @@ interface AuthState {
   token: string | null;
   user: AuthUser | null;
   ready: boolean; // true once we've read persisted state
-  login: (email: string, password: string) => Promise<AuthUser>;
+  login: (email: string, password: string, captchaToken?: string) => Promise<AuthUser>;
   logout: () => void;
 }
 
@@ -103,10 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  async function login(email: string, password: string): Promise<AuthUser> {
+  async function login(email: string, password: string, captchaToken?: string): Promise<AuthUser> {
     const res = await apiFetch<LoginResponse>('/auth/login', {
       method: 'POST',
-      body: { email, password },
+      body: { email, password, ...(captchaToken ? { captchaToken } : {}) },
     });
     setToken(res.accessToken);
     setUser(res.user);

@@ -191,6 +191,11 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // folded, unless the person has said otherwise. Their own choice, once made,
   // is kept on every screen size as before.
   const tablet = useIsMobile(1180);
+  // An iPad held upright (≈ 810–1024 px): a 230 px menu left the page about
+  // 590 px — narrower than a phone in landscape — so every screen squeezed and
+  // the top bar wrapped onto two lines. Upright tablets start with the menu
+  // folded (one tap on ☰ opens it); a choice the person made is still kept.
+  const portraitTablet = useIsMobile(1024);
   // The inbox folds the menu by itself: four columns of conversations need
   // the width more than a menu the person already navigated with. Opening
   // the menu again there is remembered for the visit (sessionStorage), not as
@@ -206,8 +211,8 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     let stored: string | null = null;
     try { stored = window.localStorage.getItem('lumio_nav_hidden'); } catch { /* ignore */ }
     if (stored === '1' || stored === '0') { setNavHidden(stored === '1'); return; }
-    setNavHidden(tablet && pathname.startsWith('/salon/pos'));
-  }, [tablet, pathname, inboxPage]);
+    setNavHidden(portraitTablet || (tablet && pathname.startsWith('/salon/pos')));
+  }, [tablet, portraitTablet, pathname, inboxPage]);
   const toggleNav = useCallback(() => {
     setNavHidden((v) => {
       const next = !v;
@@ -607,12 +612,15 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
 
   const brand = (
     <div style={{ padding: '4px 10px 18px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Wraps instead of spilling: with the menu's scrollbar showing (Windows,
+          an iPad with a mouse) logo + market + EN/VI were wider than the menu
+          and "VI" was cut off at its edge. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <LumioLogo size={30} />
           <MarketBadge compact />
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
           {(['en', 'vi'] as const).map((l) => (
             <button key={l} onClick={() => setLang(l)} aria-label={l === 'en' ? 'English' : 'Tiếng Việt'}
               style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
@@ -722,7 +730,10 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         </aside>
       )}
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 32px', background: 'var(--glass)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', borderBottom: '1px solid var(--c1f2937)' }}>
+        {/* Left-anchored and wrapping: right-aligned with no wrap, a top bar wider
+            than the screen (an iPad with the menu open) pushed its FIRST items —
+            the ☰ menu button itself — off the left edge, under the menu. */}
+        <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', flexWrap: 'wrap', rowGap: 8, gap: tablet ? 8 : 12, padding: tablet ? '10px 16px' : '10px 32px', background: 'var(--glass)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', borderBottom: '1px solid var(--c1f2937)' }}>
           {/* One icon, as drawn: the menu toggle used to be a labelled pill that
               read as a page action. The two things an owner does most from any
               page - book someone, open the till - sit here instead. */}
@@ -740,12 +751,12 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           <BookingSoundToggle vi={lang === 'vi'} />
           {!isSupport && (
             <a href="/salon/calendar" style={{ height: 40, padding: '0 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>{ind(lang === 'vi' ? 'Lịch hẹn mới' : 'New booking')}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>{ind(lang === 'vi' ? (tablet ? 'Lịch mới' : 'Lịch hẹn mới') : (tablet ? 'Book' : 'New booking'))}
             </a>
           )}
           {!isSupport && posOk && (
             <a href="/salon/pos" style={{ height: 40, padding: '0 14px', borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></svg>{lang === 'vi' ? 'Mở quầy thu ngân' : 'Open register'}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></svg>{lang === 'vi' ? (tablet ? 'Thu ngân' : 'Mở quầy thu ngân') : (tablet ? 'Register' : 'Open register')}
             </a>
           )}
           {tryNew}
@@ -753,7 +764,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           {inboxAlerts(false)}
           <NotificationBell />
         </header>
-        <main style={{ padding: '22px 32px 40px', color: 'var(--ce2e8f0)', minWidth: 0 }}>{supportBanner}{gated}</main>
+        <main style={{ padding: tablet ? '18px 18px 40px' : '22px 32px 40px', color: 'var(--ce2e8f0)', minWidth: 0 }}>{supportBanner}{gated}</main>
       </div>
     </div>
   );

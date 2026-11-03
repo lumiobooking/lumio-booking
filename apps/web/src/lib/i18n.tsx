@@ -216,7 +216,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   // … and the screens' names on their tab strip.
   'navt.overview': { en: 'Overview', vi: 'Tổng quan' },
   'navt.calendar': { en: 'Calendar', vi: 'Lịch' },
-  'navt.bookingList': { en: 'List', vi: 'Danh sách' },
+  // Not "List": the Calendar's own view switch has a "List" right under this strip.
+  'navt.bookingList': { en: 'All bookings', vi: 'Tất cả lịch hẹn' },
   'navt.waitlist': { en: 'Waitlist', vi: 'Chờ chỗ trống' },
   'navt.bills': { en: 'Sales', vi: 'Bill' },
   'navt.feedback': { en: 'After-visit feedback', vi: 'Góp ý sau lượt' },

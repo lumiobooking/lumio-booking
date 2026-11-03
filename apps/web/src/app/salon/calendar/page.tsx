@@ -34,6 +34,7 @@ import { blockLabel, onDay, type CalBlock } from '../../../lib/cal-blocks';
 import type { OpenHours } from '../../../lib/cal-range';
 import { ClientFormsPanel } from '../../../components/forms/ClientFormsPanel';
 import { VisitContactEditor } from '../../../components/VisitContactEditor';
+import { CustomerNoteBox, SwitchCustomer } from '../../../components/BookingCustomerTools';
 import { notify } from '../../../lib/feedback';
 import { pickerStaff } from '../../../lib/bookable-staff';
 
@@ -967,7 +968,10 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
   onReload?: () => void;
 }) {
   const { lang } = useLang();
+  const { token } = useAuth();
   const [editing, setEditing] = useState(false);
+  // "Tìm khách": move this booking to another client on file, or to a new one.
+  const [switching, setSwitching] = useState(false);
   const t = (k: string) => tr(k, lang);
   const locale = uiLocale(); // dates always render US month/day/year
   const start = new Date(b.startTime);
@@ -1077,11 +1081,24 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
         <div style={{ borderTop: '1px solid var(--c1f2937)', margin: '16px 0 12px' }} />
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
           <span style={{ fontSize: 13, color: 'var(--c94a3b8)', fontWeight: 600 }}>{t('cal.customer')}</span>
-          {b.customer && (
-            <button type="button" onClick={() => setEditing((x) => !x)}
-              style={{ background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: 8, color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, padding: '3px 8px', cursor: 'pointer' }}>✎ {tr('wi.editInfo', lang)}</button>
-          )}
+          <span style={{ display: 'inline-flex', gap: 6 }}>
+            <button type="button" onClick={() => { setSwitching((x) => !x); setEditing(false); }} aria-expanded={switching}
+              style={{ background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: 8, color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, padding: '3px 8px', cursor: 'pointer' }}>🔍 {lang === 'vi' ? 'Tìm / đổi khách' : 'Find / change'}</button>
+            {b.customer && (
+              <button type="button" onClick={() => { setEditing((x) => !x); setSwitching(false); }}
+                style={{ background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: 8, color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, padding: '3px 8px', cursor: 'pointer' }}>✎ {tr('wi.editInfo', lang)}</button>
+            )}
+          </span>
         </div>
+        {switching && token && (
+          <SwitchCustomer token={token} bookingId={b.id} vi={lang === 'vi'}
+            onCancel={() => setSwitching(false)}
+            onDone={(r) => {
+              setSwitching(false);
+              if (r.changed) window.setTimeout(() => notify('success', lang === 'vi' ? 'Đã chuyển lịch sang khách mới chọn.' : 'Booking moved to the chosen client.'), 0);
+              onReload?.();
+            }} />
+        )}
         {editing && b.customer && (
           <VisitContactEditor kind="booking" id={b.id}
             initial={{ firstName: b.customer.firstName, lastName: b.customer.lastName, phone: b.customer.phone, email: b.customer.email }}
@@ -1096,6 +1113,8 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
         <DetailRow label={t('cal.dName')} value={fullName} />
         {b.customer?.phone && <DetailRow label={t('cal.dPhone')} value={b.customer.phone} />}
         {b.customer?.email && <DetailRow label={t('cal.dEmail')} value={b.customer.email} />}
+        {/* Her standing note (lash map, colour, allergies) — on her record, seen on every visit. */}
+        {b.customer?.id && token && <CustomerNoteBox token={token} customerId={b.customer.id} vi={lang === 'vi'} />}
         {/* Who the customer ASKED for — the hotline and the chat bot write it,
             and it is the one thing the desk must know before moving a booking. */}
         {b.preferredStaff && b.preferredStaff.id !== b.assignedStaff?.id && (

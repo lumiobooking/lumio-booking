@@ -115,7 +115,7 @@ export function PeriodFilter({ state, vi, showCompare = false }: { state: Period
         )}
       </div>
       {showCompare && (
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+        <label style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--c94a3b8)', maxWidth: '100%' }}>
           <select value={state.compare} onChange={(e) => state.setCompare(e.target.value as CompareKind)}
             style={{ height: 38, padding: '0 10px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c111827)', color: 'var(--ce2e8f0)', fontSize: 13, fontFamily: 'inherit' }}>
             <option value="previous">{L('So với kỳ trước', 'vs. previous period')}</option>

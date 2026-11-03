@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Ip, Post } from '@nestjs/common';
+import { verifyLoginCaptcha } from '../common/security/turnstile';
 import { AuthService } from './auth.service';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { LoginDto } from './dto/login.dto';
@@ -30,7 +31,11 @@ export class AuthController {
   @RateLimit(10, 60_000)
   @Post('login')
   @HttpCode(200)
-  login(@Body() dto: LoginDto) {
+  async login(@Body() dto: LoginDto, @Ip() ip?: string) {
+    // "Tôi không phải robot": refused before the password is even looked at.
+    if (!(await verifyLoginCaptcha(dto.captchaToken, ip))) {
+      throw new BadRequestException('Please confirm you are not a robot, then sign in again.');
+    }
     return this.authService.login(dto.email, dto.password);
   }
 

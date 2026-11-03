@@ -40,6 +40,15 @@ class BookingContactDto {
   @IsOptional() @IsString() @MaxLength(10) birthDate?: string;
 }
 
+/** Who the booking is for: a customer on file (customerId), or a new one by name + phone / email. */
+class BookingCustomerDto {
+  @IsOptional() @IsString() @MaxLength(64) customerId?: string;
+  @IsOptional() @IsString() @MaxLength(80) firstName?: string;
+  @IsOptional() @IsString() @MaxLength(80) lastName?: string;
+  @IsOptional() @IsString() @MaxLength(40) phone?: string;
+  @IsOptional() @IsString() @MaxLength(160) email?: string;
+}
+
 class AskDeskDto {
   @IsOptional() @IsString() @MaxLength(200) message?: string;
 }
@@ -277,6 +286,14 @@ export class BookingsController {
   @Patch(':id/contact')
   contact(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: BookingContactDto) {
     return this.bookings.updateContact(user, id, dto);
+  }
+
+  // "Tìm khách": the booking belongs to someone else on file, or to a new client.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Patch(':id/customer')
+  switchCustomer(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: BookingCustomerDto) {
+    return this.bookings.switchCustomer(user, id, dto);
   }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)

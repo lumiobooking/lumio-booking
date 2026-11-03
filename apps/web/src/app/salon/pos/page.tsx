@@ -10,7 +10,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth, useCan } from '../../../lib/auth';
 import { apiFetch, ApiError } from '../../../lib/api';
 import { useLiveTopics } from '../../../lib/useLiveEvents';
-import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, syncQueue } from '../../../lib/offlinePos';
+import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, syncQueue, setOfflineScope } from '../../../lib/offlinePos';
 import { ui, formatPrice, toMinorUnits, fromMinorUnits } from '../../../lib/ui';
 import { useHorizontalScroll } from '../../../lib/useHorizontalScroll';
 import { currencySymbolFor } from '../../../lib/money';
@@ -141,6 +141,8 @@ function TillSwitch() {
 
 function Register() {
   const { token, user } = useAuth();
+  // The offline menu and the queue of offline sales belong to THIS salon only (lib/offlinePos).
+  setOfflineScope(user?.tenantId ?? null);
   // A discount TYPED at the till is the owner's to allow, per person.
   const canDiscount = useCan()('pos.discount');
   const { lang } = useLang();
@@ -500,7 +502,9 @@ function Register() {
     } catch (err) {
       // Offline (or server unreachable): fall back to the cached catalog so staff
       // can keep checking out. Only show a hard error if there's no cache yet.
-      const cached = readCachedCatalog<CatalogCache>();
+      // A refusal from the server (no salon, no right) is not "offline".
+      const refused = err instanceof ApiError && err.status >= 400 && err.status < 500;
+      const cached = refused ? null : readCachedCatalog<CatalogCache>();
       if (cached?.data) {
         applyCatalog(cached.data);
         setOnline(false);

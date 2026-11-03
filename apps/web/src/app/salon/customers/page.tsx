@@ -205,7 +205,7 @@ function Inner() {
             placeholder={t('cu.searchPh')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            style={{ ...ui.input, maxWidth: 280 }}
+            style={{ ...ui.input, maxWidth: isMobile ? 'none' : 280, ...(isMobile ? { flex: '1 1 100%' } : {}) }}
           />
         </div>
       </div>
@@ -255,16 +255,17 @@ function Inner() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>🎂 {t('cu.birthdayIn')}</span>
-          <select value={bMonth} onChange={(e) => setBMonth(parseInt(e.target.value, 10))}
-            style={{ ...ui.input, padding: '7px 10px', maxWidth: 150 }}>
-            <option value={0}>{t('cu.anyMonth')}</option>
+        {/* Phone: birthday month and sort side by side, full width — they used to stack one per line above the list. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', ...(isMobile ? { width: '100%' } : {}) }}>
+          {!isMobile && <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>🎂 {t('cu.birthdayIn')}</span>}
+          <select value={bMonth} onChange={(e) => setBMonth(parseInt(e.target.value, 10))} aria-label={t('cu.birthdayIn')}
+            style={{ ...ui.input, padding: '7px 10px', maxWidth: isMobile ? 'none' : 150, ...(isMobile ? { flex: '1 1 0', minWidth: 0 } : {}) }}>
+            <option value={0}>{isMobile ? `🎂 ${t('cu.anyMonth')}` : t('cu.anyMonth')}</option>
             {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
           </select>
           {isMobile && (
             <select value={`${sort.key}:${sort.dir}`} onChange={(e) => { const [k, d] = e.target.value.split(':'); setSort({ key: k as SortKey, dir: d as 'asc' | 'desc' }); }}
-              style={{ ...ui.input, padding: '7px 10px', maxWidth: 190 }}>
+              style={{ ...ui.input, padding: '7px 10px', maxWidth: 'none', flex: '1 1 0', minWidth: 0 }}>
               <option value="since:desc">{t('cu.sortNewest')}</option>
               <option value="name:asc">{t('cu.sortName')}</option>
               <option value="bookings:desc">{t('cu.sortBookings')}</option>

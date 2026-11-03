@@ -37,3 +37,36 @@ export async function verifyCaptcha(token: string | undefined, ip?: string): Pro
 export function captchaEnabled(): boolean {
   return !!process.env.TURNSTILE_SECRET;
 }
+
+/**
+ * The sign-in page's "I am not a robot" (Cloudflare Turnstile), on its OWN
+ * secret: TURNSTILE_SECRET above also gates the public booking forms, which do
+ * not draw the widget yet — turning that on for the login would break every
+ * salon's booking page. LOGIN_TURNSTILE_SECRET on the API service plus
+ * NEXT_PUBLIC_TURNSTILE_SITE_KEY on the web service switch it on; with no
+ * secret the login works as before.
+ */
+export async function verifyLoginCaptcha(token: string | undefined, ip?: string, fetchImpl?: (url: string, init: Record<string, unknown>) => Promise<{ json: () => Promise<unknown> }>): Promise<boolean> {
+  const secret = process.env.LOGIN_TURNSTILE_SECRET;
+  if (!secret) return true;
+  if (!token) return false;
+  const fetchFn = fetchImpl ?? (globalThis as { fetch?: (url: string, init: Record<string, unknown>) => Promise<{ json: () => Promise<unknown> }> }).fetch;
+  if (!fetchFn) return true;
+  try {
+    const params = new URLSearchParams({ secret, response: token });
+    if (ip) params.set('remoteip', ip);
+    const res = await fetchFn('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = (await res.json()) as { success?: boolean };
+    return data?.success === true;
+  } catch {
+    return false;
+  }
+}
+
+export function loginCaptchaEnabled(): boolean {
+  return !!process.env.LOGIN_TURNSTILE_SECRET;
+}

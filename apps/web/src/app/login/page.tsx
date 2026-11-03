@@ -135,8 +135,13 @@ export default function LoginPage() {
           <span aria-hidden="true" style={{ position: 'absolute', right: -40, top: -40, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,0.12)' }} />
           <span aria-hidden="true" style={{ position: 'absolute', right: 40, bottom: -50, width: 110, height: 110, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 10px', borderRadius: 14, background: 'rgba(255,255,255,0.95)' }}>
-              <LumioLogo size={30} sub="Booking" color="#0f172a" />
+            {/* "LumioBooking" on one line: Lumio in ink, Booking in the brand gradient. */}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px 7px 10px', borderRadius: 14, background: 'rgba(255,255,255,0.96)' }}>
+              <LumioLogo size={28} wordmark={false} />
+              <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.3, lineHeight: 1, whiteSpace: 'nowrap' }}>
+                <span style={{ color: '#0f172a' }}>Lumio</span>
+                <span style={{ background: 'linear-gradient(90deg, #4f46e5, #7c3aed 50%, #db2777)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', WebkitTextFillColor: 'transparent' }}>Booking</span>
+              </span>
             </span>
             <span role="group" aria-label={L('Ngôn ngữ', 'Language')} style={{ display: 'inline-flex', borderRadius: 999, background: 'rgba(255,255,255,0.18)', padding: 3 }}>
               {(['vi', 'en'] as const).map((l) => (

@@ -7,6 +7,7 @@ import { SalonShell } from '../../../../components/SalonShell';
 import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
+import { fromMinorUnits, priceInputStep, toMinorUnits } from '../../../../lib/money';
 import { useLang } from '../../../../lib/i18n';
 import { uiLocale } from '../../../../lib/datetime';
 import { ind } from '../../../../lib/ui-industry';
@@ -284,7 +285,7 @@ function Inner() {
     try {
       const changed = CHANNELS.map((ch) => spendDraft[ch]).filter((r) => r && (r.amountCents > 0 || r.reach || r.clicks || r.leads || r.id));
       for (const r of changed) {
-        await apiFetch('/marketing/spend', { method: 'POST', token, body: { channel: r.channel, periodMonth: month, amountCents: r.amountCents, reach: r.reach ?? null, clicks: r.clicks ?? null, leads: r.leads ?? null } });
+        await apiFetch('/marketing/spend', { method: 'POST', token, body: { channel: r.channel, periodMonth: month, amountCents: r.amountCents, currency, reach: r.reach ?? null, clicks: r.clicks ?? null, leads: r.leads ?? null } });
       }
       setMsg(T('Đã lưu chi phí.', 'Spend saved.')); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); }
@@ -358,7 +359,7 @@ function Inner() {
         <Kpi label={T('Tổng chi marketing', 'Total spend')} value={money(b?.totalSpendCents ?? 0)} />
         <Kpi label={T('Doanh thu (từ lịch)', 'Revenue (booked)')} value={money(data?.outcome.totals.revenueCents ?? 0)} accent="#22c55e" />
         <Kpi label={T('Chi phí / khách mới', 'Cost / new customer')} value={showBlended && b?.costPerNewCustomerCents != null ? money(b.costPerNewCustomerCents) : '—'} hint={showBlended ? undefined : T('cần nhập chi phí', 'enter spend')} />
-        <Kpi label={T('Mỗi $1 chi → doanh thu', 'Revenue per $1')} value={showBlended && b?.revenuePerSpend != null ? `$${b.revenuePerSpend}` : '—'} accent="#22c55e" hint={showBlended ? undefined : T('cần nhập chi phí', 'enter spend')} />
+        <Kpi label={T('Doanh thu / chi phí (ROAS)', 'Revenue ÷ spend (ROAS)')} value={showBlended && b?.revenuePerSpend != null ? `${b.revenuePerSpend}×` : '—'} accent="#22c55e" hint={showBlended ? undefined : T('cần nhập chi phí', 'enter spend')} />
       </div>
       <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-6px 0 16px', lineHeight: 1.5 }}>
         {T('Chỉ số tổng hợp (blended): tổng chi ÷ kết quả thật. Chưa tách được "quảng cáo nào ra booking nào" — phần đó cần gắn UTM (Giai đoạn 2).',
@@ -505,7 +506,7 @@ function Inner() {
                 return (
                   <tr key={ch} style={{ borderTop: '1px solid var(--line)' }}>
                     <td style={td}>{CH_LABEL[ch]}</td>
-                    <td style={td}><input type="number" min={0} step="0.01" value={r.amountCents ? r.amountCents / 100 : ''} placeholder="0" onChange={(e) => set({ amountCents: Math.round(parseFloat(e.target.value || '0') * 100) })} style={numInput} /></td>
+                    <td style={td}><input type="number" min={0} step={priceInputStep(currency)} value={r.amountCents ? fromMinorUnits(r.amountCents, currency) : ''} placeholder="0" onChange={(e) => set({ amountCents: toMinorUnits(e.target.value || '0', currency) })} style={numInput} /></td>
                     {showMetrics && <>
                     <td style={td}><input type="number" min={0} value={r.reach ?? ''} placeholder="—" onChange={(e) => set({ reach: e.target.value ? parseInt(e.target.value, 10) : null })} style={numInput} /></td>
                     <td style={td}><input type="number" min={0} value={r.clicks ?? ''} placeholder="—" onChange={(e) => set({ clicks: e.target.value ? parseInt(e.target.value, 10) : null })} style={numInput} /></td>
@@ -1978,7 +1979,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
       {b && b.revenuePerSpend != null && (
         <div style={{ background: 'var(--c052e16)', border: '1px solid #059669', borderRadius: 12, padding: '12px 16px' }}>
           <div style={{ fontSize: 12, color: 'var(--c6ee7b7)', fontWeight: 600, marginBottom: 3 }}>③ {T('HIỆU QUẢ', 'EFFECTIVENESS')}</div>
-          <div style={{ fontSize: 15, color: 'var(--cd1fae5)' }}>{T('Mỗi', 'Every')} <b>$1</b> {T('chi ra', 'spent')} → <b>${b.revenuePerSpend}</b> {T('doanh thu', 'revenue')}{b.costPerNewCustomerCents != null && <> · {T('chi phí mỗi khách mới', 'cost / new customer')}: <b>{money(b.costPerNewCustomerCents)}</b></>}</div>
+          <div style={{ fontSize: 15, color: 'var(--cd1fae5)' }}>{T('Doanh thu gấp', 'Revenue was')} <b>{b.revenuePerSpend}×</b> {T('chi phí marketing', 'the marketing spend')}{b.costPerNewCustomerCents != null && <> · {T('chi phí mỗi khách mới', 'cost / new customer')}: <b>{money(b.costPerNewCustomerCents)}</b></>}</div>
         </div>
       )}
 

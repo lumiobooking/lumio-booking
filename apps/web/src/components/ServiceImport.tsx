@@ -5,7 +5,7 @@ import { apiFetch } from '../lib/api';
 import { formatPrice } from '../lib/money';
 import { ui } from '../lib/ui';
 import { useIsMobile } from '../lib/responsive';
-import { checkRows, parseMenuText, rowsToItems, templateCsv, templateRows, type CheckedRow } from '../lib/service-import';
+import { checkRows, parseMenuText, rowsToItems, templateCsv, templateRows, type CheckedRow, type ExistingSvc } from '../lib/service-import';
 import { readXlsx, writeXlsx } from '../lib/xlsx-lite';
 import { ind } from '../lib/ui-industry';
 
@@ -31,11 +31,13 @@ function download(name: string, data: BlobPart, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDone }: {
+export function ServiceImport({ token, currency = 'USD', vi, existingNames, existing, onDone }: {
   token: string;
   currency?: string;
   vi: boolean;
   existingNames: string[];
+  /** The menu as it is (name, category, price, length) — lets the preview say what an update changes. */
+  existing?: ExistingSvc[];
   onDone: () => void;
 }) {
   const L = (v: string, e: string) => ind(vi ? v : e);
@@ -56,6 +58,8 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
     const fresh = r.filter((x) => x.status === 'new');
     return {
       fresh: fresh.length,
+      update: r.filter((x) => x.status === 'update').length,
+      same: r.filter((x) => x.status === 'same').length,
       addons: fresh.filter((x) => x.kind === 'addon').length,
       skip: r.filter((x) => x.status === 'duplicate').length,
       bad: r.filter((x) => x.status === 'error').length,
@@ -67,7 +71,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
     setResult(null); setReadErr(null);
     if (!parsed.length) { setRows(null); setSource(null); setReadErr(L('Không tìm thấy dịch vụ nào trong file. Dòng đầu nên là tiêu đề cột như file mẫu.', 'No services found. The first row should be the column headings, as in the template.')); return; }
     if (parsed.length > MAX_ROWS) { setRows(null); setSource(null); setReadErr(L(`File có ${parsed.length} dòng — tối đa ${MAX_ROWS} dòng mỗi lần. Hãy chia làm nhiều file.`, `The file has ${parsed.length} rows — up to ${MAX_ROWS} per import. Split it into several files.`)); return; }
-    setRows(checkRows(parsed, existingNames, vi));
+    setRows(checkRows(parsed, existing ?? existingNames, vi, (m) => formatPrice(m, currency)));
     setSource(label);
   }
 
@@ -103,9 +107,10 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
   }
 
   async function run() {
-    const items = (rows ?? []).filter((r) => r.status === 'new').map((r) => ({
+    // New rows and changed ones: the server updates what the salon already has instead of copying it.
+    const items = (rows ?? []).filter((r) => r.status === 'new' || r.status === 'update').map((r) => ({
       kind: r.kind, category: r.category, name: r.name, priceCents: r.priceCents, priceFrom: r.priceFrom,
-      durationMinutes: r.durationMinutes,
+      ...(r.status === 'new' || r.minutesSet ? { durationMinutes: r.durationMinutes } : {}),
       ...(r.turnValue !== undefined ? { turnValue: r.turnValue } : {}),
       ...(r.walkInOnly ? { walkInOnly: true } : {}),
       ...(r.askAtBooking ? { askAtBooking: true } : {}),
@@ -115,12 +120,12 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
     if (!items.length) return;
     setBusy(true); setResult(null);
     try {
-      const r = await apiFetch<{ createdCategories: number; createdServices: number; createdAddons?: number; skipped: number }>(
+      const r = await apiFetch<{ createdCategories: number; createdServices: number; updatedServices?: number; createdAddons?: number; skipped: number }>(
         '/services/import', { method: 'POST', token, body: { items } },
       );
       setResult({ ok: true, text: L(
-        `✓ Đã thêm ${r.createdServices} dịch vụ, ${r.createdCategories} danh mục mới${r.createdAddons ? `, ${r.createdAddons} tuỳ chọn thêm` : ''}${r.skipped ? ` (${r.skipped} bỏ qua)` : ''}.`,
-        `✓ Added ${r.createdServices} services and ${r.createdCategories} new categories${r.createdAddons ? `, ${r.createdAddons} add-ons` : ''}${r.skipped ? ` (${r.skipped} skipped)` : ''}.`,
+        `✓ Đã thêm ${r.createdServices} dịch vụ${r.updatedServices ? `, cập nhật ${r.updatedServices} dịch vụ đã có` : ''}, ${r.createdCategories} danh mục mới${r.createdAddons ? `, ${r.createdAddons} tuỳ chọn thêm` : ''}${r.skipped ? ` (${r.skipped} bỏ qua)` : ''}.`,
+        `✓ Added ${r.createdServices} services${r.updatedServices ? `, updated ${r.updatedServices} existing` : ''} and ${r.createdCategories} new categories${r.createdAddons ? `, ${r.createdAddons} add-ons` : ''}${r.skipped ? ` (${r.skipped} skipped)` : ''}.`,
       ) });
       setTimeout(onDone, 1200);
     } catch (e) {
@@ -131,7 +136,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
   const stamp = new Date().toISOString().slice(0, 10);
   const tpl = () => templateRows(vi, currency);
   const cols = tpl()[0];
-  const shown = (rows ?? []).filter((r) => !onlyIssues || r.status !== 'new');
+  const shown = (rows ?? []).filter((r) => !onlyIssues || (r.status !== 'new' && r.status !== 'update' && r.status !== 'same'));
 
   const step = (n: number, title: string, sub: string) => (
     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
@@ -230,6 +235,8 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
             {pill(`✓ ${counts.fresh} ${L('mới', 'new')}`, 'var(--ink-good)', '#166534')}
             {counts.cats > 0 && pill(`${counts.cats} ${L('danh mục', 'categories')}`, 'var(--c94a3b8)', 'var(--c334155)')}
             {counts.addons > 0 && pill(`+ ${counts.addons} ${L('tuỳ chọn thêm', 'add-ons')}`, 'var(--ink-sky)', 'var(--c334155)')}
+            {counts.update > 0 && pill(`↻ ${counts.update} ${L('cập nhật', 'to update')}`, 'var(--ink-link)', 'var(--c334155)')}
+            {counts.same > 0 && pill(`= ${counts.same} ${L('đã có, giữ nguyên', 'unchanged')}`, 'var(--c94a3b8)', 'var(--c334155)')}
             {counts.skip > 0 && pill(`↷ ${counts.skip} ${L('bỏ qua', 'skipped')}`, 'var(--ink-warn)', '#92400e')}
             {counts.bad > 0 && pill(`✗ ${counts.bad} ${L('lỗi', 'errors')}`, 'var(--ink-bad)', '#7f1d1d')}
             {(counts.skip > 0 || counts.bad > 0) && (
@@ -255,7 +262,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
                     <td style={{ padding: '7px 10px', fontWeight: 600 }}>{r.name || <i style={{ color: 'var(--c64748b)' }}>{L('(trống)', '(blank)')}</i>}{r.kind === 'addon' && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-sky)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px' }}>{L('tuỳ chọn', 'add-on')}{r.askAtBooking ? ` · ${L('hỏi khi đặt', 'asked')}` : ''}{!r.category ? ` · ${L('cả menu', 'all')}` : ''}</span>}{r.walkInOnly && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-warn)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px' }}>walk-in</span>}{r.kind === 'service' && r.turnValue !== undefined && r.turnValue !== 1 && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--c94a3b8)' }}>{r.turnValue} {L('tua', 'turn')}</span>}</td>
                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{r.status === 'error' && !r.priceCents ? '—' : `${r.priceFrom ? L('từ ', 'from ') : ''}${formatPrice(r.priceCents, currency)}`}</td>
                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: 'var(--c94a3b8)' }}>{r.durationMinutes} {L('phút', 'min')}</td>
-                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 600, color: r.status === 'new' ? 'var(--ink-good)' : r.status === 'duplicate' ? 'var(--ink-warn)' : 'var(--ink-bad)' }}>
+                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 600, color: r.status === 'new' ? 'var(--ink-good)' : r.status === 'update' ? 'var(--ink-link)' : r.status === 'same' ? 'var(--c94a3b8)' : r.status === 'duplicate' ? 'var(--ink-warn)' : 'var(--ink-bad)' }}>
                       {r.status === 'new' ? `✓ ${L('Thêm mới', 'Will add')}` : r.note}
                     </td>
                   </tr>
@@ -264,8 +271,8 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
             </table>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
-            <button type="button" onClick={run} disabled={busy || counts.fresh === 0} style={{ ...ui.primaryBtn, opacity: busy || counts.fresh === 0 ? 0.55 : 1 }}>
-              {busy ? L('Đang nhập…', 'Importing…') : L(`Nhập ${counts.fresh} dòng`, `Import ${counts.fresh} row${counts.fresh === 1 ? '' : 's'}`)}
+            <button type="button" onClick={run} disabled={busy || counts.fresh + counts.update === 0} style={{ ...ui.primaryBtn, opacity: busy || counts.fresh + counts.update === 0 ? 0.55 : 1 }}>
+              {busy ? L('Đang nhập…', 'Importing…') : L(`Nhập ${counts.fresh + counts.update} dòng`, `Import ${counts.fresh + counts.update} row${counts.fresh + counts.update === 1 ? '' : 's'}`)}
             </button>
             <button type="button" onClick={clear} style={ghostBtn}>{L('Chọn file khác', 'Choose another file')}</button>
             {counts.bad > 0 && !result && (

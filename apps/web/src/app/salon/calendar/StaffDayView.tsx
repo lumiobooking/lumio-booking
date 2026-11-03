@@ -561,8 +561,12 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
       rows.push({ id, name: arr[0].assignedStaff?.firstName ?? '—', avatar: null, hue: PHONE_AVATAR[rows.length % PHONE_AVATAR.length], shift: null, hasHours: false, items: arr, live: arr.filter((b) => !isGone(b.status)) });
     }
     // Off today = has a schedule, nothing on this weekday, and no booking.
-    const onShift = rows.filter((r) => !(r.hasHours && !r.shift && r.live.length === 0));
-    const offToday = rows.filter((r) => r.hasHours && !r.shift && r.live.length === 0);
+    // They keep their column (hatched, "Nghỉ hôm nay") like on a computer:
+    // the desk sees the whole team, and can hold-and-drag to open hours for a
+    // technician who comes in on her day off. Before, they dropped out of the
+    // grid to a line far below it, so the phone looked like it was missing staff.
+    const isOff = (r: Row) => r.hasHours && !r.shift && r.live.length === 0;
+    const onShift = rows.filter((r) => !isOff(r));
 
     // Shared hour axis: the salon's day (9–19 by default) stretched to cover
     // every shift and every booking.
@@ -581,6 +585,12 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
     // What each technician is doing right now (only meaningful today).
     const statusLine = (r: Row): { text: string; tone: 'muted' | 'good' | 'warn' } => {
       const n = r.live.length;
+      if (isOff(r)) return { text: vi ? 'Nghỉ hôm nay' : 'Off today', tone: 'muted' };
+      // Time off / a block over her whole shift: off, not "free all day".
+      if (n === 0) {
+        const from = r.shift?.s ?? aS, to = r.shift?.e ?? aE;
+        if (bandsFor(blocks, String(r.id), dayKeyTop).some((x) => x.s <= from && x.e >= to)) return { text: vi ? 'Nghỉ hôm nay' : 'Off today', tone: 'muted' };
+      }
       if (isToday && nowMin >= 0) {
         const cur = r.live.find((b) => { const { s, e } = span(b); return s <= nowMin && nowMin < e && b.status !== 'COMPLETED'; });
         if (cur) {
@@ -630,7 +640,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                 <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{workingNow} {vi ? 'đang làm' : 'busy'} · <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{freeNow} {vi ? 'trống' : 'free'}</span></span>
               )}
             </span>
-            {onShift.length > 0 && (
+            {rows.length > 0 && (
               <ViewMenu vi={vi} colorMode={colorMode} setColorMode={setColorMode} goneCount={goneCount} showGone={showGone} toggleGone={toggleGone}
                 onArrange={canArrange && bookable.length > 1 ? () => setSheet(true) : undefined} />
             )}
@@ -657,7 +667,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
               </div>
             </div>
           )}
-          {onShift.length > 0 && (() => {
+          {rows.length > 0 && (() => {
             // Board 2 of "Lịch — thẻ đủ thông tin": every technician a column,
             // two on screen, swiped sideways; each block says who, what,
             // which number and from when to when. Tap a name for that
@@ -686,7 +696,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
                         {hours.slice(0, -1).map((hh) => <span key={hh} style={{ position: 'absolute', top: gy(hh) + 5, left: 6, fontSize: 11, fontWeight: 600, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{hm(hh)}</span>)}
                       </div>
                     </div>
-                    {onShift.map((r) => {
+                    {rows.map((r) => {
                       const lanes = place(r.live);
                       return (
                         <div key={r.id} style={{ width: COLW, flexShrink: 0, flexGrow: 1, borderRight: '1px solid var(--c1f2937)', scrollSnapAlign: 'start' }}>
@@ -771,12 +781,6 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
               </div>
             );
           })()}
-          {offToday.map((r) => (
-            <button key={r.id} type="button" onClick={() => setFocus(r.id)} style={{ boxSizing: 'border-box', padding: '10px 12px', borderRadius: 14, border: '1px dashed var(--c243044)', background: 'transparent', display: 'flex', alignItems: 'center', gap: 10, opacity: 0.7, width: '100%', textAlign: 'left', cursor: 'pointer' }}>
-              <span style={{ width: 36, height: 36, flexShrink: 0, borderRadius: '50%', background: 'var(--c1e293b)', color: 'var(--c94a3b8)', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{r.name.charAt(0).toUpperCase()}</span>
-              <span style={{ flex: 1, fontSize: 14, color: 'var(--c94a3b8)' }}>{r.name} · {vi ? 'nghỉ hôm nay' : 'off today'}</span>
-            </button>
-          ))}
           {sheetEl}
           {rangeUi}
         </div>
@@ -784,7 +788,7 @@ export function StaffDayView({ date, items: allItems, tz, isMobile, onOpen, toda
     }
 
     // ── Board 4: one technician, full-width column ──
-    const order = [...onShift, ...offToday];
+    const order = rows; // the same order as the columns
     const idx = order.findIndex((r) => r.id === focusRow.id);
     const r = focusRow;
     const rev = r.live.reduce((s, b) => s + b.priceCents, 0);

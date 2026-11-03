@@ -21,6 +21,8 @@ export interface ImportRow {
   priceCents: number;
   priceFrom: boolean;
   durationMinutes: number;
+  /** The file gave a length (a blank cell reads as 30 for a new service, but never overwrites an existing one). */
+  minutesSet?: boolean;
   description?: string;
   imageUrl?: string;
   /** Walk-in turns the service is worth (1, ½, 0…); omitted = the default (1). */
@@ -31,7 +33,35 @@ export interface ImportRow {
   askAtBooking?: boolean;
 }
 
-export type RowStatus = 'new' | 'duplicate' | 'error';
+/** new = added · update = already on the menu, the file changes it · same = already on the menu exactly so · duplicate = repeated in the file · error. */
+export type RowStatus = 'new' | 'update' | 'same' | 'duplicate' | 'error';
+
+/** A service the salon already has, as the preview compares it (a bare name works too). */
+export interface ExistingSvc { name: string; category?: string | null; priceCents?: number; durationMinutes?: number; priceFrom?: boolean }
+
+/** "Bio Gel – Full Set " → "bio gel full set" — the same loose name the server matches on (api services/service-match.ts). */
+export function serviceKey(s: string | null | undefined): string {
+  return String(s ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/** Same rules as the server: same name in the same category; no category → an unambiguous name; a category new to an uncategorised service → that one. */
+export function matchExisting<T extends ExistingSvc>(existing: T[], row: { name: string; category?: string | null }): T | null {
+  const name = serviceKey(row.name);
+  if (!name) return null;
+  const cat = serviceKey(row.category);
+  const same = existing.filter((x) => serviceKey(x.name) === name);
+  if (!same.length) return null;
+  const inCat = same.filter((x) => serviceKey(x.category) === cat);
+  if (inCat.length) return inCat[0];
+  if (!cat) return same.length === 1 ? same[0] : null;
+  return same.length === 1 && !serviceKey(same[0].category) ? same[0] : null;
+}
 export interface CheckedRow extends ImportRow {
   line: number;
   status: RowStatus;
@@ -199,6 +229,7 @@ function parsePipes(text: string, currency: string): Array<ImportRow & { line: n
       priceCents: price?.minor ?? 0,
       priceFrom: price?.from ?? false,
       durationMinutes: minutesOf(parts[2] ?? ''),
+      ...(fold(parts[2] ?? '') ? { minutesSet: true } : {}),
       err: price ? undefined : 'price',
     });
   });
@@ -237,6 +268,7 @@ export function rowsToItems(grid: string[][], currency = 'USD'): Array<ImportRow
       priceCents: price?.minor ?? 0,
       priceFrom: (price?.from ?? false) || YES.has(fromCell),
       durationMinutes: minutesOf(at(r, 'minutes')),
+      ...(fold(at(r, 'minutes')) ? { minutesSet: true } : {}),
       ...(desc ? { description: desc } : {}),
       ...(/^https?:\/\//i.test(img) ? { imageUrl: img } : {}),
       ...(turn !== undefined ? { turnValue: turn } : {}),
@@ -259,27 +291,45 @@ export function parseMenuText(text: string, currency = 'USD'): Array<ImportRow &
 }
 
 /**
- * What will happen to each row. A name the salon already has, or one that
- * appears twice in the file, is skipped — the server does the same, so the
- * preview never promises something the import will not do.
+ * What will happen to each row. A service the salon already has is UPDATED
+ * (new price, length, details) — never added a second time; a row repeated in
+ * the file is skipped. The server applies the same rules, so the preview never
+ * promises something the import will not do.
  */
 export function checkRows(
   rows: Array<ImportRow & { line: number; err?: string }>,
-  existingNames: string[],
+  existing: Array<string | ExistingSvc>,
   vi: boolean,
+  fmt: (minor: number) => string = (m) => (m / 100).toFixed(2),
 ): CheckedRow[] {
-  const have = new Set(existingNames.map((n) => n.trim().toLowerCase()));
+  const have: ExistingSvc[] = existing.map((x) => (typeof x === 'string' ? { name: x } : x));
   const seen = new Set<string>();
   return rows.map((r) => {
-    const name = r.name.trim().toLowerCase();
-    // An extra is its own thing per category: "Chrome" on Full Set and "Chrome" on Fill In are two rows.
-    const key = r.kind === 'addon' ? `addon:${r.category.trim().toLowerCase()}:${name}` : name;
+    const name = serviceKey(r.name);
+    // A service is its name within its category ("Polish Change" on Manicure and on Pedicure are two);
+    // an extra is its own thing per category too ("Chrome" on Full Set and on Fill In).
+    const key = `${r.kind}:${serviceKey(r.category)}:${name}`;
     const { err, ...row } = r;
     if (!name) return { ...row, status: 'error', note: vi ? (r.kind === 'addon' ? 'Thiếu tên tuỳ chọn' : 'Thiếu tên dịch vụ') : (r.kind === 'addon' ? 'Missing add-on name' : 'Missing service name') };
     if (err === 'price') return { ...row, status: 'error', note: vi ? 'Giá không đọc được' : 'Price not readable' };
-    if (r.kind === 'service' && have.has(name)) return { ...row, status: 'duplicate', note: vi ? 'Đã có — bỏ qua' : 'Already exists — skipped' };
     if (seen.has(key)) return { ...row, status: 'duplicate', note: vi ? 'Trùng trong file — bỏ qua' : 'Repeated in file — skipped' };
     seen.add(key);
+    if (r.kind === 'service') {
+      const m = matchExisting(have, r);
+      if (m) {
+        const known = m.priceCents !== undefined;
+        const priceDiff = known && m.priceCents !== r.priceCents;
+        const minDiff = !!r.minutesSet && m.durationMinutes !== undefined && m.durationMinutes !== r.durationMinutes;
+        if (known && !priceDiff && !minDiff && Boolean(m.priceFrom) === Boolean(r.priceFrom) && !r.description) {
+          return { ...row, status: 'same', note: vi ? 'Đã có, giống hệt — giữ nguyên' : 'Already on the menu, unchanged' };
+        }
+        const what = [
+          priceDiff ? `${fmt(m.priceCents as number)} → ${fmt(r.priceCents)}` : '',
+          minDiff ? `${m.durationMinutes} → ${r.durationMinutes} ${vi ? 'phút' : 'min'}` : '',
+        ].filter(Boolean).join(' · ');
+        return { ...row, status: 'update', note: (vi ? '↻ Cập nhật dịch vụ đã có' : '↻ Update existing') + (what ? `: ${what}` : '') };
+      }
+    }
     return { ...row, status: 'new' };
   });
 }

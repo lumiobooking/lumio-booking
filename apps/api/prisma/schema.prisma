@@ -578,6 +578,9 @@ model Service {
   // an appointment (hidden from the booking page; the AI tells the caller to
   // walk in). The walk-in board still takes it.
   walkInOnly Boolean          @default(false)
+  // Deleted by the salon but kept because past bookings point at it: off the
+  // menu and out of every list, still named on old appointments and reports.
+  archivedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

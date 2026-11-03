@@ -66,6 +66,12 @@ describe('wired into the Calendar on every device', () => {
     expect(day.match(/bandsFor\(blocks, r\.id, dayKeyTop\)/g)).toHaveLength(2);
     expect(day.match(/\{rangeUi\}/g)).toHaveLength(3);
   });
+  it('phone: a technician off today keeps her column (hatched, "Nghỉ hôm nay") — none missing from the grid (3 Nov 2026)', () => {
+    expect(day).toMatch(/\{rows\.map\(\(r\) => \{\n\s+const lanes = place\(r\.live\);/);
+    expect(day).not.toMatch(/offToday\.map\(/);
+    expect(day).toMatch(/if \(isOff\(r\)\) return \{ text: vi \? 'Nghỉ hôm nay'/);
+    expect(day).toMatch(/const order = rows;/);
+  });
   it('the drag works by touch (hold, then drag; the page does not scroll under the finger)', () => {
     const drag = read('app', 'salon', 'calendar', 'RangeDrag.tsx');
     expect(drag).toMatch(/HOLD_MS = 420/);

@@ -90,9 +90,11 @@ export class MarketingScheduler implements OnModuleInit, OnModuleDestroy {
   private async monthClose() {
     // Only act in the first 5 days of a month (draft the month that just ended),
     // and only once per calendar month per process.
+    // Each salon's month ends at ITS midnight (runMonthlyAutoGenerate waits for
+    // it), so look again every hour of the first days — the run is idempotent.
     const now = new Date();
-    if (now.getUTCDate() > 5) return; // UTC month, matching previousMonth()
-    const stamp = `${now.getFullYear()}-${now.getMonth()}`;
+    if (now.getUTCDate() > 5) return;
+    const stamp = now.toISOString().slice(0, 13);
     if (this.lastMonthRun === stamp) return;
     try {
       const r = await this.marketing.runMonthlyAutoGenerate();

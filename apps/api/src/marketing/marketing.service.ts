@@ -38,6 +38,12 @@ import { cleanReportPolicy, lifecycleOf, nextActionOf, autoSendDue, DEFAULT_REPO
 const SHOWED_STATUSES: AppointmentStatus[] = [AppointmentStatus.ARRIVED, AppointmentStatus.COMPLETED];
 const REVENUE_EXCLUDED = new Set<string>([AppointmentStatus.CANCELLED, AppointmentStatus.REJECTED]);
 
+/** A stored report whose numbers were taken while its month was still running. */
+export function reportIsPartial(snapshot: unknown): boolean {
+  const s = (snapshot ?? null) as { running?: boolean; facts?: { state?: string } | null } | null;
+  return !!s && (s.running === true || s.facts?.state === 'to-date');
+}
+
 type ChannelRow = { key: CanonicalSource; bookings: number; showed: number; revenueCents: number };
 
 @Injectable()
@@ -121,20 +127,28 @@ export class MarketingService {
         where: { tenantId, startTime: { gte: from, lte: to } },
         select: { id: true, source: true, status: true, utmCampaign: true, utmSource: true, utmMedium: true, gclid: true, gbraid: true, wbraid: true, attrReferrer: true },
       }),
-      // Revenue attributed to a booking's channel: PAID payments tied to an
-      // appointment, in the period, excluding cancelled/rejected bookings.
-      this.prisma.payment.findMany({
-        where: { tenantId, status: PaymentStatus.PAID, paidAt: { gte: from, lte: to }, appointmentId: { not: null } },
-        select: { amountCents: true, appointmentId: true },
-      }),
-      this.prisma.googleReview.count({ where: { tenantId, createdAt: { gte: from, lte: to } } }),
+      // Revenue is read below, by the window's own appointments (see there).
+      Promise.resolve([] as { amountCents: number; appointmentId: string | null }[]),
+      // A review counts in the month Google says it was written — not when Lumio
+      // first mirrored it (the first sync used to put every old review in "this month").
+      this.prisma.googleReview.count({ where: { tenantId, OR: [{ reviewCreatedAt: { gte: from, lte: to } }, { reviewCreatedAt: null, createdAt: { gte: from, lte: to } }] } as never }),
       this.prisma.reviewClick.count({ where: { tenantId, createdAt: { gte: from, lte: to } } }),
       this.prisma.messengerThread.count({ where: { tenantId, createdAt: { gte: from, lte: to } } }),
       this.prisma.voiceCall.findMany({ where: { tenantId, createdAt: { gte: from, lte: to } }, select: { outcome: true } }),
       this.prisma.emailCampaign.findMany({ where: { tenantId, status: 'sent', createdAt: { gte: from, lte: to } }, select: { sent: true } }),
-      this.prisma.customer.count({ where: { tenantId, createdAt: { gte: from, lte: to }, referredById: { not: null } } }),
-      this.prisma.customer.count({ where: { tenantId, createdAt: { gte: from, lte: to } } }),
+      // New = first seen in the window, not a past client loaded by a list import.
+      this.prisma.customer.count({ where: { tenantId, createdAt: { gte: from, lte: to }, referredById: { not: null }, importedAt: null } as never }),
+      this.prisma.customer.count({ where: { tenantId, createdAt: { gte: from, lte: to }, importedAt: null } as never }),
     ]);
+    // Revenue for the window's visits, whenever it was paid: a deposit taken on
+    // the 28th for a visit on the 3rd belongs to the visit's month. Filtering by
+    // paidAt used to drop it from BOTH months (it was outside one window and its
+    // visit outside the other).
+    const apptIds = appts.map((a) => a.id);
+    payments.push(...(apptIds.length ? await this.prisma.payment.findMany({
+      where: { tenantId, status: PaymentStatus.PAID, appointmentId: { in: apptIds } },
+      select: { amountCents: true, appointmentId: true },
+    }) : []));
 
     // --- Per-channel bookings + showed -------------------------------------
     const rows = new Map<CanonicalSource, ChannelRow>(
@@ -157,7 +171,11 @@ export class MarketingService {
     const acqByAppt = new Map<string, AcquisitionSource>();
     const gbp = acquisition.google_maps_organic;
     const gbpAppt = new Set<string>();
+    let cancelled = 0;
     for (const a of appts) {
+      // A cancelled appointment is not a booking the marketing brought in: it is
+      // counted on its own line, never in bookings, show rate or cost per booking.
+      if (a.status === AppointmentStatus.CANCELLED) { cancelled += 1; excludedAppt.add(a.id); continue; }
       const acq = deriveAcquisition(a as any);
       acqByAppt.set(a.id, acq);
       acquisition[acq].bookings += 1;
@@ -191,10 +209,13 @@ export class MarketingService {
     }
 
     const channels = CANONICAL_SOURCES.map((k) => rows.get(k)!);
-    const totals = channels.reduce(
-      (acc, r) => ({ bookings: acc.bookings + r.bookings, showed: acc.showed + r.showed, revenueCents: acc.revenueCents + r.revenueCents }),
-      { bookings: 0, showed: 0, revenueCents: 0 },
-    );
+    const totals = {
+      ...channels.reduce(
+        (acc, r) => ({ bookings: acc.bookings + r.bookings, showed: acc.showed + r.showed, revenueCents: acc.revenueCents + r.revenueCents }),
+        { bookings: 0, showed: 0, revenueCents: 0 },
+      ),
+      cancelled,
+    };
 
     const voiceBooked = voiceCalls.filter((c) => c.outcome === 'booked').length;
     const emailsSent = emailCampaigns.reduce((s, c) => s + (c.sent ?? 0), 0);
@@ -310,9 +331,15 @@ export class MarketingService {
   // ---- Assembled month data (the single source the report is written from) --
   async monthlyData(user: AuthenticatedUser, month: string, tenantParam?: string) {
     const tenantId = this.tenantId(user, tenantParam);
+    if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
     // Day keys, not instants: overview() anchors them to the tenant's timezone.
+    // A month still running is read through TODAY (salon time), and compared
+    // with the same days of last month — not a partial month against a full one
+    // ("revenue ▼70%" on the 10th).
+    const todayKey = dayKeyTz(new Date(), await this.tzOf(tenantId));
+    const running = todayKey.slice(0, 7) === month;
     const fromStr = `${month}-01`;
-    const toStr = this.lastDayKeyOf(month);
+    const toStr = running ? todayKey : this.lastDayKeyOf(month);
 
     const [ov, spend, workLog] = await Promise.all([
       this.overview(user, fromStr, toStr, tenantParam),
@@ -341,12 +368,15 @@ export class MarketingService {
     // --- Month-over-month comparison (clients love "up X% vs last month") ---
     const [py, pm] = month.split('-').map(Number);
     const prev = pm === 1 ? `${py - 1}-12` : `${py}-${String(pm - 1).padStart(2, '0')}`;
+    const prevLast = this.lastDayKeyOf(prev);
+    const prevTo = running ? `${prev}-${String(Math.min(Number(todayKey.slice(8, 10)), Number(prevLast.slice(8, 10)))).padStart(2, '0')}` : prevLast;
     const [prevOv, prevSpend] = await Promise.all([
-      this.overview(user, `${prev}-01`, this.lastDayKeyOf(prev), tenantParam),
+      this.overview(user, `${prev}-01`, prevTo, tenantParam),
       this.prisma.marketingSpend.findMany({ where: { tenantId, periodMonth: prev }, select: { channel: true, amountCents: true, reach: true, clicks: true, leads: true } }),
     ]);
     const prevSpendCents = prevSpend.reduce((a: number, r: { amountCents: number }) => a + r.amountCents, 0);
-    const delta = (cur: number, prv: number) => ({ value: cur, prev: prv, pct: prv > 0 ? Math.round(((cur - prv) / prv) * 100) : (cur > 0 ? null : 0) });
+    // pct null = no arrow: nothing to compare against (0 last month), or 0 both months.
+    const delta = (cur: number, prv: number) => ({ value: cur, prev: prv, pct: prv > 0 ? Math.round(((cur - prv) / prv) * 100) : null });
     const deltas = {
       bookings: delta(bookings, prevOv.totals.bookings),
       showed: delta(showed, prevOv.totals.showed),
@@ -359,10 +389,12 @@ export class MarketingService {
     // This is what lets the report say "Facebook: reach up 24%, clicks down 8%"
     // instead of only judging totals. null = metric absent in both months.
     const prevByCh = new Map<string, any>((prevSpend as any[]).map((r: any) => [r.channel, r]));
+    // A figure left blank in either month is unknown, not zero: no "reach ▼100%"
+    // because nobody typed October's reach in.
     const chDelta = (cur?: number | null, prv?: number | null) => {
-      const c = cur ?? 0; const pv = prv ?? 0;
-      if (c === 0 && pv === 0) return null;
-      return { value: c, prev: pv, pct: pv > 0 ? Math.round(((c - pv) / pv) * 100) : (c > 0 ? null : -100) };
+      if (cur == null || prv == null) return null;
+      if (cur === 0 && prv === 0) return null;
+      return { value: cur, prev: prv, pct: prv > 0 ? Math.round(((cur - prv) / prv) * 100) : null };
     };
     const chNames = Array.from(new Set([...(spend as any[]).map((r: any) => r.channel), ...(prevSpend as any[]).map((r: any) => r.channel)]));
     const channelTrends = chNames.map((ch: string) => {
@@ -493,7 +525,11 @@ export class MarketingService {
 
     // Posts / interactions / top 5 from the stored posts (never from raw).
     const facts = await this.monthFacts(user, month, tenantParam).catch(() => null);
-    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, channelTrends, socialInsights, gbp, effectiveness, facts };
+    // The salon's money: every *Cents figure is in its minor unit (đồng have none).
+    const rulesRow = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'booking_rules' } }, select: { value: true } }).catch(() => null);
+    const curRaw = String((rulesRow?.value as { currency?: string } | null)?.currency ?? '').toUpperCase();
+    const currency = /^[A-Z]{3}$/.test(curRaw) ? curRaw : 'USD';
+    return { month, currency, range: { from: fromStr, to: toStr }, running, prevRange: { from: `${prev}-01`, to: prevTo }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, channelTrends, socialInsights, gbp, effectiveness, facts };
   }
 
   /**
@@ -715,6 +751,8 @@ export class MarketingService {
       month: data.month,
       // A month still in progress is compared only to the same days of last
       // month; the text must say "to date" and must not sound an alarm.
+      currency: (data as { currency?: string }).currency ?? 'USD',
+      moneyUnits: 'Every field ending in Cents is in the minor unit of `currency` (USD/CAD/AUD: cents — divide by 100; VND has no minor unit: the number IS đồng). Write amounts with that currency, never a $ for VND.',
       periodState: running ? `IN PROGRESS — numbers through day ${facts!.daysCovered}; every vsPrev compares the same ${facts!.daysCovered} days of last month; write calmly, say "tính đến ngày ${facts!.daysCovered}"` : 'CLOSED — full month',
       bookings: data.outcome.totals.bookings,
       showedUp: data.outcome.totals.showed,
@@ -874,6 +912,23 @@ export class MarketingService {
   }
 
   // ---- Month-end automation ----------------------------------------------
+
+  /** "2026-11" → "2026-10". */
+  private monthBefore(month: string): string {
+    const [y, m] = month.split('-').map(Number);
+    return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+  }
+
+  /** "2026-10" → "2026-11". */
+  private monthAfter(month: string): string {
+    const [y, m] = month.split('-').map(Number);
+    return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  }
+
+  /** The month that has just ended FOR THIS SALON (its own clock, not the server's). */
+  private closedMonthFor(tz: string | null | undefined, now = new Date()): string {
+    return this.monthBefore(dayKeyTz(now, tz || 'UTC').slice(0, 7));
+  }
 
   /** 'YYYY-MM' for the month before the given date (default: now). */
   private previousMonth(ref = new Date()): string {
@@ -1070,9 +1125,12 @@ export class MarketingService {
       const policy = await this.getReportPolicy(t.id);
       if (!policy.autoSend) continue;
       const todayKey = dayKeyTz(now, t.timezone || 'UTC');
-      const month = this.previousMonth(now);
-      const report = await this.prisma.marketingReport.findUnique({ where: { tenantId_periodMonth: { tenantId: t.id, periodMonth: month } }, select: { status: true, sentAt: true } });
+      const month = this.closedMonthFor(t.timezone, now);
+      const report = await this.prisma.marketingReport.findUnique({ where: { tenantId_periodMonth: { tenantId: t.id, periodMonth: month } }, select: { status: true, sentAt: true, dataSnapshot: true } });
       if (!autoSendDue(month, report, policy, todayKey)) continue;
+      // Never send a report written while the month was still running (opened
+      // mid-month): month close redrafts it with the whole month first.
+      if (reportIsPartial(report?.dataSnapshot)) { this.logger.warn(`auto-send ${t.id} ${month}: report holds a mid-month snapshot — waiting for the month-end redraft`); continue; }
       try { await this.sendReport(sys, month, t.id, { auto: true }); sent++; }
       catch (e) { failed++; this.logger.warn(`auto-send ${t.id} ${month}: ${String((e as Error)?.message ?? e)}`); }
     }
@@ -1129,21 +1187,32 @@ export class MarketingService {
     };
   }
 
-  async runMonthlyAutoGenerate(targetMonth?: string) {
-    const month = targetMonth ?? this.previousMonth();
-    const { from, to } = this.monthRange(month);
+  async runMonthlyAutoGenerate(targetMonth?: string, now = new Date()) {
+    const utcMonth = this.previousMonth(now);
     const tenants = await this.prisma.tenant.findMany({
       where: { status: TenantStatus.ACTIVE, deletedAt: null },
-      select: { id: true },
+      select: { id: true, timezone: true },
     });
     const sys: AuthenticatedUser = { userId: 'system', email: 'system@lumio.local', role: UserRole.SUPER_ADMIN, tenantId: null };
     let generated = 0, skipped = 0, failed = 0;
 
     for (const t of tenants) {
+      const tz = t.timezone || 'UTC';
+      // The month that ended on the SALON's clock. Early on the 1st (UTC) a US
+      // salon is still in the last day of the month — wait for its midnight
+      // instead of drafting a month that still has an evening of visits to come.
+      const month = targetMonth ?? this.closedMonthFor(tz, now);
+      if (!targetMonth && month !== utcMonth) { skipped++; continue; }
       const existing = await this.prisma.marketingReport.findUnique({
         where: { tenantId_periodMonth: { tenantId: t.id, periodMonth: month } },
       });
-      if (existing) { skipped++; continue; }
+      // A draft written while the month was still running (someone opened it on
+      // the 12th) is redrafted with the whole month; anything approved, sent or
+      // drafted after the month closed is left alone.
+      const stale = !!existing && existing.status === 'review' && reportIsPartial(existing.dataSnapshot);
+      if (existing && !stale) { skipped++; continue; }
+      const from = startOfDayTz(`${month}-01`, tz);
+      const to = new Date(startOfDayTz(`${this.monthAfter(month)}-01`, tz).getTime() - 1);
       // Only draft where there is real activity — never an empty report.
       const [spendCount, apptCount] = await Promise.all([
         this.prisma.marketingSpend.count({ where: { tenantId: t.id, periodMonth: month } }),
@@ -1163,6 +1232,7 @@ export class MarketingService {
         this.logger.warn(`Auto-report failed for tenant ${t.id} ${month}: ${String(e)}`);
       }
     }
+    const month = targetMonth ?? utcMonth;
     this.logger.log(`Auto-report ${month}: generated ${generated}, skipped ${skipped}, failed ${failed}.`);
     return { month, generated, skipped, failed };
   }
@@ -1276,7 +1346,11 @@ export class MarketingService {
    * sync), so a salon's manually entered numbers are left alone.
    */
   private async gbpReviewStats(tenantId: string, month: string) {
-    const { from, to } = this.monthRange(month);
+    // The salon's month: a review written at 9 pm on the 31st in Austin is that month's.
+    if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
+    const tz = await this.tzOf(tenantId);
+    const from = startOfDayTz(`${month}-01`, tz);
+    const to = new Date(startOfDayTz(`${this.monthAfter(month)}-01`, tz).getTime() - 1);
     const rows = await this.prisma.googleReview.findMany({
       where: { tenantId },
       select: { starRating: true, reviewCreatedAt: true, createdAt: true, reviewerName: true, comment: true },

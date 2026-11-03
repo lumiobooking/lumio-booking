@@ -22,6 +22,7 @@ function db() {
     service: {
       findMany: async ({ where }: { where: Row }) => services.filter((s) => eq(s, where)),
       create: async ({ data }: { data: Row }) => { const r = { id: `s${++n}`, ...data }; services.push(r); return r; },
+      updateMany: async ({ where, data }: { where: Row; data: Row }) => { const hit = services.filter((s) => eq(s, where)); hit.forEach((s) => Object.assign(s, data)); return { count: hit.length }; },
     },
     serviceAddon: {
       findMany: async ({ where }: { where: Row }) => addons.filter((a) => eq(a, where)),
@@ -46,7 +47,10 @@ describe('menu import with add-ons and turns', () => {
       { kind: 'addon', category: 'Pedicure', name: 'Gel Polish Upgrade', priceCents: 2000 },           // already there
       { kind: 'addon', category: 'Nowhere', name: 'Ghost', priceCents: 100 },                           // no such category
     ]);
-    expect(r).toEqual({ createdCategories: 2, createdServices: 2, createdAddons: 2, skipped: 3 });
+    // "Signature Pedicure" is already on the menu: updated with the file's price, never added twice.
+    expect(r).toEqual({ createdCategories: 2, createdServices: 2, updatedServices: 1, unchangedServices: 0, createdAddons: 2, skipped: 2 });
+    expect(services.filter((s) => s.name === 'Signature Pedicure')).toHaveLength(1);
+    expect(services.find((s) => s.name === 'Signature Pedicure')).toMatchObject({ priceCents: 5000, categoryId: 'c-old' });
     const fullSet = categories.find((c) => c.name === 'Full Set' && c.tenantId === 't1')!;
     expect(services.find((s) => s.name === 'Pink & White')).toMatchObject({ tenantId: 't1', categoryId: fullSet.id, priceFrom: true, turnValue: 1 });
     expect(services.find((s) => s.name === 'Lip')).toMatchObject({ tenantId: 't1', turnValue: 0.5 });

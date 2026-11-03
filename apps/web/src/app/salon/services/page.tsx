@@ -66,6 +66,7 @@ function ServicesInner() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   // "+ Tạo mới → Dịch vụ mới" from the header lands here with the form open.
   useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') setShowForm(true); }, []);
@@ -163,8 +164,12 @@ function ServicesInner() {
   async function remove(id: string) {
     if (!confirm(t('sv.confirmDelete'))) return;
     try {
-      await apiFetch(`/services/${id}`, { method: 'DELETE', token });
+      const r = await apiFetch<{ archived?: boolean; bookings?: number }>(`/services/${id}`, { method: 'DELETE', token });
       await load();
+      // Kept for history: old bookings still name it, so it was taken off the menu instead of erased.
+      if (r?.archived) setNotice(lang === 'vi'
+        ? `Đã xoá khỏi menu. Dịch vụ này có ${r.bookings ?? ''} lịch hẹn cũ nên vẫn được giữ trong lịch sử (hoá đơn, báo cáo) — khách không còn thấy để đặt.`
+        : `Removed from the menu. It has ${r.bookings ?? ''} past booking(s), so it stays in the history (receipts, reports) — clients can no longer book it.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed');
     }
@@ -233,6 +238,12 @@ function ServicesInner() {
         counts={{ services: services.length, promos: activePromoCount(promos), categories: categories.length }} />
 
       {error && <div style={ui.banner}>{error}</div>}
+      {notice && (
+        <div role="status" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 12px', padding: '10px 14px', borderRadius: 12, background: 'var(--wash-amber)', color: 'var(--ink-warn)', fontSize: 13.5, lineHeight: 1.45 }}>
+          <span style={{ flex: 1 }}>{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} aria-label="OK" style={{ border: 0, background: 'transparent', color: 'inherit', fontSize: 16, cursor: 'pointer' }}>✕</button>
+        </div>
+      )}
 
       {tab === 'promos' && (
         <PromoBoard token={token!} categories={categories} promos={promos} sel={promoSel} onSel={setPromoSel} onSaved={refreshPromos} vi={lang === 'vi'} />
@@ -249,7 +260,7 @@ function ServicesInner() {
         <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} {t('sv.serviceWord')}</span>
       </div>
 
-      {showImport && <ServiceImport token={token!} currency={money.code} vi={lang === 'vi'} existingNames={services.map((x) => x.name)} onDone={async () => { setShowImport(false); await load(); }} />}
+      {showImport && <ServiceImport token={token!} currency={money.code} vi={lang === 'vi'} existingNames={services.map((x) => x.name)} existing={services.map((x) => ({ name: x.name, category: catName(x.categoryId ?? null) === '—' ? null : catName(x.categoryId ?? null), priceCents: x.priceCents, durationMinutes: x.durationMinutes, priceFrom: x.priceFrom }))} onDone={async () => { setShowImport(false); await load(); }} />}
 
       {categories.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 16px' }}>

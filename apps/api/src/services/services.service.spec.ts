@@ -70,7 +70,7 @@ describe('ServicesService tenant isolation', () => {
 
     expect(result.map((r) => r.id)).toEqual(['svc-a']);
     expect(prisma.service.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId: 'tenant-a' } }),
+      expect.objectContaining({ where: { tenantId: 'tenant-a', archivedAt: null } }),
     );
   });
 

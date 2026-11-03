@@ -60,10 +60,21 @@ describe('rows to services', () => {
 });
 
 describe('the preview says what the import will do', () => {
-  it('skips names the salon has and repeats in the file; flags missing names and prices', () => {
+  it('updates names the salon has, skips repeats in the file; flags missing names and prices', () => {
     const rows = rowsToItems([['Name', 'Price'], ['Gel', '30'], ['gel ', '31'], ['Refill', '40'], ['', '10'], ['Mystery', 'ask']]);
     const st = checkRows(rows, ['REFILL'], false).map((r) => r.status);
-    expect(st).toEqual(['new', 'duplicate', 'duplicate', 'error', 'error']);
+    expect(st).toEqual(['new', 'duplicate', 'update', 'error', 'error']);
+  });
+  it('a re-imported menu: changed prices update, identical rows stay, the same name in another category is a new service', () => {
+    const rows = rowsToItems([['Category', 'Name', 'Price', 'Minutes'], ['Pedicure', 'Gel  Pedicure', '45', '50'], ['Pedicure', 'Polish Change', '15', ''], ['Manicure', 'Polish Change', '12', '15'], ['Waxing', 'Bio Gel – Full Set', '55', '']]);
+    const have = [
+      { name: 'Gel Pedicure', category: 'Pedicure', priceCents: 4000, durationMinutes: 45 },
+      { name: 'Polish Change', category: 'Pedicure', priceCents: 1500, durationMinutes: 15 },
+      { name: 'Bio Gel Full Set', category: 'Waxing', priceCents: 5500, durationMinutes: 60 },
+    ];
+    const out = checkRows(rows, have, true, (m) => `$${m / 100}`);
+    expect(out.map((r) => r.status)).toEqual(['update', 'same', 'new', 'same']);
+    expect(out[0].note).toBe('↻ Cập nhật dịch vụ đã có: $40 → $45 · 45 → 50 phút');
   });
 });
 
@@ -91,7 +102,7 @@ describe('add-ons and turns in the same file', () => {
     expect(rows[0].priceFrom).toBe(true);
     // The same extra on two categories is two rows; an existing SERVICE name does not block an add-on.
     const st = checkRows(rowsToItems([['Category', 'Name', 'Price', 'Type'], ['Full Set', 'Chrome', '15', 'add-on'], ['Fill In', 'Chrome', '15', 'add-on'], ['Fill In', 'Chrome', '15', 'add-on'], ['Full Set', 'Chrome', '15', '']]), ['chrome'], false).map((r) => r.status);
-    expect(st).toEqual(['new', 'new', 'duplicate', 'duplicate']);
+    expect(st).toEqual(['new', 'new', 'duplicate', 'update']);
   });
 });
 

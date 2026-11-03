@@ -6,6 +6,13 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { CreateServiceDto, SERVICE_DESCRIPTION_MAX } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { CreateServiceAddonDto, CreateSharedAddonDto } from './dto/create-addon.dto';
+import { matchService, serviceChanges } from './service-match';
+
+/** A service as the menu import compares it. */
+type ExistingRow = { id: string; name: string; categoryId: string | null; category?: { name: string } | null; priceCents: number; durationMinutes: number; priceFrom: boolean; description: string | null; imageUrl: string | null; isActive: boolean; createdAt: Date; turnValue?: number; walkInOnly?: boolean; archivedAt?: Date | null };
+
+/** One menu import at a time per salon: a double-click used to run it twice and copy the whole menu. */
+const importQueue = new Map<string, Promise<unknown>>();
 
 /**
  * Services (treatments) belong to exactly one tenant. Every method resolves the
@@ -65,7 +72,8 @@ export class ServicesService {
 
   list(user: AuthenticatedUser) {
     return this.prisma.service.findMany({
-      where: { tenantId: this.tenantId(user) },
+      // Archived = deleted by the salon but kept for old bookings: not on any list.
+      where: { tenantId: this.tenantId(user), archivedAt: null } as Prisma.ServiceWhereInput,
       include: {
         category: { select: { id: true, name: true } },
         staffServices: { select: { staffMemberId: true } },
@@ -313,10 +321,30 @@ export class ServicesService {
     return this.getById(user, id);
   }
 
+  /**
+   * Delete a service. One that past bookings point at cannot be removed (the
+   * appointment keeps its service — that is how old visits, receipts and
+   * reports still say what was done), so it is ARCHIVED instead: off the menu,
+   * off the booking page and out of every list, and it comes back if a menu
+   * import lists it again. Before, the delete simply failed on those.
+   */
   async remove(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
-    await this.getById(user, id);
-    await this.prisma.service.deleteMany({ where: { id, tenantId } });
+    const svc = await this.getById(user, id);
+    const archive = async (bookings: number) => {
+      await this.prisma.service.updateMany({ where: { id, tenantId }, data: { archivedAt: new Date(), isActive: false, isFeatured: false } as Prisma.ServiceUncheckedUpdateManyInput });
+      await this.audit.log({ tenantId, userId: user.userId, action: 'service.archived', resourceType: 'service', resourceId: id, metadata: { name: svc.name, bookings } });
+      return { id, deleted: true, archived: true, bookings };
+    };
+    const bookings = await this.prisma.appointment.count({ where: { tenantId, serviceId: id } });
+    if (bookings > 0) return archive(bookings);
+    try {
+      await this.prisma.service.deleteMany({ where: { id, tenantId } });
+    } catch (e) {
+      // Another record still points at it (a race with a new booking, an old table) — archive rather than fail.
+      if ((e as { code?: string })?.code === 'P2003') return archive(0);
+      throw e;
+    }
     await this.audit.log({
       tenantId,
       userId: user.userId,
@@ -324,7 +352,7 @@ export class ServicesService {
       resourceType: 'service',
       resourceId: id,
     });
-    return { id, deleted: true };
+    return { id, deleted: true, archived: false };
   }
 
   /**
@@ -389,6 +417,19 @@ export class ServicesService {
     items: Array<{ kind?: 'service' | 'addon'; category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string; turnValue?: number; walkInOnly?: boolean; askAtBooking?: boolean }>,
     targetTenantId?: string,
   ) {
+    const key = resolveTenantScope(user, targetTenantId) ?? '';
+    const prev = importQueue.get(key) ?? Promise.resolve();
+    const run = prev.catch(() => undefined).then(() => this.bulkImportNow(user, items, targetTenantId));
+    importQueue.set(key, run);
+    void run.catch(() => undefined).finally(() => { if (importQueue.get(key) === run) importQueue.delete(key); });
+    return run;
+  }
+
+  private async bulkImportNow(
+    user: AuthenticatedUser,
+    items: Array<{ kind?: 'service' | 'addon'; category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string; turnValue?: number; walkInOnly?: boolean; askAtBooking?: boolean }>,
+    targetTenantId?: string,
+  ) {
     // Super admin may aim at any salon; a salon admin is pinned to their own by
     // resolveTenantScope (a mismatched tenantId throws rather than leaking).
     const tenantId = resolveTenantScope(user, targetTenantId);
@@ -398,7 +439,7 @@ export class ServicesService {
 
     const [cats, svcs, sharedAddons] = await Promise.all([
       this.prisma.serviceCategory.findMany({ where: { tenantId }, select: { id: true, name: true } }),
-      this.prisma.service.findMany({ where: { tenantId }, select: { name: true } }),
+      this.prisma.service.findMany({ where: { tenantId }, select: { id: true, name: true, categoryId: true, category: { select: { name: true } }, priceCents: true, durationMinutes: true, priceFrom: true, description: true, imageUrl: true, isActive: true, createdAt: true, ...({ turnValue: true, walkInOnly: true, archivedAt: true } as object) } as never }) as unknown as Promise<ExistingRow[]>,
       // Extras already shared on a category or the whole menu, so a re-import adds none twice.
       this.prisma.serviceAddon.findMany({ where: { tenantId, serviceId: null }, select: { name: true, categoryId: true } }).catch(() => [] as { name: string; categoryId: string | null }[]),
     ]);
@@ -411,9 +452,9 @@ export class ServicesService {
     const rawCur = String((rules?.value as { currency?: string } | null)?.currency ?? '').toUpperCase();
     const currency = /^[A-Z]{3}$/.test(rawCur) ? rawCur : 'USD';
     const catByName = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
-    const have = new Set(svcs.map((s) => s.name.toLowerCase()));
+    const existing: (ExistingRow & { categoryName: string | null })[] = svcs.map((s) => ({ ...s, categoryName: s.category?.name ?? null }));
     let sort = cats.length;
-    let createdCategories = 0, createdServices = 0, createdAddons = 0, skipped = 0;
+    let createdCategories = 0, createdServices = 0, createdAddons = 0, skipped = 0, updatedServices = 0, unchangedServices = 0;
     const orderByCat = new Map<string, number>();
     const haveAddon = new Set(sharedAddons.map((a) => `${a.categoryId ?? ''}:${a.name.trim().toLowerCase()}`));
     const turnOf = (v: unknown) => { const n = Number(v); return v !== undefined && v !== null && v !== '' && Number.isFinite(n) && n >= 0 && n <= 5 ? Math.round(n * 2) / 2 : undefined; };
@@ -423,7 +464,6 @@ export class ServicesService {
     for (const raw of items.filter((r) => r?.kind !== 'addon')) {
       const name = (raw?.name ?? '').trim();
       if (!name) { skipped++; continue; }
-      if (have.has(name.toLowerCase())) { skipped++; continue; }
 
       let categoryId: string | null = null;
       const catName = (raw.category ?? '').trim();
@@ -436,10 +476,33 @@ export class ServicesService {
         }
         categoryId = id;
       }
+      // Already on the menu (same name in the same category, compared loosely):
+      // update it with the file's price, length and details — never a second copy.
+      const match = matchService(existing, { name, category: catName });
+      if (match) {
+        const minutes = Number(raw.durationMinutes);
+        const changes = serviceChanges(match as never, {
+          priceCents: Math.max(0, Math.round(Number(raw.priceCents) || 0)),
+          ...(Number.isFinite(minutes) && minutes > 0 ? { durationMinutes: Math.min(600, Math.max(5, Math.round(minutes))) } : {}),
+          ...(raw.priceFrom !== undefined ? { priceFrom: !!raw.priceFrom } : {}),
+          ...(raw.description ? { description: raw.description.slice(0, SERVICE_DESCRIPTION_MAX) } : {}),
+          ...(cleanImageUrl(raw.imageUrl) ? { imageUrl: cleanImageUrl(raw.imageUrl) } : {}),
+          ...(turnOf(raw.turnValue) !== undefined ? { turnValue: turnOf(raw.turnValue) } : {}),
+          ...(raw.walkInOnly !== undefined ? { walkInOnly: !!raw.walkInOnly } : {}),
+          categoryId,
+        });
+        if (Object.keys(changes).length) {
+          await this.prisma.service.updateMany({ where: { id: match.id, tenantId }, data: changes as never });
+          Object.assign(match, changes, changes.categoryId ? { categoryName: catName } : {});
+          updatedServices++;
+        } else unchangedServices++;
+        continue;
+      }
+
       const order = orderByCat.get(categoryId ?? '') ?? 0;
       orderByCat.set(categoryId ?? '', order + 1);
 
-      await this.prisma.service.create({
+      const made = await this.prisma.service.create({
         data: {
           tenantId,
           name: name.slice(0, 120),
@@ -453,7 +516,7 @@ export class ServicesService {
           ...(raw.walkInOnly ? ({ walkInOnly: true } as object) : {}),
         } as never,
       });
-      have.add(name.toLowerCase());
+      existing.push({ id: (made as { id: string }).id, name, categoryId, categoryName: catName || null, isActive: true } as never);
       createdServices++;
     }
     // Extras: on every service of a category (by name; created above or already there), or on the whole menu.
@@ -477,8 +540,8 @@ export class ServicesService {
       haveAddon.add(key);
       createdAddons++;
     }
-    await this.audit.log({ tenantId, userId: user.userId, action: 'service.bulk_import', resourceType: 'tenant', resourceId: tenantId, metadata: { createdCategories, createdServices, createdAddons, skipped } });
-    return { createdCategories, createdServices, createdAddons, skipped };
+    await this.audit.log({ tenantId, userId: user.userId, action: 'service.bulk_import', resourceType: 'tenant', resourceId: tenantId, metadata: { createdCategories, createdServices, updatedServices, unchangedServices, createdAddons, skipped } });
+    return { createdCategories, createdServices, updatedServices, unchangedServices, createdAddons, skipped };
   }
 
   // ---- Service add-ons (extras) ------------------------------------------

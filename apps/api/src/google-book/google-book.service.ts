@@ -201,7 +201,7 @@ export class GoogleBookService {
       this.google.getSettings(tenantId),
       this.profile(tenantId, opts.refreshProfile),
       this.prisma.service.findMany({
-        where: { tenantId },
+        where: { tenantId, archivedAt: null } as never,
         select: { id: true, name: true, description: true, priceCents: true, durationMinutes: true, isActive: true, category: { select: { name: true } }, ...({ walkInOnly: true, priceFrom: true } as object) } as never,
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
       }) as unknown as Promise<{ id: string; name: string; description: string | null; priceCents: number; durationMinutes: number; isActive: boolean; walkInOnly?: boolean; priceFrom?: boolean; category: { name: string } | null }[]>,

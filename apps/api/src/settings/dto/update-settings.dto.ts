@@ -55,6 +55,8 @@ export class UpdateBookingRulesDto {
   @IsOptional() @IsArray() @IsString({ each: true }) daysOff?: string[];
   @IsOptional() @IsIn(['strict', 'flexible']) groupPolicy?: 'strict' | 'flexible';
   @IsOptional() @IsBoolean() staffMustAccept?: boolean;
+  // Customer bookings confirmed on the spot (on by default) — BookingRules.autoConfirm.
+  @IsOptional() @IsBoolean() autoConfirm?: boolean;
   @IsOptional() @IsIn(['hours', 'soonest', 'off']) soonestBar?: 'hours' | 'soonest' | 'off';
   // Customer self-service rescheduling from Messenger and the AI hotline.
   //

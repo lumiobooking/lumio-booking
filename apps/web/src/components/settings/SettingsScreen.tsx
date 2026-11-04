@@ -26,7 +26,7 @@ interface Booking {
   selfCancelEnabled?: boolean; selfCancelNoticeHours?: number;
   /** Rest / clean-up minutes kept free between a technician's appointments. */
   bufferMinutes?: number;
-  allowCustomerChooseStaff: boolean; assignmentMode: 'none' | 'auto'; groupPolicy?: 'strict' | 'flexible'; staffMustAccept?: boolean; currency: string;
+  allowCustomerChooseStaff: boolean; assignmentMode: 'none' | 'auto'; groupPolicy?: 'strict' | 'flexible'; staffMustAccept?: boolean; autoConfirm?: boolean; currency: string;
   currencySymbol: string; symbolPosition: 'before' | 'after'; priceDecimals: number; defaultPaymentMethod: 'online' | 'onsite';
   onlinePaymentEnabled: boolean; payLaterEnabled: boolean;
   businessHours: DayHours[]; daysOff: string[];
@@ -526,6 +526,23 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
               : (lang === 'vi'
                   ? 'Trang đặt lịch không hiện nhãn nào ở đầu trang.'
                   : 'No badge is shown at the top of the booking page.'))}
+        </p>
+      </div>
+
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>{lang === 'vi' ? 'Xác nhận lịch hẹn' : 'Confirming bookings'}</div>
+      <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)' }}>
+        <Toggle on={f.autoConfirm !== false} onChange={(v) => setF({ ...f, autoConfirm: v })} label={lang === 'vi' ? 'Tự động xác nhận lịch khách đặt' : 'Confirm customer bookings automatically'} />
+        <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.55 }}>
+          {f.autoConfirm !== false
+            ? (lang === 'vi'
+                ? 'ĐANG BẬT (khuyên dùng) — lịch khách tự đặt qua trang đặt lịch, website, Messenger/Instagram và AI Hotline được XÁC NHẬN ngay, không phải vào “Cần xác nhận” bấm từng lịch. Lịch mới vẫn hiện ở “Mới đặt” để tiệm biết. Khách check-in thì lịch chuyển sang “Đã đến”.'
+                : 'ON (recommended) — bookings customers make on the booking page, your website, Messenger/Instagram and the AI Hotline are CONFIRMED right away; nothing to approve one by one. New ones still show under “New” so the desk knows. A check-in marks the visit Arrived.')
+            : (lang === 'vi'
+                ? 'ĐANG TẮT — lịch khách tự đặt chờ ở “Cần xác nhận” cho tới khi tiệm bấm Xác nhận. Lịch tiệm tự tạo vẫn được xác nhận ngay.'
+                : 'OFF — customer bookings wait under “To confirm” until the salon presses Confirm. Bookings the salon makes itself are still confirmed right away.')}
+          {f.staffMustAccept && f.autoConfirm !== false && (lang === 'vi'
+            ? ' Vì đang bật “Thợ phải bấm Nhận lịch”, lịch đã có thợ sẽ chờ thợ nhận trước.'
+            : ' Because “Technicians must tap Accept” is on, a booking with a technician waits for that technician first.')}
         </p>
       </div>
 

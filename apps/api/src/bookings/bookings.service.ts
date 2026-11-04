@@ -1,3 +1,4 @@
+import { shouldConfirmOnCreate } from './auto-confirm';
 import {
   Injectable,
   NotFoundException,
@@ -1057,6 +1058,22 @@ export class BookingsService {
       } catch (e) {
         // The booking stands either way; the desk can still confirm by hand.
         this.logger.warn(`desk booking ${appointment.id} not auto-confirmed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    } else if (isPublicBooking) {
+      // A customer booked (page, plugin, chat, AI line): confirmed on the spot
+      // unless the salon turned "Tự động xác nhận" off (BookingRules.autoConfirm).
+      // Before the confirmation is written, so what she is sent and what the
+      // calendar says agree. A deposit still being paid does not hold this
+      // back: an unpaid hold cancels a CONFIRMED booking too (deposit-hold.ts).
+      try {
+        const confirmed = await this.confirmDeskBooking(tenantId, finished as { id: string; status: AppointmentStatus; assignedStaffId: string | null }, { customer: true });
+        if (confirmed) {
+          finished = confirmed as typeof appointment;
+          await this.audit.log({ tenantId, userId: null, action: 'booking.auto_confirmed', resourceType: 'appointment', resourceId: appointment.id, metadata: { source: source ?? 'online' } });
+        }
+      } catch (e) {
+        // The booking stands; it waits in "Cần xác nhận" for the desk instead.
+        this.logger.warn(`booking ${appointment.id} not auto-confirmed: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
@@ -3585,17 +3602,21 @@ export class BookingsService {
    * Only a still-open PENDING / ASSIGNED booking moves; with staffMustAccept
    * on, a booking that has a technician waits for that technician's accept.
    * Returns the updated booking, or null when nothing changed.
+   *
+   * `customer: true` — a booking a CUSTOMER made (autoConfirm). Same rules,
+   * plus the salon's switch: off → nothing moves. The salon confirms it, so
+   * customerConfirmedAt stays empty and her reminder still asks her to confirm.
    */
-  private async confirmDeskBooking(tenantId: string, b: { id: string; status: AppointmentStatus; assignedStaffId: string | null }) {
+  private async confirmDeskBooking(tenantId: string, b: { id: string; status: AppointmentStatus; assignedStaffId: string | null }, opt?: { customer?: boolean }) {
     if (b.status !== AppointmentStatus.PENDING && b.status !== AppointmentStatus.ASSIGNED) return null;
-    if (b.assignedStaffId) {
+    if (b.assignedStaffId || opt?.customer) {
       const rules = await this.settings.getBookingRules(tenantId).catch(() => null);
-      if (rules?.staffMustAccept) return null;
+      if (!shouldConfirmOnCreate({ customer: !!opt?.customer, status: b.status, hasStaff: !!b.assignedStaffId, rules })) return null;
     }
     const now = new Date();
     const r = await this.prisma.appointment.updateMany({
       where: { id: b.id, tenantId, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED] } },
-      data: { status: AppointmentStatus.CONFIRMED, confirmedAt: now, customerConfirmedAt: now, responseDeadline: null },
+      data: { status: AppointmentStatus.CONFIRMED, confirmedAt: now, ...(opt?.customer ? {} : { customerConfirmedAt: now }), responseDeadline: null },
     });
     if (!r.count) return null;
     return this.prisma.appointment.findFirst({ where: { id: b.id, tenantId }, include: BOOKING_INCLUDE });

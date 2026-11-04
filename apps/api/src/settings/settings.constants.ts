@@ -604,6 +604,24 @@ export interface BookingRules {
    */
   staffMustAccept: boolean;
   /**
+   * Bookings CUSTOMERS make — booking page, WordPress plugin, Messenger /
+   * Instagram chat, AI hotline — are CONFIRMED the moment they are made.
+   *
+   * On for every salon by default (4 Nov 2026, the owner: "áp dụng tự động
+   * confirm cho tất cả các tiệm"). Before, every one of them sat in the
+   * header's "Cần xác nhận" until someone at the desk pressed Xác nhận — for
+   * a booking the system had already checked against hours, technicians and
+   * the calendar. It still shows under "Mới đặt", so the desk sees it.
+   *
+   * A salon that wants to look at each booking first turns it off; its
+   * customer bookings then wait in "Cần xác nhận" as before. With
+   * staffMustAccept on, a booking that has a technician still waits for that
+   * technician's accept either way. Desk bookings are always confirmed
+   * (deskConfirm) and a check-in always marks the visit Arrived — neither
+   * depends on this switch.
+   */
+  autoConfirm: boolean;
+  /**
    * The badge at the top of the booking page.
    *
    *  'hours'   — "Open today 9:00 AM – 5:00 PM". A fact the owner typed in, so
@@ -684,6 +702,7 @@ export const DEFAULT_BOOKING_RULES: BookingRules = {
   payLaterEnabled: true,
   groupPolicy: 'strict',
   staffMustAccept: false,
+  autoConfirm: true,
   // Stating the opening hours rather than promising a slot the page cannot
   // verify. A salon that wants the old badge back can pick 'soonest'.
   soonestBar: 'hours',

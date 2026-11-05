@@ -45,3 +45,18 @@ describe('till floor', () => {
     expect(m.size).toBe(1);
   });
 });
+
+import { inFilter, todoOrder } from './till-floor';
+describe('the floor filters and the "needs you" list', () => {
+  it('filters by what the table needs', () => {
+    expect(inFilter('free', 'free')).toBe(true);
+    expect(inFilter('seated', 'busy')).toBe(true);
+    expect(inFilter('ordered', 'todo')).toBe(false);
+    expect(inFilter('askpay', 'todo')).toBe(true);
+    expect(inFilter('free', 'busy')).toBe(false);
+  });
+  it('puts a calling guest first, then the bill, then dishes not sent', () => {
+    const out = todoOrder([{ state: 'unsent', since: 1 }, { state: 'ordered', since: 0 }, { state: 'askpay', since: 5 }, { state: 'call', since: 9 }, { state: 'prebilled', since: 0 }]);
+    expect(out.map((x) => x.state)).toEqual(['call', 'askpay', 'unsent', 'prebilled']);
+  });
+});

@@ -9,7 +9,6 @@
  */
 import { useMemo, useState } from 'react';
 import { ui } from '../../lib/ui';
-import { useIsMobile } from '../../lib/responsive';
 import { bankLabel, cleanAccount, plainUpper, qrDataUrl, vietQrPayload, VN_BANK_LIST } from '../../lib/vietqr';
 import { shrinkQrImage } from '../../lib/pay-qr-image';
 
@@ -28,7 +27,6 @@ export function VietQrSetup({ shopName, pos, methods, vi, onSave }: {
   onSave: (path: string, body: unknown, label: string) => void;
 }) {
   const L = (v: string, e: string) => (vi ? v : e);
-  const narrow = useIsMobile(860);
   const start = pos?.bankAccount ?? null;
   const [bin, setBin] = useState(start?.bin ?? '');
   const [other, setOther] = useState(() => !!start && !VN_BANK_LIST.some((b) => b.bin === start.bin));
@@ -74,9 +72,9 @@ export function VietQrSetup({ shopName, pos, methods, vi, onSave }: {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'minmax(0, 1.25fr) minmax(260px, 0.75fr)', gap: 18, alignItems: 'start' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
         {/* The form: three things, once. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ flex: '1 1 360px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
           <div>
             {step(1, L('Ngân hàng nhận tiền', 'Bank'))}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -140,7 +138,7 @@ export function VietQrSetup({ shopName, pos, methods, vi, onSave }: {
         </div>
 
         {/* What the guest gets: a real, scannable QR on the bill. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+        <div style={{ flex: '0 1 300px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
           <div style={{ width: '100%', maxWidth: 290, background: '#fff', color: '#111827', borderRadius: 6, padding: '16px 16px 18px', boxShadow: '0 8px 24px rgba(15,23,42,.12)', border: '1px solid #e5e7eb', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: 12, lineHeight: 1.5 }}>
             <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 13, fontFamily: 'inherit' }}>{(shopName || L('Tên quán', 'Your shop')).toUpperCase()}</div>
             <div style={{ textAlign: 'center', fontWeight: 700, margin: '4px 0 6px' }}>{L('PHIẾU TẠM TÍNH', 'GUEST CHECK')}</div>

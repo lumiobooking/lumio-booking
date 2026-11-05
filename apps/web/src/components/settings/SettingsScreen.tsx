@@ -199,7 +199,7 @@ export function SettingsScreen({ only, exclude, bare }: { only?: string[]; exclu
         </nav>
 
         {/* Active section */}
-        <div style={{ maxWidth: tab === 'receipt' ? 1000 : 620, minWidth: 0 }}>
+        <div style={{ maxWidth: tab === 'receipt' || tab === 'payments' ? 1040 : 820, minWidth: 0, flex: 1 }}>
           {tab === 'company' && <><IndustryPicker /><CompanySection data={data} onSave={save} /></>}
           {tab === 'hours' && <HoursSection data={data} onSave={save} />}
           {tab === 'daysoff' && <DaysOffSection data={data} onSave={save} />}

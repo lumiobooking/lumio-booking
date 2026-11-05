@@ -46,3 +46,19 @@ export function qtyByDish(lines: Array<{ menuItemId: string | null; quantity: nu
   }
   return m;
 }
+
+/** The floor's quick filters: everything, tables with guests, tables that need someone, free tables. */
+export type FloorFilter = 'all' | 'busy' | 'todo' | 'free';
+const TODO_STATES = new Set(['call', 'askpay', 'unsent', 'prebilled']);
+export function inFilter(state: string, f: FloorFilter): boolean {
+  if (f === 'busy') return state !== 'free';
+  if (f === 'todo') return TODO_STATES.has(state);
+  if (f === 'free') return state === 'free';
+  return true;
+}
+
+/** Most urgent first: a guest calling, then "the bill", dishes not sent, a printed check waiting to be paid. */
+const URGENCY: Record<string, number> = { call: 0, askpay: 1, unsent: 2, prebilled: 3 };
+export function todoOrder<T extends { state: string; since: number }>(items: T[]): T[] {
+  return items.filter((x) => TODO_STATES.has(x.state)).sort((a, b) => (URGENCY[a.state] - URGENCY[b.state]) || (a.since - b.since));
+}

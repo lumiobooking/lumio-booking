@@ -33,7 +33,7 @@ import {
   byTableName, callText, cashQuickAmounts, combinedState, evenShares, lineGroups, minutesOpen, optionsReady, pendingLines, priceWith, tillError, timerTone, vietQr, VN_BANKS,
   type BankAccount, type CheckLine, type CheckView, type FloorCheck, type InvoiceInfo, type OptionGroup, type TableState,
 } from '../lib/restaurant-till';
-import { floorStats, mapBox, qtyByDish, spotTop, type Spot } from '../lib/till-floor';
+import { floorStats, inFilter, mapBox, qtyByDish, spotTop, todoOrder, type FloorFilter, type Spot } from '../lib/till-floor';
 import { tintFor } from '../lib/guest-order';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
@@ -120,13 +120,14 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const [moreOpen, setMoreOpen] = useState(false);
   // The floor as the room really is (the owner's layout from Tables › Floor map),
   // or the compact grid. Remembered per device; a phone always gets the grid.
+  // Tiles by area are the default (calmer, same everywhere); the drawn map stays one tap away.
   const [floorView, setFloorView] = useState<'map' | 'grid'>(() => {
-    try { return window.localStorage.getItem('lumio_till_floor_view') === 'grid' ? 'grid' : 'map'; } catch { return 'map'; }
+    try { return window.localStorage.getItem('lumio_till_floor_view2') === 'map' ? 'map' : 'grid'; } catch { return 'grid'; }
   });
-  const pickView = (v: 'map' | 'grid') => { setFloorView(v); try { window.localStorage.setItem('lumio_till_floor_view', v); } catch { /* private mode */ } };
+  const pickView = (v: 'map' | 'grid') => { setFloorView(v); try { window.localStorage.setItem('lumio_till_floor_view2', v); } catch { /* private mode */ } };
+  const [floorFilter, setFloorFilter] = useState<FloorFilter>('all');
   // A wide screen gets the categories as a side list (many categories wrapped badly as chips).
   const wide = !useIsMobile(1280);
-  const [legendOpen, setLegendOpen] = useState(false);
   const billRef = useRef<HTMLElement | null>(null);
   useFitBelow(billRef, !phone);
   const isOwner = user?.role === 'SALON_ADMIN';
@@ -351,37 +352,79 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   if (!check) {
     const tables = tablesSorted.filter((t) => !area || (t.area || '') === area);
     const groups = areas.filter((g) => tables.some((t) => (t.area || '') === g));
+    const SOLID = new Set<TableState>(['ordered', 'prebilled', 'askpay', 'paying', 'call']);
+    const stateText = (st: TableState, cs: FloorCheck[]) => {
+      const caller = cs.find((c) => (c.pendingCount ?? 0) > 0 || c.callReason);
+      const unsent = cs.reduce((n, c) => n + c.unsentCount, 0);
+      return st === 'free' ? L('Trống', 'Free')
+        : st === 'call' && caller ? ((caller.pendingCount ?? 0) > 0 ? L(`${caller.pendingCount} món QR chờ nhận`, `${caller.pendingCount} QR dishes waiting`) : callText(caller.callReason, vi))
+          : st === 'unsent' ? L(`${unsent} món chưa báo bếp`, `${unsent} not sent`)
+            : st === 'askpay' ? L('Gọi thanh toán', 'Wants the bill')
+              : st === 'seated' ? L('Chưa gọi món', 'No order yet')
+                : st === 'prebilled' ? L('Đã in tạm tính', 'Check printed')
+                  : st === 'paying' ? L('Đang thanh toán', 'Paying')
+                    : L('Đang phục vụ', 'Served');
+    };
     const tile = (key: string, label: string, cs: FloorCheck[], onClick: () => void, seats?: number, place?: CSSProperties) => {
       const st = combinedState(cs);
       const first = cs[0];
       const mins = first ? minutesOpen(first.openedAt, now) : 0;
       const tone = first ? timerTone(mins, floor?.settings.warnMinutes, floor?.settings.lateMinutes) : 'ok';
-      const total = cs.reduce((s, c) => s + c.subtotalCents, 0);
-      const unsent = cs.reduce((s, c) => s + c.unsentCount, 0);
-      const guests = cs.reduce((s, c) => s + c.guests, 0);
-      const caller = cs.find((c) => (c.pendingCount ?? 0) > 0 || c.callReason);
+      const total = cs.reduce((n, c) => n + c.subtotalCents, 0);
+      const guests = cs.reduce((n, c) => n + c.guests, 0);
+      const solid = SOLID.has(st);
+      const sub = !first ? L(`${seats ?? 0} ghế`, `${seats ?? 0} seats`)
+        : `${guests} ${L('khách', 'guests')}${first.serverName ? ` · ${first.serverName}` : ''}${cs.length > 1 ? ` · ${cs.length} bill` : ''}`;
       return (
-        <button key={key} type="button" onClick={onClick} aria-label={label}
-          style={{ ...TILE[st], minHeight: mobile ? 92 : 112, borderRadius: 14, padding: 10, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 4, boxShadow: '0 2px 8px rgba(15,23,42,.06)', ...place }}>
+        <button key={key} type="button" onClick={onClick} aria-label={`${label} · ${stateText(st, cs)}`}
+          style={{ ...TILE[st], minHeight: phone ? 100 : 114, borderRadius: 16, padding: '11px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'stretch', gap: 6, boxSizing: 'border-box', ...(st === 'free' ? { boxShadow: 'none' } : { boxShadow: '0 2px 8px rgba(15,23,42,.06)' }), ...place }}>
           <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-            <b style={{ fontSize: 18 }}>{label}</b>
-            {first && <span style={{ fontSize: 11.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, ...(tone === 'late' ? { background: '#b91c1c', color: '#fff' } : tone === 'warn' ? { background: '#f59e0b', color: '#1c1917' } : { background: 'rgba(127,127,127,.18)' }) }}>{mins}′</span>}
+            <b style={{ fontSize: phone ? 19 : 21, lineHeight: 1.1 }}>{label}</b>
+            {first && <span style={{ fontSize: 12, fontWeight: 800, padding: '2px 8px', borderRadius: 999, ...(tone === 'late' ? { background: '#b91c1c', color: '#fff' } : tone === 'warn' ? { background: '#f59e0b', color: '#1c1917' } : { background: solid ? 'rgba(255,255,255,.2)' : 'rgba(127,127,127,.14)' }) }}>{mins}′</span>}
           </span>
-          <span style={{ fontSize: 12, fontWeight: 600 }}>
-            {!first ? L(`Trống · ${seats ?? 0} ghế`, `Free · ${seats ?? 0} seats`)
-              : st === 'call' && caller ? ((caller.pendingCount ?? 0) > 0 ? L(`QR: ${caller.pendingCount} món chờ nhận`, `QR: ${caller.pendingCount} to accept`) : callText(caller.callReason, vi))
-              : st === 'unsent' ? L(`${unsent} món chưa báo bếp`, `${unsent} not sent`)
-                : st === 'askpay' ? L('Khách gọi thanh toán', 'Wants to pay')
-                  : st === 'seated' ? L(`${guests} khách · chưa gọi`, `${guests} guests · no order`)
-                    : st === 'prebilled' ? L('Đã in tạm tính', 'Check printed')
-                      : st === 'paying' ? L('Đang thanh toán', 'Paying')
-                        : `${guests} ${L('khách', 'guests')}${first.serverName ? ` · ${first.serverName}` : ''}`}
-            {cs.length > 1 ? ` · ${cs.length} bill` : ''}
+          <span style={{ alignSelf: 'flex-start', fontSize: 12, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: solid ? 'rgba(255,255,255,.22)' : st === 'free' ? 'rgba(127,127,127,.12)' : 'rgba(127,127,127,.16)', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stateText(st, cs)}</span>
+          <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6, fontSize: 12.5, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ opacity: 0.85, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
+            {total > 0 && <b style={{ fontSize: 13.5, whiteSpace: 'nowrap' }}>{fmt(total)}</b>}
           </span>
-          {total > 0 && <b style={{ fontSize: 14 }}>{fmt(total)}</b>}
         </button>
       );
     };
+    // What each table needs, for the filters and the "needs you" list.
+    const stateOf = (t: { id: string }) => combinedState(checksByTable.get(t.id) ?? []);
+    const shownTables = tables.filter((t) => inFilter(stateOf(t), floorFilter));
+    const shownGroups = groups.filter((g) => shownTables.some((t) => (t.area || '') === g));
+    const counts = {
+      all: tables.length,
+      busy: tables.filter((t) => inFilter(stateOf(t), 'busy')).length,
+      todo: tables.filter((t) => inFilter(stateOf(t), 'todo')).length + takeaways.filter((c) => inFilter(combinedState([c]), 'todo')).length,
+      free: tables.filter((t) => inFilter(stateOf(t), 'free')).length,
+    };
+    const todo = todoOrder((floor?.checks ?? []).map((c) => ({ c, state: combinedState([c]), since: Date.parse(c.callAt ?? c.payRequestedAt ?? c.openedAt) || 0 })));
+    const sidePanel = !mobile;
+    const stats = floor ? floorStats(floor.tables.length, floor.checks) : null;
+    const todoPanel = (
+      <aside aria-label={L('Cần xử lý', 'Needs you')} style={{ flex: '0 0 280px', ...card, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 80, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <b style={{ fontSize: 15, color: C.strong }}>{L('Cần xử lý', 'Needs you')}</b>
+          {todo.length > 0 && <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', background: '#be185d', borderRadius: 999, padding: '2px 9px' }}>{todo.length}</span>}
+        </div>
+        {todo.length === 0 && <span style={{ fontSize: 13, color: C.muted }}>{L('Không có bàn nào cần làm gì lúc này.', 'Nothing waiting right now.')}</span>}
+        {todo.map(({ c, state }) => (
+          <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 14, border: `1px solid ${C.line}` }}>
+            <button type="button" onClick={() => openBill(c)} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: 0, border: 'none', background: 'transparent', color: C.text, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+              <span style={{ ...TILE[state], minWidth: 42, height: 42, padding: '0 6px', boxSizing: 'border-box', borderRadius: 12, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 14, flexShrink: 0 }}>{c.takeaway ? L('MV', 'TG') : c.tables}</span>
+              <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <b style={{ fontSize: 14 }}>{stateText(state, [c])}</b>
+                <span style={{ fontSize: 12.5, color: C.muted }}>{fmt(c.subtotalCents)}{c.callAt || c.payRequestedAt ? ` · ${minutesOpen(c.callAt ?? c.payRequestedAt ?? c.openedAt, now)}′` : ''}</span>
+              </span>
+              <span aria-hidden style={{ color: C.muted, fontSize: 18 }}>›</span>
+            </button>
+            {c.callReason && <button type="button" disabled={busy} onClick={() => void clearCall(c.id)} style={{ ...btn, minHeight: 36 }}>{L('Đã xem', 'Seen')}</button>}
+          </div>
+        ))}
+      </aside>
+    );
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, color: C.text }}>
         <TillHeader vi={vi} cashier={user?.firstName ?? ''} shiftOpen={!!shiftCtl.state?.shift} failed={failed.length} canPay={canPay} compact={phone}
@@ -389,7 +432,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
           onShift={() => setShowShift(true)} onPrints={() => setShowPrints(true)} onTakeaway={() => void openTable(null, 1)} onRetail={onQuickSale}
           onSoldOut={() => setShowSoldOut(true)} onSettings={isOwner ? () => setShowSettings(true) : undefined} onDrawer={() => void openDrawer()} />
         {msg && <Toast {...msg} />}
-        {calls.length > 0 && (
+        {calls.length > 0 && !sidePanel && (
           <div role="alert" style={{ ...card, padding: 10, border: '2px solid #f59e0b', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {calls.map((c) => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -403,48 +446,46 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
             ))}
           </div>
         )}
-        {!phone && floor && floor.tables.length > 0 && (() => {
-          const st = floorStats(floor.tables.length, floor.checks);
-          const stat = (label: string, value: string, sub?: string) => (
-            <div style={{ ...card, padding: '9px 14px', minWidth: 150 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.05em', color: C.muted }}>{label}</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.strong }}>{value}{sub && <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}> {sub}</span>}</div>
-            </div>
-          );
-          return (
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'stretch' }}>
-              {stat(L('CÓ KHÁCH', 'SEATED'), `${st.busyTables}/${st.tables}`, L(`bàn · ${st.guests} khách`, `tables · ${st.guests} guests`))}
-              {stat(L('BILL ĐANG MỞ', 'OPEN BILLS'), String(st.openBills), st.takeaway ? L(`· ${st.takeaway} mang về`, `· ${st.takeaway} to go`) : undefined)}
-              {stat(L('TẠM TÍNH ĐANG MỞ', 'OPEN TOTAL'), fmt(st.openCents))}
-              {st.attention > 0 && stat(L('CẦN XỬ LÝ', 'NEEDS YOU'), String(st.attention), L('bàn', 'tables'))}
-              <div role="group" aria-label={L('Kiểu xem', 'View')} style={{ marginLeft: 'auto', display: 'flex', alignSelf: 'center', gap: 4, padding: 4, borderRadius: 12, border: `1px solid ${C.border}`, background: C.panel }}>
-                {(['map', 'grid'] as const).map((v) => (
+        {floor && floor.tables.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: phone ? 'nowrap' : 'wrap', overflowX: phone ? 'auto' : undefined, scrollbarWidth: 'none' }}>
+            {([['all', L('Tất cả', 'All')], ['busy', L('Có khách', 'Seated')], ['todo', L('Cần xử lý', 'Needs you')], ['free', L('Trống', 'Free')]] as [FloorFilter, string][]).map(([k, label]) => {
+              const on = floorFilter === k;
+              return (
+                <button key={k} type="button" aria-pressed={on} onClick={() => setFloorFilter(k)}
+                  style={{ minHeight: 38, padding: '0 12px', flexShrink: 0, borderRadius: 999, border: `1px solid ${on ? C.strong : C.border}`, background: on ? C.strong : C.panel, color: on ? C.panel : C.text, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+                  {label}
+                  <span style={{ fontSize: 12, fontWeight: 800, borderRadius: 999, padding: '1px 7px', background: k === 'todo' && counts.todo > 0 ? '#be185d' : on ? 'rgba(127,127,127,.35)' : C.raised, color: k === 'todo' && counts.todo > 0 ? '#fff' : on ? C.panel : C.muted }}>{counts[k]}</span>
+                </button>
+              );
+            })}
+            {/* Areas: one compact picker instead of a second row of chips (the tables are already grouped by area). */}
+            {areas.filter(Boolean).length > 1 && (
+              <select value={area} onChange={(e) => setArea(e.target.value)} aria-label={L('Khu vực', 'Area')}
+                style={{ minHeight: 38, flexShrink: 0, padding: '0 10px', borderRadius: 999, border: `1px solid ${area ? '#4f46e5' : C.border}`, background: C.panel, color: area ? '#4f46e5' : C.text, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700 }}>
+                <option value="">{L('Mọi khu', 'All areas')}</option>
+                {areas.filter(Boolean).map((a0) => <option key={a0} value={a0}>{a0}</option>)}
+              </select>
+            )}
+            {!phone && stats && (
+              <span style={{ marginLeft: 'auto', fontSize: 13, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>
+                <b style={{ color: C.strong }}>{stats.busyTables}/{stats.tables}</b> {L('bàn', 'tables')} · <b style={{ color: C.strong }}>{stats.guests}</b> {L('khách', 'guests')} · <b style={{ color: C.strong }}>{fmt(stats.openCents)}</b> {L('đang mở', 'open')}
+              </span>
+            )}
+            {!phone && floor.layout && (
+              <div role="group" aria-label={L('Kiểu xem', 'View')} style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 11, border: `1px solid ${C.border}`, background: C.panel, marginLeft: stats ? 0 : 'auto' }}>
+                {(['grid', 'map'] as const).map((v) => (
                   <button key={v} type="button" aria-pressed={floorView === v} onClick={() => pickView(v)}
-                    style={{ minHeight: 36, padding: '0 12px', borderRadius: 9, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: floorView === v ? '#4f46e5' : 'transparent', color: floorView === v ? '#fff' : C.text }}>
-                    {v === 'map' ? L('Sơ đồ', 'Map') : L('Lưới', 'Grid')}
+                    style={{ minHeight: 32, padding: '0 11px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: floorView === v ? '#4f46e5' : 'transparent', color: floorView === v ? '#fff' : C.text }}>
+                    {v === 'map' ? L('Sơ đồ', 'Map') : L('Theo khu', 'By area')}
                   </button>
                 ))}
               </div>
-            </div>
-          );
-        })()}
-        {/* Areas: one swipeable row on a phone (they wrapped onto two or three
-            lines and pushed the first table below the fold). */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: phone ? 'nowrap' : 'wrap', overflowX: phone ? 'auto' : undefined, scrollbarWidth: 'none', alignItems: 'center', margin: phone ? '0 -4px' : undefined, padding: phone ? '0 4px' : undefined }}>
-          <button type="button" onClick={() => setArea('')} style={{ ...chip(!area), flexShrink: 0 }}>{L('Tất cả', 'All')} · {floor?.tables.length ?? 0}</button>
-          {areas.filter(Boolean).map((a) => (
-            <button key={a} type="button" onClick={() => setArea(a)} style={{ ...chip(area === a), flexShrink: 0 }}>{a}</button>
-          ))}
-          {!phone && <span style={{ marginLeft: 'auto', fontSize: 12.5, color: C.muted }}>{L(`${floor?.checks.length ?? 0} bill đang mở`, `${floor?.checks.length ?? 0} open bills`)}</span>}
-        </div>
-        {phone ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.muted }}>{floorSummary(floor?.checks ?? [], vi)}</span>
-            <button type="button" aria-expanded={legendOpen} aria-label={L('Chú thích màu bàn', 'Table colours')} onClick={() => setLegendOpen((v) => !v)}
-              style={{ ...btn, width: 40, minHeight: 40, padding: 0, borderRadius: 999 }}>?</button>
+            )}
           </div>
-        ) : null}
-        {(!phone || legendOpen) && <Legend vi={vi} />}
+        )}
+        {phone && stats && stats.busyTables > 0 && (
+          <span style={{ fontSize: 13, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{stats.busyTables}/{stats.tables} {L('bàn', 'tables')} · {stats.guests} {L('khách', 'guests')} · {fmt(stats.openCents)}</span>
+        )}
         {!floor && <p style={{ color: C.muted }}>{L('Đang tải sơ đồ bàn…', 'Loading tables…')}</p>}
         {floor && floor.tables.length === 0 && (
           <div style={{ ...card, padding: 20 }}>
@@ -452,44 +493,52 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
             <p style={{ margin: '6px 0 0', color: C.muted }}>{L('Thêm bàn ở mục Bàn, rồi quay lại đây để gọi món.', 'Add tables under Tables, then come back to take orders.')} <a href="/salon/tables">{L('Mở mục Bàn', 'Open Tables')}</a></p>
           </div>
         )}
-        {takeaways.length > 0 && (
-          <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', color: C.muted }}>{L('MANG VỀ', 'TO GO')}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${mobile ? 104 : 150}px, 1fr))`, gap: 10 }}>
-              {takeaways.map((c) => tile(c.id, c.tables, [c], () => openBill(c)))}
-            </div>
-          </section>
-        )}
-        {!phone && floorView === 'map' && floor && floor.layout && tables.length > 0 && (() => {
-          const box = mapBox(tables.map((t) => floor.layout?.[t.id]).filter((x): x is Spot => !!x));
-          return (
-            <section aria-label={L('Sơ đồ bàn', 'Floor map')} style={{ ...card, borderRadius: 20, overflowX: 'auto' }}>
-              <div style={{ position: 'relative', minWidth: 960, height: box.height, backgroundImage: 'radial-gradient(var(--c334155) 1px, transparent 1px)', backgroundSize: '22px 22px' }}>
-                {tables.map((t) => {
-                  const spot = floor.layout?.[t.id];
-                  if (!spot) return null;
-                  const cs = checksByTable.get(t.id) ?? [];
-                  const label = cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name;
-                  const size = spot.shape === 'long' ? { width: 196, minHeight: 100 } : spot.shape === 'round' ? { width: 116, minHeight: 116, borderRadius: 999, padding: '18px 14px' } : { width: 132, minHeight: 100 };
-                  return tile(t.id, label, cs, () => tapTable(t), t.seats, { position: 'absolute', left: `${spot.x}%`, top: spotTop(spot.y) + 14, ...size });
-                })}
-                {isOwner && <a href="/salon/tables?view=map" style={{ position: 'absolute', right: 14, bottom: 12, fontSize: 12.5, fontWeight: 700, color: C.muted }}>{L('Sắp xếp sơ đồ bàn ›', 'Arrange the floor ›')}</a>}
-              </div>
-            </section>
-          );
-        })()}
-        {(phone || floorView === 'grid' || !floor?.layout) && groups.map((g) => (
-          <section key={g || '_'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {groups.length > 1 && <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', color: C.muted }}>{(g || L('Khác', 'Other')).toUpperCase()}</div>}
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${mobile ? 104 : 150}px, 1fr))`, gap: 10 }}>
-              {tables.filter((t) => (t.area || '') === g).map((t) => {
-                const cs = checksByTable.get(t.id) ?? [];
-                const label = cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name;
-                return tile(t.id, label, cs, () => tapTable(t), t.seats);
-              })}
-            </div>
-          </section>
-        ))}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {takeaways.filter((c) => inFilter(combinedState([c]), floorFilter)).length > 0 && (
+              <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', color: C.muted }}>{L('MANG VỀ', 'TO GO')}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${phone ? 150 : 172}px, 1fr))`, gap: 10 }}>
+                  {takeaways.filter((c) => inFilter(combinedState([c]), floorFilter)).map((c) => tile(c.id, c.tables, [c], () => openBill(c)))}
+                </div>
+              </section>
+            )}
+            {!phone && floorView === 'map' && floor && floor.layout && tables.length > 0 && (() => {
+              const box = mapBox(tables.map((t) => floor.layout?.[t.id]).filter((x): x is Spot => !!x));
+              return (
+                <section aria-label={L('Sơ đồ bàn', 'Floor map')} style={{ ...card, borderRadius: 20, overflowX: 'auto' }}>
+                  <div style={{ position: 'relative', minWidth: 960, height: box.height, backgroundImage: 'radial-gradient(var(--c334155) 1px, transparent 1px)', backgroundSize: '22px 22px' }}>
+                    {tables.map((t) => {
+                      const spot = floor.layout?.[t.id];
+                      if (!spot) return null;
+                      const cs = checksByTable.get(t.id) ?? [];
+                      const label = cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name;
+                      const size = spot.shape === 'long' ? { width: 196, minHeight: 100 } : spot.shape === 'round' ? { width: 116, minHeight: 116, borderRadius: 999, padding: '18px 14px' } : { width: 132, minHeight: 100 };
+                      return tile(t.id, label, cs, () => tapTable(t), t.seats, { position: 'absolute', left: `${spot.x}%`, top: spotTop(spot.y) + 14, ...size });
+                    })}
+                    {isOwner && <a href="/salon/tables?view=map" style={{ position: 'absolute', right: 14, bottom: 12, fontSize: 12.5, fontWeight: 700, color: C.muted }}>{L('Sắp xếp sơ đồ bàn ›', 'Arrange the floor ›')}</a>}
+                  </div>
+                </section>
+              );
+            })()}
+            {(phone || floorView === 'grid' || !floor?.layout) && shownGroups.map((g) => (
+              <section key={g || '_'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {groups.length > 1 && <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.08em', color: C.muted }}>{(g || L('Khác', 'Other')).toUpperCase()}</div>}
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${phone ? 150 : 172}px, 1fr))`, gap: 10 }}>
+                  {shownTables.filter((t) => (t.area || '') === g).map((t) => {
+                    const cs = checksByTable.get(t.id) ?? [];
+                    const label = cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name;
+                    return tile(t.id, label, cs, () => tapTable(t), t.seats);
+                  })}
+                </div>
+              </section>
+            ))}
+            {floor && floor.tables.length > 0 && shownTables.length === 0 && floorFilter !== 'all' && (
+              <div style={{ ...card, padding: 16, color: C.muted }}>{L('Không có bàn nào ở mục này.', 'No tables here.')}</div>
+            )}
+          </div>
+          {sidePanel && floor && floor.tables.length > 0 && todoPanel}
+        </div>
         {openFor && (
           <Modal vi={vi} title={L(`Mở bàn ${openFor.name}`, `Open ${openFor.name}`)} onClose={() => setOpenFor(null)}>
             <span style={{ color: C.muted }}>{L('Bao nhiêu khách?', 'How many guests?')}</span>
@@ -532,6 +581,12 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const billQty = qtyByDish(check.lines);
   // Photos on the dish cards once the menu has any (a menu with none keeps the compact cards).
   const showPhotos = menu.some((m) => !!m.imageUrl);
+  // Prices in the list without the currency sign for the đồng (the total keeps it): less to read.
+  const priceText = (c: number) => (currency === 'VND' ? fmt(c).replace(/\s*[₫đ]\s*/g, '').trim() : fmt(c));
+  // "All" with no search: one block per category in the menu's order; otherwise one block.
+  const menuSections = !cat && !q.trim() && categories.length > 1
+    ? categories.map((c0) => ({ key: c0 || '_', title: c0 || L('Khác', 'Other'), items: shownDishes.filter((m) => (m.category || '') === c0) })).filter((x) => x.items.length)
+    : [{ key: 'one', title: '', items: shownDishes }];
   const menuPane = (
     <section aria-label={L('Thực đơn', 'Menu')} style={{ flex: phone ? '1 1 100%' : '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 48, padding: '0 14px', ...card, borderRadius: 14 }}>
@@ -545,30 +600,62 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
         </div>
       )}
       {menu.length === 0 && <div style={{ ...card, padding: 16 }}>{L('Chưa có món nào trong thực đơn.', 'The menu is empty.')} <a href="/salon/menu">{L('Thêm món', 'Add dishes')}</a></div>}
+      {showPhotos ? (
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${mobile ? 140 : 160}px, 1fr))`, gap: 8 }}>
-        {shownDishes.map((d) => {
-          const inBill = billQty.get(d.id) ?? 0;
-          const tint = tintFor(d.name);
-          return (
-          <button key={d.id} type="button" disabled={busy || d.soldOut} onClick={() => void addDish(d)} aria-label={`${d.name}${inBill ? ` · ${inBill}` : ''}`}
-            style={{ minHeight: 92, borderRadius: 16, border: inBill ? '2px solid #4f46e5' : d.soldOut ? `1px dashed ${C.border}` : `1px solid ${C.line}`, background: d.soldOut ? C.raised : C.panel, color: d.soldOut ? C.muted : C.text, textAlign: 'left', padding: 0, overflow: 'hidden', cursor: d.soldOut ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
-            {showPhotos && (d.imageUrl
-              ? <img src={d.imageUrl} alt="" loading="lazy" style={{ width: '100%', height: 78, objectFit: 'cover', display: 'block', opacity: d.soldOut ? 0.5 : 1 }} />
-              : <span aria-hidden style={{ width: '100%', height: 78, background: tint.bg, color: tint.fg, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 26, opacity: d.soldOut ? 0.5 : 1 }}>{(d.name.trim()[0] ?? '·').toUpperCase()}</span>)}
-            {inBill > 0 && <span style={{ position: 'absolute', top: 6, right: 6, minWidth: 26, height: 26, padding: '0 7px', boxSizing: 'border-box', borderRadius: 999, background: '#4f46e5', color: '#fff', fontWeight: 800, fontSize: 13, display: 'grid', placeItems: 'center', boxShadow: '0 2px 6px rgba(15,23,42,.25)' }}>×{inBill}</span>}
-            <span style={{ padding: 10, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6, flex: 1, width: '100%', boxSizing: 'border-box' }}>
-            <b style={{ fontSize: 14.5, lineHeight: 1.3, textDecoration: d.soldOut ? 'line-through' : undefined }}>{d.name}</b>
-            <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-              {d.soldOut
-                ? <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--ink-bad)' }}>{L('HẾT MÓN', 'SOLD OUT')}</span>
-                : <span style={{ fontSize: 11.5, fontWeight: 700, color: d.station === 'BAR' ? 'var(--ca5f3fc)' : C.muted }}>{stationName(d.station)}{d.options.length ? ` · ${L('tuỳ chọn', 'options')}` : ''}</span>}
-              <b style={{ fontSize: 13.5 }}>{fmt(d.priceCents)}</b>
-            </span>
-            </span>
-          </button>
-          );
-        })}
-      </div>
+          {shownDishes.map((d) => {
+            const inBill = billQty.get(d.id) ?? 0;
+            const tint = tintFor(d.name);
+            return (
+            <button key={d.id} type="button" disabled={busy || d.soldOut} onClick={() => void addDish(d)} aria-label={`${d.name}${inBill ? ` · ${inBill}` : ''}`}
+              style={{ minHeight: 92, borderRadius: 16, border: inBill ? '2px solid #4f46e5' : d.soldOut ? `1px dashed ${C.border}` : `1px solid ${C.line}`, background: d.soldOut ? C.raised : C.panel, color: d.soldOut ? C.muted : C.text, textAlign: 'left', padding: 0, overflow: 'hidden', cursor: d.soldOut ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
+              {showPhotos && (d.imageUrl
+                ? <img src={d.imageUrl} alt="" loading="lazy" style={{ width: '100%', height: 78, objectFit: 'cover', display: 'block', opacity: d.soldOut ? 0.5 : 1 }} />
+                : <span aria-hidden style={{ width: '100%', height: 78, background: tint.bg, color: tint.fg, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 26, opacity: d.soldOut ? 0.5 : 1 }}>{(d.name.trim()[0] ?? '·').toUpperCase()}</span>)}
+              {inBill > 0 && <span style={{ position: 'absolute', top: 6, right: 6, minWidth: 26, height: 26, padding: '0 7px', boxSizing: 'border-box', borderRadius: 999, background: '#4f46e5', color: '#fff', fontWeight: 800, fontSize: 13, display: 'grid', placeItems: 'center', boxShadow: '0 2px 6px rgba(15,23,42,.25)' }}>×{inBill}</span>}
+              <span style={{ padding: 10, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6, flex: 1, width: '100%', boxSizing: 'border-box' }}>
+              <b style={{ fontSize: 14.5, lineHeight: 1.3, textDecoration: d.soldOut ? 'line-through' : undefined }}>{d.name}</b>
+              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                {d.soldOut
+                  ? <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--ink-bad)' }}>{L('HẾT MÓN', 'SOLD OUT')}</span>
+                  : <span style={{ fontSize: 11.5, fontWeight: 700, color: C.muted }}>{d.options.length ? L('Tuỳ chọn', 'Options') : ''}</span>}
+                <b style={{ fontSize: 13.5 }}>{fmt(d.priceCents)}</b>
+              </span>
+              </span>
+            </button>
+            );
+          })}
+        </div>
+      ) : (
+        // No photos: a calm list, like a printed menu — name left, price right,
+        // one white block per category, no boxes around every dish.
+        menuSections.map((sec) => (
+          <div key={sec.key} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {sec.title && (
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 4px 0' }}>
+                <b style={{ fontSize: 15.5, color: C.strong }}>{sec.title}</b>
+                <span style={{ fontSize: 12.5, color: C.muted }}>{sec.items.length} {L('món', 'dishes')}</span>
+              </div>
+            )}
+            <div style={{ ...card, borderRadius: 16, padding: '0 14px', display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${mobile ? 240 : 280}px, 1fr))`, columnGap: 28 }}>
+              {sec.items.map((d) => {
+                const inBill = billQty.get(d.id) ?? 0;
+                return (
+                  <button key={d.id} type="button" disabled={busy || d.soldOut} onClick={() => void addDish(d)} aria-label={`${d.name} · ${fmt(d.priceCents)}${inBill ? ` · ${L('đã gọi', 'in bill')} ${inBill}` : ''}`}
+                    style={{ minHeight: 56, display: 'flex', alignItems: 'center', gap: 12, padding: '8px 2px', border: 'none', borderBottom: `1px solid ${C.line}`, background: 'transparent', color: d.soldOut ? C.muted : C.text, textAlign: 'left', fontFamily: 'inherit', cursor: d.soldOut ? 'not-allowed' : 'pointer', fontVariantNumeric: 'tabular-nums' }}>
+                    {inBill > 0 && <span style={{ minWidth: 24, height: 24, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: '#4f46e5', color: '#fff', fontSize: 12.5, fontWeight: 800, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{inBill}</span>}
+                    <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: 15, fontWeight: inBill ? 700 : 600, lineHeight: 1.35, textDecoration: d.soldOut ? 'line-through' : undefined }}>{d.name}</span>
+                      {(d.soldOut || d.options.length > 0) && <span style={{ fontSize: 12, fontWeight: 700, color: d.soldOut ? 'var(--ink-bad)' : C.muted }}>{d.soldOut ? L('Hết món', 'Sold out') : L('Có tuỳ chọn', 'Has options')}</span>}
+                    </span>
+                    <span style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap', color: d.soldOut ? C.muted : C.strong }}>{priceText(d.priceCents)}</span>
+                    {mobile && !d.soldOut && <span aria-hidden style={{ width: 32, height: 32, borderRadius: '50%', background: inBill ? '#4f46e5' : 'var(--c1e1b4b)', color: inBill ? '#fff' : '#818cf8', display: 'grid', placeItems: 'center', fontSize: 19, fontWeight: 700, flexShrink: 0 }}>+</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
     </section>
   );
   // The categories as a side list on a wide screen, the dishes beside them.
@@ -883,18 +970,6 @@ function TillHeader({ vi, cashier, shiftOpen, failed, canPay, compact, busyTable
   );
 }
 
-/** "2 chưa báo bếp · 1 gọi tính tiền" — what needs a server, in one line. */
-function floorSummary(checks: FloorCheck[], vi: boolean): string {
-  const unsent = checks.filter((c) => c.unsentCount > 0).length;
-  const pay = checks.filter((c) => c.payRequestedAt).length;
-  const calls = checks.filter((c) => (c.pendingCount ?? 0) > 0 || c.callReason).length;
-  const parts = [
-    unsent ? (vi ? `${unsent} bàn chưa báo bếp` : `${unsent} not sent`) : '',
-    pay ? (vi ? `${pay} gọi tính tiền` : `${pay} want to pay`) : '',
-    calls ? (vi ? `${calls} đang gọi` : `${calls} calling`) : '',
-  ].filter(Boolean);
-  return parts.length ? parts.join(' · ') : (vi ? `${checks.length} bill đang mở` : `${checks.length} open bills`);
-}
 
 /** Space the phone tab bar takes at the bottom (MobileTabBar sets --tabbar-h). */
 const STICKY_BOTTOM = 'calc(var(--tabbar-h, 0px) + 8px)';
@@ -929,21 +1004,6 @@ function useFitBelow(ref: { current: HTMLElement | null }, on: boolean) {
   }, [ref, on]);
 }
 
-function Legend({ vi }: { vi: boolean }) {
-  const L = (v: string, e: string) => (vi ? v : e);
-  const items: [TableState, string][] = [
-    ['free', L('Trống', 'Free')], ['seated', L('Có khách, chưa gọi', 'Seated')], ['ordered', L('Đã báo bếp', 'Ordered')],
-    ['unsent', L('Có món chưa báo bếp', 'Not sent')], ['prebilled', L('Đã in tạm tính', 'Check printed')], ['askpay', L('Khách gọi thanh toán', 'Wants to pay')],
-    ['call', L('Khách gọi / món QR chờ nhận', 'Guest calling / QR order')],
-  ];
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12.5, fontWeight: 600, color: C.muted }}>
-      {items.map(([k, label]) => (
-        <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 14, height: 14, borderRadius: 4, ...TILE[k] }} />{label}</span>
-      ))}
-    </div>
-  );
-}
 
 function OptionsModal({ vi, dish, fmt, busy, onClose, onAdd }: { vi: boolean; dish: Dish; fmt: (c: number) => string; busy: boolean; onClose: () => void; onAdd: (o: { groupId: string; choiceIds: string[] }[]) => void }) {
   const L = (v: string, e: string) => (vi ? v : e);

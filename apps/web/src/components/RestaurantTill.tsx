@@ -28,6 +28,7 @@ import { tillMethodsFrom, payLabel, type PayMethod } from '../lib/payment-method
 import { buildReceiptText, receiptCopies, type ReceiptProfile } from '../lib/receipt';
 import { GuestPayQr } from './GuestPayQr';
 import { PayQrPanel } from './PayQrPanel';
+import { MAP_COLORS, TillFloorMap } from './TillFloorMap';
 import { CashShiftPanel, useShiftState } from './CashShiftPanel';
 import {
   byTableName, callText, cashQuickAmounts, combinedState, evenShares, lineGroups, minutesOpen, optionsReady, pendingLines, priceWith, tillError, timerTone, vietQr, VN_BANKS,
@@ -122,10 +123,15 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   // or the compact grid. Remembered per device; a phone always gets the grid.
   // Tiles by area are the default (calmer, same everywhere); the drawn map stays one tap away.
   const [floorView, setFloorView] = useState<'map' | 'grid'>(() => {
-    try { return window.localStorage.getItem('lumio_till_floor_view2') === 'map' ? 'map' : 'grid'; } catch { return 'grid'; }
+    try { return window.localStorage.getItem('lumio_till_floor_view3') === 'grid' ? 'grid' : 'map'; } catch { return 'map'; }
   });
-  const pickView = (v: 'map' | 'grid') => { setFloorView(v); try { window.localStorage.setItem('lumio_till_floor_view2', v); } catch { /* private mode */ } };
+  const pickView = (v: 'map' | 'grid') => { setFloorView(v); try { window.localStorage.setItem('lumio_till_floor_view3', v); } catch { /* private mode */ } };
   const [floorFilter, setFloorFilter] = useState<FloorFilter>('all');
+  // The drawn plan: the table tapped, and its bill for the panel beside the plan.
+  const [selId, setSelId] = useState<string | null>(null);
+  const [selBill, setSelBill] = useState<CheckView | null>(null);
+  // "Thanh toán" from the panel opens the bill, then the pay screen once it has loaded.
+  const payAfterOpen = useRef<string | null>(null);
   // A wide screen gets the categories as a side list (many categories wrapped badly as chips).
   const wide = !useIsMobile(1280);
   const billRef = useRef<HTMLElement | null>(null);
@@ -194,6 +200,9 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     if (!token) return;
     try { setCheck(await apiFetch<CheckView>(`/restaurant/checks/${encodeURIComponent(id)}`, { token })); } catch (e) { fail(e); setCheck(null); }
   }, [token, fail]);
+  useEffect(() => {
+    if (check && payAfterOpen.current === check.id) { payAfterOpen.current = null; startPay(); }
+  }, [check]); // eslint-disable-line react-hooks/exhaustive-deps
   // A quiet re-read (the pay screen watching for the bank transfer): a blip never closes the bill.
   const refreshCheck = useCallback(async (id: string) => {
     if (!token) return;
@@ -402,6 +411,94 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     };
     const todo = todoOrder((floor?.checks ?? []).map((c) => ({ c, state: combinedState([c]), since: Date.parse(c.callAt ?? c.payRequestedAt ?? c.openedAt) || 0 })));
     const sidePanel = !mobile;
+    // The drawn plan: the table tapped, and what to do with it (beside the plan; a sheet on a phone).
+    const selTable = selId ? tablesSorted.find((t) => t.id === selId) ?? null : null;
+    const selectTable = (id: string) => {
+      setSelId(id);
+      setSelBill(null);
+      const cs = checksByTable.get(id) ?? [];
+      if (cs.length === 1 && token) apiFetch<CheckView>(`/restaurant/checks/${encodeURIComponent(cs[0].id)}`, { token }).then(setSelBill).catch(() => undefined);
+    };
+    const printCheck = async (id: string) => {
+      const r = await call<{ check: CheckView }>(`/restaurant/checks/${encodeURIComponent(id)}/prebill`, 'POST', {});
+      if (r) { say(true, L('Đã gửi phiếu tạm tính ra máy in.', 'Guest check sent to the printer.')); void loadFloor(); }
+    };
+    const tablePanel = (t: Table, sheet = false) => {
+      const cs = checksByTable.get(t.id) ?? [];
+      const st = combinedState(cs);
+      const c0 = cs[0];
+      const mins = c0 ? minutesOpen(c0.openedAt, now) : 0;
+      const tone = c0 ? timerTone(mins, floor?.settings.warnMinutes, floor?.settings.lateMinutes) : 'ok';
+      const col = MAP_COLORS[st];
+      const bill = selBill && c0 && selBill.id === c0.id ? selBill : null;
+      const lines = (bill?.lines ?? []).filter((l) => l.state !== 'VOID' && l.state !== 'PENDING');
+      const soft: CSSProperties = { minHeight: 46, border: 'none', borderRadius: 13, background: C.raised, color: C.text, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer' };
+      return (
+        <aside aria-label={`${L('Bàn', 'Table')} ${t.name}`} style={{ ...(sheet ? { background: C.panel, borderRadius: '24px 24px 0 0', padding: '10px 18px 24px' } : { flex: '0 0 320px', ...card, padding: 0, position: 'sticky', top: 80, alignSelf: 'flex-start', overflow: 'hidden' }), display: 'flex', flexDirection: 'column', color: C.text }}>
+          {sheet && <span aria-hidden style={{ alignSelf: 'center', width: 44, height: 5, borderRadius: 3, background: C.border, marginBottom: 8 }} />}
+          <div style={{ padding: sheet ? '0 0 12px' : '16px 16px 12px', borderBottom: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <b style={{ fontSize: 22, color: C.strong, flex: 1 }}>{L('Bàn', 'Table')} {cs.length === 1 && c0.tableIds.length > 1 ? c0.tables : t.name}</b>
+              {c0 && <span style={{ fontSize: 12.5, fontWeight: 800, borderRadius: 999, padding: '3px 9px', ...(tone === 'late' ? { background: '#dc2626', color: '#fff' } : tone === 'warn' ? { background: '#fef3c7', color: '#92400e' } : { background: C.raised, color: C.muted }) }}>{mins}′</span>}
+              <button type="button" aria-label={L('Đóng', 'Close')} onClick={() => setSelId(null)} style={{ ...btn, width: 40, minHeight: 40, padding: 0, fontSize: 18 }}>×</button>
+            </div>
+            <span style={{ alignSelf: 'flex-start', fontSize: 12.5, fontWeight: 800, borderRadius: 999, padding: '3px 10px', background: col.fill, color: col.text, border: `1.5px solid ${col.line}` }}>{stateText(st, cs)}</span>
+            <span style={{ fontSize: 13, color: C.muted }}>
+              {[t.area || null, c0 ? `${cs.reduce((n, c) => n + c.guests, 0)} ${L('khách', 'guests')}` : L(`${t.seats} ghế`, `${t.seats} seats`), c0?.serverName ?? null, c0 ? `Bill #${c0.number}` : null].filter(Boolean).join(' · ')}
+            </span>
+          </div>
+          {!c0 && (
+            <div style={{ padding: sheet ? '14px 0 0' : 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>{L('Mở bàn — bao nhiêu khách?', 'Open the table — how many guests?')}</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 8 }}>
+                {Array.from({ length: Math.max(8, Math.min(12, t.seats + 2)) }, (_, i) => i + 1).map((n) => (
+                  <button key={n} type="button" disabled={busy} onClick={() => { setSelId(null); void openTable(t, n); }} style={{ ...btn, minHeight: 50, fontSize: 17, ...(n === t.seats ? { borderColor: '#4f46e5', color: '#4f46e5' } : {}) }}>{n}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {cs.length > 1 && (
+            <div style={{ padding: sheet ? '12px 0 0' : 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {cs.map((c) => (
+                <button key={c.id} type="button" onClick={() => { setSelId(null); openBill(c); }} style={{ ...btn, minHeight: 52, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Bill #{c.number} · {c.itemCount} {L('món', 'items')}</span><b>{fmt(c.subtotalCents)}</b>
+                </button>
+              ))}
+            </div>
+          )}
+          {cs.length === 1 && (
+            <>
+              <div style={{ padding: sheet ? '8px 0' : '6px 16px', fontVariantNumeric: 'tabular-nums' }}>
+                {!bill && <span style={{ display: 'block', padding: '10px 0', fontSize: 13, color: C.muted }}>{L('Đang tải món…', 'Loading…')}</span>}
+                {bill && lines.length === 0 && <span style={{ display: 'block', padding: '10px 0', fontSize: 13, color: C.muted }}>{L('Chưa gọi món nào.', 'Nothing ordered yet.')}</span>}
+                {lines.slice(0, 6).map((l) => (
+                  <div key={l.id} style={{ display: 'flex', gap: 8, padding: '9px 0', borderBottom: `1px solid ${C.line}`, fontSize: 14 }}>
+                    <b style={{ width: 24, color: C.muted }}>{l.quantity}</b>
+                    <span style={{ flex: 1, minWidth: 0 }}>{l.name}{l.state === 'UNSENT' && <span style={{ marginLeft: 6, fontSize: 11.5, fontWeight: 800, color: '#ea580c' }}>{L('chưa báo', 'new')}</span>}</span>
+                    <b>{fmt(l.quantity * l.unitPriceCents)}</b>
+                  </div>
+                ))}
+                {lines.length > 6 && <span style={{ display: 'block', padding: '8px 0', fontSize: 13, color: C.muted }}>{L(`+ ${lines.length - 6} món nữa`, `+ ${lines.length - 6} more`)}</span>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: 10 }}>
+                  <span style={{ color: C.muted }}>{L('Tổng', 'Total')}</span>
+                  <b style={{ fontSize: 22, color: C.strong }}>{fmt(c0.subtotalCents)}</b>
+                </div>
+              </div>
+              <div style={{ padding: sheet ? '10px 0 0' : '12px 16px 16px', display: 'flex', flexDirection: 'column', gap: 8, borderTop: sheet ? 'none' : `1px solid ${C.line}` }}>
+                {c0.callReason && <button type="button" disabled={busy} onClick={() => void clearCall(c0.id)} style={{ ...btn, minHeight: 44 }}>{L('Đã xem lời gọi', 'Seen the call')}</button>}
+                {canPay && c0.itemCount > 0 && (
+                  <button type="button" disabled={busy} onClick={() => { payAfterOpen.current = c0.id; setSelId(null); openBill(c0); }} style={{ ...primary, minHeight: 52, fontSize: 15.5 }}>{L('Thanh toán', 'Take payment')} · {fmt(c0.subtotalCents)}</button>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 8 }}>
+                  <button type="button" onClick={() => { setSelId(null); openBill(c0); }} style={soft}>{c0.unsentCount > 0 ? L('Mở bill · báo bếp', 'Open · send') : L('Gọi thêm món', 'Add dishes')}</button>
+                  <button type="button" disabled={busy || c0.itemCount === 0} onClick={() => void printCheck(c0.id)} style={soft}>{L('In tạm tính', 'Print check')}</button>
+                </div>
+              </div>
+            </>
+          )}
+        </aside>
+      );
+    };
     const stats = floor ? floorStats(floor.tables.length, floor.checks) : null;
     const todoPanel = (
       <aside aria-label={L('Cần xử lý', 'Needs you')} style={{ flex: '0 0 280px', ...card, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 80, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto' }}>
@@ -471,9 +568,9 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                 <b style={{ color: C.strong }}>{stats.busyTables}/{stats.tables}</b> {L('bàn', 'tables')} · <b style={{ color: C.strong }}>{stats.guests}</b> {L('khách', 'guests')} · <b style={{ color: C.strong }}>{fmt(stats.openCents)}</b> {L('đang mở', 'open')}
               </span>
             )}
-            {!phone && floor.layout && (
+            {floor && (
               <div role="group" aria-label={L('Kiểu xem', 'View')} style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 11, border: `1px solid ${C.border}`, background: C.panel, marginLeft: stats ? 0 : 'auto' }}>
-                {(['grid', 'map'] as const).map((v) => (
+                {(['map', 'grid'] as const).map((v) => (
                   <button key={v} type="button" aria-pressed={floorView === v} onClick={() => pickView(v)}
                     style={{ minHeight: 32, padding: '0 11px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: floorView === v ? '#4f46e5' : 'transparent', color: floorView === v ? '#fff' : C.text }}>
                     {v === 'map' ? L('Sơ đồ', 'Map') : L('Theo khu', 'By area')}
@@ -503,25 +600,24 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                 </div>
               </section>
             )}
-            {!phone && floorView === 'map' && floor && floor.layout && tables.length > 0 && (() => {
-              const box = mapBox(tables.map((t) => floor.layout?.[t.id]).filter((x): x is Spot => !!x));
-              return (
-                <section aria-label={L('Sơ đồ bàn', 'Floor map')} style={{ ...card, borderRadius: 20, overflowX: 'auto' }}>
-                  <div style={{ position: 'relative', minWidth: 960, height: box.height, backgroundImage: 'radial-gradient(var(--c334155) 1px, transparent 1px)', backgroundSize: '22px 22px' }}>
-                    {tables.map((t) => {
-                      const spot = floor.layout?.[t.id];
-                      if (!spot) return null;
-                      const cs = checksByTable.get(t.id) ?? [];
-                      const label = cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name;
-                      const size = spot.shape === 'long' ? { width: 196, minHeight: 100 } : spot.shape === 'round' ? { width: 116, minHeight: 116, borderRadius: 999, padding: '18px 14px' } : { width: 132, minHeight: 100 };
-                      return tile(t.id, label, cs, () => tapTable(t), t.seats, { position: 'absolute', left: `${spot.x}%`, top: spotTop(spot.y) + 14, ...size });
-                    })}
-                    {isOwner && <a href="/salon/tables?view=map" style={{ position: 'absolute', right: 14, bottom: 12, fontSize: 12.5, fontWeight: 700, color: C.muted }}>{L('Sắp xếp sơ đồ bàn ›', 'Arrange the floor ›')}</a>}
-                  </div>
-                </section>
-              );
-            })()}
-            {(phone || floorView === 'grid' || !floor?.layout) && shownGroups.map((g) => (
+            {floorView === 'map' && floor && floor.tables.length > 0 && (
+              <TillFloorMap tables={tablesSorted} layout={floor.layout} selectedId={selId} phone={phone} vi={vi}
+                onSelect={(t) => selectTable(t.id)}
+                view={(t) => {
+                  const cs = checksByTable.get(t.id) ?? [];
+                  const st = combinedState(cs);
+                  const mins = cs[0] ? minutesOpen(cs[0].openedAt, now) : 0;
+                  const unsent = cs.reduce((n, c) => n + c.unsentCount, 0);
+                  return {
+                    state: st,
+                    label: cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name,
+                    sub: !cs.length ? L(`${t.seats} ghế`, `${t.seats} seats`) : st === 'unsent' ? L(`${unsent} món · ${mins}′`, `${unsent} new · ${mins}′`) : `${mins}′`,
+                    dim: !inFilter(st, floorFilter) || (!!area && (t.area || '') !== area),
+                  };
+                }}
+                footer={isOwner ? <a href="/salon/tables?view=map" style={{ position: 'absolute', right: 16, bottom: 10, fontSize: 12.5, fontWeight: 700, color: '#64748b' }}>{L('Sắp xếp sơ đồ bàn ›', 'Arrange the floor ›')}</a> : null} />
+            )}
+            {floorView === 'grid' && shownGroups.map((g) => (
               <section key={g || '_'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {groups.length > 1 && <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.08em', color: C.muted }}>{(g || L('Khác', 'Other')).toUpperCase()}</div>}
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${phone ? 150 : 172}px, 1fr))`, gap: 10 }}>
@@ -537,7 +633,11 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
               <div style={{ ...card, padding: 16, color: C.muted }}>{L('Không có bàn nào ở mục này.', 'No tables here.')}</div>
             )}
           </div>
-          {sidePanel && floor && floor.tables.length > 0 && todoPanel}
+          {sidePanel && floor && floor.tables.length > 0 && (floorView === 'map' && selTable ? tablePanel(selTable) : todoPanel)}
+        {phone && floorView === 'map' && selTable && typeof document !== 'undefined' && createPortal(
+          <div onClick={() => setSelId(null)} style={{ position: 'fixed', inset: 0, zIndex: 250, background: 'rgba(15,23,42,.45)', display: 'flex', alignItems: 'flex-end' }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxHeight: '86vh', overflowY: 'auto' }}>{tablePanel(selTable, true)}</div>
+          </div>, document.body)}
         </div>
         {openFor && (
           <Modal vi={vi} title={L(`Mở bàn ${openFor.name}`, `Open ${openFor.name}`)} onClose={() => setOpenFor(null)}>

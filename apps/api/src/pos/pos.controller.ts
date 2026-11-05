@@ -13,6 +13,7 @@ import {
 import { UserRole } from '@prisma/client';
 import { PosService } from './pos.service';
 import { SalesImportService } from './sales-import.service';
+import { TestResetService } from './test-reset.service';
 import { CreateOrderDto, CreateProductDto, RecordTipDto, UpdateProductDto } from './dto/pos.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -24,7 +25,7 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 @Caps('pos')
 @Controller('pos')
 export class PosController {
-  constructor(private readonly pos: PosService, private readonly salesImport: SalesImportService) {}
+  constructor(private readonly pos: PosService, private readonly salesImport: SalesImportService, private readonly testReset: TestResetService) {}
 
   // ---- The printed bill: salon header + the owner's design (any cashier) ----
   @Get('receipt-profile')
@@ -92,6 +93,20 @@ export class PosController {
   @Delete('import-sales/:batch')
   undoSalesImport(@CurrentUser() user: AuthenticatedUser, @Param('batch') batch: string) {
     return this.salesImport.undo(user, batch);
+  }
+
+  // ---- Xoá dữ liệu bán hàng thử (before handing the shop over) → owner only ----
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('test-reset')
+  testResetPreview(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string) {
+    return this.testReset.preview(user, from);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('test-reset')
+  @HttpCode(200)
+  testResetRun(@CurrentUser() user: AuthenticatedUser, @Body() dto: { from?: string; confirm?: string }) {
+    return this.testReset.run(user, dto ?? {});
   }
 
   // ---- Reports ---- (sales + payroll data → managers/owners only)

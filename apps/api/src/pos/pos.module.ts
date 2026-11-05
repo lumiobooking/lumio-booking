@@ -3,6 +3,7 @@ import { MaintenanceModule } from '../maintenance/maintenance.module';
 import { PosController } from './pos.controller';
 import { PosService } from './pos.service';
 import { SalesImportService } from './sales-import.service';
+import { TestResetService } from './test-reset.service';
 import { HeldBillsController } from './held-bills.controller';
 import { HeldBillsService } from './held-bills.service';
 import { CashShiftsController } from './cash-shifts.controller';
@@ -17,7 +18,7 @@ import { FeedbackModule } from '../feedback/feedback.module';
   // + walk-ins: a checkout closes the ticket, which opens a chair for the queue
   imports: [MaintenanceModule, SettingsModule, LoyaltyModule, GiftCardsModule, WalkinsModule, FeedbackModule],
   controllers: [PosController, HeldBillsController, CashShiftsController],
-  providers: [PosService, HeldBillsService, CashShiftsService, SalesImportService],
+  providers: [PosService, HeldBillsService, CashShiftsService, SalesImportService, TestResetService],
   exports: [PosService, CashShiftsService],
 })
 export class PosModule {}

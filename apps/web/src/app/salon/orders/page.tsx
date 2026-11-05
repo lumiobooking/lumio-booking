@@ -19,6 +19,7 @@ import { payLabel } from '../../../lib/payment-methods';
 import { csvLine } from '../../../lib/walkin-day';
 import { fromMinorUnits } from '../../../lib/money';
 import { SalesImport } from '../../../components/SalesImport';
+import { TestDataReset } from '../../../components/TestDataReset';
 import { OrderDrawer, StateChip, orderState, type StaffLite } from '../../../components/orders/OrderDrawer';
 
 /**
@@ -80,6 +81,7 @@ function Inner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -170,6 +172,7 @@ function Inner() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {user?.role === 'SALON_ADMIN' && <button type="button" onClick={() => setImportOpen(true)} style={ghost}>⇪ {L('Nhập doanh thu cũ', 'Import past sales')}</button>}
+          {user?.role === 'SALON_ADMIN' && <button type="button" onClick={() => setResetOpen(true)} style={{ ...ghost, borderColor: 'rgba(244,63,94,.55)', color: '#fb7185' }}>🗑 {L('Xoá dữ liệu thử', 'Clear test sales')}</button>}
           <button type="button" onClick={exportCsv} disabled={!visible.length} style={ghost}>⬇ CSV</button>
           <a href="/salon/pos" style={{ ...ui.primaryBtn, textDecoration: 'none' }}>+ {L('Bill mới', 'New sale')}</a>
         </div>
@@ -276,6 +279,7 @@ function Inner() {
           onClose={() => setOpenId(null)} onChanged={() => void load()} />
       )}
       {importOpen && <SalesImport vi={vi} onClose={() => setImportOpen(false)} onDone={() => void load()} />}
+      {resetOpen && <TestDataReset vi={vi} onClose={() => setResetOpen(false)} onDone={() => void load()} />}
     </section>
   );
 }

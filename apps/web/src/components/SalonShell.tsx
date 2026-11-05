@@ -1,5 +1,6 @@
 'use client';
 
+import { ClientDrawerHost } from './ClientDrawer';
 import { PushBanner } from './PushBanner';
 import { ReactNode, createContext, useContext, useCallback, useEffect, useState } from 'react';
 import { InboxAlerts } from './InboxAlerts';
@@ -470,6 +471,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         return entry && tabs.length > 1 ? <HubTabs tabs={tabs} label={tabLabel} ariaLabel={menuLabel(entry)} /> : null;
       })()}
       {children}
+      <ClientDrawerHost />
     </NavAccessContext.Provider>
   );
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { onClientLink } from '../../../lib/client-drawer';
 import { useCallback, useEffect, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth, useCan } from '../../../lib/auth';
@@ -322,7 +323,7 @@ function BookingsInner() {
                 <MCard key={b.id}>
                   <MHead right={pill(b.status, b.startTime)}>
                     {b.customer?.id
-                      ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(b.customer)}</a>
+                      ? <a href={`/salon/customers/${b.customer.id}`} onClick={(e) => onClientLink(e, b.customer?.id)} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(b.customer)}</a>
                       : staffName(b.customer)}
                     {gid && grp.length > 1 ? <GroupChip n={grp.length} open={open} onToggle={() => toggleGroup(gid)} label={t('bk.groupChip')} /> : null}
                   </MHead>
@@ -349,7 +350,7 @@ function BookingsInner() {
                         <MHead right={pill(m.status, m.startTime)}>
                           <span style={{ color: 'var(--c64748b)' }}>↳ </span>
                           {m.customer?.id
-                            ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(m.customer)}</a>
+                            ? <a href={`/salon/customers/${m.customer.id}`} onClick={(e) => onClientLink(e, m.customer?.id)} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(m.customer)}</a>
                             : staffName(m.customer)}
                         </MHead>
                         <MRow label={t('bk.colService')}><ServiceCell b={m} /></MRow>
@@ -416,7 +417,7 @@ function BookingsInner() {
                     <td style={ui.td}>{fmtWhen(b.startTime, salonTz)}</td>
                     <td style={ui.td}>
                       {b.customer?.id
-                        ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>
+                        ? <a href={`/salon/customers/${b.customer.id}`} onClick={(e) => onClientLink(e, b.customer?.id)} style={{ color: 'var(--c818cf8)', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>
                         : staffName(b.customer)}
                       {gid && grp.length > 1 ? <GroupChip n={grp.length} open={open} onToggle={() => toggleGroup(gid)} label={t('bk.groupChip')} /> : null}
                     </td>
@@ -446,7 +447,7 @@ function BookingsInner() {
                         <td style={ui.td}>
                           <span style={{ color: 'var(--ink-link)', marginRight: 6 }}>↳</span>
                           {m.customer?.id
-                            ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(m.customer)}</a>
+                            ? <a href={`/salon/customers/${m.customer.id}`} onClick={(e) => onClientLink(e, m.customer?.id)} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(m.customer)}</a>
                             : staffName(m.customer)}
                         </td>
                         <td style={ui.td}><ServiceCell b={m} /></td>

@@ -1,5 +1,6 @@
 'use client';
 
+import { onClientLink } from '../../lib/client-drawer';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '../../lib/api';
@@ -237,7 +238,7 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
                       </div>
                     </div>
                     {canEditClient && <button type="button" onClick={() => setEditClient(true)} style={ghost}>✎ {L('Sửa', 'Edit')}</button>}
-                    <Link href={`/salon/customers/${d.customer.id}`} style={{ ...ghost, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>{L('Hồ sơ', 'Profile')} ↗</Link>
+                    <Link href={`/salon/customers/${d.customer.id}`} onClick={(e) => onClientLink(e, d.customer?.id)} style={{ ...ghost, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>{L('Hồ sơ', 'Profile')} ↗</Link>
                   </div>
                 </div>
               )

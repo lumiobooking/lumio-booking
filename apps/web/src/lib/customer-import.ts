@@ -116,3 +116,15 @@ export const SAMPLE_CSV = `First Name,Last Name,Phone,Email,Birthday,Points,Tota
 Debbie,Smith,(403) 555-0100,debbie@example.com,03/14,120,$410.00,7,06/01/2026,Likes almond shape,Yes
 Aly,Nguyen,403-555-0111,,,30,95,2,2026-05-20,,No
 `;
+
+/**
+ * A sheet that starts with a title ("khach hang bo vao google") above the real
+ * column names: the title row is dropped so the names become the header.
+ * Only when the first row has one filled cell and the next has two or more.
+ */
+export function dropTitleRow(t: string[][]): string[][] {
+  const filled = (r: string[] | undefined) => (r ?? []).filter((c) => String(c ?? '').trim()).length;
+  let out = t.filter((r, i) => i === 0 || filled(r) > 0);
+  while (out.length > 2 && filled(out[0]) <= 1 && filled(out[1]) >= 2) out = out.slice(1);
+  return out;
+}

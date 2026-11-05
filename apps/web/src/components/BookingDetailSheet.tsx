@@ -1,5 +1,6 @@
 'use client';
 
+import { onClientLink } from '../lib/client-drawer';
 import type { CSSProperties, ReactNode } from 'react';
 import { fmtInTz } from '../lib/datetime';
 import { useEffect, useState } from 'react';
@@ -132,7 +133,7 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
                 <a href={`tel:${d.customer.phone}`} style={{ flex: 1, minWidth: 130, textAlign: 'center', padding: '11px 14px', borderRadius: 10, background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>{L('Gọi khách', 'Call guest')}</a>
               )}
               {d.customer?.id && (
-                <a href={`/salon/customers/${d.customer.id}`} style={{ flex: 1, minWidth: 130, textAlign: 'center', padding: '11px 14px', borderRadius: 10, background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>{L('Hồ sơ khách', 'Customer')}</a>
+                <a href={`/salon/customers/${d.customer.id}`} onClick={(e) => onClientLink(e, d.customer?.id)} style={{ flex: 1, minWidth: 130, textAlign: 'center', padding: '11px 14px', borderRadius: 10, background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>{L('Hồ sơ khách', 'Customer')}</a>
               )}
             </div>
           </>

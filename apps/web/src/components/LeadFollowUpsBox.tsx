@@ -7,6 +7,7 @@
  * is not closed, most overdue first, with the number to call. The team also
  * gets one morning push with the count; it opens this list.
  */
+import { onClientLink } from '../lib/client-drawer';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -32,7 +33,7 @@ export function LeadFollowUpsBox({ vi }: { vi: boolean }) {
       <div style={{ display: 'grid', gap: 6 }}>
         {items.slice(0, 30).map((x) => (
           <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)' }}>
-            <a href={`/salon/customers/${x.id}`} style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--c818cf8)', textDecoration: 'none' }}>{x.name}</a>
+            <a href={`/salon/customers/${x.id}`} onClick={(e) => onClientLink(e, x.id)} style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--c818cf8)', textDecoration: 'none' }}>{x.name}</a>
             {x.stage && STAGE[x.stage] && <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: 'var(--c1e293b)', color: 'var(--ccbd5e1)' }}>{vi ? STAGE[x.stage][0] : STAGE[x.stage][1]}</span>}
             <span style={{ fontSize: 12, fontWeight: 700, color: x.overdueDays > 0 ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>
               {x.overdueDays > 0 ? (vi ? `quá hạn ${x.overdueDays} ngày` : `${x.overdueDays} day(s) overdue`) : (vi ? 'hôm nay' : 'today')}

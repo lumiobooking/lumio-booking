@@ -16,6 +16,9 @@ import { dialCodeFor, toE164 } from '../common/phone';
 import { appointmentServices, historiesOf, walkInServices, type CustomerHistory, type VisitRow } from './customer-history';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
+/** Clients the list returns at once (a salon's whole book; the page pages it). */
+export const CUSTOMER_LIST_MAX = 20_000;
+
 @Injectable()
 export class CustomersService {
   constructor(
@@ -243,7 +246,10 @@ export class CustomersService {
         _count: { select: { appointments: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 500,
+      // The whole list: the page searches, sorts and pages it itself. It was
+      // cut at 500, so a salon that imported 2,700 clients saw only the newest
+      // 500 and could not find the rest.
+      take: CUSTOMER_LIST_MAX,
     });
     // No-show count per customer (drives the "repeat no-show" risk flag).
     const grouped = await this.prisma.appointment.groupBy({
@@ -255,8 +261,9 @@ export class CustomersService {
     // The line-of-business record (a real-estate lead's stage shows in the list).
     // Read on its own, typed loosely: a dev machine's client may predate the column.
     const recs = (await this.prisma.customer.findMany({
-      where: { tenantId, id: { in: customers.map((c) => c.id) } },
+      where: { tenantId },
       select: { id: true, industryFields: true } as never,
+      take: CUSTOMER_LIST_MAX,
     }).catch(() => [])) as unknown as { id: string; industryFields?: unknown }[];
     const recById = new Map(recs.map((r) => [r.id, r.industryFields]));
     return customers.map((c) => ({ ...c, noShowCount: noShowById.get(c.id) ?? 0, industryFields: (recById.get(c.id) ?? {}) as Record<string, string | number> }));
@@ -541,6 +548,9 @@ export class CustomersService {
             id: true,
             status: true,
             startTime: true,
+            // The ids "Đặt lại" (book again) needs: same service, same technician.
+            serviceId: true,
+            assignedStaffId: true,
             service: { select: { name: true } },
             assignedStaff: { select: { firstName: true, lastName: true } },
             payments: { select: { id: true, amountCents: true, currency: true, status: true, type: true, createdAt: true } },

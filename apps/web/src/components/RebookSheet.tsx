@@ -26,7 +26,9 @@ export interface RebookResult { id: string; startTime: string; staffName: string
 
 const DAY_MS = 86_400_000;
 
-export function RebookSheet({ token, lang, customerId, customerLabel, lines, services, staff, onClose, onBooked }: {
+export function RebookSheet({ token, lang, customerId, customerLabel, lines, services, staff, onClose, onBooked, subtitle }: {
+  /** The line under the title (the till says it comes from the bill). */
+  subtitle?: string;
   token: string;
   lang: string;
   /** The CRM customer on the bill, when there was one. */
@@ -90,7 +92,7 @@ export function RebookSheet({ token, lang, customerId, customerLabel, lines, ser
     const q = new URLSearchParams({ date, minutes: String(minutes) });
     if (staffId) q.set('staffId', staffId);
     apiFetch<{ times: string[] }>(`/bookings/open-times?${q.toString()}`, { token })
-      .then((r) => { if (alive) setTimes(r.times); })
+      .then((r) => { if (alive) setTimes(Array.isArray(r?.times) ? r.times : []); })
       .catch((e) => { if (alive) { setTimes([]); setTimesErr(e instanceof Error ? e.message : 'error'); } });
     return () => { alive = false; };
   }, [date, staffId, minutes, token]);
@@ -144,7 +146,7 @@ export function RebookSheet({ token, lang, customerId, customerLabel, lines, ser
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--line)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{L('Đặt lịch lần sau', 'Book the next visit')}</div>
-            <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L('Khách, dịch vụ và thợ đã điền sẵn từ hoá đơn — chỉ còn chọn ngày và giờ.', 'Customer, services and technician come from the bill — pick a day and a time.')}</div>
+            <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{subtitle ?? L('Khách, dịch vụ và thợ đã điền sẵn từ hoá đơn — chỉ còn chọn ngày và giờ.', 'Customer, services and technician come from the bill — pick a day and a time.')}</div>
           </div>
           <button type="button" onClick={onClose} aria-label={L('Đóng', 'Close')} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 24, cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>

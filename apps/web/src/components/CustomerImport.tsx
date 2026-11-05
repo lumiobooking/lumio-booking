@@ -15,7 +15,8 @@ import { useMemo, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ui } from '../lib/ui';
-import { FIELDS, SAMPLE_CSV, detectSource, guessMapping, parseCsv, toRows, type Field, type Mapping } from '../lib/customer-import';
+import { FIELDS, SAMPLE_CSV, detectSource, dropTitleRow, guessMapping, parseCsv, toRows, type Field, type Mapping } from '../lib/customer-import';
+import { readXlsx } from '../lib/xlsx-lite';
 
 interface Result { created: number; updated: number; skipped: number; pointsAdded: number; pointsSkipped: number; errors: { row: number; reason: string }[] }
 const CHUNK = 500;
@@ -37,15 +38,19 @@ export function CustomerImport({ vi, onClose, onDone }: { vi: boolean; onClose: 
   const body = useMemo(() => (table ? table.slice(1) : []), [table]);
   const rows = useMemo(() => (mapping ? toRows(body, mapping) : []), [body, mapping]);
 
-  function load(text: string, name: string) {
-    const t = parseCsv(text);
+  function load(text: string | string[][], name: string) {
+    const t = dropTitleRow(typeof text === 'string' ? parseCsv(text) : text);
     if (t.length < 2) { setErr(L('File không có dòng khách nào (cần dòng tiêu đề + ít nhất 1 khách).', 'The file has no client rows (a header row plus at least one client).')); return; }
     setErr(null); setResult(null); setTable(t); setFileName(name);
     setMapping(guessMapping(t[0])); setSource(detectSource(t[0]));
   }
   async function onFile(f: File | undefined) {
     if (!f) return;
-    if (!/\.(csv|txt|tsv)$/i.test(f.name)) { setErr(L('Hãy lưu file dưới dạng CSV (Excel: File → Save As → CSV).', 'Save the file as CSV (Excel: File → Save As → CSV).')); return; }
+    if (/\.xlsx$/i.test(f.name)) {
+      try { load(await readXlsx(await f.arrayBuffer()), f.name); } catch { setErr(L('Không đọc được file Excel này. Mở bằng Excel rồi lưu lại dạng .xlsx hoặc CSV.', 'Could not read this Excel file. Open it in Excel and save it again as .xlsx or CSV.')); }
+      return;
+    }
+    if (!/\.(csv|txt|tsv)$/i.test(f.name)) { setErr(L('Chọn file Excel (.xlsx) hoặc CSV.', 'Choose an Excel (.xlsx) or CSV file.')); return; }
     load(await f.text(), f.name);
   }
   function downloadSample() {
@@ -89,8 +94,8 @@ export function CustomerImport({ vi, onClose, onDone }: { vi: boolean; onClose: 
         {!result && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
             <label style={{ ...ui.primaryBtn, display: 'inline-block', cursor: 'pointer' }}>
-              {fileName ? L('Chọn file khác', 'Choose another file') : L('Chọn file CSV', 'Choose CSV file')}
-              <input type="file" accept=".csv,.txt,.tsv,text/csv" style={{ display: 'none' }} onChange={(e) => onFile(e.target.files?.[0])} />
+              {fileName ? L('Chọn file khác', 'Choose another file') : L('Chọn file Excel / CSV', 'Choose Excel / CSV file')}
+              <input type="file" accept=".xlsx,.csv,.txt,.tsv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{ display: 'none' }} onChange={(e) => onFile(e.target.files?.[0])} />
             </label>
             {fileName && <span style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{fileName} · {body.length} {L('dòng', 'rows')}</span>}
             <button type="button" onClick={downloadSample} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--c818cf8)', cursor: 'pointer', fontSize: 13 }}>{L('Tải file mẫu', 'Download sample')}</button>

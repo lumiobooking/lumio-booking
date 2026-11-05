@@ -18,6 +18,7 @@
  * ringing). Notes typed on their old boxes are moved in here once, with an
  * Undo (banner at the top). Mockup: canvas "AI — Một chỗ cài đặt".
  */
+import { onClientLink } from '../../../lib/client-drawer';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -318,7 +319,7 @@ function Overview({ token, vi, view, onGo }: { token: string | null; vi: boolean
                 <div style={{ fontSize: 12, color: 'var(--ccbd5e1)' }}>{(h?.labels[c.reason]?.[vi ? 'vi' : 'en']) ?? c.reason} — {c.summary}</div>
               </div>
               {c.phone && <a href={`tel:${c.phone}`} style={{ ...ui.primaryBtn, textDecoration: 'none' }}>{L(vi, 'Gọi', 'Call')}</a>}
-              {c.customerId && <Link href={`/salon/customers/${c.customerId}`} style={{ ...ghost, textDecoration: 'none' }}>{L(vi, 'Hồ sơ', 'Profile')}</Link>}
+              {c.customerId && <Link href={`/salon/customers/${c.customerId}`} onClick={(e) => onClientLink(e, c.customerId)} style={{ ...ghost, textDecoration: 'none' }}>{L(vi, 'Hồ sơ', 'Profile')}</Link>}
               <button type="button" onClick={() => done(c.id)} style={ghost}>{L(vi, 'Xong', 'Done')}</button>
             </div>
           ))}
@@ -713,7 +714,7 @@ function Memory({ token, vi, canEdit }: { token: string | null; vi: boolean; can
               <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{d.customer.name}</div>
               <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{d.customer.phone ?? ''}{d.customer.email ? ` · ${d.customer.email}` : ''}</span>
               {d.memory?.preferredLang && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-link)', border: '1px solid var(--line)', borderRadius: 999, padding: '2px 8px' }}>{LANGS.find((l) => l.id === d.memory!.preferredLang)?.label ?? d.memory.preferredLang}</span>}
-              <Link href={`/salon/customers/${d.customer.id}`} style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: 'var(--ink-link)' }}>{L(vi, 'Mở hồ sơ khách', 'Open profile')}</Link>
+              <Link href={`/salon/customers/${d.customer.id}`} onClick={(e) => onClientLink(e, d.customer?.id)} style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: 'var(--ink-link)' }}>{L(vi, 'Mở hồ sơ khách', 'Open profile')}</Link>
             </div>
             {d.memory?.openIntent && (
               <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: 'var(--wash-amber)', border: '1px solid var(--line)' }}>

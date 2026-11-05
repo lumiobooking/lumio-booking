@@ -6,6 +6,7 @@
  * Drag a card to another column — or, on a phone, use the ‹ › buttons — and the
  * lead's stage is saved (PATCH /customers/:id { industryFields: { stage } }).
  */
+import { onClientLink } from '../lib/client-drawer';
 import { useState } from 'react';
 
 export interface BoardLead { id: string; firstName: string; lastName: string | null; phone: string | null; industryFields?: Record<string, string | number> }
@@ -48,7 +49,7 @@ export function LeadBoard({ leads, stages, vi, onMove }: { leads: BoardLead[]; s
                 return (
                   <div key={l.id} draggable onDragStart={() => setDrag(l.id)} onDragEnd={() => { setDrag(null); setOver(null); }}
                     style={{ padding: '8px 9px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', cursor: 'grab', opacity: busy === l.id || drag === l.id ? 0.5 : 1 }}>
-                    <a href={`/salon/customers/${l.id}`} style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--c818cf8)', textDecoration: 'none' }}>{l.firstName} {l.lastName ?? ''}</a>
+                    <a href={`/salon/customers/${l.id}`} onClick={(e) => onClientLink(e, l.id)} style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--c818cf8)', textDecoration: 'none' }}>{l.firstName} {l.lastName ?? ''}</a>
                     {sub && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{String(sub)}</div>}
                     {f.nextStep && <div style={{ fontSize: 11.5, color: 'var(--ink-warn)', marginTop: 2 }}>📞 {String(f.nextStep)}</div>}
                     <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>

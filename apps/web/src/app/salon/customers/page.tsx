@@ -1,5 +1,6 @@
 'use client';
 
+import { onClientLink } from '../../../lib/client-drawer';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
@@ -217,7 +218,7 @@ function Inner() {
       {addedMsg && (
         <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
           <span>{lang === 'vi' ? 'Đã thêm khách.' : 'Client added.'}</span>
-          <a href={`/salon/customers/${addedMsg}`} style={{ color: 'inherit', fontWeight: 700 }}>{lang === 'vi' ? 'Mở hồ sơ →' : 'Open profile →'}</a>
+          <a href={`/salon/customers/${addedMsg}`} onClick={(e) => onClientLink(e, addedMsg)} style={{ color: 'inherit', fontWeight: 700 }}>{lang === 'vi' ? 'Mở hồ sơ →' : 'Open profile →'}</a>
           <button type="button" onClick={() => setAddedMsg(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
         </div>
       )}
@@ -291,7 +292,7 @@ function Inner() {
             {pg.paged.map((c) => (
               <MCard key={c.id}>
                 <MHead>
-                  <a href={`/salon/customers/${c.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{c.firstName} {c.lastName ?? ''}</a>
+                  <a href={`/salon/customers/${c.id}`} onClick={(e) => onClientLink(e, c.id)} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{c.firstName} {c.lastName ?? ''}</a>
                 </MHead>
                 <MRow label={t('cu.colEmail')}>{c.email ?? '—'}</MRow>
                 <MRow label={t('cu.colPhone')}>{c.phone ?? '—'}</MRow>
@@ -336,9 +337,12 @@ function Inner() {
                 <tr><td style={ui.td} colSpan={10}>{customers.length === 0 ? (lang === 'vi' ? 'Chưa có khách nào. Bấm "+ Thêm khách" để nhập tay, hoặc "Nhập khách cũ" để đưa file từ hệ thống cũ vào.' : 'No clients yet. Use "+ Add client" to type one in, or "Import clients" to bring a file from your old system.') : t('cu.empty')}</td></tr>
               )}
               {pg.paged.map((c) => (
-                <tr key={c.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(c.id) ? 'var(--c1e1b4b)' : undefined }}>
+                <tr key={c.id}
+                  // The whole row opens the client on the right (the checkbox, links and buttons keep their own job).
+                  onClick={(e) => { if (!(e.target as HTMLElement).closest('a,button,input,label,select')) onClientLink(e, c.id); }}
+                  style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(c.id) ? 'var(--c1e1b4b)' : undefined, cursor: 'pointer' }}>
                   <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(c.id)} onChange={() => bulk.toggle(c.id)} /></td>
-                  <td style={ui.td}><a href={`/salon/customers/${c.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none', fontWeight: 600 }}>{c.firstName} {c.lastName ?? ''}</a>
+                  <td style={ui.td}><a href={`/salon/customers/${c.id}`} onClick={(e) => onClientLink(e, c.id)} style={{ color: 'var(--c818cf8)', textDecoration: 'none', fontWeight: 600 }}>{c.firstName} {c.lastName ?? ''}</a>
                     {isLeads && c.industryFields?.stage && (() => { const st = LEAD_STAGES.find((x) => x.v === c.industryFields?.stage); return st ? <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: 'var(--c1e293b)', color: 'var(--ccbd5e1)' }}>{lang === 'vi' ? st.vi : st.en}</span> : null; })()}
                   </td>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{c.email ?? '—'}</td>

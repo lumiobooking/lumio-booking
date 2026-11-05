@@ -6,6 +6,7 @@
  * with nothing booked, most overdue first: call, book, or mark contacted
  * (hidden for 14 days).
  */
+import { onClientLink } from '../lib/client-drawer';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -50,7 +51,7 @@ export function RecallBox({ vi }: { vi: boolean }) {
       <div style={{ display: 'grid', gap: 6 }}>
         {items.slice(0, 40).map((x) => (
           <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)' }}>
-            <a href={`/salon/customers/${x.id}`} style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--c818cf8)', textDecoration: 'none' }}>{x.name}</a>
+            <a href={`/salon/customers/${x.id}`} onClick={(e) => onClientLink(e, x.id)} style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--c818cf8)', textDecoration: 'none' }}>{x.name}</a>
             <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? `khám lần cuối ${date(x.lastVisit)} · mỗi ${x.months} tháng` : `last visit ${date(x.lastVisit)} · every ${x.months} mo`}</span>
             <span style={{ fontSize: 12, fontWeight: 700, color: x.overdueDays > 0 ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>
               {x.overdueDays > 0 ? (vi ? `quá hạn ${x.overdueDays} ngày` : `${x.overdueDays} day(s) overdue`) : x.overdueDays === 0 ? (vi ? 'đến hạn hôm nay' : 'due today') : (vi ? `còn ${-x.overdueDays} ngày` : `in ${-x.overdueDays} day(s)`)}

@@ -23,3 +23,16 @@ describe('reading an old client list', () => {
     expect(toRows([['Ann', ' 403 ', ''], ['Bo', '', '5']], m)).toEqual([{ firstName: 'Ann', phone: '403' }, { firstName: 'Bo', points: '5' }]);
   });
 });
+
+import { dropTitleRow as dropTitle } from './customer-import';
+describe('a sheet with a title above the column names', () => {
+  it('drops the title so Email / Phone / Name become the header', () => {
+    const t = dropTitle([['khach hang bo vao google', '', ''], ['Email', 'Phone', 'Name'], ['a@b.c', '9414218339', 'Lori Arritt']]);
+    expect(t[0]).toEqual(['Email', 'Phone', 'Name']);
+    expect(t).toHaveLength(2);
+  });
+  it('leaves a normal sheet alone', () => {
+    const t = [['Name', 'Phone'], ['Lori', '9414218339']];
+    expect(dropTitle(t)).toEqual(t);
+  });
+});

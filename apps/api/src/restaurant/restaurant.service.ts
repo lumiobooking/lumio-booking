@@ -505,7 +505,8 @@ export class RestaurantService {
     const text = prebillText({
       lang: ctx.lang, business: profile?.shop.name ?? '', address: profile?.shop.address, phone: profile?.shop.phone,
       tables: label, takeaway: check.tableIds.length === 0, checkNumber: check.number, count, at: clockText(now, ctx.tz, ctx.lang), cashier,
-      lines: live.map((l) => ({ quantity: l.quantity, name: l.name, amountCents: l.quantity * l.unitPriceCents, options: chosenOf(l.options).map((o) => o.name) })),
+      guests: check.guests, server: check.serverName,
+      lines: mergeForGuest(live.map((l) => ({ quantity: l.quantity, name: l.name, unitPriceCents: l.unitPriceCents, options: chosenOf(l.options).map((o) => o.name) }))),
       serviceCents: service, servicePercent: settings.serviceChargePercent,
       vatPercent: settings.vatPercent, vatIncluded: settings.vatIncluded, vatCents: settings.vatIncluded ? vatInside(bill, settings.vatPercent) : 0,
       payCode: settings.bank ? payCodeOf(check.number) : null,
@@ -1146,4 +1147,18 @@ export function payQrBlock(settings: Pick<RestaurantSettings, 'bank' | 'printPay
   const payload = vietQrPayload(settings.bank, amountCents, code);
   if (!payload) return null;
   return { line: qrLine(payload), bank: `${bankLabel(settings.bank.bin)} · ${settings.bank.accountNo}`, name: settings.bank.accountName, code };
+}
+
+/**
+ * The guest reads one line per dish: the same dish ordered in two rounds
+ * (same options, same price) is added up rather than printed twice.
+ */
+export function mergeForGuest(lines: { quantity: number; name: string; unitPriceCents: number; options: string[] }[]): { quantity: number; name: string; amountCents: number; options: string[] }[] {
+  const out = new Map<string, { quantity: number; name: string; unitPriceCents: number; options: string[] }>();
+  for (const l of lines) {
+    const k = `${l.name}|${l.options.join(',')}|${l.unitPriceCents}`;
+    const cur = out.get(k);
+    if (cur) cur.quantity += l.quantity; else out.set(k, { ...l });
+  }
+  return [...out.values()].map((l) => ({ quantity: l.quantity, name: l.name, amountCents: l.quantity * l.unitPriceCents, options: l.options }));
 }

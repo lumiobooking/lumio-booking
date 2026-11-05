@@ -18,7 +18,7 @@ describe('the VietQR printed on the guest check', () => {
     const block = payQrBlock({ bank, printPayQr: true }, 250000, 'LM57', 'VND')!;
     expect(block.line).toBe(`[[QR:${vietQrPayload(bank, 250000, 'LM57')}]]`);
     const text = check(block);
-    expect(text).toContain('QUÉT MÃ ĐỂ CHUYỂN KHOẢN');
+    expect(text).toContain('QUÉT MÃ ĐỂ THANH TOÁN');
     expect(text).toContain('Vietcombank · 0123456789');
     expect(text).toContain('Nội dung: LM57');
     expect(text).not.toContain('Chuyển khoản ghi nội dung');
@@ -65,5 +65,30 @@ describe('each restaurant prints its own account', () => {
     expect((await svc.getSettings('tC')).bank).toBeNull();
     expect(settings.getPosSettings.mock.calls.map((c) => c[0])).toEqual(['tA', 'tB', 'tC']);
     for (const c of prisma.setting.findUnique.mock.calls) expect(['tA', 'tB', 'tC']).toContain(c[0].where.tenantId_key.tenantId);
+  });
+});
+
+describe('the guest check reads well on 58/80 mm paper', () => {
+  it('adds up a dish ordered in two rounds, wraps long names instead of cutting them, keeps lines on the paper', async () => {
+    const { mergeForGuest } = await import('./restaurant.service');
+    const lines = mergeForGuest([
+      { quantity: 2, name: 'Gân bò hầm tiêu xanh', unitPriceCents: 99000, options: [] },
+      { quantity: 1, name: 'Bò lúc lắc khoai tây chiên sốt tiêu đen', unitPriceCents: 119000, options: [] },
+      { quantity: 1, name: 'Gân bò hầm tiêu xanh', unitPriceCents: 99000, options: [] },
+    ]);
+    expect(lines.map((l) => [l.name, l.quantity, l.amountCents])).toEqual([['Gân bò hầm tiêu xanh', 3, 297000], ['Bò lúc lắc khoai tây chiên sốt tiêu đen', 1, 119000]]);
+    const text = prebillText({ lang: 'vi', business: 'Nẫu Chill Đêm', tables: 'S1', checkNumber: 10, count: 1, at: '05/11 20:14', guests: 4, server: 'Mai', lines, payQr: payQrBlock({ bank }, 416000, 'LM10', 'VND'), totalCents: 416000, money: (c) => moneyText(c, 'VND') });
+    for (const l of withoutQrLines(text).split('\n')) expect(l.length).toBeLessThanOrEqual(32);
+    expect(text).toContain('BÀN S1');
+    expect(text).toContain('Bill #10 · 4 khách');
+    expect(text).toContain('PV: Mai');
+    expect(text).toContain('tây chiên sốt tiêu');
+    expect(text).toContain('99.000 đ / phần');
+    expect(text).toMatch(/TỔNG CỘNG\s+416\.000 đ/);
+    expect(text).toContain('Số tiền: 416.000 đ');
+    expect(text).not.toContain('in lần 1');
+    const rows = styleRows(text, null);
+    expect(rows.find((r) => r.t.trim() === 'BÀN S1')?.r).toBe('t');
+    expect(rows.find((r) => r.t.trim() === 'Bill #10 · 4 khách')?.c).toBe(true);
   });
 });

@@ -308,6 +308,9 @@ export interface PrebillInput {
   count: number;
   at: string;
   cashier?: string | null;
+  /** Guests at the table and who serves it, printed under the table. */
+  guests?: number | null;
+  server?: string | null;
   lines: { quantity: number; name: string; amountCents: number; options?: string[] | null }[];
   /** Phí phục vụ, already in totalCents. */
   serviceCents?: number;
@@ -328,35 +331,66 @@ export interface PrebillInput {
 /** The guest check printed before paying (tạm tính). Says plainly it is not the receipt. */
 export function prebillText(p: PrebillInput): string {
   const w = L[p.lang];
+  const vi = p.lang === 'vi';
   const out: string[] = [];
+  const dbl = () => '='.repeat(W);
   out.push(center(p.business.toUpperCase()));
   if (p.address) out.push(...wrap(p.address).map(center));
   if (p.phone) out.push(center(p.phone));
   out.push('');
   out.push(center(w.prebill));
-  out.push(`${p.takeaway ? p.tables : `${w.table} ${p.tables}`} · ${w.check} #${p.checkNumber} · ${w.printed} ${p.count}`);
-  out.push(`${p.at}${p.cashier ? ` · ${w.cashier}: ${p.cashier}` : ''}`);
+  out.push(center(p.takeaway ? p.tables.toUpperCase() : `${w.table} ${p.tables}`.toUpperCase()));
+  // Short lines, so they print centred; the print count only once it is a reprint.
+  out.push(center([`Bill #${p.checkNumber}`, p.guests ? `${p.guests} ${w.guests}` : '', p.count > 1 ? `${w.printed} ${p.count}` : ''].filter(Boolean).join(' · ')));
+  out.push(center([p.at, p.server ? `${vi ? 'PV' : 'Server'}: ${p.server}` : p.cashier ? `${w.cashier}: ${p.cashier}` : ''].filter(Boolean).join(' · ')));
   out.push(rule());
+  let count = 0;
   for (const l of p.lines) {
-    out.push(twoCol(`${l.quantity} ${l.name}`, p.money(l.amountCents)));
-    for (const o of l.options ?? []) out.push(...wrap(`+ ${o}`, '  '));
+    count += l.quantity;
+    out.push(...itemLines(`${l.quantity} x ${l.name}`, p.money(l.amountCents)));
+    if (l.quantity > 1) out.push(`    ${p.money(Math.round(l.amountCents / l.quantity))} / ${vi ? 'phần' : 'each'}`);
+    for (const o of l.options ?? []) out.push(...wrap(`+ ${o}`, '    '));
   }
   out.push(rule());
-  if (p.serviceCents) out.push(twoCol(`${p.lang === 'vi' ? 'Phí phục vụ' : 'Service charge'} ${p.servicePercent ?? ''}%`, p.money(p.serviceCents)));
-  out.push(twoCol(w.total, p.money(p.totalCents)));
-  if (p.vatPercent && p.vatCents) out.push(twoCol(p.vatIncluded === false ? `VAT ${p.vatPercent}%` : `${p.lang === 'vi' ? 'Đã gồm VAT' : 'Incl. VAT'} ${p.vatPercent}%`, p.money(p.vatCents)));
+  out.push(twoCol(vi ? `Cộng ${count} món` : `${count} items`, p.money(p.totalCents - (p.serviceCents ?? 0))));
+  if (p.serviceCents) out.push(twoCol(`${vi ? 'Phí phục vụ' : 'Service charge'} ${p.servicePercent ?? ''}%`, p.money(p.serviceCents)));
+  if (p.vatPercent && p.vatCents) out.push(twoCol(p.vatIncluded === false ? `VAT ${p.vatPercent}%` : `${vi ? 'Đã gồm VAT' : 'Incl. VAT'} ${p.vatPercent}%`, p.money(p.vatCents)));
+  out.push(dbl());
+  out.push(twoCol(vi ? 'TỔNG CỘNG' : 'TOTAL', p.money(p.totalCents)));
+  out.push(dbl());
   if (p.payQr) {
-    out.push(rule());
-    out.push(center(p.lang === 'vi' ? 'QUÉT MÃ ĐỂ CHUYỂN KHOẢN' : 'SCAN TO PAY BY TRANSFER'));
+    out.push('');
+    out.push(center(vi ? 'QUÉT MÃ ĐỂ THANH TOÁN' : 'SCAN TO PAY'));
     out.push(p.payQr.line);
     out.push(center(p.payQr.bank));
     if (p.payQr.name) out.push(center(p.payQr.name));
-    out.push(center(`${p.lang === 'vi' ? 'Nội dung' : 'Reference'}: ${p.payQr.code}`));
-  } else if (p.payCode) out.push(...wrap(`${p.lang === 'vi' ? 'Chuyển khoản ghi nội dung' : 'Bank transfer reference'}: ${p.payCode}`));
+    out.push(center(`${vi ? 'Số tiền' : 'Amount'}: ${p.money(p.totalCents)}`));
+    out.push(center(`${vi ? 'Nội dung' : 'Reference'}: ${p.payQr.code}`));
+    out.push(center(vi ? 'Ngân hàng · MoMo · ZaloPay' : 'Any banking app'));
+  } else if (p.payCode) out.push(...wrap(`${vi ? 'Chuyển khoản ghi nội dung' : 'Bank transfer reference'}: ${p.payCode}`));
   out.push('');
+  out.push(center(vi ? 'Quý khách vui lòng kiểm tra' : 'Please check the dishes'));
+  out.push(center(vi ? 'món và tiền trước khi trả.' : 'and the amount before paying.'));
   if (p.footer) out.push(...wrap(p.footer).map(center));
   out.push(center(w.notReceipt));
   return out.join('\n') + '\n\n\n';
+}
+
+/** A dish line with its amount on the right; a long name wraps and the amount sits on its last line. */
+function itemLines(text: string, amount: string): string[] {
+  if (text.length + amount.length + 1 <= W) return [twoCol(text, amount)];
+  const room = W - amount.length - 1;
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > (lines.length ? room - 4 : room) && line) { lines.push(line); line = word; } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines.map((l, i) => {
+    const t = i === 0 ? l : `    ${l}`;
+    return i === lines.length - 1 ? twoCol(t, amount) : t;
+  });
 }
 
 /** "415.000 ₫" / "$12.50": the restaurant's own currency, no fractions for the đồng. */

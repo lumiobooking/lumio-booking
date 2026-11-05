@@ -29,6 +29,7 @@ import { buildReceiptText, receiptCopies, type ReceiptProfile } from '../lib/rec
 import { GuestPayQr } from './GuestPayQr';
 import { PayQrPanel } from './PayQrPanel';
 import { MAP_COLORS, TillFloorMap } from './TillFloorMap';
+import { SlipPreview } from './SlipPreview';
 import { CashShiftPanel, useShiftState } from './CashShiftPanel';
 import {
   byTableName, callText, cashQuickAmounts, combinedState, evenShares, lineGroups, minutesOpen, optionsReady, pendingLines, priceWith, tillError, timerTone, vietQr, VN_BANKS,
@@ -132,6 +133,8 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const [selBill, setSelBill] = useState<CheckView | null>(null);
   // "Thanh toán" from the panel opens the bill, then the pay screen once it has loaded.
   const payAfterOpen = useRef<string | null>(null);
+  // The guest check just printed, shown on screen as it came out (and to print again).
+  const [slip, setSlip] = useState<{ text: string; checkId: string } | null>(null);
   // A wide screen gets the categories as a side list (many categories wrapped badly as chips).
   const wide = !useIsMobile(1280);
   const billRef = useRef<HTMLElement | null>(null);
@@ -301,8 +304,12 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   }
   async function prebill() {
     if (!check) return;
-    const r = await call<{ check: CheckView }>(`/restaurant/checks/${check.id}/prebill`, 'POST', {});
-    if (r) { setCheck(r.check); say(true, L('Đã gửi phiếu tạm tính ra máy quầy.', 'Guest check sent to the counter printer.')); }
+    const r = await call<{ check: CheckView; text: string }>(`/restaurant/checks/${check.id}/prebill`, 'POST', {});
+    if (r) { setCheck(r.check); setSlip({ text: r.text, checkId: r.check.id }); }
+  }
+  async function reprintSlip(id: string) {
+    const r = await call<{ check: CheckView; text: string }>(`/restaurant/checks/${encodeURIComponent(id)}/prebill`, 'POST', {});
+    if (r) { setSlip({ text: r.text, checkId: id }); if (check?.id === id) setCheck(r.check); }
   }
   async function askPay() {
     if (!check) return;
@@ -420,8 +427,8 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
       if (cs.length === 1 && token) apiFetch<CheckView>(`/restaurant/checks/${encodeURIComponent(cs[0].id)}`, { token }).then(setSelBill).catch(() => undefined);
     };
     const printCheck = async (id: string) => {
-      const r = await call<{ check: CheckView }>(`/restaurant/checks/${encodeURIComponent(id)}/prebill`, 'POST', {});
-      if (r) { say(true, L('Đã gửi phiếu tạm tính ra máy in.', 'Guest check sent to the printer.')); void loadFloor(); }
+      const r = await call<{ check: CheckView; text: string }>(`/restaurant/checks/${encodeURIComponent(id)}/prebill`, 'POST', {});
+      if (r) { setSlip({ text: r.text, checkId: id }); void loadFloor(); }
     };
     const tablePanel = (t: Table, sheet = false) => {
       const cs = checksByTable.get(t.id) ?? [];
@@ -529,6 +536,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
           onShift={() => setShowShift(true)} onPrints={() => setShowPrints(true)} onTakeaway={() => void openTable(null, 1)} onRetail={onQuickSale}
           onSoldOut={() => setShowSoldOut(true)} onSettings={isOwner ? () => setShowSettings(true) : undefined} onDrawer={() => void openDrawer()} />
         {msg && <Toast {...msg} />}
+        {slip && <SlipPreview text={slip.text} vi={vi} onClose={() => setSlip(null)} onReprint={() => void reprintSlip(slip.checkId)} />}
         {calls.length > 0 && !sidePanel && (
           <div role="alert" style={{ ...card, padding: 10, border: '2px solid #f59e0b', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {calls.map((c) => (
@@ -569,10 +577,10 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
               </span>
             )}
             {floor && (
-              <div role="group" aria-label={L('Kiểu xem', 'View')} style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 11, border: `1px solid ${C.border}`, background: C.panel, marginLeft: stats ? 0 : 'auto' }}>
+              <div role="group" aria-label={L('Kiểu xem', 'View')} style={{ display: 'flex', flexShrink: 0, gap: 2, padding: 3, borderRadius: 11, border: `1px solid ${C.border}`, background: C.panel, marginLeft: stats ? 0 : 'auto' }}>
                 {(['map', 'grid'] as const).map((v) => (
                   <button key={v} type="button" aria-pressed={floorView === v} onClick={() => pickView(v)}
-                    style={{ minHeight: 32, padding: '0 11px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, background: floorView === v ? '#4f46e5' : 'transparent', color: floorView === v ? '#fff' : C.text }}>
+                    style={{ minHeight: 32, padding: '0 11px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, background: floorView === v ? '#4f46e5' : 'transparent', color: floorView === v ? '#fff' : C.text }}>
                     {v === 'map' ? L('Sơ đồ', 'Map') : L('Theo khu', 'By area')}
                   </button>
                 ))}
@@ -914,6 +922,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
         )}
       </div>
       {msg && <Toast {...msg} />}
+        {slip && <SlipPreview text={slip.text} vi={vi} onClose={() => setSlip(null)} onReprint={() => void reprintSlip(slip.checkId)} />}
       {phone && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 6 }}>
           <button type="button" onClick={() => setTab('menu')} style={chip(tab === 'menu')}>{L('Thực đơn', 'Menu')}</button>
@@ -1005,6 +1014,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
       {showPay && <PayModal vi={vi} token={token} check={check} dueCents={dueCents} taxCents={taxCents} currency={currency} fmt={fmt} methods={methods} payInfo={payInfo} profile={profile}
         bank={floor?.settings.bank ?? null} onRefresh={() => refreshCheck(check.id)}
         shiftRequired={!!shiftCtl.mustOpen} onOpenShift={() => setShowShift(true)}
+        onPrebill={() => void reprintSlip(check.id)}
         onClose={() => setShowPay(false)}
         onPaid={() => { setShowPay(false); say(true, L('Đã thu tiền, bàn đã trống.', 'Paid; the table is free.')); backToFloor(); }} />}
       {shiftPanel}
@@ -1481,10 +1491,10 @@ interface Part { method: PayMethod; amount: string }
 
 const EMPTY_INVOICE: InvoiceInfo = { company: '', taxCode: '', address: '', email: '' };
 
-function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods, payInfo, profile, bank, shiftRequired, onOpenShift, onRefresh, onClose, onPaid }: {
+function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods, payInfo, profile, bank, shiftRequired, onOpenShift, onRefresh, onClose, onPaid, onPrebill }: {
   vi: boolean; token: string | null; check: CheckView; dueCents: number; taxCents: number; currency: string; fmt: (c: number) => string;
   methods: PayMethod[]; payInfo: Record<string, { instructions?: string; qrUrl?: string }>; profile: ReceiptProfile | null; bank: BankAccount | null;
-  shiftRequired: boolean; onOpenShift: () => void; onRefresh: () => Promise<void> | void; onClose: () => void; onPaid: () => void;
+  shiftRequired: boolean; onOpenShift: () => void; onRefresh: () => Promise<void> | void; onClose: () => void; onPaid: () => void; onPrebill?: () => void;
 }) {
   const L = (v: string, e: string) => (vi ? v : e);
   const first = methods[0] ?? 'CASH';
@@ -1603,6 +1613,12 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
         <div style={{ padding: 10, borderRadius: 12, background: 'var(--c451a03)', color: 'var(--cfde68a)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ flex: 1 }}>{L('Chưa mở ca thu ngân.', 'No cashier shift open.')}</span>
           <button type="button" onClick={onOpenShift} style={btn}>{L('Mở ca', 'Open shift')}</button>
+        </div>
+      )}
+      {check.changedAfterPrebill && !!check.preBilledAt && bankPaid === 0 && (
+        <div role="alert" style={{ padding: 12, borderRadius: 12, background: '#fff7ed', border: '1.5px solid #f59e0b', color: '#92400e', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ flex: '1 1 220px', fontSize: 13.5, fontWeight: 700 }}>{L('Bill đã đổi sau khi in tạm tính: mã QR trên phiếu cũ sai số tiền. In phiếu mới trước khi khách quét.', 'The bill changed after the guest check was printed: the QR on the old slip has the wrong amount. Print a new one first.')}</span>
+          {onPrebill && <button type="button" onClick={onPrebill} style={{ ...btn, minHeight: 40 }}>{L('In lại tạm tính', 'Reprint check')}</button>}
         </div>
       )}
       {bankPaid > 0 && (

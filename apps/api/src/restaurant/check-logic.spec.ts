@@ -122,7 +122,7 @@ describe('printed tickets', () => {
     const p = prebillText({ lang: 'vi', business: 'Phở Lumio', tables: 'A3', checkNumber: 57, count: 1, at: '22/10 19:45', lines: [{ quantity: 2, name: 'Bia Saigon', amountCents: 60000 }], totalCents: 60000, money: (c) => moneyText(c, 'VND') });
     expect(p).toContain('PHIẾU TẠM TÍNH');
     expect(p).toContain('CHƯA PHẢI HOÁ ĐƠN');
-    expect(p).toMatch(/TỔNG\s+60\.000 đ/);
+    expect(p).toMatch(/TỔNG CỘNG\s+60\.000 đ/);
   });
 });
 

@@ -204,7 +204,7 @@ export function styleRows(textIn: string, station: string | null): Row[] {
       else if (i === 1 && body) r = 'h';
       else if (/^\d+\s*x\s/i.test(body) || /^\s+[-+]\s/.test(t)) r = 'b';
     } else if (!seen && body) r = 't';
-    else if (centred && /^(HOÁ ĐƠN|HÓA ĐƠN|PHIẾU TẠM TÍNH|TẠM TÍNH|PHIẾU THU|RECEIPT|GUEST CHECK)/i.test(body)) r = 't';
+    else if (centred && /^(HOÁ ĐƠN|HÓA ĐƠN|PHIẾU TẠM TÍNH|TẠM TÍNH|PHIẾU THU|RECEIPT|GUEST CHECK|BÀN |TABLE |MANG VỀ)/i.test(body)) r = 't';
     else if (/^(TỔNG|TONG|TOTAL|PHẢI TRẢ|PHAI TRA|CHƯA PHẢI HOÁ ĐƠN|CHƯA PHẢI HÓA ĐƠN|NOT A RECEIPT)/i.test(body)) r = 'b';
     if (body) seen = true;
     const row: Row = { r, t };

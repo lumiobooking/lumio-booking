@@ -48,6 +48,9 @@ export function isPayMethod(v: unknown): v is PayMethod {
  */
 export function tillMethodsFrom(resolved: unknown): PayMethod[] {
   if (!Array.isArray(resolved)) return ['CASH', 'CARD', 'TRANSFER'];
-  const clean = resolved.filter(isPayMethod);
+  // VietQR is a bank transfer: the "Chuyển khoản" button already shows a
+  // VietQR for the exact amount, so two buttons for one thing confused the
+  // cashier. It folds into TRANSFER (kept where VietQR stood when it is alone).
+  const clean = [...new Set(resolved.filter(isPayMethod).map((m) => (m === 'VIETQR' ? 'TRANSFER' : m)))] as PayMethod[];
   return clean.length ? clean : ['CASH', 'CARD', 'TRANSFER'];
 }

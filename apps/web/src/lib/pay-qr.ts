@@ -50,3 +50,14 @@ export function payQrFor(opts: {
     lines: own.instructions?.trim() ? own.instructions.trim().split('\n') : [],
   };
 }
+
+/** How each QR payment looks and what the guest is told to do. */
+export interface PayLook { title: string; app: string; color: string; tint: string; steps: string }
+
+export function payLook(method: string, vi: boolean, exact: boolean): PayLook {
+  const L = (v: string, e: string) => (vi ? v : e);
+  const fill = exact ? L('Số tiền và nội dung đã điền sẵn.', 'The amount and note are filled in.') : L('Khách tự nhập số tiền.', 'The guest types the amount.');
+  if (method === 'MOMO') return { title: L('Quét bằng app MoMo', 'Scan with MoMo'), app: 'MoMo', color: '#a50064', tint: '#fdf2f8', steps: `${L('Mở MoMo › Quét mã.', 'Open MoMo › Scan.')} ${fill}` };
+  if (method === 'ZALOPAY') return { title: L('Quét bằng app ZaloPay', 'Scan with ZaloPay'), app: 'ZaloPay', color: '#0068ff', tint: '#eff6ff', steps: `${L('Mở ZaloPay › Quét mã.', 'Open ZaloPay › Scan.')} ${fill}` };
+  return { title: L('Chuyển khoản ngân hàng', 'Bank transfer'), app: 'VietQR', color: '#4f46e5', tint: '#eef0ff', steps: `${L('Mở app ngân hàng bất kỳ › Quét QR.', 'Open any banking app › Scan QR.')} ${fill}` };
+}

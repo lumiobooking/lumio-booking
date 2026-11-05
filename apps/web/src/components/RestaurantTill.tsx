@@ -27,6 +27,7 @@ import { useIsMobile } from '../lib/responsive';
 import { tillMethodsFrom, payLabel, type PayMethod } from '../lib/payment-methods';
 import { buildReceiptText, receiptCopies, type ReceiptProfile } from '../lib/receipt';
 import { GuestPayQr } from './GuestPayQr';
+import { PayQrPanel } from './PayQrPanel';
 import { CashShiftPanel, useShiftState } from './CashShiftPanel';
 import {
   byTableName, callText, cashQuickAmounts, combinedState, evenShares, lineGroups, minutesOpen, optionsReady, pendingLines, priceWith, tillError, timerTone, vietQr, VN_BANKS,
@@ -1420,9 +1421,9 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
   );
 
   return (
-    <Modal vi={vi} title={L(`Thanh toán · ${check.tables}`, `Pay · ${check.tables}`)} onClose={onClose} width={540}>
+    <Modal vi={vi} title={L(`Thanh toán · ${check.tables}`, `Pay · ${check.tables}`)} onClose={onClose} width={600}>
       {bigQr && bigSrc && (
-        <GuestPayQr vi={vi} src={bigSrc} amount={fmt(dynQr ? owed : dueCents)} lines={bankLines} note={dynQr ? check.payCode : null}
+        <GuestPayQr vi={vi} method={parts[0].method} exact={!!dynQr} src={bigSrc} amount={fmt(dynQr ? owed : dueCents)} lines={bankLines} note={dynQr ? check.payCode : null}
           shop={profile?.shop.name ?? null} paid={covered} onClose={() => setBigQr(false)} />
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1453,10 +1454,16 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
       )}
       {single ? (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(4, methods.length)}, minmax(0,1fr))`, gap: 8 }}>
-            {methods.map((m) => (
-              <button key={m} type="button" onClick={() => setPart(0, { method: m })} style={{ ...btn, minHeight: 52, ...picked(m === parts[0].method) }}>{payLabel(m, vi ? 'vi' : 'en')}</button>
-            ))}
+          <div role="radiogroup" aria-label={L('Cách trả', 'Payment method')} style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(5, methods.length)}, minmax(0,1fr))`, gap: 6, padding: 4, borderRadius: 14, background: C.raised }}>
+            {methods.map((m) => {
+              const on = m === parts[0].method;
+              return (
+                <button key={m} type="button" role="radio" aria-checked={on} onClick={() => setPart(0, { method: m })}
+                  style={{ minHeight: 46, padding: '0 6px', border: 'none', borderRadius: 11, background: on ? '#ffffff' : 'transparent', boxShadow: on ? '0 1px 3px rgba(15,23,42,.12)' : 'none', color: on ? '#4338ca' : C.muted, fontFamily: 'inherit', fontSize: 14, fontWeight: on ? 800 : 700, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                  {payLabel(m, vi ? 'vi' : 'en')}
+                </button>
+              );
+            })}
           </div>
           {parts[0].method === 'CASH' && (
             <>
@@ -1469,25 +1476,15 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
               </div>
             </>
           )}
-          {dynQr ? (
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 14, background: C.raised, flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => setBigQr(true)} aria-label={L('Phóng to mã QR cho khách quét', 'Show the QR full screen')} style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}>
-                <img src={dynQr} alt={L('Mã VietQR đúng số tiền', 'VietQR for the exact amount')} style={{ width: 180, height: 180, objectFit: 'contain', background: '#fff', borderRadius: 10, display: 'block' }} />
-              </button>
-              <span style={{ flex: '1 1 160px', fontSize: 13.5, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <button type="button" onClick={() => setBigQr(true)} style={{ ...primary, minHeight: 48, alignSelf: 'stretch' }}>{L('Đưa khách quét (toàn màn hình)', 'Show to the guest (full screen)')}</button>
-                <b style={{ fontSize: 18, color: C.strong }}>{fmt(owed)}</b>
-                <span>{L('Nội dung CK', 'Transfer note')}: <b style={{ fontSize: 16, letterSpacing: '.04em' }}>{check.payCode}</b></span>
-                <span style={{ color: C.muted }}>{L('Khách quét bằng app ngân hàng, MoMo hoặc ZaloPay: số tiền và nội dung đã điền sẵn. Nếu đã nối SePay / Casso, tiền về sẽ tự hiện ở đây.', 'Guests scan with any banking app, MoMo or ZaloPay; amount and note are filled in. With SePay / Casso connected, the money shows up here by itself.')}</span>
-              </span>
-            </div>
-          ) : parts[0].method !== 'CASH' && (info.qrUrl || info.instructions) && (
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 14, background: C.raised }}>
-              {info.qrUrl && <button type="button" onClick={() => setBigQr(true)} aria-label={L('Phóng to mã QR cho khách quét', 'Show the QR full screen')} style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}><img src={info.qrUrl} alt={L('Mã chuyển khoản', 'Payment QR')} style={{ width: 140, height: 140, objectFit: 'contain', background: '#fff', borderRadius: 10, display: 'block' }} /></button>}
-              <span style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13.5 }}>
-                {info.instructions && <span style={{ whiteSpace: 'pre-line' }}>{info.instructions}</span>}
-                {info.qrUrl && <button type="button" onClick={() => setBigQr(true)} style={{ ...primary, minHeight: 46 }}>{L('Đưa khách quét (toàn màn hình)', 'Show to the guest (full screen)')}</button>}
-              </span>
+          {bigSrc && (
+            <PayQrPanel vi={vi} method={parts[0].method} src={bigSrc} exact={!!dynQr} amount={fmt(dynQr ? owed : dueCents)}
+              lines={bankLines} note={dynQr ? check.payCode : null} waiting={watch} onBig={() => setBigQr(true)} />
+          )}
+          {!bigSrc && parts[0].method !== 'CASH' && parts[0].method !== 'CARD' && (
+            <div style={{ padding: 12, borderRadius: 14, background: C.raised, fontSize: 13.5, color: C.muted }}>
+              {info.instructions
+                ? <span style={{ whiteSpace: 'pre-line', color: C.strong }}>{info.instructions}</span>
+                : <>{L('Chưa có mã QR. Thêm tài khoản ngân hàng ở', 'No QR yet. Add the bank account under')} <a href="/salon/settings?tab=payments">{L('Cài đặt › Thanh toán', 'Settings › Payments')}</a>.</>}
             </div>
           )}
         </>

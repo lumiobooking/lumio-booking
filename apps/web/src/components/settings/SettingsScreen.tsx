@@ -649,6 +649,25 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
     : GATEWAYS;
   const cardChannelName = GATEWAYS.find((g) => g.id === data.pos?.primaryCardGateway)?.name;
 
+  // Vietnam: the account the QR is made from is THE payment setting, so it comes first.
+  const bankPanel = (
+    <>
+      {/* In Vietnam this IS the payment setup, not a fallback beneath the real
+          one — so it says so. The owner asked where to configure payments and
+          did not recognise "Bank transfer (manual)" as the answer. */}
+      <Panel
+        title={isVN ? 'Nhận tiền chuyển khoản · VietQR · MoMo · ZaloPay' : t('se.pay.bankTitle')}
+        badge={(isVN ? data.pos?.bankAccount : data.pos?.transferInstructions) ? { text: t('se.pay.setBadge'), color: 'var(--ink-good)' } : { text: t('se.pay.notSet'), color: 'var(--ink-warn)' }}
+        hint={isVN ? (data.pos?.bankAccount ? `${bankLabel(data.pos.bankAccount.bin)} · ${data.pos.bankAccount.accountNo} — tự tạo mã QR cho từng bill` : 'Nhập ngân hàng + số tài khoản một lần, hệ thống tự tạo mã QR cho từng bill') : t('se.pay.bankHint')}
+        defaultOpen={isVN && !data.pos?.bankAccount}
+      >
+        {isVN
+          ? <VietQrSetup key={data.pos?.bankAccount ? `${data.pos.bankAccount.bin}-${data.pos.bankAccount.accountNo}` : 'none'} shopName={data.company?.name ?? ''} pos={data.pos} methods={(data.pos?.resolvedPaymentMethods ?? []).filter((m) => m !== 'CASH' && m !== 'CARD')} vi={lang === 'vi'} onSave={onSave} />
+          : <BankTransferConfig data={data} onSave={onSave} />}
+      </Panel>
+    </>
+  );
+
   return (
     <Card title={t('se.pay.title')} desc={t('se.pay.desc')}>
       {/* --- Core: currency + price display (always visible, compact) --- */}
@@ -693,6 +712,8 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           </label>
         </div>
       </div>
+
+      {isVN && bankPanel}
 
       {/* --- Collapsible sub-sections keep the card short --- */}
       {/* Stripe, Square and PayPal do not serve Vietnamese salons, and this
@@ -749,6 +770,8 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       </Panel>
       )}
 
+      {/* A US "cash discount" model; in Vietnam it only adds noise unless a shop already uses it. */}
+      {(!isVN || !!data.pos?.cardSurchargeEnabled) && (
       <Panel
         title={lang === 'vi' ? 'Phụ phí thẻ (giá Cash / Card)' : 'Card surcharge (Cash / Card)'}
         badge={data.pos?.cardSurchargeEnabled && (data.pos?.cardSurchargePercent ?? 0) > 0
@@ -758,6 +781,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       >
         <CardSurcharge data={data} onSave={onSave} />
       </Panel>
+      )}
 
       <Panel
         title={lang === 'vi' ? 'Tiền tip' : 'Tipping'}
@@ -787,19 +811,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         <LoyaltyConfig data={data} onSave={onSave} />
       </Panel>
 
-      {/* In Vietnam this IS the payment setup, not a fallback beneath the real
-          one — so it says so. The owner asked where to configure payments and
-          did not recognise "Bank transfer (manual)" as the answer. */}
-      <Panel
-        title={isVN ? 'Nhận tiền chuyển khoản · VietQR · MoMo · ZaloPay' : t('se.pay.bankTitle')}
-        badge={(isVN ? data.pos?.bankAccount : data.pos?.transferInstructions) ? { text: t('se.pay.setBadge'), color: 'var(--ink-good)' } : { text: t('se.pay.notSet'), color: 'var(--ink-warn)' }}
-        hint={isVN ? (data.pos?.bankAccount ? `${bankLabel(data.pos.bankAccount.bin)} · ${data.pos.bankAccount.accountNo} — tự tạo mã QR cho từng bill` : 'Nhập ngân hàng + số tài khoản một lần, hệ thống tự tạo mã QR cho từng bill') : t('se.pay.bankHint')}
-        defaultOpen={isVN && !data.pos?.bankAccount}
-      >
-        {isVN
-          ? <VietQrSetup key={data.pos?.bankAccount ? `${data.pos.bankAccount.bin}-${data.pos.bankAccount.accountNo}` : 'none'} shopName={data.company?.name ?? ''} pos={data.pos} methods={(data.pos?.resolvedPaymentMethods ?? []).filter((m) => m !== 'CASH' && m !== 'CARD')} vi={lang === 'vi'} onSave={onSave} />
-          : <BankTransferConfig data={data} onSave={onSave} />}
-      </Panel>
+      {!isVN && bankPanel}
 
       <button
         style={{ ...ui.primaryBtn, marginTop: 16 }}

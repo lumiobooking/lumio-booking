@@ -2,6 +2,7 @@
 
 import { payQrFor } from '../../../lib/pay-qr';
 import { GuestPayQr } from '../../../components/GuestPayQr';
+import { PayQrPanel } from '../../../components/PayQrPanel';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { createPortal } from 'react-dom';
@@ -2410,19 +2411,16 @@ function Register() {
     const qr = pq.src ?? '';
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16, borderRadius: 14, background: 'var(--c1e293b)' }}>
-        {info || qr ? (
+        {qr ? (
+          <>
+            <PayQrPanel vi={lang === 'vi'} method={payMethod} src={qr} exact={pq.exact} amount={fmt(money.due)} lines={pq.lines} onBig={() => setBigQr(true)} />
+            {bigQr && <GuestPayQr vi={lang === 'vi'} method={payMethod} exact={pq.exact} src={qr} amount={fmt(money.due)} lines={pq.lines} shop={salonName || null} onClose={() => setBigQr(false)} />}
+            <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('po.transferAfter')}</span>
+          </>
+        ) : info ? (
           <>
             <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('po.transferShow').replace('{x}', fmt(money.due))}</span>
-            {info && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 14, color: 'var(--ce2e8f0)', margin: 0 }}>{info}</pre>}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {qr && <img src={qr} alt={`${payMethod} QR`} style={{ width: pq.exact ? 200 : 160, height: pq.exact ? 200 : 160, objectFit: 'contain', background: '#fff', borderRadius: 10, padding: 6 }} />}
-            {pq.exact && <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L('Khách quét bằng app ngân hàng, MoMo hoặc ZaloPay — số tiền đã điền sẵn.', 'The customer scans with any banking app — the amount is filled in.')}</span>}
-            {qr && (
-              <button type="button" onClick={() => setBigQr(true)} style={{ height: 48, borderRadius: 12, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>
-                {L('Đưa khách quét (toàn màn hình)', 'Show to the customer (full screen)')}
-              </button>
-            )}
-            {bigQr && qr && <GuestPayQr vi={lang === 'vi'} src={qr} amount={fmt(money.due)} lines={pq.lines} shop={salonName || null} onClose={() => setBigQr(false)} />}
+            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 14, color: 'var(--ce2e8f0)', margin: 0 }}>{info}</pre>
             <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('po.transferAfter')}</span>
           </>
         ) : (

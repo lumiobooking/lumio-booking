@@ -17,7 +17,8 @@ describe('a cashier always has a button to press', () => {
   });
 
   it('shows exactly what the server resolved, in that order', () => {
-    expect(tillMethodsFrom(['CASH', 'VIETQR', 'MOMO'])).toEqual(['CASH', 'VIETQR', 'MOMO']);
+    expect(tillMethodsFrom(['CASH', 'VIETQR', 'MOMO'])).toEqual(['CASH', 'TRANSFER', 'MOMO']);
+    expect(tillMethodsFrom(['CASH', 'TRANSFER', 'VIETQR', 'MOMO', 'ZALOPAY'])).toEqual(['CASH', 'TRANSFER', 'MOMO', 'ZALOPAY']);
   });
 });
 

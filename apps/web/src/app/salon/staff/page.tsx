@@ -15,6 +15,7 @@ import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '.
 import { PayFields, payBody, payFormFrom, paySummary, type PayForm } from './PayFields';
 import { AccessBlock, LoginSection, PermissionChecklist, RoleMatrix, useAccessCatalog } from './AccessPanel';
 import { TimeOffPanel } from './TimeOffPanel';
+import { ConfirmDialog } from './TimeOffDialog';
 import { ind, uiIndustry } from '../../../lib/ui-industry';
 import { isTableIndustry } from '../../../lib/restaurant-till';
 import { FRONT_ONLY_ROLES } from '../../../lib/bookable-staff';
@@ -312,14 +313,19 @@ function StaffInner() {
     load();
   }, [load]);
 
-  async function remove(id: string) {
-    if (!confirm(t('st.confirmDelete'))) return;
-    try {
-      await apiFetch(`/staff/${id}`, { method: 'DELETE', token });
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
-    }
+  // Delete asks in a proper dialog (name shown), not the browser's box.
+  const [delFor, setDelFor] = useState<StaffMember | null>(null);
+  function remove(id: string) {
+    const m = staff.find((x) => x.id === id);
+    if (m) setDelFor(m);
+  }
+  async function doRemove(id: string) {
+    const m = staff.find((x) => x.id === id);
+    const r = await apiFetch<{ archived?: boolean }>(`/staff/${id}`, { method: 'DELETE', token });
+    if (r?.archived && m) setCreatedMsg(lang === 'vi'
+      ? `${m.firstName} đã có bill / tip / chấm công nên được chuyển sang "Ngừng làm" (không xoá, để lương và báo cáo cũ giữ nguyên). Đã khoá đăng nhập.`
+      : `${m.firstName} has bills / tips / clock-ins, so they were set to Inactive instead of deleted (past pay and reports stay). Login closed.`);
+    await load();
   }
 
   function openLogin(m: StaffMember) {
@@ -352,8 +358,8 @@ function StaffInner() {
             {lang === 'vi' ? (showRoles ? 'Ẩn vai trò & quyền' : '🔐 Vai trò & quyền') : (showRoles ? 'Hide roles & access' : '🔐 Roles & access')}
           </button>
           {canEdit && (
-            <button onClick={() => setShowForm((s) => !s)} style={ui.primaryBtn}>
-              {showForm ? t('st.close') : t('st.newStaff')}
+            <button onClick={() => { setShowForm(true); setCreatedMsg(null); }} style={ui.primaryBtn}>
+              {t('st.newStaff')}
             </button>
           )}
         </div>
@@ -377,16 +383,33 @@ function StaffInner() {
       {error && <div style={ui.banner}>{error}</div>}
       {createdMsg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{createdMsg}</div>}
 
-      {showForm && (
-        <CreateStaffForm
-          token={token!}
-          services={services}
-          defaultCheckPercent={defaultCheck}
-          onCreated={async () => {
-            setShowForm(false);
-            await load();
-          }}
-        />
+      {/* New staff opens on top (dialog on desktop, sheet on a phone) — the list stays put. */}
+      <EditDialog open={showForm} onClose={() => setShowForm(false)} width={860}
+        title={lang === 'vi' ? 'Thêm nhân viên' : 'New staff member'}
+        subtitle={lang === 'vi' ? 'Chỉ cần tên là lưu được; các mục khác sửa sau cũng được.' : 'A name is enough to save; the rest can be filled in later.'}>
+        {showForm && (
+          <CreateStaffForm
+            token={token!}
+            services={services}
+            defaultCheckPercent={defaultCheck}
+            onCancel={() => setShowForm(false)}
+            onCreated={async (name) => {
+              setShowForm(false);
+              setCreatedMsg(lang === 'vi' ? `✓ Đã thêm ${name}.` : `✓ ${name} added.`);
+              await load();
+            }}
+          />
+        )}
+      </EditDialog>
+      {delFor && (
+        <ConfirmDialog vi={lang === 'vi'}
+          title={lang === 'vi' ? `Xoá ${delFor.firstName} ${delFor.lastName ?? ''}?`.replace(' ?', '?') : `Delete ${delFor.firstName}?`}
+          text={lang === 'vi'
+            ? 'Nhân viên rời khỏi lịch, trang đặt lịch và phân thợ; tài khoản đăng nhập bị khoá. Nếu người này đã có bill, tip hoặc chấm công thì hệ thống chuyển sang "Ngừng làm" thay vì xoá hẳn, để lương và báo cáo cũ không bị đổi.'
+            : 'They leave the calendar, booking page and assignment; their login is closed. Someone with bills, tips or clock-ins is set to Inactive instead of deleted, so past pay and reports stay unchanged.'}
+          danger={lang === 'vi' ? 'Xoá nhân viên' : 'Delete'}
+          onClose={() => setDelFor(null)}
+          onConfirm={() => doRemove(delFor.id)} />
       )}
 
       {loading ? (
@@ -859,11 +882,13 @@ function CreateStaffForm({
   token,
   services,
   onCreated,
+  onCancel,
   defaultCheckPercent,
 }: {
   token: string;
   services: Service[];
-  onCreated: () => void;
+  onCreated: (name: string) => void;
+  onCancel?: () => void;
   defaultCheckPercent: number;
 }) {
   const { lang } = useLang();
@@ -905,7 +930,7 @@ function CreateStaffForm({
           ...payBody(pay),
         },
       });
-      onCreated();
+      onCreated(`${form.firstName} ${form.lastName}`.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
     } finally {
@@ -914,7 +939,7 @@ function CreateStaffForm({
   }
 
   return (
-    <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <label>
           <span style={ui.label}>{t('st.fFirstName')} <span style={{ color: 'var(--ink-bad)' }}>*</span></span>
@@ -1001,9 +1026,12 @@ function CreateStaffForm({
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
-      <button type="submit" disabled={submitting} style={{ ...ui.primaryBtn }}>
-        {submitting ? t('st.creating') : t('st.createStaff')}
-      </button>
+      <div style={{ position: 'sticky', bottom: -18, display: 'flex', gap: 8, justifyContent: 'flex-end', padding: '10px 0', background: 'var(--c1e293b)', borderTop: '1px solid var(--c334155)' }}>
+        {onCancel && <button type="button" onClick={onCancel} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{vi ? 'Huỷ' : 'Cancel'}</button>}
+        <button type="submit" disabled={submitting || !form.firstName.trim()} style={{ ...ui.primaryBtn, opacity: form.firstName.trim() ? 1 : 0.5 }}>
+          {submitting ? t('st.creating') : t('st.createStaff')}
+        </button>
+      </div>
     </form>
   );
 }

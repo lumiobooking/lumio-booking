@@ -112,3 +112,57 @@ describe('StaffService role → bookable derivation', () => {
     expect(tx.staffMember.update).toHaveBeenCalled();
   });
 });
+
+/**
+ * Deleting someone who has worked here used to cascade away their tips,
+ * clock-ins and extra hours (past payroll changed) and left their login
+ * working. Now: history → stopped, not deleted; login closed either way.
+ */
+describe('removing a staff member keeps the books whole', () => {
+  function shop(history: { lines?: number; tips?: number; clock?: number }) {
+    const people = [
+      { id: 's-a', tenantId: 'tenant-a', firstName: 'Tina', userId: 'login-a', isActive: true },
+      { id: 's-b', tenantId: 'tenant-b', firstName: 'Kim', userId: null, isActive: true },
+    ];
+    const logins = [{ id: 'login-a', tenantId: 'tenant-a', isActive: true }];
+    const n = (v?: number) => jest.fn(async () => v ?? 0);
+    const prisma: any = {
+      staffMember: {
+        findFirst: jest.fn(async ({ where }: any) => people.find((r) => r.id === where.id && r.tenantId === where.tenantId) ?? null),
+        updateMany: jest.fn(async ({ where, data }: any) => { people.filter((r) => r.id === where.id && r.tenantId === where.tenantId).forEach((r) => Object.assign(r, data)); return { count: 1 }; }),
+        deleteMany: jest.fn(async ({ where }: any) => { const i = people.findIndex((r) => r.id === where.id && r.tenantId === where.tenantId); if (i >= 0) people.splice(i, 1); return { count: i >= 0 ? 1 : 0 }; }),
+      },
+      user: { updateMany: jest.fn(async ({ where, data }: any) => { logins.filter((u) => u.id === where.id && u.tenantId === where.tenantId).forEach((u) => Object.assign(u, data)); return { count: 1 }; }) },
+      orderItem: { count: n(history.lines) },
+      tipLog: { count: n(history.tips) },
+      timeEntry: { count: n(history.clock) },
+      staffExtraHours: { count: n() },
+      staffRewardTransaction: { count: n() },
+      appointment: { count: n() },
+      service: { count: n() },
+    };
+    prisma.staffMember.findUnique = prisma.staffMember.findFirst;
+    return { prisma, people, logins, svc: new StaffService(prisma, audit as any, {} as any) };
+  }
+
+  it('someone with bills or tips is stopped, not deleted, and cannot sign in', async () => {
+    const s = shop({ lines: 3, tips: 1 });
+    await expect(s.svc.remove(salonA, 's-a')).resolves.toMatchObject({ archived: true, deleted: false });
+    expect(s.people.find((p) => p.id === 's-a')).toMatchObject({ isActive: false, takesAppointments: false });
+    expect(s.prisma.staffMember.deleteMany).not.toHaveBeenCalled();
+    expect(s.logins[0].isActive).toBe(false);
+  });
+
+  it('someone with no history is really deleted (login closed too)', async () => {
+    const s = shop({});
+    await expect(s.svc.remove(salonA, 's-a')).resolves.toMatchObject({ deleted: true });
+    expect(s.people.map((p) => p.id)).toEqual(['s-b']);
+    expect(s.logins[0].isActive).toBe(false);
+  });
+
+  it('another salon\'s staff cannot be removed', async () => {
+    const s = shop({});
+    await expect(s.svc.remove(salonA, 's-b')).rejects.toBeInstanceOf(NotFoundException);
+    expect(s.people.map((p) => p.id)).toEqual(['s-a', 's-b']);
+  });
+});

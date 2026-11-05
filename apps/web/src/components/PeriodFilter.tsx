@@ -155,7 +155,13 @@ const arrow: CSSProperties = { width: 34, border: 'none', background: 'transpare
 /** "▲ 12%" in green / "▼ 8%" in red, or nothing to compare with. */
 export function Delta({ cur, prev, vi, invert = false }: { cur: number; prev: number | null | undefined; vi: boolean; invert?: boolean }) {
   if (prev === null || prev === undefined) return null;
-  if (!prev) return <span style={{ color: 'var(--c94a3b8)' }}>{vi ? 'kỳ so sánh = 0' : 'nothing to compare'}</span>;
+  // Nothing in the period compared against: no percentage to give. "Kỳ so
+  // sánh = 0" read like an error on an empty day; say what actually happened.
+  if (!prev) {
+    if (!cur) return <span style={{ color: 'var(--c94a3b8)' }}>{vi ? 'Không đổi' : 'No change'}</span>;
+    const good = invert ? cur <= 0 : cur > 0;
+    return <span style={{ color: good ? 'var(--ink-good)' : 'var(--ink-bad)', fontWeight: 700 }}>{cur > 0 ? '▲' : '▼'} {vi ? (cur > 0 ? 'tăng' : 'giảm') : (cur > 0 ? 'up' : 'down')}</span>;
+  }
   const p = Math.round(((cur - prev) / Math.abs(prev)) * 100);
   const good = invert ? p <= 0 : p >= 0;
   return <span style={{ color: p === 0 ? 'var(--c94a3b8)' : good ? 'var(--ink-good)' : 'var(--ink-bad)', fontWeight: 700 }}>{p > 0 ? '▲' : p < 0 ? '▼' : '='} {Math.abs(p)}%</span>;

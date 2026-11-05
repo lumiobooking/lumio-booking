@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { takesAppointmentsFor } from './bookable-role';
-import { Prisma, UserRole, StaffRole } from '@prisma/client';
+import { AppointmentStatus, Prisma, UserRole, StaffRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hashSecret } from '../auth/password.util';
@@ -444,6 +444,27 @@ export class StaffService {
   async remove(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
     await this.getById(user, id);
+    const row = await this.prisma.staffMember.findFirst({ where: { id, tenantId }, select: { userId: true } });
+    // A person who has worked here owns history that payroll and the reports
+    // read: tips, clock-ins, extra hours, rewards cascade away with the row,
+    // and their bills would lose their name. Such a person is STOPPED instead
+    // (off the calendar, booking and assignment; login closed) and stays on
+    // the list as "Ngừng làm". Only someone with no history is really deleted.
+    const [lines, tips, clock, extra, rewards, visits] = await Promise.all([
+      this.prisma.orderItem.count({ where: { tenantId, staffMemberId: id } }),
+      this.prisma.tipLog.count({ where: { tenantId, staffMemberId: id } }),
+      this.prisma.timeEntry.count({ where: { tenantId, staffId: id } }),
+      this.prisma.staffExtraHours.count({ where: { tenantId, staffId: id } }),
+      this.prisma.staffRewardTransaction.count({ where: { tenantId, staffId: id } }),
+      this.prisma.appointment.count({ where: { tenantId, assignedStaffId: id, status: { in: [AppointmentStatus.COMPLETED, AppointmentStatus.ARRIVED] } } }).catch(() => 0),
+    ]);
+    // The login closes either way: a STAFF account left behind kept working.
+    if (row?.userId) await this.prisma.user.updateMany({ where: { id: row.userId, tenantId }, data: { isActive: false } });
+    if (lines + tips + clock + extra + rewards + visits > 0) {
+      await this.prisma.staffMember.updateMany({ where: { id, tenantId }, data: { isActive: false, takesAppointments: false } });
+      await this.audit.log({ tenantId, userId: user.userId, action: 'staff.archived', resourceType: 'staff_member', resourceId: id, metadata: { lines, tips, clock, extra, rewards, visits } });
+      return { id, deleted: false, archived: true };
+    }
     // Cascades remove staffServices / workingHours via the schema relations.
     await this.prisma.staffMember.deleteMany({ where: { id, tenantId } });
     await this.audit.log({

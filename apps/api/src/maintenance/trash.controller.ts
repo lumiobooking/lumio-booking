@@ -66,14 +66,29 @@ export class TrashController {
         // The receipt was stored with its lines nested; split them back out.
         const raw = snap.order as (Prisma.OrderUncheckedCreateInput & { items?: unknown[]; payments?: unknown[] }) | null;
         if (raw) {
-          const { items, payments, ...header } = raw as Record<string, unknown>;
-          await tx.order.createMany({ data: [header as Prisma.OrderUncheckedCreateInput], skipDuplicates: true });
+          const { items, payments, tenders, ...header } = raw as Record<string, unknown>;
+          const res = await tx.order.createMany({ data: [header as Prisma.OrderUncheckedCreateInput], skipDuplicates: true });
           const lines = (items ?? []) as Prisma.OrderItemUncheckedCreateInput[];
           if (lines.length) await tx.orderItem.createMany({ data: lines, skipDuplicates: true });
+          // How it was paid — without these a restored paid bill showed no method.
+          const paidBy = (tenders ?? []) as Prisma.OrderPaymentUncheckedCreateInput[];
+          if (paidBy.length) await tx.orderPayment.createMany({ data: paidBy, skipDuplicates: true });
           void payments;
+          // A live sale took its products off the shelf again (the delete put them back).
+          if (res.count && header.status === 'PAID') {
+            for (const l of lines as { kind?: string; productId?: string | null; quantity?: number }[]) {
+              if (l.kind === 'PRODUCT' && l.productId) {
+                await tx.product.updateMany({ where: { id: l.productId, tenantId, trackStock: true }, data: { stockQty: { decrement: l.quantity ?? 1 } } });
+              }
+            }
+          }
         }
         const mirrored = (snap.payments ?? []) as Prisma.PaymentUncheckedCreateInput[];
         if (mirrored.length) await tx.payment.createMany({ data: mirrored, skipDuplicates: true });
+        const refunds = (snap.refunds ?? []) as Prisma.OrderRefundUncheckedCreateInput[];
+        if (refunds.length) await tx.orderRefund.createMany({ data: refunds, skipDuplicates: true });
+        const tips = (snap.tips ?? []) as Prisma.TipLogUncheckedCreateInput[];
+        if (tips.length) await tx.tipLog.createMany({ data: tips, skipDuplicates: true });
       }
 
       await this.trash.markRestored(tx, item.id, tenantId);

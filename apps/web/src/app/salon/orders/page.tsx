@@ -20,6 +20,8 @@ import { csvLine } from '../../../lib/walkin-day';
 import { fromMinorUnits } from '../../../lib/money';
 import { SalesImport } from '../../../components/SalesImport';
 import { TestDataReset } from '../../../components/TestDataReset';
+import { useBulkSelect, BulkAllBox, BulkRowBox } from '../../../components/BulkDelete';
+import { DeleteBillsDialog } from '../../../components/orders/DeleteBillsDialog';
 import { OrderDrawer, StateChip, orderState, type StaffLite } from '../../../components/orders/OrderDrawer';
 
 /**
@@ -28,8 +30,9 @@ import { OrderDrawer, StateChip, orderState, type StaffLite } from '../../../com
  * Every bill of the period with who it was for, what was done, by whom, how
  * it was paid and where it stands; the totals of what is on screen above it.
  * A row opens the bill (OrderDrawer): reprint, change the technician, refund
- * or void with a reason. A paid bill is never deleted — it stays here,
- * marked, so the numbers never have a hole in them.
+ * or void with a reason (a confirmation step either way). The owner can tick
+ * bills and delete them with a reason — each goes to the Thùng rác and can be
+ * put back. Wiping every test bill at once is Lumio Support's (handover).
  */
 
 interface OrderItem {
@@ -82,6 +85,7 @@ function Inner() {
   const [error, setError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -130,6 +134,11 @@ function Inner() {
   const cmpText = range.cmp ? rangeText(range.cmp.from, range.cmp.to, uiLocale()) : '';
 
   const pg = usePaged(visible, 25);
+  // The owner ticks bills to delete them (each with the same reason).
+  const canPick = user?.role === 'SALON_ADMIN' && can('pos.void');
+  const bulk = useBulkSelect(canPick ? pg.paged.map((o) => o.id) : []);
+  const picked = orders.filter((o) => bulk.has(o.id));
+  const isSupport = !!user?.supportSession;
 
   function exportCsv() {
     const rows = [csvLine([L('Ngày giờ', 'Date'), L('Số bill', 'Bill'), L('Khách', 'Client'), L('SĐT', 'Phone'), L('Dịch vụ', 'Items'), L('Thợ', 'Technicians'),
@@ -172,7 +181,7 @@ function Inner() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {user?.role === 'SALON_ADMIN' && <button type="button" onClick={() => setImportOpen(true)} style={ghost}>⇪ {L('Nhập doanh thu cũ', 'Import past sales')}</button>}
-          {user?.role === 'SALON_ADMIN' && <button type="button" onClick={() => setResetOpen(true)} style={{ ...ghost, borderColor: 'rgba(244,63,94,.55)', color: '#fb7185' }}>🗑 {L('Xoá dữ liệu thử', 'Clear test sales')}</button>}
+          {isSupport && <button type="button" onClick={() => setResetOpen(true)} title={L('Chỉ Lumio Support thấy nút này', 'Only Lumio Support sees this')} style={{ ...ghost, borderColor: 'rgba(244,63,94,.55)', color: '#fb7185' }}>🗑 {L('Xoá dữ liệu thử', 'Clear test sales')} · Support</button>}
           <button type="button" onClick={exportCsv} disabled={!visible.length} style={ghost}>⬇ CSV</button>
           <a href="/salon/pos" style={{ ...ui.primaryBtn, textDecoration: 'none' }}>+ {L('Bill mới', 'New sale')}</a>
         </div>
@@ -213,9 +222,17 @@ function Inner() {
         {kpi(L('Bill đã thu', 'Paid bills'), String(k.bills), vs(k.bills, pk?.bills) ?? `${k.voided} ${L('huỷ', 'voided')} · ${k.open} ${L('đang mở', 'open')}`)}
         {kpi(L('TB / bill', 'Avg / bill'), money(k.bills ? Math.round(k.net / k.bills) : 0), vs(k.bills ? k.net / k.bills : 0, pk ? (pk.bills ? pk.net / pk.bills : 0) : undefined) ?? L('doanh thu thuần ÷ bill', 'net ÷ bills'))}
         {kpi('Tip', money(k.tips), vs(k.tips, pk?.tips) ?? L('của thợ', 'for the techs'))}
-        {kpi(L('Giảm giá · hoàn', 'Discounts · refunds'), `−${money(k.discount + k.back)}`, `${L('giảm', 'disc.')} ${money(k.discount)} · ${L('hoàn', 'ref.')} ${money(k.back)}`, k.back ? 'var(--ink-warn)' : undefined)}
+        {kpi(L('Giảm giá · hoàn', 'Discounts · refunds'), k.discount + k.back ? `−${money(k.discount + k.back)}` : money(0), `${L('giảm', 'disc.')} ${money(k.discount)} · ${L('hoàn', 'ref.')} ${money(k.back)}`, k.back ? 'var(--ink-warn)' : undefined)}
         {kpi(L('Tổng thu', 'Total'), money(k.total), L('thuần + thuế + tip', 'net + tax + tips'))}
       </div>
+
+      {canPick && bulk.count > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', marginBottom: 10, borderRadius: 10, background: 'var(--c1e1b4b)', border: '1px solid #4338ca' }}>
+          <span style={{ fontSize: 13, color: 'var(--cc7d2fe)', fontWeight: 600 }}>{L(`Đã chọn ${bulk.count} bill`, `${bulk.count} selected`)}</span>
+          <button type="button" onClick={() => setDeleteOpen(true)} style={{ fontSize: 12.5, fontWeight: 700, padding: '6px 14px', borderRadius: 8, border: '1px solid #b91c1c', background: '#dc2626', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>🗑 {L('Xoá bill đã chọn', 'Delete selected')}</button>
+          <button type="button" onClick={bulk.clear} style={{ ...ghost, height: 30, fontSize: 12 }}>{L('Bỏ chọn', 'Clear')}</button>
+        </div>
+      )}
 
       {loading && orders.length === 0 ? <p style={{ color: 'var(--c94a3b8)' }}>{L('Đang tải…', 'Loading…')}</p> : cardList ? (
         <>
@@ -225,6 +242,7 @@ function Inner() {
               <div key={o.id} onClick={() => setOpenId(o.id)} style={{ cursor: 'pointer' }}>
                 <MCard>
                   <MHead right={<StateChip o={o} vi={vi} />}>
+                    {canPick && <span style={{ marginRight: 8 }} onClick={(e) => e.stopPropagation()}><BulkRowBox on={bulk.has(o.id)} onChange={() => bulk.toggle(o.id)} /></span>}
                     #{o.orderNumber} · <span style={{ textDecoration: o.status === 'VOID' ? 'line-through' : 'none' }}>{formatPrice(o.totalCents, o.currency)}</span>
                   </MHead>
                   <MRow label={L('Khách', 'Client')}>{custName(o) || L('Khách lẻ', 'Walk-in')}{o.customer?.phone ? ` · ${o.customer.phone}` : ''}</MRow>
@@ -241,14 +259,16 @@ function Inner() {
         <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
             <thead><tr style={{ background: 'var(--c1e293b)' }}>
+              {canPick && <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>}
               <th style={ui.th}>{L('Số bill', 'Bill')}</th><th style={ui.th}>{L('Lúc', 'When')}</th><th style={ui.th}>{L('Khách', 'Client')}</th>
               <th style={ui.th}>{L('Dịch vụ', 'Items')}</th><th style={ui.th}>{L('Thợ', 'Tech')}</th><th style={ui.th}>{L('Cách trả', 'Paid by')}</th>
               <th style={{ ...ui.th, textAlign: 'right' }}>{L('Tổng', 'Total')}</th><th style={{ ...ui.th, textAlign: 'right' }}>Tip</th><th style={ui.th}>{L('Trạng thái', 'Status')}</th>
             </tr></thead>
             <tbody>
-              {visible.length === 0 && <tr><td style={ui.td} colSpan={9}>{L('Không có bill trong kỳ này.', 'No bills in this range.')}</td></tr>}
+              {visible.length === 0 && <tr><td style={ui.td} colSpan={canPick ? 10 : 9}>{L('Không có bill trong kỳ này.', 'No bills in this range.')}</td></tr>}
               {pg.paged.map((o) => (
-                <tr key={o.id} onClick={() => setOpenId(o.id)} style={{ borderTop: '1px solid var(--c334155)', cursor: 'pointer', background: openId === o.id ? 'var(--c1e1b4b)' : undefined }}>
+                <tr key={o.id} onClick={() => setOpenId(o.id)} style={{ borderTop: '1px solid var(--c334155)', cursor: 'pointer', background: openId === o.id || bulk.has(o.id) ? 'var(--c1e1b4b)' : undefined }}>
+                  {canPick && <td style={{ ...ui.td, width: 34 }} onClick={(e) => e.stopPropagation()}><BulkRowBox on={bulk.has(o.id)} onChange={() => bulk.toggle(o.id)} /></td>}
                   <td style={{ ...ui.td, fontWeight: 700, color: 'var(--ink-link)' }}>#{o.orderNumber}</td>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{fmtInTz(o.paidAt ?? o.createdAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td>
                   <td style={{ ...ui.td, maxWidth: 190 }}>
@@ -270,8 +290,11 @@ function Inner() {
       )}
 
       <p style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 12 }}>
-        {L('Bill đã thu tiền không xoá được: huỷ hoặc hoàn tiền (có lý do) và bill vẫn ở lại danh sách. Số liệu chính thức theo ngày / tháng ở Báo cáo.',
-          'A paid bill cannot be deleted: void or refund it (with a reason) and it stays in this list. Official figures by day and month are in Reports.')}
+        {canPick
+          ? L('Huỷ hoặc hoàn tiền: bill vẫn ở lại danh sách với lý do. Xoá bill: tick ô bên trái → Xoá bill đã chọn → ghi lý do và xác nhận; bill vào Thùng rác, khôi phục được. Số liệu chính thức theo ngày / tháng ở Báo cáo.',
+            'Void or refund: the bill stays in this list with its reason. Delete: tick bills → Delete selected → give a reason and confirm; they go to the Trash and can be restored. Official figures by day and month are in Reports.')
+          : L('Bill đã thu tiền không xoá được: huỷ hoặc hoàn tiền (có lý do) và bill vẫn ở lại danh sách. Số liệu chính thức theo ngày / tháng ở Báo cáo.',
+            'A paid bill cannot be deleted: void or refund it (with a reason) and it stays in this list. Official figures by day and month are in Reports.')}
       </p>
 
       {openId && (
@@ -279,7 +302,11 @@ function Inner() {
           onClose={() => setOpenId(null)} onChanged={() => void load()} />
       )}
       {importOpen && <SalesImport vi={vi} onClose={() => setImportOpen(false)} onDone={() => void load()} />}
-      {resetOpen && <TestDataReset vi={vi} onClose={() => setResetOpen(false)} onDone={() => void load()} />}
+      {deleteOpen && picked.length > 0 && (
+        <DeleteBillsDialog vi={vi} token={token} bills={picked} onClose={() => setDeleteOpen(false)}
+          onDone={() => { setDeleteOpen(false); bulk.clear(); void load(); }} />
+      )}
+      {resetOpen && isSupport && <TestDataReset vi={vi} onClose={() => setResetOpen(false)} onDone={() => void load()} />}
     </section>
   );
 }

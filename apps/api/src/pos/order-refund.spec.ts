@@ -25,11 +25,12 @@ type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-exp
 const admin = { userId: 'u1', tenantId: 't1', role: 'SALON_ADMIN' } as never;
 const other = { userId: 'u9', tenantId: 't2', role: 'SALON_ADMIN' } as never;
 
-function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift?: string | null; appts?: Row[]; refunds?: Row[]; users?: Row[]; cards?: Row[]; shifts?: Row[] }) {
+function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift?: string | null; appts?: Row[]; refunds?: Row[]; users?: Row[]; cards?: Row[]; shifts?: Row[]; tips?: Row[] }) {
   const { orders, payments } = opts;
   const audits: Row[] = [];
   const moves: Row[] = [];
   const refundRows: Row[] = [...(opts.refunds ?? [])];
+  const tipRows: Row[] = [...(opts.tips ?? [])];
   const wheres: Row[] = [];
   const appts = opts.appts ?? [];
   const match = (p: Row, w: Row) => p.tenantId === w.tenantId
@@ -52,7 +53,11 @@ function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift
     product: { updateMany: async () => ({ count: 0 }) },
     appointment: { updateMany: async ({ where, data }: Row) => { appts.filter((a) => a.tenantId === where.tenantId).forEach((a) => Object.assign(a, data)); return { count: 0 }; } },
     cashMovement: { create: async ({ data }: Row) => { moves.push(data); return data; } },
-    orderRefund: { create: async ({ data }: Row) => { refundRows.push(data); return data; } },
+    orderRefund: {
+      create: async ({ data }: Row) => { refundRows.push(data); return data; },
+      deleteMany: async ({ where }: Row) => { const keep = refundRows.filter((r) => !(r.tenantId === where.tenantId && r.orderId === where.orderId)); const n = refundRows.length - keep.length; refundRows.splice(0, refundRows.length, ...keep); return { count: n }; },
+    },
+    tipLog: { deleteMany: async ({ where }: Row) => { const keep = tipRows.filter((r) => !(r.tenantId === where.tenantId && r.orderId === where.orderId)); const n = tipRows.length - keep.length; tipRows.splice(0, tipRows.length, ...keep); return { count: n }; } },
   };
   const prisma: Row = {
     order: {
@@ -69,6 +74,7 @@ function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift
     staffMember: { findMany: async ({ where }: Row) => (opts.cards ?? []).filter((c) => c.tenantId === where.tenantId) },
     user: { findMany: async ({ where }: Row) => (opts.users ?? []).filter((u) => (!where?.tenantId || u.tenantId === where.tenantId) && (where?.isActive === undefined || u.isActive === where.isActive) && (!where?.approvalPinHash || !!u.approvalPinHash)) },
     orderRefund: { findMany: async ({ where }: Row) => refundRows.filter((r) => r.tenantId === where.tenantId && r.orderId === where.orderId) },
+    tipLog: { findMany: async ({ where }: Row) => tipRows.filter((r) => r.tenantId === where.tenantId && r.orderId === where.orderId) },
     cashShift: { findFirst: async ({ where }: Row) => (opts.shifts ?? []).find((x) => x.id === where.id && x.tenantId === where.tenantId) ?? null },
     orderItem: { updateMany: async ({ where, data }: Row) => { for (const o of orders) for (const l of (o.items ?? [])) if (l.id === where.id && o.id === where.orderId) Object.assign(l, data); return { count: 1 }; } },
     $transaction: async (fn: unknown) => (Array.isArray(fn) ? Promise.all(fn) : (fn as (t: Row) => Promise<unknown>)(tx)),
@@ -79,7 +85,7 @@ function make(opts: { orders: Row[]; payments: Row[]; intents?: Row[]; openShift
     { reverseForRef: async () => undefined } as never, {} as never, { capture: async () => undefined } as never,
   );
   (svc as unknown as Row).recreditGiftCards = async () => undefined;
-  return { svc, audits, moves, wheres, payments, orders, appts, refundRows };
+  return { svc, audits, moves, wheres, payments, orders, appts, refundRows, tipRows };
 }
 
 const paidBill = (over: Row = {}) => ({ id: 'o1', tenantId: 't1', status: 'PAID', orderNumber: 41, totalCents: 6900, paidCents: 6900, currency: 'USD', shiftId: 's-old', appointmentId: 'a1', appointmentIds: ['a1'], items: [{ id: 'l1', kind: 'SERVICE', quantity: 1 }, { id: 'l2', kind: 'SERVICE', quantity: 1 }], tenders: [{ method: 'CARD', amountCents: 6900 }], ...over });
@@ -264,6 +270,37 @@ describe('voiding and deleting', () => {
       await expect(svc.removeOrder(admin, 'o1')).rejects.toThrow(/không xoá được/);
       expect(orders).toHaveLength(1);
     }
+  });
+
+  it('the owner may delete a paid bill picked in the list, with a reason; its refunds and tips go with it', async () => {
+    const { svc, orders, refundRows, tipRows, audits } = make({
+      orders: [paidBill()], payments: [mirror()],
+      refunds: [{ tenantId: 't1', orderId: 'o1', amountCents: 500 }, { tenantId: 't2', orderId: 'o1', amountCents: 9 }],
+      tips: [{ tenantId: 't1', orderId: 'o1', amountCents: 300 }],
+    });
+    await expect(svc.removeOrder(admin, 'o1', { allowPaid: true })).rejects.toThrow(/lý do/);
+    expect(orders).toHaveLength(1);
+    await svc.removeOrder(admin, 'o1', { allowPaid: true, reason: 'Bill tạo thử' });
+    expect(orders).toHaveLength(0);
+    expect(refundRows).toEqual([{ tenantId: 't2', orderId: 'o1', amountCents: 9 }]); // another salon's row untouched
+    expect(tipRows).toHaveLength(0);
+    expect(audits.find((a) => a.action === 'order.deleted')!.metadata).toMatchObject({ reason: 'Bill tạo thử', status: 'PAID' });
+  });
+
+  it('staff with "void" still cannot delete a paid bill, even through the list', async () => {
+    const { svc, orders } = make({ orders: [paidBill()], payments: [mirror()] });
+    const manager = { userId: 'u5', tenantId: 't1', role: 'STAFF', staffRole: 'MANAGER' } as never;
+    await expect(svc.removeOrder(manager, 'o1', { allowPaid: true, reason: 'xyz' })).rejects.toThrow(/không xoá được/);
+    await expect(svc.removeOrders(manager, { ids: ['o1'], reason: 'xyz' })).rejects.toThrow(/chủ tiệm/);
+    expect(orders).toHaveLength(1);
+  });
+
+  it('bulk delete: another salon\'s bill is reported as failed, never touched', async () => {
+    const { svc, orders } = make({ orders: [paidBill(), paidBill({ id: 'x9', tenantId: 't2' })], payments: [mirror()] });
+    const r = await svc.removeOrders(admin, { ids: ['o1', 'x9'], reason: 'Bill trùng' });
+    expect(r.deleted).toBe(1);
+    expect(r.failed.map((f) => f.id)).toEqual(['x9']);
+    expect(orders.map((o) => o.id)).toEqual(['x9']);
   });
 
   it('a draft nobody paid on may be deleted', async () => {

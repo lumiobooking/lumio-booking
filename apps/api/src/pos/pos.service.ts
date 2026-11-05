@@ -6,6 +6,7 @@ import {
   PaymentStatus,
   PaymentType,
   Prisma,
+  UserRole,
   WalkInStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1063,29 +1064,43 @@ export class PosService {
 
   /** Permanently delete an order (admin cleanup): reverses revenue, restocks if it
    *  was a live paid sale, then removes the order (items + tenders cascade). */
-  async removeOrder(user: AuthenticatedUser, id: string) {
+  async removeOrder(user: AuthenticatedUser, id: string, opts: { reason?: string; allowPaid?: boolean } = {}) {
     const tenantId = this.tenantId(user);
     const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
     if (!order) throw new NotFoundException('Order not found');
-    // Money is never deleted. A bill that took payment keeps its number in
-    // the list — voided or refunded, with the reason — so the books never
-    // have a hole in them. Only a draft nobody paid on can go.
+    // A draft nobody paid on can go from the drawer. A bill that took money
+    // goes only when the OWNER picks it in the bill list (bulk delete) and
+    // gives a reason: stock, gift cards, points and the booking are put
+    // back, the receipt goes to the Thùng rác (restorable) and the audit log
+    // keeps who and why. Staff with "void" can only void or refund it.
+    const reason = String(opts.reason ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
     if (!this.isDraft(order)) {
-      throw new BadRequestException('Bill đã thu tiền không xoá được — dùng Huỷ bill hoặc Hoàn tiền. Bill vẫn ở lại danh sách để sổ sách không mất số.');
+      if (!opts.allowPaid || user.role !== UserRole.SALON_ADMIN) {
+        throw new BadRequestException('Bill đã thu tiền không xoá được — dùng Huỷ bill hoặc Hoàn tiền. Chủ tiệm có thể xoá ở danh sách Bill (chọn bill → Xoá, ghi lý do).');
+      }
+      if (reason.length < 3) throw new BadRequestException('Ghi lý do xoá bill (ít nhất 3 ký tự).');
     }
 
     await this.assertOpenPayroll(tenantId, order);
-    // Snapshot the whole receipt (header + lines) before anything is undone, so
-    // a deleted sale can be reconstructed from the bin.
-    const mirrored = await this.prisma.payment.findMany({ where: { tenantId, providerReference: `order:${id}` } });
+    // Snapshot the whole receipt (header + lines + tenders, refunds, tips on
+    // it) before anything is undone, so a deleted sale can be put back from the bin.
+    const [mirrored, refunds, tips] = await Promise.all([
+      this.prisma.payment.findMany({ where: { tenantId, providerReference: `order:${id}` } }),
+      this.prisma.orderRefund.findMany({ where: { tenantId, orderId: id } }),
+      this.prisma.tipLog.findMany({ where: { tenantId, orderId: id } }),
+    ]);
     const label = `#${order.orderNumber} · ${(order.totalCents / 100).toFixed(2)} ${order.currency}`;
 
     await this.prisma.$transaction(async (tx) => {
       await this.trash.capture(tx, {
         tenantId, entity: 'order', entityId: id, label,
-        snapshot: { order, payments: mirrored },
+        snapshot: { order, payments: mirrored, refunds, tips, reason: reason || null },
         deletedByUserId: user.userId,
       });
+      // Refund rows and tips logged on this bill would otherwise keep counting
+      // in reports and payroll after the bill itself is gone.
+      if (refunds.length) await tx.orderRefund.deleteMany({ where: { tenantId, orderId: id } });
+      if (tips.length) await tx.tipLog.deleteMany({ where: { tenantId, orderId: id } });
       // Restock + re-credit gift cards only if it was still a live PAID sale
       // (a VOID order was already restocked/re-credited).
       if (order.status === OrderStatus.PAID) {
@@ -1107,8 +1122,30 @@ export class PosService {
       await tx.order.deleteMany({ where: { id, tenantId } });
     });
 
-    await this.audit.log({ tenantId, userId: user.userId, action: 'order.deleted', resourceType: 'order', resourceId: id });
+    await this.audit.log({
+      tenantId, userId: user.userId, action: 'order.deleted', resourceType: 'order', resourceId: id,
+      metadata: { orderNumber: order.orderNumber, status: order.status, totalCents: order.totalCents, reason: reason || null },
+    });
     return { id, deleted: true };
+  }
+
+  /**
+   * The owner's "tick bills → Xoá": each bill goes through removeOrder on its
+   * own, so one bill inside a closed payroll fails alone and the rest still go.
+   */
+  async removeOrders(user: AuthenticatedUser, body: { ids?: unknown; reason?: unknown }) {
+    if (user.role !== UserRole.SALON_ADMIN) throw new ForbiddenException('Chỉ chủ tiệm xoá được bill.');
+    const ids = Array.isArray(body?.ids) ? [...new Set(body.ids.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length < 64))] : [];
+    if (!ids.length) throw new BadRequestException('Chưa chọn bill nào.');
+    if (ids.length > 200) throw new BadRequestException('Mỗi lần xoá tối đa 200 bill.');
+    const reason = String(body?.reason ?? '');
+    const deleted: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+    for (const id of ids) {
+      try { await this.removeOrder(user, id, { reason, allowPaid: true }); deleted.push(id); }
+      catch (e) { failed.push({ id, error: e instanceof Error ? e.message : 'Lỗi' }); }
+    }
+    return { deleted: deleted.length, failed };
   }
 
   /** A paid sale inside a closed (FINAL) payroll is frozen: reopen the payroll first. */

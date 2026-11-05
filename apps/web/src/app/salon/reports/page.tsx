@@ -549,7 +549,7 @@ function SummaryBlock({ s, money, T, vi, cmpOn }: { s: Summary; money: (c: numbe
   // "▲ 12% vs Sep 1 – Sep 21, 2026" — like-for-like, the range the filter shows.
   const vs = (cur: number, before: number | undefined) => {
     if (!cmpOn || before === undefined) return undefined;
-    if (!before) return `${T('kỳ so sánh = 0', 'nothing in')} ${cmpText}`;
+    if (!before) return `${T('chưa có số liệu ở', 'nothing in')} ${cmpText}`;
     const d = Math.round(((cur - before) / Math.abs(before)) * 100);
     return `${d > 0 ? '▲' : d < 0 ? '▼' : '='} ${Math.abs(d)}% ${T('so với', 'vs')} ${cmpText}`;
   };

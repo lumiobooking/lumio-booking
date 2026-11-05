@@ -96,7 +96,7 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
   const [d, setD] = useState<OrderDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [dialog, setDialog] = useState<'refund' | 'void' | null>(null);
+  const [dialog, setDialog] = useState<'refund' | 'void' | 'delete' | null>(null);
   const [editClient, setEditClient] = useState(false);
   const [techEdit, setTechEdit] = useState<Record<string, string> | null>(null);
   // The tip of each line while re-splitting (typed in the salon's money).
@@ -175,7 +175,7 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
   }
 
   async function removeDraft() {
-    if (!d || !confirm(L(`Xoá bill nháp #${d.orderNumber}? Bill này chưa thu đồng nào.`, `Delete draft #${d.orderNumber}? Nothing was paid on it.`))) return;
+    if (!d) return;
     setBusy(true);
     try { await apiFetch(`/pos/orders/${d.id}`, { method: 'DELETE', token }); onChanged(); onClose(); }
     catch (e) { setErr(e instanceof Error ? e.message : String(e)); setBusy(false); }
@@ -342,7 +342,7 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
               <span style={{ flex: 1 }} />
               {d.canRefund && <button type="button" onClick={() => setDialog('refund')} style={{ ...ghost, borderColor: '#f97316', color: 'var(--ink-warn)' }}>↩ {L('Hoàn tiền', 'Refund')}</button>}
               {d.status === 'PAID' && <button type="button" disabled={!d.canVoid} title={d.canVoid ? undefined : d.voidLock || L('Bill đã có hoàn tiền — hoàn tiếp phần còn lại.', 'Part of it was refunded — refund the rest instead.')} onClick={() => setDialog('void')} style={{ ...ghost, borderColor: '#ef4444', color: 'var(--ink-bad)', opacity: d.canVoid ? 1 : 0.45 }}>{L('Huỷ bill', 'Void')}</button>}
-              {canMoveMoney && d.canDelete && <button type="button" disabled={busy} onClick={() => void removeDraft()} style={{ ...ghost, borderColor: '#ef4444', color: 'var(--ink-bad)' }}>{L('Xoá bill nháp', 'Delete draft')}</button>}
+              {canMoveMoney && d.canDelete && <button type="button" disabled={busy} onClick={() => setDialog('delete')} style={{ ...ghost, borderColor: '#ef4444', color: 'var(--ink-bad)' }}>{L('Xoá bill nháp', 'Delete draft')}</button>}
             </div>
             {d.status === 'PAID' && d.voidLock && d.refundedCents === 0 && <div style={{ fontSize: 12, color: 'var(--ink-warn)', marginTop: -6 }}>{d.voidLock}</div>}
             {!canMoveMoney && d.status === 'PAID' && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: -6 }}>{L('Hoàn tiền / huỷ bill: cần chủ tiệm hoặc quản lý nhập PIN của họ.', 'Refunds and voids: the owner or a manager types their PIN.')}</div>}
@@ -350,6 +350,18 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
         )}
       </aside>
       {d && dialog === 'refund' && <RefundDialog d={d} token={token} vi={vi} needPin={!canMoveMoney} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void load(); onChanged(); }} />}
+      {d && dialog === 'delete' && (
+        <Modal title={<span style={{ color: 'var(--ink-bad)' }}>{L('Xoá bill nháp', 'Delete draft')} #{d.orderNumber}</span>} onClose={() => setDialog(null)}>
+          <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.5 }}>
+            {L(`Bill nháp #${d.orderNumber} (${formatPrice(d.totalCents, d.currency)}) chưa thu đồng nào sẽ bị xoá. Bill vào Thùng rác và khôi phục được.`, `Draft #${d.orderNumber} (${formatPrice(d.totalCents, d.currency)}) took no money and will be deleted. It goes to the Trash and can be restored.`)}
+          </div>
+          {err && <div style={ui.banner}>{err}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" onClick={() => setDialog(null)} style={ghost}>{L('Không xoá', 'Keep')}</button>
+            <button type="button" disabled={busy} onClick={() => void removeDraft()} style={ui.dangerBtn}>{busy ? '…' : L('Xoá bill nháp', 'Delete draft')}</button>
+          </div>
+        </Modal>
+      )}
       {d && dialog === 'void' && <VoidDialog d={d} token={token} vi={vi} needPin={!canMoveMoney} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void load(); onChanged(); }} />}
     </>
   );
@@ -491,6 +503,8 @@ function VoidDialog({ d, token, vi, needPin, onClose, onDone }: { d: OrderDetail
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Second step: one more look at what is being voided before it happens.
+  const [sure, setSure] = useState(false);
   async function submit() {
     if (!reason || (needPin && pin.length < 4)) return;
     setBusy(true); setErr(null);
@@ -513,10 +527,23 @@ function VoidDialog({ d, token, vi, needPin, onClose, onDone }: { d: OrderDetail
         {L('Bill không bị xoá: vẫn ở danh sách với nhãn "Đã huỷ", không tính doanh thu, tip, hoa hồng. Lịch hẹn gốc mở lại để thu lại đúng.', 'The bill is not deleted: it stays in the list as "Voided" and stops counting for revenue, tips and commission. Its booking reopens so it can be charged correctly.')}
       </div>
       {err && <div style={ui.banner}>{err}</div>}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button type="button" onClick={onClose} style={ghost}>{L('Thôi', 'Cancel')}</button>
-        <button type="button" disabled={!reason || busy || (needPin && pin.length < 4)} onClick={() => void submit()} style={{ ...ui.dangerBtn, opacity: reason && (!needPin || pin.length >= 4) ? 1 : 0.5 }}>{busy ? '…' : L('Huỷ bill', 'Void bill')}</button>
-      </div>
+      {sure ? (
+        <div style={{ border: '1px solid #ef4444', borderRadius: 12, padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <b style={{ fontSize: 14, color: 'var(--ink-bad)' }}>
+            {L(`Xác nhận huỷ bill #${d.orderNumber} · ${formatPrice(d.totalCents, d.currency)}?`, `Void bill #${d.orderNumber} · ${formatPrice(d.totalCents, d.currency)}?`)}
+          </b>
+          <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)' }}>{L('Lý do', 'Reason')}: {VOID_REASONS.find((r) => r.k === reason)?.[vi ? 'vi' : 'en'] ?? reason}{note ? ` · ${note}` : ''}</span>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" onClick={() => setSure(false)} style={ghost}>{L('Quay lại', 'Back')}</button>
+            <button type="button" disabled={busy} onClick={() => void submit()} style={ui.dangerBtn}>{busy ? '…' : L('Đồng ý huỷ bill', 'Yes, void it')}</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" onClick={onClose} style={ghost}>{L('Thôi', 'Cancel')}</button>
+          <button type="button" disabled={!reason || (needPin && pin.length < 4)} onClick={() => setSure(true)} style={{ ...ui.dangerBtn, opacity: reason && (!needPin || pin.length >= 4) ? 1 : 0.5 }}>{L('Huỷ bill…', 'Void bill…')}</button>
+        </div>
+      )}
     </Modal>
   );
 }

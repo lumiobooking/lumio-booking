@@ -95,7 +95,10 @@ export class PosController {
     return this.salesImport.undo(user, batch);
   }
 
-  // ---- Xoá dữ liệu bán hàng thử (before handing the shop over) → owner only ----
+  // ---- Xoá dữ liệu bán hàng thử (before handing the shop over) → Lumio Support only ----
+  // The salon's own owner never sees this: wiping every bill is a set-up step
+  // Lumio does before handover. The owner deletes bills one pick at a time
+  // (orders/bulk-delete). The check lives in the service (test-reset.service.ts).
   @Roles(UserRole.SALON_ADMIN)
   @Get('test-reset')
   testResetPreview(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string) {
@@ -201,6 +204,15 @@ export class PosController {
   @HttpCode(200)
   refundOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: { amountCents?: number; method?: string; reason?: string; note?: string; itemIds?: string[]; approvalPin?: string }) {
     return this.pos.refundOrder(user, id, body ?? {});
+  }
+
+  /** Owner ticks bills in the list → delete them (a reason is required; each goes to the Thùng rác). */
+  @Roles(UserRole.SALON_ADMIN)
+  @Caps('pos.void')
+  @Post('orders/bulk-delete')
+  @HttpCode(200)
+  removeOrders(@CurrentUser() user: AuthenticatedUser, @Body() body: { ids?: string[]; reason?: string }) {
+    return this.pos.removeOrders(user, body ?? {});
   }
 
   @Caps('pos.void')

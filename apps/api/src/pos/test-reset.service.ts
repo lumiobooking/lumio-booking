@@ -1,7 +1,9 @@
 /**
  * XOÁ DỮ LIỆU BÁN HÀNG THỬ — the database half (rules in test-reset.ts).
  *
- * Owner only, one salon only (the tenant comes from the token, never the
+ * Lumio Support only (a support session inside the salon, or a super admin
+ * scoped to it) — never the salon's own owner: a wipe of every bill is a
+ * handover step. One salon only (the tenant comes from the token, never the
  * request), typed confirmation, refused inside a closed payroll. In one
  * transaction, for this tenant and the chosen days:
  *   - bills (orders + their lines/tenders by cascade) and their revenue rows,
@@ -13,7 +15,8 @@
  * Kept: menu, tables, staff, products, clients, bookings, settings, the
  * Thu & Chi book. Bill numbers carry on from the last bill kept (1 if none).
  */
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -24,6 +27,9 @@ export class TestResetService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
   private async scope(user: AuthenticatedUser, from: unknown): Promise<{ tenantId: string; w: ResetWindow }> {
+    if (!user.supportSession && user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Xoá toàn bộ dữ liệu thử chỉ dành cho Lumio Support. Chủ tiệm xoá bill bằng cách chọn bill trong danh sách.');
+    }
     const tenantId = resolveTenantScope(user);
     if (!tenantId) throw new BadRequestException('No salon in scope');
     const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });

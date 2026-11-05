@@ -118,12 +118,21 @@ function makeShops() {
   db.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => fn(db);
   const audits: Row[] = [];
   const svc = new TestResetService(db as never, { log: async (e: Row) => { audits.push(e); } } as never);
-  const owner = (tenantId: string) => ({ userId: `u-${tenantId}`, tenantId, role: 'SALON_ADMIN' }) as never;
+  // A Lumio Support session inside the salon (the only one allowed to wipe).
+  const owner = (tenantId: string) => ({ userId: `u-${tenantId}`, tenantId, role: 'SALON_ADMIN', supportSession: true }) as never;
+  const realOwner = (tenantId: string) => ({ userId: `o-${tenantId}`, tenantId, role: 'SALON_ADMIN' }) as never;
   const ids = (t: string) => db[t].rows.map((r: Row) => r.id);
-  return { db, svc, owner, ids, audits };
+  return { db, svc, owner, realOwner, ids, audits };
 }
 
 describe('wiping one shop\'s test sales', () => {
+  it('the salon\'s own owner cannot wipe or even preview — Lumio Support only', async () => {
+    const s = makeShops();
+    await expect(s.svc.preview(s.realOwner('A'), '')).rejects.toThrow('Lumio Support');
+    await expect(s.svc.run(s.realOwner('A'), { confirm: 'XOA' })).rejects.toThrow('Lumio Support');
+    expect(s.ids('order')).toHaveLength(4);
+  });
+
   it('refuses without the typed word and before a bad day', async () => {
     const s = makeShops();
     await expect(s.svc.run(s.owner('A'), { confirm: 'yes' })).rejects.toThrow('XOA');

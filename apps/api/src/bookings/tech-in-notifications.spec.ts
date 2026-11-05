@@ -77,8 +77,9 @@ describe('sending', () => {
     const { svc, sent, pushed } = make();
     await svc.sendBookingConfirmation('t1', appt);
     const sms = sent.filter((m) => m.channel === 'SMS');
-    expect(sms.find((m) => m.recipient === appt.customer.phone)!.body).toContain('Tech: Lisa');
-    expect(sms.find((m) => m.recipient === '+15555550000')!.body).toContain('tech Lisa');
+    // The built-in wording is now the short text (booking-sms.ts) — it still names her.
+    expect(sms.find((m) => m.recipient === appt.customer.phone)!.body).toContain('with Lisa');
+    expect(sms.find((m) => m.recipient === '+15555550000')!.body).toContain('- Lisa');
     expect(pushed[0].body).toContain('Sarina');
     expect(pushed[0].body).toContain('👤 Lisa');
   });

@@ -418,6 +418,16 @@ export interface PosSettings {
    * silently wiped every time an unrelated POS setting was saved.
    */
   paymentMethods?: string[];
+  /**
+   * The one bank account money is transferred to (Vietnam: VietQR). The till,
+   * the guest check and the receipt make a QR with the exact amount from it,
+   * so the owner types three things once instead of pasting QR image links per
+   * payment method. Absent = never set here (a restaurant may still have the
+   * older till-settings account); null = removed on purpose.
+   */
+  bankAccount?: { bin: string; accountNo: string; accountName: string } | null;
+  /** Print that QR on the guest check / bill. Default on. */
+  printPayQr?: boolean;
 }
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {

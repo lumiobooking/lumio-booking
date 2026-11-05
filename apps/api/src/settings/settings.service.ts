@@ -2,6 +2,7 @@ import { dialCodeFor } from '../common/phone';
 import { PARTY_DEPOSIT_KEY, PartyDeposit, cleanPartyDeposit } from '../payments/party-deposit';
 import { CHAT_FOLLOWUP_KEY, followUpSettingsFrom, type FollowUpSettings } from '../messenger/followup';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
+import { cleanPaymentDetails, nextBankAccount, resolvePayAccount, RESTAURANT_SETTINGS_KEY } from './pay-account';
 import { brandsOnly, holdsKeys } from './legacy-gateways';
 import { holdMinutesOf } from '../payments/deposit-hold';
 import { contactModeOf, STAFF_PRIVACY_KEY, type ContactMode } from '../common/contact-privacy';
@@ -177,8 +178,14 @@ export class SettingsService implements OnApplicationBootstrap {
    * why none of them change.
    */
   private async posWithTillButtons(tenantId: string, market: string | null | undefined) {
-    const pos = await this.getPosSettings(tenantId);
-    return { ...pos, resolvedPaymentMethods: methodsForSalon(market, pos.paymentMethods) };
+    const [pos, legacy] = await Promise.all([
+      this.getPosSettings(tenantId),
+      // A restaurant that set its account in the till's own settings before
+      // this screen had one: shown here so the owner sees it, not an empty form.
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: RESTAURANT_SETTINGS_KEY } } }).catch(() => null),
+    ]);
+    const pay = resolvePayAccount(pos, (legacy?.value as { bank?: unknown } | null)?.bank);
+    return { ...pos, bankAccount: pay.bank, printPayQr: pay.printPayQr, resolvedPaymentMethods: methodsForSalon(market, pos.paymentMethods) };
   }
 
   /** Loyalty program settings, merged over defaults. */
@@ -464,6 +471,8 @@ export class SettingsService implements OnApplicationBootstrap {
       requireShift?: boolean;
       paymentMethods?: string[];
       paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>;
+      bankAccount?: { bin?: string; accountNo?: string; accountName?: string } | null;
+      printPayQr?: boolean;
     },
   ) {
     const tenantId = this.tenantId(user);
@@ -477,7 +486,7 @@ export class SettingsService implements OnApplicationBootstrap {
       // Merged, not replaced: the settings screen saves one method at a time,
       // and a whole-object write would wipe the other five.
       paymentDetails: dto.paymentDetails
-        ? { ...(cur.paymentDetails ?? {}), ...dto.paymentDetails }
+        ? { ...(cur.paymentDetails ?? {}), ...cleanPaymentDetails(dto.paymentDetails) }
         : cur.paymentDetails,
       taxRatePercent:
         typeof dto.taxRatePercent === 'number' && dto.taxRatePercent >= 0 ? dto.taxRatePercent : cur.taxRatePercent,
@@ -496,6 +505,10 @@ export class SettingsService implements OnApplicationBootstrap {
       // what it has always done.
       tipsEnabled: typeof dto.tipsEnabled === 'boolean' ? dto.tipsEnabled : (cur.tipsEnabled ?? true),
       requireShift: typeof dto.requireShift === 'boolean' ? dto.requireShift : (cur.requireShift ?? false),
+      // Only touched when sent: null (or junk) removes it, an object is cleaned
+      // to a 6-digit BIN + account number; never set stays absent.
+      ...nextBankAccount(dto, cur),
+      printPayQr: typeof dto.printPayQr === 'boolean' ? dto.printPayQr : (cur.printPayQr ?? true),
     };
     await this.writeKey(tenantId, POS_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.pos_updated', resourceType: 'tenant', resourceId: tenantId });

@@ -416,6 +416,13 @@ function SmsCost({ id, smsBody, vn }: { id: string; smsBody: string; vn: boolean
       </div>
       {cleaned && <div style={{ color: 'var(--c64748b)' }}>{t('nt.plainNote')}</div>}
       {warn && <div style={{ color: 'var(--c78350f)' }}>{t('nt.segmentsTip')}</div>}
+      {id === 'customer_booking_confirmed' && !vn && (
+        <div style={{ color: 'var(--c64748b)' }}>
+          {lang === 'vi'
+            ? 'Để nguyên câu mặc định: Lumio tự viết tin gọn — ngày giờ, số người, từng dịch vụ, tổng tiền, link xem/huỷ — thường 1 tin, tối đa 2 tin. Bạn sửa câu thì hệ thống gửi đúng câu của bạn.'
+            : 'Left as the default: Lumio writes a short text itself — date and time, party size, every service, total, manage link — usually 1 segment, never more than 2. Edit it and your own words are sent instead.'}
+        </div>
+      )}
       {unknown.length > 0 && (
         <div style={{ color: 'var(--c991b1b)' }}>{t('nt.unknownPh').replace('{list}', unknown.join(', '))}</div>
       )}

@@ -101,6 +101,32 @@ function Invoke-GdiPrint($rows, [string]$printer, [int]$maxWidth, [string]$fontN
       $row = $script:PsRows[$script:PsIndex]
       $role = [string]$row.r
       $text = ([string]$row.t).TrimEnd()
+      if ($role -ceq 'q') {
+        $qm = @($row.m)
+        $qn = $qm.Count
+        if ($qn -gt 0) {
+          $side = [single][Math]::Min($W * 0.62, 170)
+          $cell = [single]($side / $qn)
+          $x0 = [single](($W - $side) / 2)
+          $h = [single]($side + $gap * 4)
+          if ($y -gt 0 -and ($y + $h) -gt $H) { $e.HasMorePages = $true; return }
+          $top = [single]($y + $gap * 2)
+          for ($qy = 0; $qy -lt $qn; $qy++) {
+            $line = [string]$qm[$qy]
+            $qx = 0
+            while ($qx -lt $line.Length) {
+              if ($line[$qx] -ne '1') { $qx++; continue }
+              $qe = $qx
+              while ($qe -lt $line.Length -and $line[$qe] -eq '1') { $qe++ }
+              $g.FillRectangle($ink, [single]($x0 + $qx * $cell), [single]($top + $qy * $cell), [single](($qe - $qx) * $cell + 0.3), [single]($cell + 0.3))
+              $qx = $qe
+            }
+          }
+          $y = [single]($y + $h)
+        }
+        $script:PsIndex = $script:PsIndex + 1
+        continue
+      }
       if ($role -ceq 's') {
         $h = [single]($fN.GetHeight($g) * 0.8)
         if ($y -gt 0 -and ($y + $h) -gt $H) { $e.HasMorePages = $true; return }

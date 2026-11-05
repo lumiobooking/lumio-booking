@@ -15,7 +15,7 @@ import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { MarketingService } from './marketing.service';
-import { afterFailure, channelHealth, isStaleRunning, monthsToSync, type ChannelHealth } from './sync-plan';
+import { afterFailure, channelHealth, isStaleRunning, monthsToSync, type ChannelHealth, igInsightsBlocked, withIgPermission } from './sync-plan';
 import { dayKeyTz } from '../common/salon-time';
 
 export interface SyncJobRow {
@@ -187,6 +187,10 @@ export class SyncQueueService {
         queued: jobs.some((j) => j.status === 'queued' && (j.platform === null || j.platform === c.platform)),
       }, now);
     });
+    // Instagram may sync "ok" while refusing every insight — say so (igInsightsBlocked).
+    const igRow = (await Promise.resolve().then(() => (this.prisma as any).socialInsight.findFirst({ where: { tenantId, periodMonth: month, platform: 'instagram' }, select: { raw: true } })).catch(() => null)) as { raw?: { igDebug?: { errors?: unknown } } } | null;
+    const igBlocked = igInsightsBlocked(igRow?.raw?.igDebug?.errors);
+    for (let i = 0; i < out.length; i++) out[i] = withIgPermission(out[i], igBlocked);
     const posts = (await this.db.socialPost.findMany({ where: { tenantId, periodMonth: month, deletedAt: null }, select: { metricsAt: true } })) as Array<{ metricsAt: Date | null }>;
     const measuredAt = posts.reduce<Date | null>((a, p) => (p.metricsAt && (!a || p.metricsAt > a) ? p.metricsAt : a), null);
     return {

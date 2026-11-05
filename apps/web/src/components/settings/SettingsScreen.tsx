@@ -17,6 +17,8 @@ import { PartyDepositCard } from '../PartyDepositCard';
 import type { ReceiptDesign } from '../../lib/receipt';
 import { ind } from '../../lib/ui-industry';
 import { CartTemplatePicker } from '../CartTemplatePicker';
+import { VietQrSetup } from './VietQrSetup';
+import { bankLabel } from '../../lib/vietqr';
 
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
 interface Booking {
@@ -67,7 +69,7 @@ interface SettingsData {
     /** Lumio's shared VN Zalo/SMS channel is live on the server — nothing to set up. */
     sharedVn?: { active: boolean; zns: boolean; sms: boolean } | null;
   };
-  pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; requireShift?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> };
+  pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; requireShift?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>; bankAccount?: { bin: string; accountNo: string; accountName: string } | null; printPayQr?: boolean };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
   deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; holdMinutes?: number; provider?: string | null };
@@ -790,10 +792,13 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           did not recognise "Bank transfer (manual)" as the answer. */}
       <Panel
         title={isVN ? 'Nhận tiền chuyển khoản · VietQR · MoMo · ZaloPay' : t('se.pay.bankTitle')}
-        badge={data.pos?.transferInstructions ? { text: t('se.pay.setBadge'), color: 'var(--ink-good)' } : { text: t('se.pay.notSet'), color: 'var(--ink-warn)' }}
-        hint={isVN ? 'Mã QR và số tài khoản khách quét để trả tiền' : t('se.pay.bankHint')}
+        badge={(isVN ? data.pos?.bankAccount : data.pos?.transferInstructions) ? { text: t('se.pay.setBadge'), color: 'var(--ink-good)' } : { text: t('se.pay.notSet'), color: 'var(--ink-warn)' }}
+        hint={isVN ? (data.pos?.bankAccount ? `${bankLabel(data.pos.bankAccount.bin)} · ${data.pos.bankAccount.accountNo} — tự tạo mã QR cho từng bill` : 'Nhập ngân hàng + số tài khoản một lần, hệ thống tự tạo mã QR cho từng bill') : t('se.pay.bankHint')}
+        defaultOpen={isVN && !data.pos?.bankAccount}
       >
-        <BankTransferConfig data={data} onSave={onSave} />
+        {isVN
+          ? <VietQrSetup key={data.pos?.bankAccount ? `${data.pos.bankAccount.bin}-${data.pos.bankAccount.accountNo}` : 'none'} shopName={data.company?.name ?? ''} pos={data.pos} methods={(data.pos?.resolvedPaymentMethods ?? []).filter((m) => m !== 'CASH' && m !== 'CARD')} vi={lang === 'vi'} onSave={onSave} />
+          : <BankTransferConfig data={data} onSave={onSave} />}
       </Panel>
 
       <button

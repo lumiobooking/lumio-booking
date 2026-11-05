@@ -1,3 +1,4 @@
+import { visitsAreTracked } from './visits-tracked';
 import { lumioPostsOn } from './lumio-posts';
 import { monthWindow } from './month-window';
 import { Injectable, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common';
@@ -125,7 +126,7 @@ export class MarketingService {
     const [appts, payments, reviews, reviewClicks, messengerThreads, voiceCalls, emailCampaigns, referredNew, newCustomers] = await Promise.all([
       this.prisma.appointment.findMany({
         where: { tenantId, startTime: { gte: from, lte: to } },
-        select: { id: true, source: true, status: true, utmCampaign: true, utmSource: true, utmMedium: true, gclid: true, gbraid: true, wbraid: true, attrReferrer: true },
+        select: { id: true, source: true, status: true, startTime: true, utmCampaign: true, utmSource: true, utmMedium: true, gclid: true, gbraid: true, wbraid: true, attrReferrer: true },
       }),
       // Revenue is read below, by the window's own appointments (see there).
       Promise.resolve([] as { amountCents: number; appointmentId: string | null }[]),
@@ -220,6 +221,15 @@ export class MarketingService {
     const voiceBooked = voiceCalls.filter((c) => c.outcome === 'booked').length;
     const emailsSent = emailCampaigns.reduce((s, c) => s + (c.sent ?? 0), 0);
 
+    // Does the salon close its visits in Lumio? (visits-tracked.ts) If not,
+    // "showed" and revenue are not measured — the screens print "—", not 0.
+    const nowMs = Date.now();
+    const pastBookings = appts.filter((a) => a.status !== AppointmentStatus.CANCELLED && new Date(a.startTime).getTime() < nowMs).length;
+    const walkIns = pastBookings >= 3 && totals.showed === 0 && totals.revenueCents === 0
+      ? await this.prisma.walkIn.count({ where: { tenantId, createdAt: { gte: from, lte: to }, status: { not: 'CANCELLED' } } as never }).catch(() => 0)
+      : 0;
+    const visitsTracked = visitsAreTracked({ pastBookings, showed: totals.showed, revenueCents: totals.revenueCents, walkIns });
+
     return {
       range: { from: fromKey, to: toKey },
       channels,
@@ -235,6 +245,7 @@ export class MarketingService {
         referredNewCustomers: referredNew,
       },
       newCustomers,
+      visitsTracked,
       // Bookings PROVEN to come from Google Maps via the salon's GBP link.
       gbp,
       // Full first-party acquisition breakdown (surface-independent).
@@ -356,13 +367,15 @@ export class MarketingService {
     // BLENDED metrics only. Phase 1 has no per-ad attribution (that arrives with
     // UTM in Phase 2), so we deliberately do NOT split cost per channel-outcome.
     // Every ratio is null unless BOTH sides are real numbers — never a guess.
+    const tracked = ov.visitsTracked !== false;
     const blended = {
       totalSpendCents,
       costPerBookingCents: totalSpendCents > 0 && bookings > 0 ? Math.round(totalSpendCents / bookings) : null,
-      costPerShowedCents: totalSpendCents > 0 && showed > 0 ? Math.round(totalSpendCents / showed) : null,
+      costPerShowedCents: tracked && totalSpendCents > 0 && showed > 0 ? Math.round(totalSpendCents / showed) : null,
       costPerNewCustomerCents: totalSpendCents > 0 && newCustomers > 0 ? Math.round(totalSpendCents / newCustomers) : null,
-      // Revenue returned per $1 spent. Only booking-attributed revenue is counted.
-      revenuePerSpend: totalSpendCents > 0 ? Math.round((revenueCents / totalSpendCents) * 100) / 100 : null,
+      // Revenue returned per $1 spent. Only booking-attributed revenue is counted —
+      // and none when the salon checks out outside Lumio (it would read 0×).
+      revenuePerSpend: tracked && totalSpendCents > 0 ? Math.round((revenueCents / totalSpendCents) * 100) / 100 : null,
     };
 
     // --- Month-over-month comparison (clients love "up X% vs last month") ---
@@ -379,8 +392,9 @@ export class MarketingService {
     const delta = (cur: number, prv: number) => ({ value: cur, prev: prv, pct: prv > 0 ? Math.round(((cur - prv) / prv) * 100) : null });
     const deltas = {
       bookings: delta(bookings, prevOv.totals.bookings),
-      showed: delta(showed, prevOv.totals.showed),
-      revenueCents: delta(revenueCents, prevOv.totals.revenueCents),
+      // Not measured in either month → no arrow (never "▼100%").
+      showed: tracked && prevOv.visitsTracked !== false ? delta(showed, prevOv.totals.showed) : { value: showed, prev: prevOv.totals.showed, pct: null },
+      revenueCents: tracked && prevOv.visitsTracked !== false ? delta(revenueCents, prevOv.totals.revenueCents) : { value: revenueCents, prev: prevOv.totals.revenueCents, pct: null },
       newCustomers: delta(newCustomers, prevOv.newCustomers),
       spendCents: delta(totalSpendCents, prevSpendCents),
     };
@@ -755,8 +769,9 @@ export class MarketingService {
       moneyUnits: 'Every field ending in Cents is in the minor unit of `currency` (USD/CAD/AUD: cents — divide by 100; VND has no minor unit: the number IS đồng). Write amounts with that currency, never a $ for VND.',
       periodState: running ? `IN PROGRESS — numbers through day ${facts!.daysCovered}; every vsPrev compares the same ${facts!.daysCovered} days of last month; write calmly, say "tính đến ngày ${facts!.daysCovered}"` : 'CLOSED — full month',
       bookings: data.outcome.totals.bookings,
-      showedUp: data.outcome.totals.showed,
-      bookingRevenueCents: data.outcome.totals.revenueCents,
+      showedUp: (data.outcome as any).visitsTracked === false ? null : data.outcome.totals.showed,
+      bookingRevenueCents: (data.outcome as any).visitsTracked === false ? null : data.outcome.totals.revenueCents,
+      ...((data.outcome as any).visitsTracked === false ? { visitsNote: 'NOT MEASURED: this salon takes bookings in Lumio but checks customers out on another system, so showedUp, bookingRevenueCents, show rate and ROAS are unknown (null). Never write 0 customers came, $0 revenue or a drop; at most say these are tracked outside Lumio.' } : {}),
       newCustomers: data.outcome.newCustomers,
       bookingsByChannel: data.outcome.channels.filter((c: any) => c.bookings > 0),
       ownedChannels: data.outcome.owned,
@@ -771,7 +786,9 @@ export class MarketingService {
         followers: si.followers, newFollowers: si.newFollowers, reach: si.reach, views: si.views, engagement: si.engagement,
         engagementRatePct: (si.engagement != null && si.reach) ? Math.round((si.engagement / si.reach) * 1000) / 10 : null,
         postsCount: si.postsCount, vsPrev: si.vsPrev, audience: si.audience,
-        topPosts: (si.posts ?? []).slice(0, 5).map((pp: any) => ({ type: pp.type, likes: pp.likes, comments: pp.comments, reach: pp.reach, views: pp.views, caption: pp.caption })),
+        // The five MOST-VIEWED posts (the list arrives newest-first; the AI read
+        // "best format" off the five newest before 4 Nov 2026).
+        topPosts: [...(si.posts ?? [])].sort((a: any, b: any) => (b.views ?? -1) - (a.views ?? -1) || ((b.likes ?? 0) + (b.comments ?? 0)) - ((a.likes ?? 0) + (a.comments ?? 0))).slice(0, 5).map((pp: any) => ({ type: pp.type, likes: pp.likes, comments: pp.comments, reach: pp.reach, views: pp.views, caption: pp.caption })),
       })),
       effectiveness: (data as any).effectiveness,
       // Code-computed content numbers: the AI quotes these, never re-derives them.
@@ -1093,7 +1110,7 @@ export class MarketingService {
       [vi ? 'Khách mới' : 'New customers', num(snap.outcome?.newCustomers)],
       ...(facts ? [[vi ? 'Bài đăng' : 'Posts', num(facts.posts.total)] as [string, string], [vi ? 'Tương tác' : 'Interactions', num(facts.interactions.total)] as [string, string]] : []),
     ];
-    const tops = (facts?.top ?? []).slice(0, 3).map((t) => `${t.platform === 'facebook' ? 'FB' : t.platform === 'instagram' ? 'IG' : 'TT'} · ${t.caption || t.type} — ${num(t.interactions)} ${vi ? 'tương tác' : 'interactions'}`);
+    const tops = (facts?.top ?? []).slice(0, 3).map((t) => `${t.platform === 'facebook' ? 'FB' : t.platform === 'instagram' ? 'IG' : 'TT'} · ${t.caption || t.type} — ${num(t.views)} ${vi ? 'lượt xem' : 'views'} · ${num(t.interactions)} ${vi ? 'tương tác' : 'interactions'}`);
     const subject = vi ? `Báo cáo marketing ${label} — ${salon}` : `${label} marketing report — ${salon}`;
     const headline = L(c.headline), tldr = L(c.tldr);
     const text = [headline, '', tldr, '', ...kv.map(([k, v]) => `${k}: ${v}`), ...(tops.length ? ['', vi ? 'Bài nổi bật:' : 'Top posts:', ...tops] : []), '', (vi ? 'Xem báo cáo đầy đủ: ' : 'Full report: ') + link].join('\n');

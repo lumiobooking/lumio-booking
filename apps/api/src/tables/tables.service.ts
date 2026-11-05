@@ -4,7 +4,8 @@ import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableDto } from './dto/update-table.dto';
-import { cleanLayout, tableStates, waitingForTable, withDefaults } from './floor';
+import { cleanLayout, tableStates, waitingForTable, withDefaults, type Layout } from './floor';
+import { planTableImport, type TableImportRow } from './table-import';
 
 /** Per restaurant: where each table stands on the floor map (tables/floor.ts). */
 const LAYOUT_KEY = 'table_layout';
@@ -65,6 +66,46 @@ export class TablesService {
     });
     await this.audit.log({ tenantId, userId: user.userId, action: 'tables.layout_updated', resourceType: 'tenant', resourceId: tenantId });
     return { layout: clean };
+  }
+
+  /**
+   * Tables and where they stand, from the floor-plan sheet (table-import.ts):
+   * created or updated by name, row / column turned into the map's spots.
+   * One restaurant only — its tables, its layout row.
+   */
+  async importMany(user: AuthenticatedUser, rows: unknown[]) {
+    const tenantId = this.tenantId(user);
+    const [existing, layoutRow] = await Promise.all([
+      this.prisma.restaurantTable.findMany({ where: { tenantId }, select: { id: true, name: true, seats: true, area: true, sortOrder: true } }),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: LAYOUT_KEY } } }),
+    ]);
+    const current = withDefaults(existing.map((t) => ({ ...t, isActive: true })), cleanLayout(layoutRow?.value ?? {}, existing.map((t) => t.id)));
+    const plan = planTableImport(existing, (Array.isArray(rows) ? rows : []) as TableImportRow[], current);
+    const placed: Layout = {};
+    for (const c of plan.create) {
+      const t = await this.prisma.restaurantTable.create({ data: { tenantId, name: c.name, seats: c.seats, area: c.area, sortOrder: c.sortOrder } });
+      if (c.spot) placed[t.id] = { x: c.spot.x ?? 0, y: c.spot.y ?? 0, shape: c.spot.shape ?? 'round', ...(c.spot.x === undefined ? { auto: true } : {}) } as never;
+    }
+    for (const u of plan.update) {
+      if (Object.keys(u.data).length) await this.prisma.restaurantTable.updateMany({ where: { id: u.id, tenantId }, data: u.data });
+      if (u.spot) placed[u.id] = { ...current[u.id], ...u.spot } as never;
+    }
+    if (Object.keys(placed).length) {
+      const all = await this.prisma.restaurantTable.findMany({ where: { tenantId }, select: { id: true, name: true, seats: true, area: true, isActive: true, sortOrder: true } });
+      const base = withDefaults(all, cleanLayout(layoutRow?.value ?? {}, all.map((t) => t.id)));
+      // A new table given only a shape keeps the spot the map would give it.
+      for (const [id, s] of Object.entries(placed) as Array<[string, { auto?: boolean; shape: Layout[string]['shape'] }]>) {
+        if (s.auto) placed[id] = { ...base[id], shape: s.shape };
+      }
+      const merged = cleanLayout({ ...base, ...placed }, all.map((t) => t.id));
+      await this.prisma.setting.upsert({
+        where: { tenantId_key: { tenantId, key: LAYOUT_KEY } },
+        update: { value: merged as never }, create: { tenantId, key: LAYOUT_KEY, value: merged as never },
+      });
+    }
+    const result = { created: plan.create.length, updated: plan.update.length, unchanged: plan.same, skipped: plan.duplicate, errors: plan.error, placed: Object.keys(placed).length };
+    await this.audit.log({ tenantId, userId: user.userId, action: 'tables.imported', resourceType: 'tenant', resourceId: tenantId, metadata: result });
+    return result;
   }
 
   list(user: AuthenticatedUser) {

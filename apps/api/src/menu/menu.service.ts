@@ -7,6 +7,7 @@ import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { cleanOptionGroups } from '../restaurant/check-logic';
 import { currencyFixes } from './menu-currency';
+import { planMenuImport, type MenuImportRow } from './menu-import';
 
 /**
  * Restaurant menu (dish catalog) — tenant-scoped like tables/staff. Every query
@@ -93,6 +94,32 @@ export class MenuService {
     });
     await this.audit.log({ tenantId, userId: user.userId, action: 'menu.updated', resourceType: 'menu_item', resourceId: id });
     return this.prisma.menuItem.findFirst({ where: { id, tenantId } });
+  }
+
+  /**
+   * The whole menu from a sheet (menu-import.ts): new dishes created, dishes
+   * the restaurant has updated, nothing copied twice. One restaurant's menu
+   * only — every read and write carries its tenantId.
+   */
+  async importMany(user: AuthenticatedUser, items: unknown[]) {
+    const tenantId = this.tenantId(user);
+    const currency = await this.currencyOf(tenantId);
+    const existing = await this.prisma.menuItem.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, category: true, priceCents: true, description: true, imageUrl: true, options: true, sortOrder: true },
+    });
+    const plan = planMenuImport(existing, (Array.isArray(items) ? items : []) as MenuImportRow[]);
+    if (plan.create.length) {
+      await this.prisma.menuItem.createMany({
+        data: plan.create.map((c) => ({ tenantId, currency, name: c.name, category: c.category, priceCents: c.priceCents, description: c.description, imageUrl: c.imageUrl, sortOrder: c.sortOrder, options: c.options as never })),
+      });
+    }
+    for (const u of plan.update) {
+      await this.prisma.menuItem.updateMany({ where: { id: u.id, tenantId }, data: { ...u.data, currency } as never });
+    }
+    const result = { created: plan.create.length, updated: plan.update.length, unchanged: plan.same, skipped: plan.duplicate, errors: plan.error };
+    await this.audit.log({ tenantId, userId: user.userId, action: 'menu.imported', resourceType: 'menu_item', metadata: result });
+    return result;
   }
 
   /** Delete every menu item for the caller's tenant. Used to recover from a bad

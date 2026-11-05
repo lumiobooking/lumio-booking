@@ -1,3 +1,4 @@
+import { GROUP_NOTICE_DELAY_MS, groupLead, groupSummary, visitPeople, type GroupMember } from './group-notice';
 import { shouldConfirmOnCreate } from './auto-confirm';
 import {
   Injectable,
@@ -49,7 +50,8 @@ import {
   renderTemplatedEmailHtml,
 } from '../notifications/email-template';
 import { SettingsService } from '../settings/settings.service';
-import { ReminderSettings, ReviewSettings, RebookingSettings } from '../settings/settings.constants';
+import { ReminderSettings, ReviewSettings, RebookingSettings, DEFAULT_NOTIFICATION_SETTINGS, DEFAULT_NOTIFICATION_TEMPLATES, LEGACY_NOTIFICATION_DEFAULTS, LEGACY_TEMPLATE_DEFAULTS, VN_NOTIFICATION_TEXTS, VN_TEMPLATE_TEXTS } from '../settings/settings.constants';
+import { customerBookingSms, ownerBookingSms } from '../notifications/booking-sms';
 import { PaymentsService } from '../payments/payments.service';
 import { ReferralService } from '../referral/referral.service';
 import { TrashService } from '../maintenance/trash.service';
@@ -1078,7 +1080,14 @@ export class BookingsService {
     }
 
     // Fire-and-forget confirmation; never block/fail the booking on it.
-    if (!opts?.quiet) this.sendBookingConfirmation(tenantId, finished).catch(() => undefined);
+    // A member of a party does not speak for itself: the party is told once,
+    // when it has stopped growing (group-notice.ts) — not five emails and five
+    // texts for "me and four friends".
+    const partyId = (finished as { groupId?: string | null }).groupId ?? null;
+    if (!opts?.quiet) {
+      if (partyId) this.queueGroupConfirmation(tenantId, partyId);
+      else this.sendBookingConfirmation(tenantId, finished).catch(() => undefined);
+    }
     // If a technician was assigned at creation, email them too. An auto-assign
     // above already sent that mail from autoAssignForTenant, so this only
     // covers the front-desk case — otherwise the tech gets it twice.
@@ -1597,6 +1606,44 @@ export class BookingsService {
     return real(owner?.email);
   }
 
+  /** Per salon + party: the timer that sends the party's one confirmation. */
+  private readonly groupNoticeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /**
+   * (Re)arm the party's confirmation. Every member written restarts the wait,
+   * so the message goes out once, after the last guest — whichever order the
+   * caller writes them in (the booking page writes the booker first, the chat
+   * and the AI line write her last, the desk posts one by one).
+   */
+  private queueGroupConfirmation(tenantId: string, groupId: string, delayMs = GROUP_NOTICE_DELAY_MS) {
+    const key = `${tenantId}:${groupId}`;
+    const prev = this.groupNoticeTimers.get(key);
+    if (prev) clearTimeout(prev);
+    const t = setTimeout(() => {
+      this.groupNoticeTimers.delete(key);
+      this.sendGroupConfirmation(tenantId, groupId).catch((e) => this.logger.warn(`group ${groupId} confirmation failed: ${e instanceof Error ? e.message : String(e)}`));
+    }, delayMs);
+    (t as { unref?: () => void }).unref?.();
+    this.groupNoticeTimers.set(key, t);
+  }
+
+  /**
+   * The party's ONE confirmation: to the person who booked (the member with a
+   * phone or email) and ONE notice to the salon, both listing everybody. Read
+   * fresh, fenced to this salon, cancelled members left out.
+   */
+  async sendGroupConfirmation(tenantId: string, groupId: string) {
+    const rows = await this.prisma.appointment.findMany({
+      where: { tenantId, groupId, status: { not: AppointmentStatus.CANCELLED } },
+      include: BOOKING_INCLUDE,
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!rows.length) return;
+    const lead = groupLead(rows as unknown as Array<GroupMember & (typeof rows)[number]>) as (typeof rows)[number] | null;
+    if (!lead) return;
+    await this.sendBookingConfirmation(tenantId, lead, rows.length > 1 ? { group: rows as unknown as GroupMember[] } : {});
+  }
+
   /**
    * Notifies the customer and/or the salon admin about a new booking with a
    * polished, branded HTML email and/or SMS, using the salon's templates.
@@ -1617,7 +1664,8 @@ export class BookingsService {
       assignedStaff?: { firstName: string; lastName: string | null } | null;
     },
     /** techUpdate: the booking just got its technician — tell the customer who (customer_staff_assigned), nobody else. */
-    opts: { techUpdate?: boolean } = {},
+    /** group: every member of the party (this appointment is its contact) — one message lists them all. */
+    opts: { techUpdate?: boolean; group?: GroupMember[] } = {},
   ) {
     const n = await this.settings.getNotificationSettings(tenantId);
     const tenant = await this.prisma.tenant.findUnique({
@@ -1651,7 +1699,10 @@ export class BookingsService {
     // Who is actually doing what. The primary service owns the calendar slot;
     // every extra service line can carry its own technician, and a visit split
     // across two people must say so — to the customer, the owner and the techs.
-    const lineStaffIds = [...new Set(serviceLines.map((l) => (l.staffMemberId ? String(l.staffMemberId) : '')).filter(Boolean))];
+    // Every technician named on an extra line — this visit's, or the whole party's.
+    const partyLines = (opts.group ?? []).flatMap((m) => (Array.isArray(m.addons) ? (m.addons as Array<Record<string, unknown> | null>) : []))
+      .filter((l): l is Record<string, unknown> => !!l && l.kind === 'service');
+    const lineStaffIds = [...new Set([...serviceLines, ...partyLines].map((l) => (l.staffMemberId ? String(l.staffMemberId) : '')).filter(Boolean))];
     const staffNameById = new Map<string, string>();
     if (lineStaffIds.length) {
       const rows = await this.prisma.staffMember
@@ -1704,7 +1755,27 @@ export class BookingsService {
       customerPhone: appointment.customer?.phone ?? '',
       customerEmail: appointment.customer?.email ?? '',
       source: bookingSourceLabel(appointment.source, vi),
+      // Who is coming and what each person is having — the email's people
+      // block and the short text are written from this (one person or a party).
+      people: visitPeople((opts.group && opts.group.length > 1 ? opts.group : [appointment]) as unknown as GroupMember[], staffNameById, vi),
+      dateShort: start.toLocaleDateString(loc, { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz }),
+      timeStart: fmtT(start),
     };
+    // A party: one message for everybody — the service line says how many,
+    // the lineup names each person with their services and technician, and
+    // the total is the party's.
+    if (opts.group && opts.group.length > 1) {
+      const gs = groupSummary(opts.group, vi);
+      d.service = gs.service;
+      d.lineup = gs.lineup;
+      d.total = formatMoney(gs.totalCents, appointment.currency, loc);
+      d.addons = '';
+      d.addonsOnly = '';
+      // Everyone starts together; each person's length differs, so the party's
+      // message gives the start, not one person's end time and duration.
+      d.time = fmtT(start);
+      d.duration = '';
+    }
 
     const custEmail = appointment.customer?.email;
     const custPhone = appointment.customer?.phone;
@@ -1786,6 +1857,7 @@ export class BookingsService {
       customer_email: d.customerEmail ?? '',
       service_lineup: d.lineup ?? '',
       add_ons_only: d.addonsOnly ?? '',
+      party_size: String(d.people?.length ?? 1),
       booking_notes: d.notes ?? '',
       salon_address: d.address ?? '',
       booking_source: d.source ?? '',
@@ -1801,11 +1873,25 @@ export class BookingsService {
     // turned "SMS the customer" ON in Settings sent nothing, because the
     // template's SMS box was still at its default (off). Either one turned on
     // now sends it (and saving either now keeps the other in step).
+    // Still the built-in wording? Then the designed email and the short text
+    // are used (they carry the party and every service). A salon that wrote
+    // its own words keeps them, exactly as written.
+    const isVN = (n.market ?? 'US').toUpperCase() === 'VN';
+    const builtIn = (v: string | undefined, ...cands: Array<string | undefined | string[]>) =>
+      v != null && cands.flat().filter((c): c is string => typeof c === 'string').includes(v);
+    const tplBodyBuiltIn = !!tpl && !opts.techUpdate && builtIn(tpl.body,
+      DEFAULT_NOTIFICATION_TEMPLATES.customer_booking_confirmed?.body, VN_TEMPLATE_TEXTS.customer_booking_confirmed?.body, LEGACY_TEMPLATE_DEFAULTS.customer_booking_confirmed?.body ?? []);
+    const custSmsBuiltIn = !isVN && !opts.techUpdate && (tpl
+      ? builtIn(tpl.smsBody, DEFAULT_NOTIFICATION_TEMPLATES.customer_booking_confirmed?.smsBody, VN_TEMPLATE_TEXTS.customer_booking_confirmed?.smsBody, LEGACY_TEMPLATE_DEFAULTS.customer_booking_confirmed?.smsBody ?? [])
+      : builtIn(n.smsCustomer, DEFAULT_NOTIFICATION_SETTINGS.smsCustomer, VN_NOTIFICATION_TEXTS.smsCustomer, LEGACY_NOTIFICATION_DEFAULTS.smsCustomer ?? []));
+    const adminSmsBuiltIn = !isVN && builtIn(n.smsAdmin, DEFAULT_NOTIFICATION_SETTINGS.smsAdmin, VN_NOTIFICATION_TEXTS.smsAdmin, LEGACY_NOTIFICATION_DEFAULTS.smsAdmin ?? []);
+    const smsPeople = (d.people ?? []).map((p) => ({ name: p.name, services: p.lines.map((l) => l.service) }));
+
     const emailCustomer = opts.techUpdate ? Boolean(tpl?.email && confOn.email) : tpl ? Boolean(tpl.email || n.emailCustomerOnBooking) : n.emailCustomerOnBooking;
     const smsCustomer = opts.techUpdate ? Boolean(tpl?.sms && confOn.sms && (n.market ?? 'US').toUpperCase() !== 'VN') : tpl ? Boolean(tpl.sms || n.smsCustomerOnBooking) : n.smsCustomerOnBooking;
 
     if (emailCustomer && custEmail) {
-      if (tpl) {
+      if (tpl && !tplBodyBuiltIn) {
         const refHtml = referralBlock ? referralBlockHtml(referralBlock, d.accent) : '';
         const manageHtml = `<p style="margin:16px 0 0"><a href="${manageUrl}" style="color:${d.accent};font-weight:600">Manage or cancel your appointment →</a></p>`;
         const bodyFilled = fillPct(tpl.body, pct) + manageHtml + refHtml; // HTML
@@ -1836,7 +1922,9 @@ export class BookingsService {
       // and carriers there allowlist template AND urls — a per-booking manage
       // link is exactly the shape that gets a message silently dropped. So the
       // registered text goes out alone; the manage link still rides the email.
-      const smsBase = tpl ? fillPct(tpl.smsBody, { ...pct, manage_url: smsManageUrl }) : fill(n.smsCustomer, d);
+      const smsBase = custSmsBuiltIn
+        ? customerBookingSms({ salon: d.salon, dateShort: d.dateShort ?? d.date, timeStart: d.timeStart ?? d.time, people: smsPeople, tech: primaryTech || undefined, total: d.total, link: smsManageUrl, vi })
+        : tpl ? fillPct(tpl.smsBody, { ...pct, manage_url: smsManageUrl }) : fill(n.smsCustomer, d);
       // A template that already placed %manage_url% itself gets no second copy.
       const smsText = (n.market ?? 'US').toUpperCase() === 'VN' || smsBase.includes(smsManageUrl)
         ? smsBase
@@ -1867,7 +1955,8 @@ export class BookingsService {
       // customer's phone and email, the technician on each service, the note
       // the customer left and where the booking came from. Without those the
       // salon has to open the app to do anything about it.
-      const da: BookingTemplateData = { ...d, customer: custFull || d.customer };
+      const size = d.people?.length ?? 1;
+      const da: BookingTemplateData = { ...d, customer: `${custFull || d.customer}${size > 1 ? ` (+${size - 1})` : ''}` };
       const intro = fill(n.emailIntroAdmin, da);
       const heading = vi ? 'Lịch đặt mới' : 'New booking';
       jobs.push(this.notifications.send({
@@ -1879,7 +1968,10 @@ export class BookingsService {
       }));
     }
     if (n.smsAdminOnBooking && n.adminPhone) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: n.adminPhone, body: fill(n.smsAdmin, d), twilio: n.twilio, ...related }));
+      const ownerText = adminSmsBuiltIn
+        ? ownerBookingSms({ salon: d.salon, dateShort: d.dateShort ?? d.date, timeStart: d.timeStart ?? d.time, people: smsPeople, tech: primaryTech || undefined, total: d.total, customer: custFull || d.customer, customerPhone: d.customerPhone || undefined, vi })
+        : fill(n.smsAdmin, d);
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: n.adminPhone, body: ownerText, twilio: n.twilio, ...related }));
     }
     // Web push to the owner's phone (fire-and-forget; no-op unless VAPID is set).
     // Who, what, when and with whom — the owner can act on the lock screen.

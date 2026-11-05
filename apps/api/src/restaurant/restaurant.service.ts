@@ -4,6 +4,8 @@ import { OrderItemKind, PaymentMethod, PrintJobStatus, UserRole } from '@prisma/
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
+import { resolvePayAccount } from '../settings/pay-account';
+import { bankLabel, qrLine, vietQrPayload } from '../common/vietqr';
 import { PosService } from '../pos/pos.service';
 import { PushService } from '../push/push.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -56,8 +58,14 @@ export class RestaurantService {
   }
 
   async getSettings(tenantId: string): Promise<RestaurantSettings> {
-    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: SETTINGS_KEY } } }).catch(() => null);
-    return cleanSettings(row?.value ?? DEFAULT_SETTINGS);
+    const [row, pos] = await Promise.all([
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: SETTINGS_KEY } } }).catch(() => null),
+      Promise.resolve().then(() => this.settings.getPosSettings(tenantId)).catch(() => null),
+    ]);
+    const clean = cleanSettings(row?.value ?? DEFAULT_SETTINGS);
+    // The account lives once, in Settings › Payments; this till's older one is the fallback.
+    const pay = resolvePayAccount(pos, clean.bank);
+    return { ...clean, bank: pay.bank, printPayQr: pay.printPayQr };
   }
 
   async readSettings(user: AuthenticatedUser) {
@@ -501,6 +509,7 @@ export class RestaurantService {
       serviceCents: service, servicePercent: settings.serviceChargePercent,
       vatPercent: settings.vatPercent, vatIncluded: settings.vatIncluded, vatCents: settings.vatIncluded ? vatInside(bill, settings.vatPercent) : 0,
       payCode: settings.bank ? payCodeOf(check.number) : null,
+      payQr: payQrBlock(settings, bill, payCodeOf(check.number), ctx.currency),
       totalCents: bill, money: (c) => moneyText(c, ctx.currency),
     });
     await this.prisma.tableCheck.updateMany({ where: { id, tenantId }, data: { preBilledAt: now, preBillCount: count, changedAfterPrebill: false } });
@@ -893,7 +902,7 @@ export class RestaurantService {
   async guestMenu(token: string) {
     const { table, settings, tenantId } = await this.tableByToken(token);
     const [tenant, items, ctx, open] = await Promise.all([
-      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, branding: true } }),
       this.prisma.menuItem.findMany({ where: { tenantId, isActive: true }, orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }] }),
       this.context(tenantId),
       this.openCheckOn(tenantId, table.id),
@@ -902,6 +911,8 @@ export class RestaurantService {
     const now = new Date();
     return {
       restaurant: tenant?.name ?? '', table: table.name, currency: ctx.currency, lang: ctx.lang, mode: settings.qrOrdering,
+      // The restaurant's own colour and logo on the guest's phone (white-label), never Lumio's.
+      ...guestBrand(tenant?.branding),
       menu: items.map((m) => ({
         id: m.id, name: m.name, category: m.category, priceCents: m.priceCents, imageUrl: m.imageUrl, description: m.description,
         options: cleanOptionGroups(m.options), soldOut: soldOutNow(m.soldOutAt, settings.soldOutReset, ctx.tz, now),
@@ -1109,4 +1120,30 @@ export function cleanInvoice(raw: unknown): { company: string; taxCode: string; 
   const t = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
   const out = { company: t(o.company, 160), taxCode: t(o.taxCode, 20).replace(/[^0-9-]/g, ''), address: t(o.address, 240), email: t(o.email, 160) };
   return out.company || out.taxCode ? out : null;
+}
+
+/**
+ * The colour and logo a guest's phone shows: the restaurant's accent when it
+ * is a plain hex colour (anything else falls back to the page's own), and a
+ * hosted https / site-relative logo only. Pure.
+ */
+export function guestBrand(branding: unknown): { accent: string | null; logoUrl: string | null } {
+  const b = (branding && typeof branding === 'object' ? branding : {}) as { accentColor?: unknown; logoUrl?: unknown };
+  const accent = typeof b.accentColor === 'string' && /^#[0-9a-f]{6}$/i.test(b.accentColor.trim()) ? b.accentColor.trim() : null;
+  const raw = typeof b.logoUrl === 'string' ? b.logoUrl.trim() : '';
+  // A hosted logo, or one the owner uploaded (stored inline as an image data URL, size-capped).
+  const logo = /^(https:\/\/|\/)[^\s"'<>]+$/i.test(raw) || (/^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=]+$/i.test(raw) && raw.length <= 400_000) ? raw : null;
+  return { accent, logoUrl: logo };
+}
+
+/**
+ * The VietQR printed under the total of a guest check: the exact amount and
+ * the bill code, so the guest scans, the bank app fills everything in, and
+ * the bank feed can match the transfer. Đồng only; off when the owner says so.
+ */
+export function payQrBlock(settings: Pick<RestaurantSettings, 'bank' | 'printPayQr'>, amountCents: number, code: string, currency: string | null | undefined): { line: string; bank: string; name: string; code: string } | null {
+  if (!settings.bank || settings.printPayQr === false || String(currency ?? '').toUpperCase() !== 'VND' || amountCents <= 0) return null;
+  const payload = vietQrPayload(settings.bank, amountCents, code);
+  if (!payload) return null;
+  return { line: qrLine(payload), bank: `${bankLabel(settings.bank.bin)} · ${settings.bank.accountNo}`, name: settings.bank.accountName, code };
 }

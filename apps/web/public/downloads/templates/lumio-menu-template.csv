@@ -1,0 +1,7 @@
+﻿Category,Dish name *,Price *,Description,"Options (Group*: choice +price, ... | Other group: ...)",Photo link,Order
+Pho,Rare Beef Pho,14,Broth simmered 12 hours,"Size*: Regular, Large +3 | Extras: Poached egg +2, Fried dough +1",,1
+,Chicken Pho,13,,"Size*: Regular, Large +3",,2
+Vermicelli,Grilled Pork Vermicelli,15,"Charcoal-grilled pork, fresh herbs",,,1
+Appetizers,Fresh Spring Rolls (2),8,"Shrimp, pork, noodles, herbs","Sauce*: Peanut, Fish sauce",,1
+Drinks,Vietnamese Iced Coffee,5,Slow-drip,"Ice: Light ice, No ice",,1
+,Iced Tea,1,,,,2

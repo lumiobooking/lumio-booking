@@ -6,49 +6,13 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
-import { ImportCsv } from '../../../components/ImportCsv';
+import { TableImport, TemplateLinks, downloadTableTemplate } from '../../../components/MenuTableImport';
 import { FloorMap } from '../../../components/FloorMap';
 import { TableQrCodes } from '../../../components/TableQrCodes';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Table { id: string; name: string; seats: number; area: string | null; isActive: boolean; sortOrder: number }
 
-const SAMPLE_TABLES_VI = `name,seats,area
-T1,2,Trong nhà
-T2,2,Trong nhà
-T3,4,Trong nhà
-T4,4,Trong nhà
-T5,6,Trong nhà
-S1,4,Sân vườn
-S2,4,Sân vườn
-V1,10,Phòng VIP
-Q1,2,Quầy bar
-Q2,2,Quầy bar`;
-const SAMPLE_TABLES = `name,seats,area
-M1,2,Main Dining
-M2,2,Main Dining
-M3,4,Main Dining
-M4,4,Main Dining
-M5,4,Main Dining
-M6,4,Main Dining
-M7,6,Main Dining
-M8,6,Main Dining
-M9,4,Main Dining
-M10,2,Main Dining
-W1,2,Window
-W2,2,Window
-W3,4,Window
-W4,4,Window
-P1,4,Patio
-P2,4,Patio
-P3,6,Patio
-P4,6,Patio
-P5,8,Patio
-VIP1,10,Private Room
-VIP2,12,Private Room
-B1,2,Bar
-B2,2,Bar
-B3,2,Bar`;
 
 export default function TablesPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -66,6 +30,8 @@ function Inner() {
   const [form, setForm] = useState({ name: '', seats: '2', area: '' });
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<'list' | 'map' | 'qr'>('list');
+  // "Nhập bàn & sơ đồ từ Excel": template, upload, check, import (MenuTableImport).
+  const [showImport, setShowImport] = useState(false);
   // The till's settings link straight to the QR codes (/salon/tables?view=qr).
   useEffect(() => {
     try { const v = new URLSearchParams(window.location.search).get('view'); if (v === 'qr' || v === 'map') setView(v); } catch { /* no window */ }
@@ -145,7 +111,17 @@ function Inner() {
       {view === 'qr' && owner ? <TableQrCodes token={token} vi={vi} /> : view === 'map' || !owner ? <FloorMap token={token} vi={vi} canArrange={owner} /> : <>
       {err && <div style={ui.banner}>{err}</div>}
 
-      <ImportCsv token={token} endpoint="/tables" header="name,seats,area" sample={vi ? SAMPLE_TABLES_VI : SAMPLE_TABLES} existing={() => new Set(tables.map((tb) => tb.name.toLowerCase()))} buildBody={(c) => ({ name: c[0], seats: parseInt(c[1], 10) || 2, area: c[2] || undefined })} onDone={load} />
+      <button type="button" onClick={() => setShowImport((x) => !x)} aria-expanded={showImport}
+        style={{ ...ui.primaryBtn, marginBottom: 12, marginRight: 8 }}>
+        ⇪ {vi ? 'Nhập bàn & sơ đồ từ Excel' : 'Import tables & floor plan from Excel'}
+      </button>
+      <span style={{ display: 'inline-block', marginBottom: 12 }}>
+        <TemplateLinks vi={vi} label={vi ? 'Tải file mẫu sơ đồ bàn' : 'Floor-plan template'}
+          onXlsx={() => downloadTableTemplate(vi, 'xlsx')} onCsv={() => downloadTableTemplate(vi, 'csv')} />
+      </span>
+      {showImport && token && (
+        <TableImport token={token} vi={vi} existing={tables} onDone={() => { void load(); }} onClose={() => setShowImport(false)} />
+      )}
       <button onClick={loadSampleRes} disabled={busy} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', marginBottom: 14 }}>{vi ? '+ Đặt bàn mẫu (hôm nay)' : '+ Sample reservations (today)'}</button>
 
       <form onSubmit={add} style={{ ...ui.card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>

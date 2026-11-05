@@ -1,3 +1,4 @@
+import { withoutQrLines } from '../common/vietqr';
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { PrintJobStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -65,12 +66,14 @@ export class PrintService {
         ...(wanted.includes('COUNTER') ? [{ station: null }] : []),
       ];
     }
-    return this.prisma.printJob.findMany({
+    const jobs = await this.prisma.printJob.findMany({
       where: where as never,
       select: { id: true, title: true, text: true, copies: true, station: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
       take: 20,
     });
+    // The old agent prints plain text and cannot draw a QR: the account lines under it still print.
+    return jobs.map((j) => ({ ...j, text: withoutQrLines(j.text) }));
   }
 
   /** The agent reports a job's outcome (tenant-scoped by the API key). */

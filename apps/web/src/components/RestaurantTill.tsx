@@ -26,11 +26,14 @@ import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
 import { tillMethodsFrom, payLabel, type PayMethod } from '../lib/payment-methods';
 import { buildReceiptText, receiptCopies, type ReceiptProfile } from '../lib/receipt';
+import { GuestPayQr } from './GuestPayQr';
 import { CashShiftPanel, useShiftState } from './CashShiftPanel';
 import {
-  bankName, byTableName, callText, cashQuickAmounts, combinedState, evenShares, lineGroups, minutesOpen, optionsReady, pendingLines, priceWith, tillError, timerTone, vietQr, VN_BANKS,
+  byTableName, callText, cashQuickAmounts, combinedState, evenShares, lineGroups, minutesOpen, optionsReady, pendingLines, priceWith, tillError, timerTone, vietQr, VN_BANKS,
   type BankAccount, type CheckLine, type CheckView, type FloorCheck, type InvoiceInfo, type OptionGroup, type TableState,
 } from '../lib/restaurant-till';
+import { floorStats, mapBox, qtyByDish, spotTop, type Spot } from '../lib/till-floor';
+import { tintFor } from '../lib/guest-order';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 
@@ -41,7 +44,7 @@ interface Settings {
   qrOrdering: 'off' | 'confirm' | 'auto'; serviceChargePercent: number; vatPercent: number; vatIncluded: boolean; bank: BankAccount | null;
 }
 interface Table { id: string; name: string; seats: number; area: string | null }
-interface Floor { currency: string; settings: Settings; canPay: boolean; tables: Table[]; checks: FloorCheck[] }
+interface Floor { currency: string; settings: Settings; canPay: boolean; tables: Table[]; checks: FloorCheck[]; layout?: Record<string, Spot> }
 interface Dish { id: string; name: string; category: string | null; priceCents: number; imageUrl: string | null; station: string; options: OptionGroup[]; soldOut: boolean }
 interface FailedJob { id: string; title: string | null; station: string | null; error: string | null; createdAt: string }
 
@@ -114,6 +117,14 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   // time a dish was tapped). Only a phone switches between them.
   const phone = useIsMobile(767);
   const [moreOpen, setMoreOpen] = useState(false);
+  // The floor as the room really is (the owner's layout from Tables › Floor map),
+  // or the compact grid. Remembered per device; a phone always gets the grid.
+  const [floorView, setFloorView] = useState<'map' | 'grid'>(() => {
+    try { return window.localStorage.getItem('lumio_till_floor_view') === 'grid' ? 'grid' : 'map'; } catch { return 'map'; }
+  });
+  const pickView = (v: 'map' | 'grid') => { setFloorView(v); try { window.localStorage.setItem('lumio_till_floor_view', v); } catch { /* private mode */ } };
+  // A wide screen gets the categories as a side list (many categories wrapped badly as chips).
+  const wide = !useIsMobile(1280);
   const [legendOpen, setLegendOpen] = useState(false);
   const billRef = useRef<HTMLElement | null>(null);
   useFitBelow(billRef, !phone);
@@ -339,7 +350,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   if (!check) {
     const tables = tablesSorted.filter((t) => !area || (t.area || '') === area);
     const groups = areas.filter((g) => tables.some((t) => (t.area || '') === g));
-    const tile = (key: string, label: string, cs: FloorCheck[], onClick: () => void, seats?: number) => {
+    const tile = (key: string, label: string, cs: FloorCheck[], onClick: () => void, seats?: number, place?: CSSProperties) => {
       const st = combinedState(cs);
       const first = cs[0];
       const mins = first ? minutesOpen(first.openedAt, now) : 0;
@@ -350,7 +361,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
       const caller = cs.find((c) => (c.pendingCount ?? 0) > 0 || c.callReason);
       return (
         <button key={key} type="button" onClick={onClick} aria-label={label}
-          style={{ ...TILE[st], minHeight: mobile ? 92 : 112, borderRadius: 14, padding: 10, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 4 }}>
+          style={{ ...TILE[st], minHeight: mobile ? 92 : 112, borderRadius: 14, padding: 10, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 4, boxShadow: '0 2px 8px rgba(15,23,42,.06)', ...place }}>
           <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
             <b style={{ fontSize: 18 }}>{label}</b>
             {first && <span style={{ fontSize: 11.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, ...(tone === 'late' ? { background: '#b91c1c', color: '#fff' } : tone === 'warn' ? { background: '#f59e0b', color: '#1c1917' } : { background: 'rgba(127,127,127,.18)' }) }}>{mins}′</span>}
@@ -391,6 +402,31 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
             ))}
           </div>
         )}
+        {!phone && floor && floor.tables.length > 0 && (() => {
+          const st = floorStats(floor.tables.length, floor.checks);
+          const stat = (label: string, value: string, sub?: string) => (
+            <div style={{ ...card, padding: '9px 14px', minWidth: 150 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.05em', color: C.muted }}>{label}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.strong }}>{value}{sub && <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}> {sub}</span>}</div>
+            </div>
+          );
+          return (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'stretch' }}>
+              {stat(L('CÓ KHÁCH', 'SEATED'), `${st.busyTables}/${st.tables}`, L(`bàn · ${st.guests} khách`, `tables · ${st.guests} guests`))}
+              {stat(L('BILL ĐANG MỞ', 'OPEN BILLS'), String(st.openBills), st.takeaway ? L(`· ${st.takeaway} mang về`, `· ${st.takeaway} to go`) : undefined)}
+              {stat(L('TẠM TÍNH ĐANG MỞ', 'OPEN TOTAL'), fmt(st.openCents))}
+              {st.attention > 0 && stat(L('CẦN XỬ LÝ', 'NEEDS YOU'), String(st.attention), L('bàn', 'tables'))}
+              <div role="group" aria-label={L('Kiểu xem', 'View')} style={{ marginLeft: 'auto', display: 'flex', alignSelf: 'center', gap: 4, padding: 4, borderRadius: 12, border: `1px solid ${C.border}`, background: C.panel }}>
+                {(['map', 'grid'] as const).map((v) => (
+                  <button key={v} type="button" aria-pressed={floorView === v} onClick={() => pickView(v)}
+                    style={{ minHeight: 36, padding: '0 12px', borderRadius: 9, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, background: floorView === v ? '#4f46e5' : 'transparent', color: floorView === v ? '#fff' : C.text }}>
+                    {v === 'map' ? L('Sơ đồ', 'Map') : L('Lưới', 'Grid')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
         {/* Areas: one swipeable row on a phone (they wrapped onto two or three
             lines and pushed the first table below the fold). */}
         <div style={{ display: 'flex', gap: 6, flexWrap: phone ? 'nowrap' : 'wrap', overflowX: phone ? 'auto' : undefined, scrollbarWidth: 'none', alignItems: 'center', margin: phone ? '0 -4px' : undefined, padding: phone ? '0 4px' : undefined }}>
@@ -423,7 +459,25 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
             </div>
           </section>
         )}
-        {groups.map((g) => (
+        {!phone && floorView === 'map' && floor && floor.layout && tables.length > 0 && (() => {
+          const box = mapBox(tables.map((t) => floor.layout?.[t.id]).filter((x): x is Spot => !!x));
+          return (
+            <section aria-label={L('Sơ đồ bàn', 'Floor map')} style={{ ...card, borderRadius: 20, overflowX: 'auto' }}>
+              <div style={{ position: 'relative', minWidth: 960, height: box.height, backgroundImage: 'radial-gradient(var(--c334155) 1px, transparent 1px)', backgroundSize: '22px 22px' }}>
+                {tables.map((t) => {
+                  const spot = floor.layout?.[t.id];
+                  if (!spot) return null;
+                  const cs = checksByTable.get(t.id) ?? [];
+                  const label = cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name;
+                  const size = spot.shape === 'long' ? { width: 196, minHeight: 100 } : spot.shape === 'round' ? { width: 116, minHeight: 116, borderRadius: 999, padding: '18px 14px' } : { width: 132, minHeight: 100 };
+                  return tile(t.id, label, cs, () => tapTable(t), t.seats, { position: 'absolute', left: `${spot.x}%`, top: spotTop(spot.y) + 14, ...size });
+                })}
+                {isOwner && <a href="/salon/tables?view=map" style={{ position: 'absolute', right: 14, bottom: 12, fontSize: 12.5, fontWeight: 700, color: C.muted }}>{L('Sắp xếp sơ đồ bàn ›', 'Arrange the floor ›')}</a>}
+              </div>
+            </section>
+          );
+        })()}
+        {(phone || floorView === 'grid' || !floor?.layout) && groups.map((g) => (
           <section key={g || '_'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {groups.length > 1 && <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', color: C.muted }}>{(g || L('Khác', 'Other')).toUpperCase()}</div>}
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${mobile ? 104 : 150}px, 1fr))`, gap: 10 }}>
@@ -473,21 +527,35 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   );
   const otherBills = (floor?.checks ?? []).filter((c) => c.id !== check.id && c.status === 'OPEN');
   const lineText = (l: CheckLine) => [...(l.options ?? []), ...(l.note ? [l.note] : [])].join(' · ');
+  // How many of each dish this bill already has: the dish card says "×2".
+  const billQty = qtyByDish(check.lines);
+  // Photos on the dish cards once the menu has any (a menu with none keeps the compact cards).
+  const showPhotos = menu.some((m) => !!m.imageUrl);
   const menuPane = (
     <section aria-label={L('Thực đơn', 'Menu')} style={{ flex: phone ? '1 1 100%' : '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 48, padding: '0 14px', ...card, borderRadius: 14 }}>
         <span style={{ position: 'absolute', left: -9999 }}>{L('Tìm món', 'Search dishes')}</span>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={L('Tìm món (gõ “pho”, “bia”…)', 'Search dishes')} style={{ flex: 1, border: 0, outline: 0, background: 'transparent', color: C.text, fontSize: 15, fontFamily: 'inherit' }} />
       </label>
-      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
-        <button type="button" onClick={() => setCat('')} style={chip(!cat)}>{L('Tất cả', 'All')}</button>
-        {categories.map((c0) => <button key={c0 || '_'} type="button" onClick={() => setCat(c0)} style={chip(cat === c0)}>{c0 || L('Khác', 'Other')}</button>)}
-      </div>
+      {!wide && (
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+          <button type="button" onClick={() => setCat('')} style={chip(!cat)}>{L('Tất cả', 'All')}</button>
+          {categories.map((c0) => <button key={c0 || '_'} type="button" onClick={() => setCat(c0)} style={chip(cat === c0)}>{c0 || L('Khác', 'Other')}</button>)}
+        </div>
+      )}
       {menu.length === 0 && <div style={{ ...card, padding: 16 }}>{L('Chưa có món nào trong thực đơn.', 'The menu is empty.')} <a href="/salon/menu">{L('Thêm món', 'Add dishes')}</a></div>}
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${mobile ? 140 : 160}px, 1fr))`, gap: 8 }}>
-        {shownDishes.map((d) => (
-          <button key={d.id} type="button" disabled={busy || d.soldOut} onClick={() => void addDish(d)}
-            style={{ minHeight: 92, borderRadius: 14, border: d.soldOut ? `1px dashed ${C.border}` : `1px solid ${C.line}`, background: d.soldOut ? C.raised : C.panel, color: d.soldOut ? C.muted : C.text, textAlign: 'left', padding: 10, cursor: d.soldOut ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6 }}>
+        {shownDishes.map((d) => {
+          const inBill = billQty.get(d.id) ?? 0;
+          const tint = tintFor(d.name);
+          return (
+          <button key={d.id} type="button" disabled={busy || d.soldOut} onClick={() => void addDish(d)} aria-label={`${d.name}${inBill ? ` · ${inBill}` : ''}`}
+            style={{ minHeight: 92, borderRadius: 16, border: inBill ? '2px solid #4f46e5' : d.soldOut ? `1px dashed ${C.border}` : `1px solid ${C.line}`, background: d.soldOut ? C.raised : C.panel, color: d.soldOut ? C.muted : C.text, textAlign: 'left', padding: 0, overflow: 'hidden', cursor: d.soldOut ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
+            {showPhotos && (d.imageUrl
+              ? <img src={d.imageUrl} alt="" loading="lazy" style={{ width: '100%', height: 78, objectFit: 'cover', display: 'block', opacity: d.soldOut ? 0.5 : 1 }} />
+              : <span aria-hidden style={{ width: '100%', height: 78, background: tint.bg, color: tint.fg, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 26, opacity: d.soldOut ? 0.5 : 1 }}>{(d.name.trim()[0] ?? '·').toUpperCase()}</span>)}
+            {inBill > 0 && <span style={{ position: 'absolute', top: 6, right: 6, minWidth: 26, height: 26, padding: '0 7px', boxSizing: 'border-box', borderRadius: 999, background: '#4f46e5', color: '#fff', fontWeight: 800, fontSize: 13, display: 'grid', placeItems: 'center', boxShadow: '0 2px 6px rgba(15,23,42,.25)' }}>×{inBill}</span>}
+            <span style={{ padding: 10, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6, flex: 1, width: '100%', boxSizing: 'border-box' }}>
             <b style={{ fontSize: 14.5, lineHeight: 1.3, textDecoration: d.soldOut ? 'line-through' : undefined }}>{d.name}</b>
             <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
               {d.soldOut
@@ -495,11 +563,25 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                 : <span style={{ fontSize: 11.5, fontWeight: 700, color: d.station === 'BAR' ? 'var(--ca5f3fc)' : C.muted }}>{stationName(d.station)}{d.options.length ? ` · ${L('tuỳ chọn', 'options')}` : ''}</span>}
               <b style={{ fontSize: 13.5 }}>{fmt(d.priceCents)}</b>
             </span>
+            </span>
           </button>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
+  // The categories as a side list on a wide screen, the dishes beside them.
+  const catNav = wide && categories.length > 1 ? (
+    <nav aria-label={L('Danh mục', 'Categories')} style={{ flex: '0 0 190px', ...card, padding: 6, display: 'flex', flexDirection: 'column', gap: 2, position: 'sticky', top: 80, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto' }}>
+      {[{ k: '', name: L('Tất cả', 'All'), n: menu.length }, ...categories.map((c0) => ({ k: c0, name: c0 || L('Khác', 'Other'), n: menu.filter((m) => (m.category || '') === c0).length }))].map((x) => (
+        <button key={x.k || '_all'} type="button" onClick={() => setCat(x.k)} aria-pressed={cat === x.k}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 44, padding: '0 10px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', fontSize: 14, fontWeight: cat === x.k ? 800 : 600, background: cat === x.k ? 'var(--c1e1b4b)' : 'transparent', color: cat === x.k ? 'var(--ce0e7ff)' : C.text }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name}</span>
+          <span style={{ fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: '1px 8px', background: cat === x.k ? '#4f46e5' : C.raised, color: cat === x.k ? '#fff' : C.muted }}>{x.n}</span>
+        </button>
+      ))}
+    </nav>
+  ) : null;
 
   const billPane = (
     <aside ref={billRef} aria-label="Bill" style={{
@@ -651,6 +733,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
         </div>
       )}
       <div style={{ display: 'flex', flexWrap: phone ? 'wrap' : 'nowrap', gap: 12, alignItems: 'stretch' }}>
+        {!phone && catNav}
         {(!phone || tab === 'menu') && menuPane}
         {(!phone || tab === 'bill') && billPane}
       </div>
@@ -1047,9 +1130,8 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
   const catKey = (c: string) => c.trim().toLowerCase().replace(/\s+/g, ' ');
   async function save() {
     try {
-      const bank = bin.trim() && acct.trim() ? { bin: bin.replace(/\D/g, ''), accountNo: acct.replace(/[^0-9A-Za-z]/g, ''), accountName: bankName(acctName) } : null;
-      if (bank && (bank.bin.length !== 6 || bank.accountNo.length < 4)) { setErr(L('Số tài khoản hoặc mã ngân hàng (BIN 6 số) chưa đúng.', 'Check the account number and the 6-digit bank BIN.')); return; }
-      await apiFetch('/restaurant/settings', { method: 'PATCH', token, body: { settings: { ...s, bank } } });
+      // The bank account is edited once, in Settings › Payments; it is carried as it is.
+      await apiFetch('/restaurant/settings', { method: 'PATCH', token, body: { settings: s } });
       onSaved();
     } catch (e) { setErr(tillError(e instanceof Error ? e.message : String(e), vi)); }
   }
@@ -1061,11 +1143,7 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
     setS({ ...s, stations: [...s.stations, { key: unique, name }] });
     setNewName('');
   }
-  const [bin, setBin] = useState(settings.bank?.bin ?? '');
-  const [acct, setAcct] = useState(settings.bank?.accountNo ?? '');
-  const [acctName, setAcctName] = useState(settings.bank?.accountName ?? '');
-  const known = VN_BANKS.some((b) => b.bin === bin);
-  const [otherBin, setOtherBin] = useState(() => !!settings.bank && !VN_BANKS.some((b) => b.bin === settings.bank?.bin));
+  const bankQr = settings.bank ? vietQr(settings.bank, 0, '', 'VND') : null;
   const toggle = (k: 'printVoid' | 'printMove' | 'voidNeedsApproval' | 'soldOutReset' | 'vatIncluded', label: string) => (
     <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
       <span>{label}</span>
@@ -1147,15 +1225,21 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
       <span style={{ fontSize: 12.5, color: C.muted }}>{L('Giá đã gồm VAT: bill in dòng “Đã gồm VAT”. Giá chưa gồm VAT: thuế cộng thêm theo thuế suất ở Cài đặt › Thu ngân.', 'Prices include VAT: the bill prints “Incl. VAT”. Prices without VAT: tax is added at the rate set under Settings › Checkout.')}</span>
 
       <b>{L('Tài khoản nhận chuyển khoản (VietQR)', 'Bank account for transfers (VietQR)')}</b>
-      <span style={{ fontSize: 12.5, color: C.muted }}>{L('Bill hiện mã VietQR đúng số tiền, nội dung là mã bill (VD: LM57) để đối soát.', 'The bill shows a VietQR for the exact amount, with the bill code (e.g. LM57) as the note.')}</span>
-      <select value={otherBin || (bin && !known) ? '_other' : bin} aria-label={L('Ngân hàng', 'Bank')} onChange={(e) => { if (e.target.value === '_other') { setOtherBin(true); setBin(''); } else { setOtherBin(false); setBin(e.target.value); } }} style={{ ...sel, minHeight: 46 }}>
-        <option value="">{L('Chưa chọn ngân hàng', 'No bank')}</option>
-        {VN_BANKS.map((b) => <option key={b.bin} value={b.bin}>{b.name}</option>)}
-        <option value="_other">{L('Ngân hàng khác (nhập BIN)', 'Other bank (type the BIN)')}</option>
-      </select>
-      {(otherBin || (bin && !known)) && <input value={bin} inputMode="numeric" maxLength={6} onChange={(e) => setBin(e.target.value.replace(/\D/g, ''))} placeholder={L('Mã BIN 6 số (VD: 970436)', '6-digit BIN (e.g. 970436)')} aria-label="BIN" style={field} />}
-      <input value={acct} inputMode="numeric" maxLength={24} onChange={(e) => setAcct(e.target.value)} placeholder={L('Số tài khoản', 'Account number')} aria-label={L('Số tài khoản', 'Account number')} style={field} />
-      <input value={acctName} maxLength={50} onChange={(e) => setAcctName(e.target.value)} onBlur={() => setAcctName(bankName(acctName))} placeholder={L('Tên chủ tài khoản (không dấu)', 'Account holder')} aria-label={L('Tên chủ tài khoản', 'Account holder')} style={field} />
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 14, background: C.raised, flexWrap: 'wrap' }}>
+        {bankQr && <img src={bankQr} alt="VietQR" style={{ width: 84, height: 84, background: '#fff', borderRadius: 10, padding: 4 }} />}
+        <span style={{ flex: '1 1 180px', display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5 }}>
+          {settings.bank ? (
+            <>
+              <b style={{ color: C.strong }}>{VN_BANKS.find((b) => b.bin === settings.bank?.bin)?.name ?? `BIN ${settings.bank.bin}`} · {settings.bank.accountNo}</b>
+              {settings.bank.accountName && <span>{settings.bank.accountName}</span>}
+              <span style={{ color: C.muted, fontSize: 12.5 }}>{L('Phiếu tạm tính và màn hình thu ngân tự tạo mã VietQR đúng số tiền, nội dung là mã bill (VD: LM57).', 'The guest check and the till make a VietQR for the exact amount, with the bill code (e.g. LM57) as the note.')}</span>
+            </>
+          ) : (
+            <span style={{ color: C.muted }}>{L('Chưa có tài khoản. Nhập ngân hàng và số tài khoản một lần, hệ thống tự tạo mã QR cho từng bill.', 'No account yet. Enter the bank and account number once; every bill gets its own QR.')}</span>
+          )}
+        </span>
+        <a href="/salon/settings?tab=payments" style={{ fontWeight: 700 }}>{settings.bank ? L('Sửa', 'Edit') : L('Thêm tài khoản', 'Add account')} ›</a>
+      </div>
       <BankFeedBox vi={vi} token={token} />
 
       <div style={{ fontSize: 12.5, color: C.muted }}>{L('Máy in: kết nối và chọn máy in cho Quầy / Bếp / Bar ở', 'Printers: connect them and pick one for the counter / kitchen / bar under')} <a href="/salon/settings?tab=receipt">{L('Cài đặt › Hoá đơn in › Máy in', 'Settings › Printed receipt › Printers')}</a>.</div>
@@ -1267,9 +1351,15 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
   // with SePay / Casso connected the money shows up here by itself.
   const bankPaid = check.bankPaidCents ?? 0;
   const owed = Math.max(0, dueCents - bankPaid);
-  const bankPick = single && (parts[0].method === 'VIETQR' || parts[0].method === 'TRANSFER');
+  // MoMo / ZaloPay scan a VietQR too: without their own QR image, the bank one is shown.
+  const bankPick = single && (parts[0].method === 'VIETQR' || parts[0].method === 'TRANSFER'
+    || ((parts[0].method === 'MOMO' || parts[0].method === 'ZALOPAY') && !payInfo[parts[0].method]?.qrUrl));
   const dynQr = bankPick && owed > 0 ? vietQr(bank, owed, check.payCode ?? '', currency) : null;
   const covered = bankPaid > 0 && bankPaid >= dueCents;
+  // Full screen for the guest: the waiter turns the phone / iPad round.
+  const [bigQr, setBigQr] = useState(false);
+  const bigSrc = dynQr ?? (single && parts[0].method !== 'CASH' ? info.qrUrl ?? null : null);
+  const bankLines = bank && dynQr ? [`${VN_BANKS.find((b) => b.bin === bank.bin)?.name ?? `BIN ${bank.bin}`} · ${bank.accountNo}`, ...(bank.accountName ? [bank.accountName] : [])] : (info.instructions ?? '').split('\n').filter(Boolean);
   const watch = !!vietQr(bank, 1, 'LM0', currency) && (bankPick || bankPaid > 0) && !covered;
   const refresh = useRef(onRefresh);
   refresh.current = onRefresh;
@@ -1331,6 +1421,10 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
 
   return (
     <Modal vi={vi} title={L(`Thanh toán · ${check.tables}`, `Pay · ${check.tables}`)} onClose={onClose} width={540}>
+      {bigQr && bigSrc && (
+        <GuestPayQr vi={vi} src={bigSrc} amount={fmt(dynQr ? owed : dueCents)} lines={bankLines} note={dynQr ? check.payCode : null}
+          shop={profile?.shop.name ?? null} paid={covered} onClose={() => setBigQr(false)} />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <span style={{ color: C.muted, fontWeight: 700 }}>{L('Phải thu', 'Amount due')}</span>
         <b style={{ fontSize: 30, color: C.strong }}>{fmt(dueCents)}</b>
@@ -1377,17 +1471,23 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
           )}
           {dynQr ? (
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 14, background: C.raised, flexWrap: 'wrap' }}>
-              <img src={dynQr} alt={L('Mã VietQR đúng số tiền', 'VietQR for the exact amount')} style={{ width: 180, height: 180, objectFit: 'contain', background: '#fff', borderRadius: 10 }} />
+              <button type="button" onClick={() => setBigQr(true)} aria-label={L('Phóng to mã QR cho khách quét', 'Show the QR full screen')} style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}>
+                <img src={dynQr} alt={L('Mã VietQR đúng số tiền', 'VietQR for the exact amount')} style={{ width: 180, height: 180, objectFit: 'contain', background: '#fff', borderRadius: 10, display: 'block' }} />
+              </button>
               <span style={{ flex: '1 1 160px', fontSize: 13.5, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <button type="button" onClick={() => setBigQr(true)} style={{ ...primary, minHeight: 48, alignSelf: 'stretch' }}>{L('Đưa khách quét (toàn màn hình)', 'Show to the guest (full screen)')}</button>
                 <b style={{ fontSize: 18, color: C.strong }}>{fmt(owed)}</b>
                 <span>{L('Nội dung CK', 'Transfer note')}: <b style={{ fontSize: 16, letterSpacing: '.04em' }}>{check.payCode}</b></span>
-                <span style={{ color: C.muted }}>{L('Khách quét bằng app ngân hàng: số tiền và nội dung đã điền sẵn. Nếu đã nối SePay / Casso, tiền về sẽ tự hiện ở đây.', 'Guests scan with their banking app; amount and note are filled in. With SePay / Casso connected, the money shows up here by itself.')}</span>
+                <span style={{ color: C.muted }}>{L('Khách quét bằng app ngân hàng, MoMo hoặc ZaloPay: số tiền và nội dung đã điền sẵn. Nếu đã nối SePay / Casso, tiền về sẽ tự hiện ở đây.', 'Guests scan with any banking app, MoMo or ZaloPay; amount and note are filled in. With SePay / Casso connected, the money shows up here by itself.')}</span>
               </span>
             </div>
           ) : parts[0].method !== 'CASH' && (info.qrUrl || info.instructions) && (
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 14, background: C.raised }}>
-              {info.qrUrl && <img src={info.qrUrl} alt={L('Mã chuyển khoản', 'Payment QR')} style={{ width: 140, height: 140, objectFit: 'contain', background: '#fff', borderRadius: 10 }} />}
-              {info.instructions && <span style={{ whiteSpace: 'pre-line', fontSize: 13.5 }}>{info.instructions}</span>}
+              {info.qrUrl && <button type="button" onClick={() => setBigQr(true)} aria-label={L('Phóng to mã QR cho khách quét', 'Show the QR full screen')} style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}><img src={info.qrUrl} alt={L('Mã chuyển khoản', 'Payment QR')} style={{ width: 140, height: 140, objectFit: 'contain', background: '#fff', borderRadius: 10, display: 'block' }} /></button>}
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13.5 }}>
+                {info.instructions && <span style={{ whiteSpace: 'pre-line' }}>{info.instructions}</span>}
+                {info.qrUrl && <button type="button" onClick={() => setBigQr(true)} style={{ ...primary, minHeight: 46 }}>{L('Đưa khách quét (toàn màn hình)', 'Show to the guest (full screen)')}</button>}
+              </span>
             </div>
           )}
         </>

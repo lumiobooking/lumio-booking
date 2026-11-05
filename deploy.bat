@@ -49,6 +49,35 @@ if "!GEMAIL!"=="" (
   git config user.name "!GNAME!"
 )
 
+REM ===========================================================================
+REM  [0] Claude's update. Claude delivers code as a zip (lumio-rt...zip) that
+REM  is saved into "Claude outputs". Committing the zip itself changes NOTHING
+REM  on the site - the files inside must replace the ones in this folder. That
+REM  went wrong several times in a row, so this step does it: the newest zip
+REM  there is unpacked over this folder, then moved to "Claude outputs\da-cai"
+REM  (ignored by git) so it is never unpacked twice. .bat files in a zip are
+REM  skipped: this script must not be rewritten while it is running.
+REM ===========================================================================
+set "ZIP="
+for /f "delims=" %%f in ('dir /b /a-d /o-d "Claude outputs\lumio-*.zip" 2^>nul') do if not defined ZIP set "ZIP=%%f"
+if defined ZIP (
+  echo [0/4] Applying Claude's update: !ZIP!
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; $root=(Get-Location).Path.TrimEnd('\') + '\'; $z=[IO.Compression.ZipFile]::OpenRead($root + 'Claude outputs\!ZIP!'); $n=0; try { foreach ($e in $z.Entries) { if (-not $e.Name) { continue }; if ($e.FullName -like '*.bat') { continue }; $d=[IO.Path]::GetFullPath([IO.Path]::Combine($root, $e.FullName)); if (-not $d.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { throw ('Bad path in zip: ' + $e.FullName) }; [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($d)); [IO.Compression.ZipFileExtensions]::ExtractToFile($e, $d, $true); $n++ } } finally { $z.Dispose() }; Write-Host ('      ' + $n + ' files updated')"
+  if errorlevel 1 (
+    echo.
+    echo   [X] Could not unpack !ZIP!. NOTHING was sent anywhere.
+    echo       Close VS Code / any program using these files, then run this again.
+    pause
+    exit /b 1
+  )
+  if not exist "Claude outputs\da-cai" mkdir "Claude outputs\da-cai"
+  move /y "Claude outputs\lumio-*.zip" "Claude outputs\da-cai\" >nul
+  echo.
+) else (
+  echo [0/4] No new zip from Claude in "Claude outputs" - sending what is in this folder.
+  echo.
+)
+
 set /p MSG="Describe this update (or just press Enter): "
 if "!MSG!"=="" set "MSG=update"
 

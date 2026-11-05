@@ -45,7 +45,22 @@ export interface BookingTemplateData {
   source?: string;
   /** Self-service view / reschedule / cancel link. */
   manageUrl?: string;
+  /**
+   * Who is coming and what each person is having (Nov 2026). One entry for a
+   * single visit, one per person for a party. When given, the email shows a
+   * clean "who · what · with whom" block instead of the one-line lineup, and
+   * the party size up top.
+   */
+  people?: PartyPerson[];
+  /** Short forms for the header and the SMS: "Sun, Dec 6" · "6:00 PM". */
+  dateShort?: string;
+  timeStart?: string;
 }
+
+/** One service on a visit, and who does it. */
+export interface VisitLine { service: string; tech?: string }
+/** One person in the booking: their name, their services (with technician), their add-ons. */
+export interface PartyPerson { name: string; lines: VisitLine[]; addons?: string }
 
 /** Who is reading this email. Decides which rows are shown. */
 export type EmailAudience = 'customer' | 'owner' | 'staff';
@@ -57,12 +72,16 @@ const LABELS = {
     date: 'Date', time: 'Time', duration: 'Duration', technician: 'Technician',
     notes: 'Notes', total: 'Total', customer: 'Customer', phone: 'Phone',
     email: 'Email', where: 'Address', source: 'Booked via', manage: 'Manage booking',
+    party: 'Party', people: (n: number) => (n === 1 ? '1 person' : `${n} people`), who: 'Who is coming',
+    tbd: 'to be assigned', details: 'Booking details',
   },
   vi: {
     reference: 'Mã lịch', service: 'Dịch vụ', services: 'Dịch vụ', addons: 'Dịch vụ thêm',
     date: 'Ngày', time: 'Giờ', duration: 'Thời lượng', technician: 'Thợ làm',
     notes: 'Ghi chú', total: 'Tổng cộng', customer: 'Khách hàng', phone: 'Điện thoại',
     email: 'Email', where: 'Địa chỉ', source: 'Đặt qua', manage: 'Quản lý lịch hẹn',
+    party: 'Số người', people: (n: number) => `${n} người`, who: 'Khách & dịch vụ',
+    tbd: 'tiệm sắp xếp', details: 'Chi tiết lịch hẹn',
   },
 } as const;
 
@@ -85,26 +104,45 @@ export function bookingRowValues(d: BookingTemplateData, audience: EmailAudience
     if (value) rows.push([label, value, strong]);
   };
 
+  // A party (or a visit split across services) is listed person by person in
+  // its own block (peopleBlock); these rows then carry only what is shared.
+  const listed = hasPeopleBlock(d);
   put(L.reference, d.reference);
   if (audience !== 'customer') {
     put(L.customer, d.customer);
     put(L.phone, d.customerPhone);
     put(L.email, d.customerEmail);
   }
-  // A multi-service visit lists every service WITH the technician on it — the
-  // single-service row would only repeat the first of them.
-  if (d.lineup) put(L.services, d.lineup);
-  else put(L.service, d.service);
-  put(L.addons, addons);
+  if (listed) {
+    if ((d.people?.length ?? 0) > 1) put(L.party, L.people(d.people!.length));
+  } else {
+    // A multi-service visit lists every service WITH the technician on it — the
+    // single-service row would only repeat the first of them.
+    if (d.lineup) put(L.services, d.lineup);
+    else put(L.service, d.service);
+    put(L.addons, addons);
+  }
   put(L.date, d.date);
   put(L.time, d.time);
   put(L.duration, d.duration);
-  put(L.technician, d.technician);
+  if (!listed) put(L.technician, d.technician);
   put(L.notes, d.notes);
   if (audience === 'customer') put(L.where, d.address);
   if (audience === 'owner') put(L.source, d.source);
   put(L.total, d.total, true);
   return rows;
+}
+
+/** The people block replaces the service rows when there is more than one person or more than one service. */
+export function hasPeopleBlock(d: BookingTemplateData): boolean {
+  const p = d.people ?? [];
+  return p.length > 1 || (p.length === 1 && p[0].lines.length > 1);
+}
+
+/** "Rinata: Manicure & Pedicure — Lisa, Gel X — Kim (+ French tip)" — the plain-text form of one person. */
+export function personLine(p: PartyPerson, tbd: string): string {
+  const lines = p.lines.map((l) => `${l.service} — ${l.tech || tbd}`).join(', ');
+  return `${p.name}: ${lines}${p.addons ? ` (+ ${p.addons})` : ''}`;
 }
 
 /** Replaces {key} tokens in a template string. Unknown tokens are left blank. */
@@ -171,30 +209,51 @@ export function renderBookingEmailHtml(args: {
   const { heading, intro, footer, d, referral } = args;
   const audience = args.audience ?? 'customer';
   const lang: EmailLang = args.lang === 'vi' ? 'vi' : 'en';
+  const L = LABELS[lang] ?? LABELS.en;
+  const accent = esc(d.accent || '#6366f1');
   const rows = bookingRowValues(d, audience, lang)
+    // Date and time are the hero line when the short forms are known.
+    .filter(([label]) => !(d.dateShort && d.timeStart && (label === L.date || label === L.time || label === L.duration || label === L.party)))
     .map(([label, value, strong]) => detailRow(label, value, strong))
     .join('');
   const manage = d.manageUrl
-    ? `<p style="margin:18px 0 0;"><a href="${esc(d.manageUrl)}" style="display:inline-block;background:${esc(d.accent)};color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:11px 20px;border-radius:9px;">${esc((LABELS[lang] ?? LABELS.en).manage)} &rarr;</a></p>`
+    ? `<p style="margin:20px 0 0;text-align:center;"><a href="${esc(d.manageUrl)}" style="display:inline-block;background:${accent};color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 24px;border-radius:10px;">${esc(L.manage)} &rarr;</a></p>`
     : '';
+  const size = d.people?.length ?? 0;
+  // The hero: when, and how many — what anyone reading this needs first.
+  const hero = d.dateShort && d.timeStart
+    ? `<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 18px;background:#f7f8fc;border-radius:12px;">
+        <tr>
+          <td style="padding:14px 16px;">
+            <div style="font-size:12px;color:#8a94a6;letter-spacing:.04em;text-transform:uppercase;">${esc(L.date)} · ${esc(L.time)}</div>
+            <div style="font-size:20px;font-weight:800;color:#111827;margin-top:2px;">${esc(d.dateShort)} · <span style="white-space:nowrap;">${esc(d.timeStart)}</span></div>
+            ${(d.time && d.time !== d.timeStart) || d.duration ? `<div style="font-size:13px;color:#6b7280;margin-top:2px;">${[d.time !== d.timeStart ? d.time : '', d.duration].filter(Boolean).map((x) => esc(x as string)).join(' · ')}</div>` : ''}
+          </td>
+          ${size > 1 ? `<td style="padding:14px 16px;text-align:right;vertical-align:middle;white-space:nowrap;"><span style="display:inline-block;background:${accent};color:#ffffff;font-weight:800;font-size:14px;padding:7px 12px;border-radius:999px;">&#128101; ${esc(L.people(size))}</span></td>` : ''}
+        </tr>
+      </table>`
+    : '';
+  const people = hasPeopleBlock(d) ? peopleBlock(d.people ?? [], size > 1 ? L.who : L.services, L.tbd, accent) : '';
 
   return `<!doctype html>
 <html>
 <body style="margin:0;padding:0;background:#f4f6fb;">
-  <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f4f6fb;padding:24px;">
-    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 6px 24px rgba(15,23,42,.08);">
-      <div style="background:${esc(d.accent)};padding:22px 26px;">
-        <div style="color:#ffffff;font-size:19px;font-weight:800;letter-spacing:.2px;">${esc(d.salon)}</div>
+  <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f4f6fb;padding:24px 12px;">
+    <div style="max-width:540px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 6px 24px rgba(15,23,42,.08);">
+      <div style="background:${accent};padding:20px 24px;">
+        <div style="color:#ffffff;font-size:18px;font-weight:800;letter-spacing:.2px;">${esc(d.salon)}</div>
       </div>
-      <div style="padding:26px;">
-        <h1 style="margin:0 0 8px;font-size:20px;color:#111827;">${esc(heading)}</h1>
-        <p style="margin:0 0 18px;color:#4b5563;font-size:14px;line-height:1.6;">${esc(intro)}</p>
-        <table style="width:100%;border-collapse:collapse;">${rows}</table>
+      <div style="padding:24px;">
+        <h1 style="margin:0 0 6px;font-size:21px;line-height:1.3;color:#111827;">${esc(heading)}</h1>
+        ${intro ? `<p style="margin:0 0 18px;color:#4b5563;font-size:14px;line-height:1.6;">${esc(intro)}</p>` : ''}
+        ${hero}
+        ${people}
+        <table role="presentation" style="width:100%;border-collapse:collapse;">${rows}</table>
         ${manage}
         ${footer ? `<p style="margin:20px 0 0;color:#6b7280;font-size:13px;line-height:1.6;">${esc(footer)}</p>` : ''}
         ${referral ? referralBlockHtml(referral, d.accent) : ''}
       </div>
-      <div style="background:#f9fafb;padding:16px 26px;color:#9aa4b2;font-size:12px;border-top:1px solid #eef0f4;">
+      <div style="background:#f9fafb;padding:14px 24px;color:#9aa4b2;font-size:12px;border-top:1px solid #eef0f4;">
         ${esc(d.salon)}${d.contact ? ' · ' + esc(d.contact) : ''}
       </div>
     </div>
@@ -202,6 +261,31 @@ export function renderBookingEmailHtml(args: {
   </div>
 </body>
 </html>`;
+}
+
+/** Person by person: name, then each service with its technician, then add-ons. Email-safe. */
+function peopleBlock(people: PartyPerson[], title: string, tbd: string, accent: string): string {
+  const many = people.length > 1;
+  const items = people.map((p, i) => {
+    const lines = p.lines.map((l) => `
+          <tr>
+            <td style="padding:2px 0;color:#1f2733;font-size:14px;font-weight:600;">${esc(l.service)}</td>
+            <td style="padding:2px 0;color:${l.tech ? '#4b5563' : '#9aa4b2'};font-size:13px;text-align:right;white-space:nowrap;">${l.tech ? '&#128100; ' + esc(l.tech) : esc(tbd)}</td>
+          </tr>`).join('');
+    return `
+      <tr>
+        <td style="padding:10px 0;${i < people.length - 1 ? 'border-bottom:1px solid #eef0f4;' : ''}">
+          ${many ? `<div style="font-size:13px;font-weight:800;color:${accent};margin-bottom:3px;">${i + 1}. ${esc(p.name)}</div>` : ''}
+          <table role="presentation" style="width:100%;border-collapse:collapse;">${lines}</table>
+          ${p.addons ? `<div style="font-size:12.5px;color:#6b7280;margin-top:2px;">+ ${esc(p.addons)}</div>` : ''}
+        </td>
+      </tr>`;
+  }).join('');
+  return `
+    <div style="margin:0 0 16px;padding:4px 16px;border:1px solid #eef0f4;border-radius:12px;">
+      <div style="font-size:12px;color:#8a94a6;letter-spacing:.04em;text-transform:uppercase;padding-top:10px;">${esc(title)}</div>
+      <table role="presentation" style="width:100%;border-collapse:collapse;">${items}</table>
+    </div>`;
 }
 
 // ===========================================================================
@@ -370,6 +454,7 @@ export function renderBookingEmailText(
     '',
     intro,
     '',
+    ...(hasPeopleBlock(d) ? [...(d.people ?? []).map((p) => `- ${personLine(p, L.tbd)}`), ''] : []),
     ...bookingRowValues(d, audience, lang).map(([label, value]) => `${label}: ${value}`),
     d.manageUrl ? `${L.manage}: ${d.manageUrl}` : '',
     '',

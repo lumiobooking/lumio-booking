@@ -2,7 +2,7 @@
  * The sync plan: which months a day reads, how a failure comes back, which
  * claimed jobs are dead, and how a channel's state reads in plain words.
  */
-import { monthsToSync, backoffMinutes, afterFailure, isStaleRunning, channelHealth, permissionIn, prevMonthOf } from './sync-plan';
+import { monthsToSync, backoffMinutes, afterFailure, isStaleRunning, channelHealth, permissionIn, prevMonthOf, igInsightsBlocked, withIgPermission } from './sync-plan';
 import { isPagePostChange, onChannelSyncRequest, requestChannelSync } from './sync-signals';
 
 describe('months a daily run reads', () => {
@@ -74,5 +74,28 @@ describe('the Page posted → the queue hears it', () => {
     off();
     requestChannelSync('p10');
     expect(got).toEqual(['p9']);
+  });
+});
+
+describe('Instagram synced "ok" but refused its insights (Nov 2026 audit)', () => {
+  const now = new Date('2026-11-04T10:00:00Z');
+  const green = channelHealth({ platform: 'meta_social', connected: true, lastSyncedAt: '2026-11-04T08:00:00Z', lastError: null, lastJob: null, queued: false }, now);
+  it('a (#10) permission refusal turns the green chip into a permission warning naming the permission', () => {
+    const errs = ['views(total): (#10) Application does not have permission for this action', 'reach: (#10) Application does not have permission for this action'];
+    expect(igInsightsBlocked(errs)).toBe(true);
+    const h = withIgPermission(green, true);
+    expect(h).toMatchObject({ level: 'warn', key: 'permission' });
+    expect(h.detail).toContain('instagram_manage_insights');
+  });
+  it('other metric errors (an unsupported period) are not a permission problem', () => {
+    expect(igInsightsBlocked(['follower_count(total): (#100) The follower_count metric only supports period day'])).toBe(false);
+    expect(igInsightsBlocked(null)).toBe(false);
+    expect(withIgPermission(green, false)).toBe(green);
+  });
+  it('only the Meta channel is touched, and a red chip stays red', () => {
+    const gbp = { ...green, platform: 'gbp' };
+    expect(withIgPermission(gbp, true)).toBe(gbp);
+    const red = { ...green, level: 'bad' as const, key: 'failed' as const };
+    expect(withIgPermission(red, true)).toBe(red);
   });
 });

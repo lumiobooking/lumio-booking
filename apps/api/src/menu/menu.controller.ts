@@ -3,6 +3,7 @@ import { UserRole } from '@prisma/client';
 import { MenuService } from './menu.service';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
+import { ImportMenuDto } from './dto/import-menu.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -21,6 +22,12 @@ export class MenuController {
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateMenuItemDto) {
     return this.menu.create(user, dto);
+  }
+
+  /** The whole menu from the sheet template: created or updated by name, never doubled. */
+  @Post('import')
+  importMany(@CurrentUser() user: AuthenticatedUser, @Body() dto: ImportMenuDto) {
+    return this.menu.importMany(user, dto.items);
   }
 
   @Patch(':id')

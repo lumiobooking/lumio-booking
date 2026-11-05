@@ -101,6 +101,24 @@ export function permissionIn(error: string | null | undefined): string | null {
   return m ? m[0] : null;
 }
 
+/**
+ * Instagram answered the sync but refused its insights ("(#10) Application
+ * does not have permission for this action" on views / reach / interactions).
+ * The sync itself is "ok", so the board showed green while the report's IG
+ * views, reach and per-post numbers were empty (Nov 2026 audit: 21 salons).
+ * Pure: the month's stored per-metric errors in, yes/no out.
+ */
+export function igInsightsBlocked(errors: unknown): boolean {
+  if (!Array.isArray(errors)) return false;
+  return errors.some((e) => /\(#10\)|does not have permission|instagram_manage_insights/i.test(String(e)));
+}
+
+/** The meta channel's health once Instagram's refusal is known: green becomes a permission warning. */
+export function withIgPermission(h: ChannelHealth, blocked: boolean): ChannelHealth {
+  if (!blocked || h.platform !== 'meta_social' || h.level === 'bad' || h.level === 'off') return h;
+  return { ...h, level: 'warn', key: 'permission', detail: 'instagram_manage_insights — Instagram: không đọc được lượt xem / reach / tương tác' };
+}
+
 export function channelHealth(c: ChannelHealthInput, now: Date): ChannelHealth {
   const last = c.lastSyncedAt ? new Date(c.lastSyncedAt) : null;
   const iso = last ? last.toISOString() : null;

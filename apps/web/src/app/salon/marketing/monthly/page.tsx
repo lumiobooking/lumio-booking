@@ -19,7 +19,7 @@ interface Delta { value: number; prev: number; pct: number | null }
 interface Monthly {
   month: string;
   range?: { from: string; to: string };
-  outcome: { totals: { bookings: number; showed: number; revenueCents: number }; newCustomers: number; owned: Record<string, number>; gbp?: { bookings: number; showed: number; revenueCents: number }; channels: { key: string; bookings: number; showed: number; revenueCents: number }[] };
+  outcome: { totals: { bookings: number; showed: number; revenueCents: number }; newCustomers: number; visitsTracked?: boolean; owned: Record<string, number>; gbp?: { bookings: number; showed: number; revenueCents: number }; channels: { key: string; bookings: number; showed: number; revenueCents: number }[] };
   spend: SpendRow[]; workLog: WorkRow[]; blended: Blended;
   prevMonth?: string;
   deltas?: { bookings: Delta; showed: Delta; revenueCents: Delta; newCustomers: Delta; spendCents: Delta };
@@ -357,7 +357,7 @@ function Inner() {
       {/* Blended KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
         <Kpi label={T('Tổng chi marketing', 'Total spend')} value={money(b?.totalSpendCents ?? 0)} />
-        <Kpi label={T('Doanh thu (từ lịch)', 'Revenue (booked)')} value={money(data?.outcome.totals.revenueCents ?? 0)} accent="#22c55e" />
+        <Kpi label={T('Doanh thu (từ lịch)', 'Revenue (booked)')} value={data?.outcome.visitsTracked === false ? '—' : money(data?.outcome.totals.revenueCents ?? 0)} accent="#22c55e" hint={data?.outcome.visitsTracked === false ? T('tiệm check-out ngoài Lumio', 'checked out outside Lumio') : undefined} />
         <Kpi label={T('Chi phí / khách mới', 'Cost / new customer')} value={showBlended && b?.costPerNewCustomerCents != null ? money(b.costPerNewCustomerCents) : '—'} hint={showBlended ? undefined : T('cần nhập chi phí', 'enter spend')} />
         <Kpi label={T('Doanh thu / chi phí (ROAS)', 'Revenue ÷ spend (ROAS)')} value={showBlended && b?.revenuePerSpend != null ? `${b.revenuePerSpend}×` : '—'} accent="#22c55e" hint={showBlended ? undefined : T('cần nhập chi phí', 'enter spend')} />
       </div>
@@ -937,7 +937,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       ...igP.map((p) => ({ ...p, _pf: 'IG', _col: '#e1306c', interactions: null as number | null })),
     ].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 4);
   const top3 = topAll.map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div class="t-cap" style="width:34px;height:34px;border-radius:6px;background:${p._col}22;color: ${p._col};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700">${p._pf}</div>`; const badge = `<span class="t-cap" style="font-weight:700;color: #fff;background:${p._col};border-radius:4px;padding:1px 5px;margin-right:5px">${p._pf}</span>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div class="t-cap" style="color: #475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${badge}${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div class="t-cap" style="color: #0f2a52"><b>${fnum(p.views)}</b> ${t('xem', 'views')}${p.reach != null ? ` · <b>${fnum(p.reach)}</b> reach` : ''} · <b>${fnum(p.interactions ?? ((p.likes ?? 0) + (p.comments ?? 0)))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div class="t-body" style="color: #94a3b8;">—</div>`;
-  const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;min-width:0;border-left:1px solid #eef1f6;padding-left:12px"><div class="t-cap" style="color: #94a3b8;margin-bottom:2px">${F && F.top.length ? t('TOP 5 BÀI — theo tương tác', 'TOP 5 POSTS — by interactions') : t('TOP BÀI (FB + IG) — theo lượt xem', 'TOP POSTS (FB + IG) — by views')}</div>${top3}</div></div>`;
+  const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;min-width:0;border-left:1px solid #eef1f6;padding-left:12px"><div class="t-cap" style="color: #94a3b8;margin-bottom:2px">${F && F.top.length ? t('TOP 5 BÀI — theo lượt xem', 'TOP 5 POSTS — by views') : t('TOP BÀI (FB + IG) — theo lượt xem', 'TOP POSTS (FB + IG) — by views')}</div>${top3}</div></div>`;
   const adsPanel = spendLine
     ? `<div class="t-body" style="color: #0f2a52">${t('Tổng chi', 'Spend')}: <b>${money(total)}</b><div class="t-body" style="color: #6b7280;margin-top:4px">${spendLine}</div></div>`
     : `<div class="t-body" style="color: #94a3b8;line-height:1.6">${t('Chưa chạy quảng cáo tháng này. Khi bật quảng cáo, mục này hiển thị Chi phí · Reach · Click · CPC · CTR · ROAS.', 'No paid ads this month. Once ads run, this shows Spend · Reach · Clicks · CPC · CTR · ROAS.')}</div>`;
@@ -1016,7 +1016,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       ${panel('06', t('ĐÁNH GIÁ & XẾP HẠNG', 'REVIEWS'), reviewPanel)}
     </div>`;
   }
-  const bizNums = `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(String(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings)}${bignum(String(o.totals.showed), t('Đã đến', 'Showed'), d?.showed)}${bignum(String(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers)}${bignum(money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents)}${total > 0 ? bignum(money(total), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) : ''}${(total > 0 && b?.revenuePerSpend != null) ? bignum(String(b.revenuePerSpend) + '×', 'ROAS', undefined, b.revenuePerSpend >= 1 ? '#059669' : '#d97706') : ''}</div>${(o.gbp?.bookings ?? 0) > 0 ? `<div class="t-body" style="color: #475569;margin-top:8px;border-top:1px solid #eef1f6;padding-top:6px">${t('Trong đó từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b>${o.gbp!.bookings}</b> ${t('đặt lịch', 'bookings')} · <b style="color: #059669">${money(o.gbp!.revenueCents)}</b></div>` : ''}${spendLine ? `<div class="t-body" style="color: #6b7280;margin-top:6px">${t('Chi tiết chi phí', 'Spend detail')}: ${esc(spendLine)}</div>` : ''}`;
+  const bizNums = `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(String(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings)}${bignum(o.visitsTracked === false ? '—' : String(o.totals.showed), t('Đã đến', 'Showed'), d?.showed)}${bignum(String(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers)}${bignum(o.visitsTracked === false ? '—' : money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents)}${total > 0 ? bignum(money(total), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) : ''}${(total > 0 && b?.revenuePerSpend != null) ? bignum(String(b.revenuePerSpend) + '×', 'ROAS', undefined, b.revenuePerSpend >= 1 ? '#059669' : '#d97706') : ''}</div>${(o.gbp?.bookings ?? 0) > 0 ? `<div class="t-body" style="color: #475569;margin-top:8px;border-top:1px solid #eef1f6;padding-top:6px">${t('Trong đó từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b>${o.gbp!.bookings}</b> ${t('đặt lịch', 'bookings')} · <b style="color: #059669">${money(o.gbp!.revenueCents)}</b></div>` : ''}${spendLine ? `<div class="t-body" style="color: #6b7280;margin-top:6px">${t('Chi tiết chi phí', 'Spend detail')}: ${esc(spendLine)}</div>` : ''}`;
   // "Tháng 08/2026", not the raw "2026-08" — a client report speaks the
   // client's calendar, not the database's.
   const [yy, mm] = String(data.month || '').split('-');
@@ -1632,7 +1632,7 @@ function ContentFactsCard({ f, T }: { f: MonthFactsUi; T: (v: string, e: string)
       </div>
       {f.top.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 600, marginBottom: 6 }}>{T('TOP 5 BÀI TỐT NHẤT', 'TOP 5 POSTS')} <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>· {T('theo tương tác, rồi lượt xem', 'by interactions, then views')}</span></div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 600, marginBottom: 6 }}>{T('TOP 5 BÀI TỐT NHẤT', 'TOP 5 POSTS')} <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>· {T('theo lượt xem, rồi tương tác', 'by views, then interactions')}</span></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {f.top.map((p, i) => {
               const img = !!p.thumbnailUrl;
@@ -1650,8 +1650,8 @@ function ContentFactsCard({ f, T }: { f: MonthFactsUi; T: (v: string, e: string)
                       {p.caption && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.caption}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4, fontSize: 11.5, color: 'var(--ce2e8f0)' }}>
+                      <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.views)}</b> <span style={{ color: 'var(--c64748b)' }}>{T('lượt xem', 'views')}</span></span>
                       <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.interactions)}</b> <span style={{ color: 'var(--c64748b)' }}>{T('tương tác', 'interactions')}</span></span>
-                      {p.views != null && <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.views)}</b> <span style={{ color: 'var(--c64748b)' }}>{T('xem', 'views')}</span></span>}
                       {p.likes != null && <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.likes)}</b> <span style={{ color: 'var(--c64748b)' }}>{T('thích', 'likes')}</span></span>}
                       {p.comments != null && <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.comments)}</b> <span style={{ color: 'var(--c64748b)' }}>{T('bình luận', 'comments')}</span></span>}
                       {p.shares != null && p.shares > 0 && <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.shares)}</b> share</span>}
@@ -1959,7 +1959,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
         })()}</div>
         <div style={pv}><div style={pvL}>② {T('MANG VỀ', 'RESULTS')}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-            {[[String(o.totals.bookings), T('lượt đặt', 'bookings'), d?.bookings, false], [String(o.totals.showed), T('đã đến', 'showed'), d?.showed, false], [String(o.newCustomers), T('khách mới', 'new'), d?.newCustomers, false], [money(o.totals.revenueCents), T('doanh thu', 'revenue'), d?.revenueCents, true]].map((x, i) => (
+            {[[String(o.totals.bookings), T('lượt đặt', 'bookings'), d?.bookings, false], [o.visitsTracked === false ? '—' : String(o.totals.showed), T('đã đến', 'showed'), d?.showed, false], [String(o.newCustomers), T('khách mới', 'new'), d?.newCustomers, false], [o.visitsTracked === false ? '—' : money(o.totals.revenueCents), T('doanh thu', 'revenue'), d?.revenueCents, true]].map((x, i) => (
               <div key={i} style={{ flex: 1, minWidth: 70, textAlign: 'center' }}>
                 <div style={{ fontSize: 21, fontWeight: 700, color: x[3] ? 'var(--ink-good)' : 'var(--cf8fafc)' }}>{x[0] as string}</div>
                 <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{x[1] as string}</div>
@@ -1967,6 +1967,11 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
               </div>
             ))}
           </div>
+          {o.visitsTracked === false && (
+            <div style={{ fontSize: 11.5, color: 'var(--ink-warn)', marginTop: 6, lineHeight: 1.45 }}>
+              {T('“Đã đến” và doanh thu không đo được: tiệm nhận lịch trên Lumio nhưng check-out ở máy khác. Check-in / thanh toán trên Lumio thì hai số này tự có.', '“Showed” and revenue are not measured: the salon books in Lumio but checks out on another system. Check in / pay in Lumio and both fill in.')}
+            </div>
+          )}
           {(o.gbp?.bookings ?? 0) > 0 && (
             <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 6 }}>
               {T('Từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b style={{ color: 'var(--ce2e8f0)' }}>{o.gbp!.bookings}</b> {T('lượt đặt', 'bookings')} · {o.gbp!.showed} {T('đã đến', 'showed')} · <b style={{ color: 'var(--ink-good)' }}>{money(o.gbp!.revenueCents)}</b>

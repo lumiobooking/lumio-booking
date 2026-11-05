@@ -1,3 +1,4 @@
+import { QR_LINE, qrMatrix } from '../common/vietqr';
 import { createHash, randomBytes } from 'crypto';
 
 /**
@@ -149,7 +150,16 @@ export const DRAWER_KICK = Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa, 0x1b, 0x70
  * dashed rule. `c` centred. `a` the amount of a two-column line ("2x Phở ...
  * 170.000 đ"), drawn pinned to the right edge.
  */
-export type Row = { r: 'n' | 'b' | 't' | 'h' | 's'; t: string; a?: string; c?: true };
+export type Row = { r: 'n' | 'b' | 't' | 'h' | 's' | 'q'; t: string; a?: string; c?: true; m?: string[] };
+
+/** A "[[QR:…]]" line as a QR row: the matrix as "0101…" strings the agent draws as squares. */
+export function qrRow(line: string): Row | null {
+  const q = QR_LINE.exec(line);
+  if (!q) return null;
+  try {
+    return { r: 'q', t: '', c: true, m: qrMatrix(q[1]).map((row) => row.map((d) => (d ? '1' : '0')).join('')) };
+  } catch { return null; }
+}
 
 const TWO_COL = /^(.*?\S)\s{2,}(\S(?:.*\S)?)$/;
 
@@ -177,10 +187,13 @@ export function baseFontSize(route: Route): number {
 export function styleRows(textIn: string, station: string | null): Row[] {
   const lines = String(textIn ?? '').replace(/\r/g, '').split('\n').map((x) => x.replace(/\s+$/, ''));
   while (lines.length > 1 && !lines[lines.length - 1].trim()) lines.pop();
-  const cols = Math.max(32, Math.min(48, lines.reduce((m, x) => Math.max(m, x.length), 0)));
+  const cols = Math.max(32, Math.min(48, lines.reduce((m, x) => (QR_LINE.test(x) ? m : Math.max(m, x.length)), 0)));
   const kitchen = !!station && String(station).toUpperCase() !== 'COUNTER';
   let seen = false;
   return lines.map((t, i) => {
+    const qr = QR_LINE.test(t) ? qrRow(t) : null;
+    if (qr) return qr;
+    if (QR_LINE.test(t)) return { r: 'n', t: '' } as Row;
     if (/^\s*[-=_]{8,}\s*$/.test(t)) return { r: 's', t } as Row;
     const body = t.trim();
     const lead = t.length - t.trimStart().length;
@@ -223,6 +236,7 @@ export function escposBytes(rows: Row[], route: Route, opts: { kick?: boolean; d
   const parts: Buffer[] = [Buffer.from([ESC, 0x40]), ...(opts.kick ? [DRAWER_KICK] : [])];
   if (route.beep) parts.push(Buffer.from([ESC, 0x42, 0x02, 0x02]));
   for (const x of rows) {
+    if (x.r === 'q') { if (x.m?.length) parts.push(Buffer.from([ESC, 0x61, 0x01]), rasterQr(x.m, route), Buffer.from([0x0a, ESC, 0x61, 0x00])); continue; }
     const t = plain(x.t);
     const centre = x.c ? [ESC, 0x61, 0x01] : [];
     const back = x.c ? [ESC, 0x61, 0x00] : [];
@@ -233,6 +247,26 @@ export function escposBytes(rows: Row[], route: Route, opts: { kick?: boolean; d
   }
   parts.push(Buffer.from([0x0a, 0x0a, 0x0a, 0x0a, GS, 0x56, 0x42, 0x00]));
   return Buffer.concat(parts);
+}
+
+/**
+ * A QR as an ESC/POS raster image (GS v 0): about 30 mm on a 58 mm roll and
+ * 38 mm on an 80 mm one, a whole number of dots per module so it scans.
+ */
+export function rasterQr(m: string[], route: Route): Buffer {
+  const n = m.length;
+  const target = route.paper === 58 ? 240 : 300;
+  const k = Math.max(2, Math.min(8, Math.floor(target / Math.max(1, n))));
+  const px = n * k;
+  const wb = Math.ceil(px / 8);
+  const body = Buffer.alloc(wb * px);
+  for (let y = 0; y < px; y++) {
+    const row = m[Math.floor(y / k)];
+    for (let x = 0; x < px; x++) {
+      if (row[Math.floor(x / k)] === '1') body[y * wb + (x >> 3)] |= 0x80 >> (x & 7);
+    }
+  }
+  return Buffer.concat([Buffer.from([0x1d, 0x76, 0x30, 0x00, wb & 0xff, wb >> 8, px & 0xff, px >> 8]), body]);
 }
 
 /**

@@ -1,0 +1,9 @@
+﻿Tên bàn *,Số ghế *,Khu vực,Hình dạng (tròn / vuông / dài),Hàng,Cột
+Bàn 1,2,Trong nhà,tròn,1,1
+Bàn 2,4,Trong nhà,vuông,1,2
+Bàn 3,4,Trong nhà,vuông,1,3
+Bàn 4,4,Trong nhà,vuông,2,1
+Bàn 5,8,Trong nhà,dài,2,2
+Sân 1,4,Sân ngoài,vuông,4,1
+Sân 2,4,Sân ngoài,vuông,4,2
+Bar 1,2,Quầy bar,tròn,4,5

@@ -52,7 +52,7 @@ export interface ContentT {
 }
 export interface MonthlyT {
   month: string;
-  outcome: { totals: { bookings: number; showed: number; revenueCents: number }; newCustomers: number };
+  outcome: { totals: { bookings: number; showed: number; revenueCents: number }; newCustomers: number; visitsTracked?: boolean };
   spend: { channel: string; amountCents: number }[];
   blended: { totalSpendCents: number; revenuePerSpend: number | null };
   deltas?: { bookings: DeltaT; showed: DeltaT; revenueCents: DeltaT; newCustomers: DeltaT; spendCents: DeltaT };
@@ -180,9 +180,9 @@ export function buildReportXml(inp: ReportInput): { document: string; footer: st
     Array(6).fill(CM(w6)),
     tr(
       kpiCell(w6, f(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings) +
-      kpiCell(w6, f(o.totals.showed), t('Đã đến', 'Showed'), d?.showed) +
+      kpiCell(w6, o.visitsTracked === false ? '—' : f(o.totals.showed), t('Đã đến', 'Showed'), d?.showed) +
       kpiCell(w6, f(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers) +
-      kpiCell(w6, money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents) +
+      kpiCell(w6, o.visitsTracked === false ? '—' : money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents) +
       kpiCell(w6, money(b?.totalSpendCents ?? 0), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) +
       kpiCell(w6, roas == null ? '—' : `${Math.round(roas * 100) / 100}×`, 'ROAS', null, roas == null ? undefined : roas >= 1 ? C.GREEN : C.AMBER),
     ),

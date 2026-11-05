@@ -257,6 +257,8 @@ export class SettingsController {
       paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>;
       tipsEnabled?: boolean;
       requireShift?: boolean;
+      bankAccount?: { bin?: string; accountNo?: string; accountName?: string } | null;
+      printPayQr?: boolean;
     },
   ) {
     return this.settings.updatePos(user, dto);

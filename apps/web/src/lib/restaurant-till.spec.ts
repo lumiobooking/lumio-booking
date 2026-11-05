@@ -1,3 +1,4 @@
+import { vietQrPayload } from './vietqr';
 import {
   addToCart, bankName, byTableName, callText, cartKey, cartToOrder, cartTotal, cashQuickAmounts, combinedState, evenShares, formatMoney, isTableIndustry, lineGroups, minutesOpen,
   optionsReady, pendingLines, priceWith, tableState, ticketTone, tillError, timerTone, vietQr, type CheckLine,
@@ -130,9 +131,11 @@ describe('restaurant till', () => {
     it('makes a VietQR for exactly what is owed, in đồng only', () => {
       const bank = { bin: '970436', accountNo: '0123456789', accountName: 'NHA HANG LUMIO' };
       const u = vietQr(bank, 255000, 'LM57', 'VND')!;
-      expect(u.startsWith('https://img.vietqr.io/image/970436-0123456789-compact2.png?')).toBe(true);
-      expect(u).toContain('amount=255000');
-      expect(u).toContain('addInfo=LM57');
+      expect(u.startsWith('data:image/svg+xml')).toBe(true);
+      expect(u).not.toContain('vietqr.io');
+      // The same payload the guest check prints: amount 255000 and note LM57.
+      expect(vietQrPayload(bank, 255000, 'LM57')).toContain('5406255000');
+      expect(vietQrPayload(bank, 255000, 'LM57')).toContain('0804LM57');
       expect(vietQr(bank, 2500, 'LM57', 'USD')).toBeNull();
       expect(vietQr(null, 1, 'LM1', 'VND')).toBeNull();
       expect(vietQr({ bin: '97', accountNo: '01', accountName: '' }, 1, 'LM1', 'VND')).toBeNull();

@@ -21,7 +21,7 @@ function post(over: Partial<StoredPost> & { day: string }): StoredPost {
 }
 
 describe('month facts: posts, interactions, top 5', () => {
-  it('counts every platform, sums only what was measured, ranks by interactions then views', () => {
+  it('counts every platform, sums only what was measured, ranks by views then interactions', () => {
     const cur = [
       post({ day: '2026-09-02', platform: 'facebook', interactions: 40, views: 900, likes: 30, comments: 10 }),
       post({ day: '2026-09-10', platform: 'instagram', type: 'reel', interactions: 120, views: 5000 }),
@@ -39,11 +39,23 @@ describe('month facts: posts, interactions, top 5', () => {
     expect(f.posts.byPlatform[1].byType).toEqual({ reel: 1, photo: 1 });
     expect(f.interactions.total).toBe(288);
     expect(f.views.total).toBe(13200);
-    expect(f.top.map((t) => t.views)).toEqual([7000, 5000, 900, 300, null]); // tie on 120 → more views first; 5 max
+    // Views first (7000 > 5000 > 900 > 300); posts with no views come after, by interactions; 5 max.
+    expect(f.top.map((t) => t.views)).toEqual([7000, 5000, 900, 300, null]);
     expect(f.top[4].interactions).toBe(2);
     expect(f.posts.vsPrev).toEqual({ value: 7, prev: 2, pct: 250 });
     expect(f.interactions.vsPrev.pct).toBe(92); // 288 vs 150
     expect(f.notes).toEqual(['unmeasured:1']);
+  });
+
+  it('top posts: the most-viewed post is first even when another has more interactions', () => {
+    const cur = [
+      post({ day: '2026-10-02', platform: 'facebook', interactions: 300, views: 1200 }),
+      post({ day: '2026-10-05', platform: 'instagram', type: 'reel', interactions: 40, views: 9000 }),
+      post({ day: '2026-10-07', platform: 'instagram', interactions: 90 }), // no views read
+      post({ day: '2026-10-09', platform: 'facebook', interactions: 10, views: 0 }),
+    ];
+    const f = monthFacts('2026-10', cur, [], '2026-11-04');
+    expect(f.top.map((t) => [t.views, t.interactions])).toEqual([[9000, 40], [1200, 300], [0, 10], [null, 90]]);
   });
 
   it('a running month is compared to the same days of last month, and says so', () => {

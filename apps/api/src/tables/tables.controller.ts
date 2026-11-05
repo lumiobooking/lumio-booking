@@ -4,6 +4,7 @@ import { TablesService } from './tables.service';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableDto } from './dto/update-table.dto';
 import { SaveLayoutDto } from './dto/save-layout.dto';
+import { ImportTablesDto } from './dto/import-tables.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -32,6 +33,12 @@ export class TablesController {
   @Patch('layout')
   saveLayout(@CurrentUser() user: AuthenticatedUser, @Body() dto: SaveLayoutDto) {
     return this.tables.saveLayout(user, dto.layout);
+  }
+
+  /** Tables and floor plan from the sheet template: created or updated by name. Owner only. */
+  @Post('import')
+  importMany(@CurrentUser() user: AuthenticatedUser, @Body() dto: ImportTablesDto) {
+    return this.tables.importMany(user, dto.tables);
   }
 
   @Post()

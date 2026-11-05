@@ -1,5 +1,7 @@
 'use client';
 
+import { payQrFor } from '../../../lib/pay-qr';
+import { GuestPayQr } from '../../../components/GuestPayQr';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { createPortal } from 'react-dom';
@@ -37,6 +39,8 @@ interface CatalogCache {
   services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
   taxRate: number; cardSurchargePct: number; cardSurchargeOn: boolean; transferInfo: string; transferQr: string; currency: string;
   payDetails?: Record<string, { instructions?: string; qrUrl?: string }>;
+  /** The one bank account (VietQR): the till draws a QR with the exact amount from it. */
+  bankAccount?: { bin: string; accountNo: string; accountName: string } | null;
   tipsOn?: boolean;
   tillMethods?: PayMethod[];
   loyalty: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number };
@@ -272,6 +276,9 @@ function Register() {
   // Per-method bank details / QR. VietQR, MoMo and ZaloPay are three different
   // images, so one shared field showed the cashier the wrong code — or none.
   const [payDetails, setPayDetails] = useState<Record<string, { instructions?: string; qrUrl?: string }>>({});
+  const [bankAccount, setBankAccount] = useState<{ bin: string; accountNo: string; accountName: string } | null>(null);
+  // The transfer QR full screen, to turn the iPad / phone round to the customer.
+  const [bigQr, setBigQr] = useState(false);
   const [tab, setTab] = useState<'SERVICE' | 'ADDON' | 'PRODUCT'>('SERVICE');
   // A phone does not draw an empty tab (see the tab row), so a tab that
   // emptied out from under the cashier falls back to services rather than
@@ -433,7 +440,7 @@ function Register() {
 
   const applyCatalog = (c: CatalogCache) => {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
-    setTaxRate(c.taxRate); setCardSurchargePct(c.cardSurchargePct ?? 0); setCardSurchargeOn(!!c.cardSurchargeOn); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setPayDetails(c.payDetails ?? {}); setCurrency(c.currency);
+    setTaxRate(c.taxRate); setCardSurchargePct(c.cardSurchargePct ?? 0); setCardSurchargeOn(!!c.cardSurchargeOn); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setPayDetails(c.payDetails ?? {}); setBankAccount(c.bankAccount ?? null); setCurrency(c.currency);
     setLoyalty(c.loyalty);
     setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1'); setSalonWelcome(c.salonWelcome ?? '');
     setReceiptProfile(c.receipt ?? null);
@@ -454,7 +461,7 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>; bankAccount?: { bin: string; accountNo: string; accountName: string } | null }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
       ]);
       // The bill's header + the owner's design. Any cashier may read it; if it
       // cannot be fetched the till still prints (salon name, default layout).
@@ -471,6 +478,7 @@ function Register() {
         transferInfo: settings.pos?.transferInstructions ?? '',
         transferQr: settings.pos?.transferQrUrl ?? '',
         payDetails: settings.pos?.paymentDetails ?? {},
+        bankAccount: settings.pos?.bankAccount ?? null,
         tipsOn: settings.pos?.tipsEnabled !== false,
         // Which buttons this till shows. Resolved server-side from the salon's
         // own choice, else its market — the page just renders what it is given.
@@ -2392,8 +2400,14 @@ function Register() {
 
   const transferPanel = (() => {
     const d = payDetails[payMethod] ?? {};
-    const info = d.instructions ?? (payMethod === 'TRANSFER' ? transferInfo : '');
-    const qr = d.qrUrl ?? (payMethod === 'TRANSFER' ? transferQr : '');
+    // One bank account → a VietQR with the exact amount (MoMo / ZaloPay scan it too);
+    // otherwise the owner's own text and QR image, as before.
+    const pq = payQrFor({
+      method: payMethod, account: bankAccount, amount: money.due, currency, note: customerLabel ?? '',
+      details: { instructions: d.instructions ?? (payMethod === 'TRANSFER' ? transferInfo : ''), qrUrl: d.qrUrl ?? (payMethod === 'TRANSFER' ? transferQr : '') },
+    });
+    const info = pq.lines.join('\n');
+    const qr = pq.src ?? '';
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16, borderRadius: 14, background: 'var(--c1e293b)' }}>
         {info || qr ? (
@@ -2401,7 +2415,14 @@ function Register() {
             <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('po.transferShow').replace('{x}', fmt(money.due))}</span>
             {info && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 14, color: 'var(--ce2e8f0)', margin: 0 }}>{info}</pre>}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            {qr && <img src={qr} alt={`${payMethod} QR`} style={{ width: 160, height: 160, objectFit: 'contain', background: '#fff', borderRadius: 10, padding: 6 }} />}
+            {qr && <img src={qr} alt={`${payMethod} QR`} style={{ width: pq.exact ? 200 : 160, height: pq.exact ? 200 : 160, objectFit: 'contain', background: '#fff', borderRadius: 10, padding: 6 }} />}
+            {pq.exact && <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L('Khách quét bằng app ngân hàng, MoMo hoặc ZaloPay — số tiền đã điền sẵn.', 'The customer scans with any banking app — the amount is filled in.')}</span>}
+            {qr && (
+              <button type="button" onClick={() => setBigQr(true)} style={{ height: 48, borderRadius: 12, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {L('Đưa khách quét (toàn màn hình)', 'Show to the customer (full screen)')}
+              </button>
+            )}
+            {bigQr && qr && <GuestPayQr vi={lang === 'vi'} src={qr} amount={fmt(money.due)} lines={pq.lines} shop={salonName || null} onClose={() => setBigQr(false)} />}
             <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('po.transferAfter')}</span>
           </>
         ) : (

@@ -14,8 +14,10 @@
  *  - Month-over-month movement only when BOTH months have the number and the
  *    previous one is not 0. A month still running is compared to the same
  *    number of days of the previous month ("to date"), not the whole of it.
- *  - Top posts rank by interactions, then views, then recency. A post with
- *    no numbers at all cannot be "best" and is left out of the ranking.
+ *  - Top posts rank by VIEWS, then interactions, then recency (4 Nov 2026,
+ *    the owner: "xếp theo view" — views are the number a salon reads first
+ *    and the one every channel reports). A post with no numbers at all cannot
+ *    be "best" and is left out of the ranking.
  */
 import type { StoredPost } from './social-posts.service';
 
@@ -108,7 +110,7 @@ function platformFacts(platform: PlatformKey, posts: StoredPost[]): PlatformFact
 export function rankPosts(posts: StoredPost[], limit = 5): StoredPost[] {
   return posts
     .filter((p) => p.interactions != null || p.views != null)
-    .sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0) || (b.views ?? 0) - (a.views ?? 0) || b.publishedAt.getTime() - a.publishedAt.getTime())
+    .sort((a, b) => (b.views ?? -1) - (a.views ?? -1) || (b.interactions ?? 0) - (a.interactions ?? 0) || b.publishedAt.getTime() - a.publishedAt.getTime())
     .slice(0, limit);
 }
 

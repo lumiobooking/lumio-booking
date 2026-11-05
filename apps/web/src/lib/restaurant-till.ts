@@ -1,3 +1,4 @@
+import { qrDataUrl, vietQrPayload, VN_BANK_LIST } from './vietqr';
 /**
  * The restaurant till's small rules, kept out of the component so they are
  * tested: what colour a table is, how long it has been seated, which industry
@@ -204,18 +205,13 @@ export function formatMoney(cents: number, currency: string): string {
 export function vietQr(bank: BankAccount | null | undefined, amount: number, code: string, currency: string): string | null {
   if (!bank || String(currency).toUpperCase() !== 'VND') return null;
   if (!/^\d{6}$/.test(bank.bin) || !/^[0-9A-Za-z]{4,24}$/.test(bank.accountNo)) return null;
-  const q = new URLSearchParams({ amount: String(Math.max(0, Math.round(amount))), addInfo: code, ...(bank.accountName ? { accountName: bank.accountName } : {}) });
-  return `https://img.vietqr.io/image/${bank.bin}-${bank.accountNo}-compact2.png?${q.toString()}`;
+  // Drawn here (no img.vietqr.io): the same code the guest check prints.
+  const payload = vietQrPayload(bank, Math.max(0, Math.round(amount)), code);
+  return payload ? qrDataUrl(payload) : null;
 }
 
 /** Banks people in Vietnam actually use, with their NAPAS BIN (what VietQR needs). */
-export const VN_BANKS: { bin: string; name: string }[] = [
-  { bin: '970436', name: 'Vietcombank' }, { bin: '970415', name: 'VietinBank' }, { bin: '970418', name: 'BIDV' }, { bin: '970405', name: 'Agribank' },
-  { bin: '970407', name: 'Techcombank' }, { bin: '970422', name: 'MB Bank' }, { bin: '970416', name: 'ACB' }, { bin: '970432', name: 'VPBank' },
-  { bin: '970423', name: 'TPBank' }, { bin: '970403', name: 'Sacombank' }, { bin: '970441', name: 'VIB' }, { bin: '970437', name: 'HDBank' },
-  { bin: '970443', name: 'SHB' }, { bin: '970448', name: 'OCB' }, { bin: '970426', name: 'MSB' }, { bin: '970440', name: 'SeABank' },
-  { bin: '970431', name: 'Eximbank' }, { bin: '970449', name: 'LPBank' }, { bin: '970428', name: 'Nam A Bank' }, { bin: '970409', name: 'Bac A Bank' },
-];
+export const VN_BANKS: { bin: string; name: string }[] = VN_BANK_LIST;
 
 /** Account names go on VietQR in capitals without accents (what banks print). */
 export function bankName(s: string): string {

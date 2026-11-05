@@ -42,6 +42,8 @@ export interface RestaurantSettings {
   vatIncluded: boolean;
   /** The restaurant's bank account, for a VietQR with the exact amount and bill code. */
   bank: { bin: string; accountNo: string; accountName: string } | null;
+  /** Print the VietQR on the guest check (from Settings › Payments; not stored here). */
+  printPayQr?: boolean;
 }
 
 export const SETTINGS_KEY = 'restaurant_service';
@@ -316,6 +318,8 @@ export interface PrebillInput {
   vatIncluded?: boolean;
   /** A VietQR for the exact amount (the till prints it as a link/code line). */
   payCode?: string | null;
+  /** The VietQR to print (exact amount + bill code), with the account it pays. */
+  payQr?: { line: string; bank: string; name: string; code: string } | null;
   totalCents: number;
   money: (cents: number) => string;
   footer?: string | null;
@@ -341,7 +345,14 @@ export function prebillText(p: PrebillInput): string {
   if (p.serviceCents) out.push(twoCol(`${p.lang === 'vi' ? 'Phí phục vụ' : 'Service charge'} ${p.servicePercent ?? ''}%`, p.money(p.serviceCents)));
   out.push(twoCol(w.total, p.money(p.totalCents)));
   if (p.vatPercent && p.vatCents) out.push(twoCol(p.vatIncluded === false ? `VAT ${p.vatPercent}%` : `${p.lang === 'vi' ? 'Đã gồm VAT' : 'Incl. VAT'} ${p.vatPercent}%`, p.money(p.vatCents)));
-  if (p.payCode) out.push(...wrap(`${p.lang === 'vi' ? 'Chuyển khoản ghi nội dung' : 'Bank transfer reference'}: ${p.payCode}`));
+  if (p.payQr) {
+    out.push(rule());
+    out.push(center(p.lang === 'vi' ? 'QUÉT MÃ ĐỂ CHUYỂN KHOẢN' : 'SCAN TO PAY BY TRANSFER'));
+    out.push(p.payQr.line);
+    out.push(center(p.payQr.bank));
+    if (p.payQr.name) out.push(center(p.payQr.name));
+    out.push(center(`${p.lang === 'vi' ? 'Nội dung' : 'Reference'}: ${p.payQr.code}`));
+  } else if (p.payCode) out.push(...wrap(`${p.lang === 'vi' ? 'Chuyển khoản ghi nội dung' : 'Bank transfer reference'}: ${p.payCode}`));
   out.push('');
   if (p.footer) out.push(...wrap(p.footer).map(center));
   out.push(center(w.notReceipt));

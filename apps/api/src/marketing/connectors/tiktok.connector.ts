@@ -26,6 +26,9 @@ export class TikTokOrganicConnector implements SocialConnector {
     if (!refresh || !key || !secret) throw new Error('Thiếu TikTok client key/secret (server) hoặc refresh token của salon');
     const j = await postForm(`${TT}/oauth/token/`, { client_key: key, client_secret: secret, grant_type: 'refresh_token', refresh_token: refresh });
     if (!j || !j.access_token) throw new Error(j?.error_description || j?.error || 'Không lấy được TikTok access token');
+    // TikTok: "the returned refresh_token may be different … you must use the
+    // newly-returned token". The service stores it (keepRotatedToken).
+    if (j.refresh_token && String(j.refresh_token) !== refresh) creds.rotatedRefreshToken = String(j.refresh_token);
     return String(j.access_token);
   }
 
@@ -48,9 +51,17 @@ export class TikTokOrganicConnector implements SocialConnector {
     const to = Math.floor(win.to / 1000); // exclusive: start of next month
 
     // --- Account-level stats ---
-    const u = await getJson(`${TT}/user/info/?fields=open_id,display_name,follower_count,likes_count,video_count`, { Authorization: `Bearer ${token}` });
-    if (!u.ok || (u.json?.error && u.json.error.code && u.json.error.code !== 'ok')) {
-      throw new Error(u.json?.error?.message || `TikTok user/info ${u.status}`);
+    // One field outside the granted scopes makes TikTok refuse the WHOLE call
+    // (see tiktok/tiktok.service.ts userInfo). Without user.info.stats the
+    // stats are asked for in vain — so the name is asked for alone after, and
+    // the video list is still tried: a channel then shows what it can.
+    const bad = (r: { ok: boolean; json: any }) => !r.ok || (r.json?.error && r.json.error.code && r.json.error.code !== 'ok');
+    let u = await getJson(`${TT}/user/info/?fields=open_id,display_name,follower_count,likes_count,video_count`, { Authorization: `Bearer ${token}` });
+    let statsError: string | null = null;
+    if (bad(u)) {
+      statsError = `${u.json?.error?.code ?? u.status}: ${String(u.json?.error?.message ?? '').slice(0, 140)}`;
+      u = await getJson(`${TT}/user/info/?fields=open_id,display_name`, { Authorization: `Bearer ${token}` });
+      if (bad(u)) throw new Error(u.json?.error?.message || `TikTok user/info ${u.status}`);
     }
     const user = u.json?.data?.user || {};
 
@@ -58,6 +69,7 @@ export class TikTokOrganicConnector implements SocialConnector {
     const fields = 'id,title,video_description,cover_image_url,share_url,create_time,like_count,comment_count,share_count,view_count';
     const posts: PostInsight[] = [];
     let cursor: number | undefined; let more = true; let guard = 0;
+    let listError: string | null = null; let listRead = false;
     while (more && guard < 10) {
       guard++;
       const body: Record<string, unknown> = { max_count: 20 };
@@ -68,7 +80,13 @@ export class TikTokOrganicConnector implements SocialConnector {
         body: JSON.stringify(body),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok || (j?.error && j.error.code && j.error.code !== 'ok')) break;
+      if (!res.ok || (j?.error && j.error.code && j.error.code !== 'ok')) {
+        // Kept, not swallowed: without the video.list permission TikTok
+        // refuses the list, and "views —" must be explainable from the row.
+        listError = `${j?.error?.code ?? res.status}: ${String(j?.error?.message ?? '').slice(0, 140)}`;
+        break;
+      }
+      listRead = true;
       const d = j?.data || {};
       const vids: any[] = Array.isArray(d.videos) ? d.videos : [];
       for (const v of vids) {
@@ -100,9 +118,15 @@ export class TikTokOrganicConnector implements SocialConnector {
       views: viewsSum,
       engagement: engSum,
       profileViews: null,
-      postsCount: posts.length || null,
+      // Read and empty = 0 videos this month; not readable = unknown (null).
+      postsCount: listRead ? posts.length : null,
       posts,
-      raw: { openId: user.open_id ?? null, totalLikes: num(user.likes_count), videoCount: num(user.video_count) },
+      raw: {
+        openId: user.open_id ?? null, totalLikes: num(user.likes_count), videoCount: num(user.video_count),
+        // TikTok has no monthly account total on this API: views are the month's videos added up.
+        viewsSource: viewsSum != null ? 'posts' : null,
+        ttDebug: { videoList: listRead ? 'ok' : listError, stats: statsError ?? (user.follower_count == null ? 'no follower_count' : 'ok') },
+      },
     };
     return { tiktok };
   }

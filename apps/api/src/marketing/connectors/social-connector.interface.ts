@@ -26,6 +26,11 @@ export interface ChannelCreds {
    * permission the agency's system-user token has.
    */
   fallbackToken?: string;
+  /**
+   * Set by a connector when the platform handed back a NEW refresh token on
+   * use (TikTok may; the old one then stops working). The service saves it.
+   */
+  rotatedRefreshToken?: string;
   /** The salon's IANA timezone: a report month runs midnight-to-midnight in it (marketing/month-window.ts). */
   timezone?: string | null;
 }

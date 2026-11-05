@@ -18,6 +18,7 @@ import { jsonSafe } from '../common/json-safe';
 import { linkedCredsFor, LinkedCreds, LINKABLE_PLATFORMS, credsSource, type SyncAllLine } from './linked-channels';
 import { SocialPostsService, type StoredPost } from './social-posts.service';
 import { bareLocation, namesMatch, takenLocations } from '../google-reviews/location-match';
+import { mergeOrganic, sameViewsMeasure } from './organic-merge';
 import { monthFacts as computeMonthFacts, prevMonthKey, type MonthFacts } from './month-facts';
 import { guardNarrative, correctionFor, type GuardReport } from './report-guard';
 import { cleanReportPolicy, lifecycleOf, nextActionOf, autoSendDue, DEFAULT_REPORT_POLICY, REPORT_POLICY_KEY, type ReportPolicy } from './report-lifecycle';
@@ -473,7 +474,7 @@ export class MarketingService {
       vsPrev: {
         followers: socDelta(r.followers, prevSoc.get(r.platform)?.followers),
         reach: socDelta(r.reach, prevSoc.get(r.platform)?.reach),
-        views: socDelta(r.views, prevSoc.get(r.platform)?.views),
+        views: socDelta(r.views, sameViewsMeasure(r, prevSoc.get(r.platform)) ? prevSoc.get(r.platform)?.views : null),
         engagement: socDelta(r.engagement, prevSoc.get(r.platform)?.engagement),
         newFollowers: socDelta(r.newFollowers, prevSoc.get(r.platform)?.newFollowers),
       },
@@ -1330,6 +1331,7 @@ export class MarketingService {
     const tenantId = this.tenantId(user, tenantParam);
     const { creds, linked } = await this.resolveCreds(tenantId, platform);
     const r = await this.social.get(platform).verify(creds);
+    await this.keepRotatedToken(tenantId, platform, creds);
     if (!linked) await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { status: r.ok ? 'ACTIVE' : 'ERROR', lastError: r.ok ? null : (r.error ?? 'error') } });
     return r;
   }
@@ -1514,21 +1516,52 @@ export class MarketingService {
           source: 'api',
           syncedAt: new Date(),
         };
+        // A field the platform did not answer this time keeps the month's
+        // earlier value (organic-merge.ts) — the report stopped flickering.
+        const before = await Promise.resolve().then(() => this.prisma.socialInsight.findUnique({ where: { tenantId_platform_periodMonth: { tenantId, platform: ch, periodMonth: month } } })).catch(() => null);
+        const merged = mergeOrganic(before as never, data as never).row as typeof data;
         await this.prisma.socialInsight.upsert(jsonSafe({
           where: { tenantId_platform_periodMonth: { tenantId, platform: ch, periodMonth: month } },
-          create: { tenantId, platform: ch, periodMonth: month, ...data },
-          update: data,
+          create: { tenantId, platform: ch, periodMonth: month, ...merged },
+          update: merged,
         }));
       }
       // A sync that ran on the LINKED connection must not mark an old,
       // failing row on this page ACTIVE — that row would then win next time
       // and fail again. It only records when the numbers last came in.
       await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: linked ? { lastSyncedAt: new Date(), lastError: null } : { lastSyncedAt: new Date(), status: 'ACTIVE', lastError: null } });
+      await this.keepRotatedToken(tenantId, platform, creds);
       await this.audit(tenantId, user.userId, 'marketing.channel.syncOrganic', { platform, month, channels: rows.map((r) => r.ch) });
       return { ok: true, platform, month, channels: rows.map((r) => ({ platform: r.ch, ...r.m })) };
     } catch (e) {
+      await this.keepRotatedToken(tenantId, platform, creds);
       await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: linked ? { lastError: String((e as Error).message).slice(0, 300) } : { status: 'ERROR', lastError: String((e as Error).message).slice(0, 300) } });
       throw new BadRequestException(String((e as Error).message));
+    }
+  }
+
+  /**
+   * TikTok may hand back a NEW refresh token when one is used, and the old one
+   * then stops working ("must use the newly-returned token"). It was never
+   * saved, so a TikTok channel read fine for a while and then failed until
+   * someone reconnected it. The new one replaces the stored one (this salon's
+   * row only; nothing else in the stored bundle changes).
+   */
+  private async keepRotatedToken(tenantId: string, platform: string, creds: ChannelCreds): Promise<void> {
+    const fresh = creds.rotatedRefreshToken;
+    if (!fresh || fresh === creds.refreshToken) return;
+    try {
+      const conn = await this.prisma.marketingChannelConnection.findUnique({ where: { tenantId_platform: { tenantId, platform } } });
+      if (!conn?.credentialEnc) return;
+      const stored = JSON.parse(decryptSecret(conn.credentialEnc)) as ChannelCreds;
+      if (!stored.refreshToken) return;
+      await this.prisma.marketingChannelConnection.updateMany({
+        where: { tenantId, platform },
+        data: { credentialEnc: encryptSecret(JSON.stringify({ ...stored, refreshToken: fresh })), keyHint: maskHint(fresh) },
+      });
+      creds.refreshToken = fresh;
+    } catch (e) {
+      this.logger.warn(`keepRotatedToken ${tenantId}/${platform}: ${String((e as Error)?.message ?? e)}`);
     }
   }
 

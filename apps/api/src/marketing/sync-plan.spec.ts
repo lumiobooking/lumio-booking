@@ -79,7 +79,7 @@ describe('the Page posted → the queue hears it', () => {
 
 describe('Instagram synced "ok" but refused its insights (Nov 2026 audit)', () => {
   const now = new Date('2026-11-04T10:00:00Z');
-  const green = channelHealth({ platform: 'meta_social', connected: true, lastSyncedAt: '2026-11-04T08:00:00Z', lastError: null, lastJob: null, queued: false }, now);
+  const green = channelHealth({ platform: 'meta_social', connected: true, lastSyncedAt: new Date('2026-11-04T08:00:00Z'), lastError: null, lastJob: null, queued: false }, now);
   it('a (#10) permission refusal turns the green chip into a permission warning naming the permission', () => {
     const errs = ['views(total): (#10) Application does not have permission for this action', 'reach: (#10) Application does not have permission for this action'];
     expect(igInsightsBlocked(errs)).toBe(true);

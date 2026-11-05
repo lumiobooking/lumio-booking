@@ -630,7 +630,10 @@ export class MetaSocialConnector implements SocialConnector {
     } catch { /* fall back to the system-user token */ }
     const [fbReach, fbViews, fbEngRaw, fbNewFollowers, fbRes] = await Promise.all([
       this.fbMonthlyReach(pageId, since, until, fbPageToken).then((v) => (v == null && fallback && fallback !== token ? this.fbMonthlyReach(pageId, since, until, fallback) : v)),
-      this.firstInsight(pageId, ['page_media_view', 'page_media_view_organic', 'page_impressions', 'page_views_total'], since, until, fbPageToken, [false], undefined, fallback),
+      // ONE measure only: Meta's Page "Lượt xem" for the month (what Business
+      // Suite shows). page_impressions is retired and page_views_total counts
+      // visits to the Page itself — mixing them made the number jump.
+      this.firstInsight(pageId, ['page_media_view'], since, until, fbPageToken, [false], undefined, fallback),
       this.firstInsight(pageId, ['page_post_engagements'], since, until, fbPageToken, [false], undefined, fallback),
       this.firstInsight(pageId, ['page_daily_follows_unique', 'page_fan_adds_unique', 'page_fan_adds'], since, until, fbPageToken, [false], undefined, fallback),
       this.fbPostsWithEitherToken(pageId, win, token, fallback),
@@ -648,12 +651,16 @@ export class MetaSocialConnector implements SocialConnector {
       followers: numOrNull(page.followers_count ?? page.fan_count),
       newFollowers: fbNewFollowers,
       reach: fbReachFinal,
-      views: fbViewsSum ?? fbViews,
+      // The Page's own monthly total first (fixed once the month is over, and
+      // the number the owner sees in Meta); the month's posts added up only
+      // when Meta gives no total. The source is stored so months measured
+      // differently are never compared (organic-merge.ts).
+      views: fbViews ?? fbViewsSum,
       engagement: fbEngSum ?? fbEngRaw,
       profileViews: null,
       postsCount: fbRes.monthCount,
       posts: fbPostList,
-      raw: { pageId, name: page.name ?? null, fbDebug: { count: fbPostList.length, status: fbRes.status, error: fbRes.error, reachSource: fbReach != null ? 'page' : fbReachSum != null ? 'posts' : null } },
+      raw: { pageId, name: page.name ?? null, viewsSource: fbViews != null ? 'page' : fbViewsSum != null ? 'posts' : null, fbDebug: { count: fbPostList.length, status: fbRes.status, error: fbRes.error, reachSource: fbReach != null ? 'page' : fbReachSum != null ? 'posts' : null } },
     };
     out.facebook = fb;
 
@@ -665,7 +672,7 @@ export class MetaSocialConnector implements SocialConnector {
       const igErrs: string[] = [];
       const [igReach, igViews, igEngagement, igNewFollowers, igProfileViews, igPostList0, igSeries, igAud] = await Promise.all([
         this.ig(igId, ['reach'], since, until, token, igErrs, fallback),
-        this.ig(igId, ['views', 'impressions'], since, until, token, igErrs, fallback),
+        this.ig(igId, ['views'], since, until, token, igErrs, fallback), // impressions: retired by Meta (2025), a different measure
         this.ig(igId, ['total_interactions', 'accounts_engaged'], since, until, token, igErrs, fallback),
         this.ig(igId, ['follower_count'], since, until, token, igErrs, fallback),
         this.ig(igId, ['profile_views'], since, until, token, undefined, fallback),
@@ -697,7 +704,7 @@ export class MetaSocialConnector implements SocialConnector {
         posts: igPostList,
         series: igSeries,
         audience: igAud,
-        raw: { igId, username: igNode?.username ?? null, igDebug: { until, posts: igRes.count, errors: igErrs.slice(0, 10) } },
+        raw: { igId, username: igNode?.username ?? null, viewsSource: igViews != null ? 'page' : igViewsSum != null ? 'posts' : null, igDebug: { until, posts: igRes.count, errors: igErrs.slice(0, 10) } },
       };
     }
 

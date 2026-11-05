@@ -123,7 +123,7 @@ describe('every post gets its views and viewers; a refused field never hides the
     return conn.fbPostBreakdown('page1', monthWindow('2026-09'), 'tok') as Promise<{ posts: any[]; monthCount: number | null; error: string | null }>;
   };
 
-  it('photo and multi-media posts read post_media_views / post_total_media_views_unique (2026 names), with the old names as fallback', async () => {
+  it('photo and multi-media posts read post_media_view / post_total_media_view_unique (Meta\'s singular names); a refused pair is asked one by one', async () => {
     const out = await run((url) => {
       if (/\/page1\?fields=access_token/.test(url)) return ok({ access_token: 'ptok' });
       if (/\/page1\/published_posts\?/.test(url)) return ok({ data: [
@@ -131,14 +131,16 @@ describe('every post gets its views and viewers; a refused field never hides the
         { id: 'page1_2', message: 'Một gốc tùng', from: { id: 'page1' }, created_time: '2026-09-22T13:08:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/2' },
       ] });
       if (/\/page1\/(feed|posts|video_reels)\?/.test(url)) return ok({ data: [] });
-      if (/\/page1_1\/insights\?metric=post_media_views/.test(url)) return ok({ data: [{ name: 'post_media_views', values: [{ value: 564 }] }, { name: 'post_total_media_views_unique', values: [{ value: 235 }] }] });
-      if (/\/page1_2\/insights\?metric=post_media_views/.test(url)) return fail('(#100) Invalid metric');
-      if (/\/page1_2\/insights\?metric=post_impressions/.test(url)) return ok({ data: [{ name: 'post_impressions', values: [{ value: 767 }] }, { name: 'post_impressions_unique', values: [{ value: 340 }] }] });
+      if (/\/insights\?metric=post_media_views/.test(url)) return fail('(#100) The value must be a valid insights metric');
+      if (/\/page1_1\/insights\?metric=post_media_view,post_total_media_view_unique&/.test(url)) return ok({ data: [{ name: 'post_media_view', values: [{ value: 564 }] }, { name: 'post_total_media_view_unique', values: [{ value: 235 }] }] });
+      if (/\/page1_2\/insights\?metric=post_media_view,/.test(url)) return fail('(#100) The value must be a valid insights metric');
+      if (/\/page1_2\/insights\?metric=post_media_view&/.test(url)) return ok({ data: [{ name: 'post_media_view', values: [{ value: 767 }] }] });
+      if (/\/page1_2\/insights\?metric=post_total_media_view_unique&/.test(url)) return fail('(#10) permission');
       return fail('unrouted');
     });
     expect(out.monthCount).toBe(2);
     expect(out.posts.find((p) => p.id === 'page1_1')).toMatchObject({ views: 564, reach: 235, type: 'post' });
-    expect(out.posts.find((p) => p.id === 'page1_2')).toMatchObject({ views: 767, reach: 340 });
+    expect(out.posts.find((p) => p.id === 'page1_2')).toMatchObject({ views: 767, reach: null });
     expect(out.error).toBeNull();
   });
 

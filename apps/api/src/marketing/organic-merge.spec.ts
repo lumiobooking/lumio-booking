@@ -82,3 +82,42 @@ describe('TikTok connector', () => {
     expect((r.tiktok!.raw as any).ttDebug.videoList).toContain('scope_not_authorized'); // eslint-disable-line @typescript-eslint/no-explicit-any
   });
 });
+
+describe('alignWithPosts — the table and the content section say the same', () => {
+  const facts = {
+    posts: {
+      byPlatform: [{ platform: 'facebook', views: 9_800, interactions: 24 }, { platform: 'instagram', views: 688, interactions: 22 }, { platform: 'tiktok', views: null, interactions: null }],
+      prevByPlatform: [{ platform: 'facebook', views: 14_682, interactions: 12 }],
+    },
+  };
+  it('Facebook (no page total) and refused Instagram take the posts totals; last month compares like with like', async () => {
+    const { alignWithPosts } = await import('./organic-merge');
+    const rows = alignWithPosts([
+      { platform: 'facebook', views: 1_525, engagement: 11, viewsSource: null, vsPrev: {} },
+      { platform: 'instagram', views: null, engagement: 22, igDebug: { errors: ['views(total): (#10) Application does not have permission', 'total_interactions(total): (#10) …'] }, vsPrev: {} },
+      { platform: 'tiktok', views: 341, engagement: 13, manual: true, vsPrev: { views: { value: 341, prev: 29, pct: 1076 } } },
+    ], facts);
+    expect(rows[0]).toMatchObject({ views: 9_800, viewsFrom: 'posts', engagement: 24, vsPrev: { views: { value: 9_800, prev: 14_682, pct: -33 }, engagement: { value: 24, prev: 12, pct: 100 } } });
+    expect(rows[1]).toMatchObject({ views: 688, viewsFrom: 'posts', engagement: 22, engagementFrom: 'posts' });
+    expect(rows[2]).toMatchObject({ views: 341, engagement: 13 }); // typed by hand: left alone
+    expect((rows[2] as { viewsFrom?: string }).viewsFrom).toBeUndefined();
+  });
+  it('an account total the network gave stays', async () => {
+    const { alignWithPosts } = await import('./organic-merge');
+    const [r] = alignWithPosts([{ platform: 'instagram', views: 5_000, engagement: 40, viewsSource: 'page', engagementSource: 'page', vsPrev: {} }], facts);
+    expect(r).toMatchObject({ views: 5_000, engagement: 40, viewsFrom: 'account', engagementFrom: 'account' });
+  });
+});
+
+describe('post pictures', () => {
+  it('a video file is never a picture; an expiring CDN picture is replaced by a fresh one', async () => {
+    const { imageUrl, mergeReading } = await import('./social-posts');
+    expect(imageUrl('https://lumiobooking.com/x/reel.mov')).toBeNull();
+    expect(imageUrl('https://lumiobooking.com/x/a.MP4?v=1')).toBeNull();
+    expect(imageUrl('https://lumiobooking.com/x/a.jpg')).toBe('https://lumiobooking.com/x/a.jpg');
+    const fresh = { thumbnailUrl: 'https://scontent.xx.fbcdn.net/new.jpg', type: 'post' } as never;
+    expect(mergeReading({ thumbnailUrl: 'https://lumiobooking.com/x/reel.mov' } as never, fresh)).toMatchObject({ thumbnailUrl: 'https://scontent.xx.fbcdn.net/new.jpg' });
+    expect(mergeReading({ thumbnailUrl: 'https://scontent.xx.fbcdn.net/old.jpg' } as never, fresh)).toMatchObject({ thumbnailUrl: 'https://scontent.xx.fbcdn.net/new.jpg' });
+    expect(mergeReading({ thumbnailUrl: 'https://lumiobooking.com/x/a.jpg' } as never, fresh)).toBeNull();
+  });
+});

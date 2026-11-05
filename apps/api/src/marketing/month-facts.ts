@@ -20,6 +20,7 @@
  *    be "best" and is left out of the ranking.
  */
 import type { StoredPost } from './social-posts.service';
+import { imageUrl } from './social-posts';
 
 export type PlatformKey = 'facebook' | 'instagram' | 'tiktok';
 
@@ -58,7 +59,7 @@ export interface MonthFacts {
   state: 'closed' | 'to-date';
   /** Days of the month covered (= day of month when to-date). */
   daysCovered: number;
-  posts: { total: number; byPlatform: PlatformFacts[]; vsPrev: Delta };
+  posts: { total: number; byPlatform: PlatformFacts[]; vsPrev: Delta; prevByPlatform?: PlatformFacts[] };
   interactions: { total: number | null; vsPrev: Delta };
   views: { total: number | null; vsPrev: Delta };
   top: TopPost[];
@@ -137,7 +138,7 @@ export function monthFacts(month: string, posts: StoredPost[], prev: StoredPost[
 
   const top: TopPost[] = rankPosts(live).map((p) => ({
     id: p.id, platform: p.platform as PlatformKey, type: p.type, publishedAt: p.publishedAt.toISOString(),
-    permalink: p.permalink, thumbnailUrl: p.thumbnailUrl, caption: p.caption,
+    permalink: p.permalink, thumbnailUrl: imageUrl(p.thumbnailUrl), caption: p.caption,
     views: p.views, reach: p.reach, likes: p.likes, comments: p.comments, shares: p.shares, saves: p.saves,
     interactions: p.interactions, viaLumio: p.publishedVia === 'lumio',
   }));
@@ -152,7 +153,11 @@ export function monthFacts(month: string, posts: StoredPost[], prev: StoredPost[
     month,
     state: running ? 'to-date' : 'closed',
     daysCovered: dayOfMonth,
-    posts: { total: live.length, byPlatform, vsPrev: delta(live.length, prevCut.length) },
+    posts: {
+      total: live.length, byPlatform, vsPrev: delta(live.length, prevCut.length),
+      // Last month per network (same days when running), so the report's table can compare like with like.
+      prevByPlatform: PLATFORMS.map((pf) => platformFacts(pf, prevCut.filter((p) => p.platform === pf))).filter((f) => f.posts > 0),
+    },
     interactions: { total: interactions, vsPrev: delta(interactions, prevInteractions) },
     views: { total: views, vsPrev: delta(views, prevViews) },
     top,

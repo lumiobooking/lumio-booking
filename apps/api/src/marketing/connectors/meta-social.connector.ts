@@ -126,7 +126,7 @@ export class MetaSocialConnector implements SocialConnector {
       const r = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}/published_posts?fields=id&limit=1&access_token=${encodeURIComponent(pageToken)}`);
       const id = r.ok && r.json?.data?.[0]?.id ? String(r.json.data[0].id) : null;
       if (id) {
-        const ins = await getJson(`${GRAPH}/${encodeURIComponent(id)}/insights?metric=post_media_views,post_total_media_views_unique&access_token=${encodeURIComponent(pageToken)}`);
+        const ins = await getJson(`${GRAPH}/${encodeURIComponent(id)}/insights?metric=post_media_view,post_total_media_view_unique&access_token=${encodeURIComponent(pageToken)}`);
         out.postInsights = ins.ok ? { post: id, values: (ins.json?.data ?? []).map((d: any) => ({ name: d.name, value: d.values?.[0]?.value ?? d.value ?? null })) } : { post: id, error: ins.json?.error?.message ?? `HTTP ${ins.status}` };
       } else out.postInsights = { error: 'no post readable with this token' };
     } catch (e) { out.postInsights = { error: String((e as Error).message).slice(0, 120) }; }
@@ -535,11 +535,9 @@ export class MetaSocialConnector implements SocialConnector {
         interactions: (likes ?? 0) + (comments ?? 0) + (shares ?? 0),
       };
     });
-    // Every post's views and viewers, from post insights. Meta's 2026 names
-    // first (post_media_views = "Lượt xem" in Business Suite, post_total_media_
-    // views_unique = "Số người tiếp cận"); the pre-June-2026 names as a
-    // fallback for whatever still answers to them. A photo post has views
-    // too — before, only Reels were asked, so a month of photo posts read "0".
+    // Every post's views and viewers, from post insights (post_media_view =
+    // "Lượt xem" in Business Suite, post_total_media_view_unique = "Số người
+    // tiếp cận"). A photo post has views too, not only Reels.
     const postNodeId = (m: any, p: PostInsight) => String(m?.id ?? p.id);
     await Promise.all(posts.map(async (p, i) => {
       const m = list[i] as any;
@@ -557,11 +555,19 @@ export class MetaSocialConnector implements SocialConnector {
         } catch { return null; }
       };
       const pid = postNodeId(m, p);
-      let r = await ins(pid, ['post_media_views', 'post_total_media_views_unique']);
-      if (!r || !Object.keys(r).length) r = await ins(pid, ['post_impressions', 'post_impressions_unique']);
+      // Meta's names are SINGULAR: post_media_view / post_total_media_view_unique.
+      // The plural spelling used before is not a metric — Meta answered
+      // "(#100) The value must be a valid insights metric" for every post,
+      // so a photo post never had views and only Reels counted (Zb, Oct 2026).
+      // One unknown name fails the whole call, so each is also asked alone.
+      let r = await ins(pid, ['post_media_view', 'post_total_media_view_unique']);
+      if (!r || !Object.keys(r).length) {
+        const [a, b] = await Promise.all([ins(pid, ['post_media_view']), ins(pid, ['post_total_media_view_unique'])]);
+        r = { ...(a ?? {}), ...(b ?? {}) };
+      }
       if (r) {
-        p.views = r.post_media_views ?? r.post_impressions ?? p.views;
-        p.reach = r.post_total_media_views_unique ?? r.post_impressions_unique ?? p.reach;
+        p.views = r.post_media_view ?? p.views;
+        p.reach = r.post_total_media_view_unique ?? p.reach;
       }
       // A Reel's own play count + cover live on the video object; used when
       // post insights said nothing (a Reel read from the video_reels edge).
@@ -660,7 +666,7 @@ export class MetaSocialConnector implements SocialConnector {
       profileViews: null,
       postsCount: fbRes.monthCount,
       posts: fbPostList,
-      raw: { pageId, name: page.name ?? null, viewsSource: fbViews != null ? 'page' : fbViewsSum != null ? 'posts' : null, fbDebug: { count: fbPostList.length, status: fbRes.status, error: fbRes.error, reachSource: fbReach != null ? 'page' : fbReachSum != null ? 'posts' : null } },
+      raw: { pageId, name: page.name ?? null, viewsSource: fbViews != null ? 'page' : fbViewsSum != null ? 'posts' : null, engagementSource: fbEngSum != null ? 'posts' : fbEngRaw != null ? 'page' : null, fbDebug: { count: fbPostList.length, status: fbRes.status, error: fbRes.error, reachSource: fbReach != null ? 'page' : fbReachSum != null ? 'posts' : null } },
     };
     out.facebook = fb;
 
@@ -704,7 +710,7 @@ export class MetaSocialConnector implements SocialConnector {
         posts: igPostList,
         series: igSeries,
         audience: igAud,
-        raw: { igId, username: igNode?.username ?? null, viewsSource: igViews != null ? 'page' : igViewsSum != null ? 'posts' : null, igDebug: { until, posts: igRes.count, errors: igErrs.slice(0, 10) } },
+        raw: { igId, username: igNode?.username ?? null, viewsSource: igViews != null ? 'page' : igViewsSum != null ? 'posts' : null, engagementSource: igEngagement != null ? 'page' : igEngSum != null ? 'posts' : null, igDebug: { until, posts: igRes.count, errors: igErrs.slice(0, 10) } },
       };
     }
 

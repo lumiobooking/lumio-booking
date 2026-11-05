@@ -94,7 +94,7 @@ export function postRowFrom(platform: SocialPlatformKey, p: PostReading, tz: str
     periodMonth: publishedDay.slice(0, 7),
     type: normalizeType(platform, p.type),
     permalink: typeof p.permalink === 'string' && /^https?:\/\//.test(p.permalink) ? p.permalink.slice(0, 500) : null,
-    thumbnailUrl: typeof p.thumbnail === 'string' && /^https?:\/\//.test(p.thumbnail) ? p.thumbnail.slice(0, 1000) : null,
+    thumbnailUrl: imageUrl(p.thumbnail),
     caption: p.caption ? String(p.caption).replace(/\s+/g, ' ').trim().slice(0, 300) || null : null,
     views: num(p.views),
     reach: num(p.reach),
@@ -118,6 +118,24 @@ export function postRowsFrom(platform: SocialPlatformKey, posts: PostReading[] |
   return out;
 }
 
+/**
+ * A link a browser can show as a picture, or null. A Reel posted through
+ * Lumio carried its VIDEO file (.mov/.mp4) as the "thumbnail": an <img> of a
+ * video is a broken image on the report.
+ */
+export function imageUrl(u: unknown): string | null {
+  if (typeof u !== 'string' || !/^https?:\/\//.test(u)) return null;
+  let path = u;
+  try { path = new URL(u).pathname; } catch { /* keep the raw text */ }
+  if (/\.(mov|mp4|m4v|webm|avi|mkv|3gp|mpe?g)$/i.test(path)) return null;
+  return u.slice(0, 1000);
+}
+
+/** Facebook / Instagram CDN links are signed and stop working after some days. */
+export function expiringCdn(u: string): boolean {
+  try { return /(^|\.)(fbcdn\.net|cdninstagram\.com)$/i.test(new URL(u).hostname); } catch { return false; }
+}
+
 const METRIC_KEYS: (keyof MetricSet)[] = ['views', 'reach', 'likes', 'comments', 'shares', 'saves', 'interactions'];
 
 /**
@@ -133,7 +151,10 @@ export function mergeReading(stored: Partial<Omit<PostRow, 'platform'>> & Metric
     if (nv != null && nv !== stored[k]) patch[k] = nv;
   }
   if (!stored.permalink && fresh.permalink) patch.permalink = fresh.permalink;
-  if (!stored.thumbnailUrl && fresh.thumbnailUrl) patch.thumbnailUrl = fresh.thumbnailUrl;
+  // A picture we never had, a video file stored as a picture, or a platform
+  // CDN link (Facebook/Instagram links expire after some days and then show
+  // as a broken image) — the fresh reading's link replaces it.
+  if (fresh.thumbnailUrl && fresh.thumbnailUrl !== stored.thumbnailUrl && (!stored.thumbnailUrl || !imageUrl(stored.thumbnailUrl) || expiringCdn(stored.thumbnailUrl))) patch.thumbnailUrl = fresh.thumbnailUrl;
   if (!stored.caption && fresh.caption) patch.caption = fresh.caption;
   if ((!stored.type || stored.type === 'post') && fresh.type !== 'post') patch.type = fresh.type;
   return Object.keys(patch).length ? (patch as Partial<PostRow>) : null;

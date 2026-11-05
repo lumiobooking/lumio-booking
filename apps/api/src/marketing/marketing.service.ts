@@ -18,7 +18,7 @@ import { jsonSafe } from '../common/json-safe';
 import { linkedCredsFor, LinkedCreds, LINKABLE_PLATFORMS, credsSource, type SyncAllLine } from './linked-channels';
 import { SocialPostsService, type StoredPost } from './social-posts.service';
 import { bareLocation, namesMatch, takenLocations } from '../google-reviews/location-match';
-import { mergeOrganic, sameViewsMeasure } from './organic-merge';
+import { alignWithPosts, mergeOrganic, sameViewsMeasure } from './organic-merge';
 import { monthFacts as computeMonthFacts, prevMonthKey, type MonthFacts } from './month-facts';
 import { guardNarrative, correctionFor, type GuardReport } from './report-guard';
 import { cleanReportPolicy, lifecycleOf, nextActionOf, autoSendDue, DEFAULT_REPORT_POLICY, REPORT_POLICY_KEY, type ReportPolicy } from './report-lifecycle';
@@ -470,6 +470,9 @@ export class MarketingService {
       audience: (r.raw && (r.raw as any).audience) ? (r.raw as any).audience : null,
       fbDebug: (r.raw && (r.raw as any).fbDebug) ? (r.raw as any).fbDebug : null,
       igDebug: (r.raw && (r.raw as any).igDebug) ? (r.raw as any).igDebug : null,
+      viewsSource: (r.raw as any)?.viewsSource ?? null,
+      engagementSource: (r.raw as any)?.engagementSource ?? null,
+      manual: r.source === 'manual' || !!(r.raw as any)?.manual,
       syncedAt: r.syncedAt,
       vsPrev: {
         followers: socDelta(r.followers, prevSoc.get(r.platform)?.followers),
@@ -540,6 +543,10 @@ export class MarketingService {
 
     // Posts / interactions / top 5 from the stored posts (never from raw).
     const facts = await this.monthFacts(user, month, tenantParam).catch(() => null);
+    // One number per thing: where a network gives no account total, the
+    // table shows the same per-post totals as the content section below it
+    // (organic-merge.ts alignWithPosts) — not 11 interactions above and 24 below.
+    if (facts) alignWithPosts(socialInsights as never, facts);
     // The salon's money: every *Cents figure is in its minor unit (đồng have none).
     const rulesRow = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'booking_rules' } }, select: { value: true } }).catch(() => null);
     const curRaw = String((rulesRow?.value as { currency?: string } | null)?.currency ?? '').toUpperCase();
@@ -1618,7 +1625,9 @@ export class MarketingService {
     // that just ended: its last day(s) were posted after the last daily read,
     // and a salon whose report was already drafted was never read again — its
     // month stayed short of the posts made at the end.
-    if (!month && new Date().getUTCDate() <= 3) {
+    // First 7 days (was 3): Meta's per-post numbers keep arriving, and a fix
+    // to how a number is read reaches the month just closed without anyone pressing sync.
+    if (!month && new Date().getUTCDate() <= 7) {
       const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1);
       await this.syncAllTenants(d.toISOString().slice(0, 7)).catch(() => undefined);
     }

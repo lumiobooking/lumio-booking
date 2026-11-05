@@ -62,3 +62,60 @@ export function mergeOrganic(prev: OrganicRow | null | undefined, next: OrganicR
 export function sameViewsMeasure(cur: OrganicRow | null | undefined, prev: OrganicRow | null | undefined): boolean {
   return (rawOf(cur).viewsSource ?? null) === (rawOf(prev).viewsSource ?? null);
 }
+
+type Delta = { value: number | null; prev: number | null; pct: number | null } | null;
+const deltaOf = (cur: number | null, prev: number | null): Delta =>
+  cur == null && prev == null ? null : { value: cur, prev, pct: prev != null && prev > 0 && cur != null ? Math.round(((cur - prev) / prev) * 100) : null };
+
+export interface AlignRow {
+  platform: string;
+  views: number | null; engagement: number | null;
+  viewsSource?: string | null; engagementSource?: string | null; manual?: boolean;
+  igDebug?: { errors?: string[] } | null;
+  vsPrev?: { views?: Delta; engagement?: Delta; [k: string]: unknown } | null;
+  viewsFrom?: 'account' | 'posts';
+  engagementFrom?: 'account' | 'posts';
+}
+interface PF { platform: string; views: number | null; interactions: number | null }
+export interface AlignFacts { posts: { byPlatform: PF[]; prevByPlatform?: PF[] } }
+
+/** Is this row's number the network's own account total (not a sum of posts)? */
+function accountTotal(r: AlignRow, which: 'views' | 'engagement'): boolean {
+  const src = which === 'views' ? r.viewsSource : r.engagementSource;
+  if (src) return src === 'page';
+  const v = which === 'views' ? r.views : r.engagement;
+  // Rows read before the source was recorded: Facebook and TikTok never had
+  // an account total for these; Instagram did whenever its insight answered.
+  if (r.platform !== 'instagram' || v == null) return false;
+  const refused = (r.igDebug?.errors ?? []).some((e) => e.startsWith(which === 'views' ? 'views' : 'total_interactions'));
+  return !refused;
+}
+
+/**
+ * The table above and the content section below read the same posts. Where a
+ * network gives no account total (Facebook always; Instagram without the
+ * insights permission; TikTok), the table takes the per-post totals the
+ * content section shows, and compares them with last month's per-post totals.
+ * A hand-typed row is left as typed. Mutates and returns the rows. Pure.
+ */
+export function alignWithPosts<T extends AlignRow>(rows: T[], facts: AlignFacts): T[] {
+  const cur = new Map(facts.posts.byPlatform.map((f) => [f.platform, f]));
+  const prev = new Map((facts.posts.prevByPlatform ?? []).map((f) => [f.platform, f]));
+  for (const r of rows) {
+    const f = cur.get(r.platform);
+    if (!f || r.manual) continue;
+    const p = prev.get(r.platform);
+    r.vsPrev = r.vsPrev ?? {};
+    if (accountTotal(r, 'views')) r.viewsFrom = 'account';
+    else if (f.views != null) {
+      r.views = f.views; r.viewsFrom = 'posts';
+      r.vsPrev.views = deltaOf(f.views, p?.views ?? null);
+    }
+    if (accountTotal(r, 'engagement')) r.engagementFrom = 'account';
+    else if (f.interactions != null) {
+      r.engagement = f.interactions; r.engagementFrom = 'posts';
+      r.vsPrev.engagement = deltaOf(f.interactions, p?.interactions ?? null);
+    }
+  }
+  return rows;
+}

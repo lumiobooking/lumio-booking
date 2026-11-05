@@ -89,6 +89,11 @@ interface SocialInsight {
   fbDebug?: { count: number; status: number; error: string | null; reachSource?: 'page' | 'posts' | null } | null;
   igDebug?: { until?: string; posts?: number; errors?: string[] } | null;
   vsPrev?: { followers: SocialDelta | null; reach: SocialDelta | null; views: SocialDelta | null; engagement: SocialDelta | null; newFollowers: SocialDelta | null };
+  /** 'posts' = the month's posts added up (the network gave no account total); 'account' = the network's own total. */
+  viewsFrom?: 'account' | 'posts';
+  engagementFrom?: 'account' | 'posts';
+  /** Typed in by hand (Nhập số liệu), not read from the network. */
+  manual?: boolean;
 }
 
 /** What the system says this salon should spend. Never written into the spend record. */
@@ -710,6 +715,18 @@ function OneCol({ label, value, onChange }: { label: string; value: string; onCh
 }
 
 function esc(s: string) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+/**
+ * A post's picture on the printed report that never shows as a broken image:
+ * the platform's letters underneath, the picture laid over them. A link that
+ * no longer works (Facebook picture links expire; a Reel posted through Lumio
+ * had its video file stored as the picture) simply leaves the letters showing.
+ */
+function thumbBox(url: string | null | undefined, size: number, label: string, col: string): string {
+  const ok = typeof url === 'string' && /^https:\/\//.test(url) && !/\.(mov|mp4|m4v|webm|avi|mkv)(\?|#|$)/i.test(url);
+  const safe = ok ? String(url).replace(/["'()\\<>\s]/g, (c) => encodeURIComponent(c)) : '';
+  return `<div class="t-cap" style="position:relative;width:${size}px;height:${size}px;border-radius:6px;background:${col}22;color:${col};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;overflow:hidden">${esc(label)}${ok ? `<div style="position:absolute;inset:0;background:center/cover no-repeat url('${safe}')"></div>` : ''}</div>`;
+}
 function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: number) => string, salonName = '') {
   if (!data) return;
   const o = data.outcome; const b = data.blended; const d = data.deltas;
@@ -788,7 +805,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const f = (n: number | null) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
     const dt = p.timestamp ? fmtInTz(p.timestamp, { month: 'short', day: 'numeric' }) : '';
     const tl = p.type === 'reel' ? 'Reel' : p.type === 'video' ? 'Video' : p.type === 'carousel_album' ? 'Album' : t('Ảnh', 'Photo');
-    const thumb = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0" />` : `<div style="width:40px;height:40px;border-radius:6px;background:#f1f4f9;flex-shrink:0"></div>`;
+    const thumb = thumbBox(p.thumbnail, 40, 'IG', '#e1306c');
     const cell = (label: string, v: number | null) => (v == null ? '' : `<span style="margin-right:10px"><b>${f(v)}</b> <span style="color: #6b7280">${label}</span></span>`);
     const stats = [cell(t('thích', 'likes'), p.likes), cell(t('bl', 'cmts'), p.comments), cell('reach', p.reach), cell(t('xem', 'views'), p.views), cell(t('lưu', 'saved'), p.saved)].join('');
     return `<div style="display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid #f0ece7">${thumb}<div style="flex:1;min-width:0"><div class="t-body" style="color: #6b7280">${esc(tl)} · ${dt}${p.caption ? ' · ' + esc(p.caption) : ''}</div><div class="t-body" style="margin-top:2px">${stats}</div></div></div>`;
@@ -842,6 +859,13 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     return `<sup style="color:#94a3b8;font-size:9px;font-weight:600;margin-left:1px">${i + 1}</sup>`;
   };
   const na = (why: string) => `<span style="color:#cbd5e1;font-weight:600">—</span>${fnote(why)}`;
+  // Instagram refused the insights call outright (permission), as opposed to "no number yet".
+  const igRefused = (ig?.igDebug?.errors ?? []).some((e) => /\(#10\)|permission/i.test(e));
+  const postsNote = (x: SocialInsight | undefined, which: 'views' | 'engagement') =>
+    x && (which === 'views' ? x.viewsFrom : x.engagementFrom) === 'posts' && (which === 'views' ? x.views : x.engagement) != null
+      ? fnote(t('Cộng từ các bài đăng trong tháng (số đã đọc được), vì nền tảng không trả tổng của cả trang — khớp với mục Nội dung.', 'Added up from the month\'s posts (those read), as the network gives no account total — matches the Content section.'))
+      : '';
+  const manualNote = (x: SocialInsight | undefined) => (x?.manual ? fnote(t('TikTok: số nhập tay (chưa kết nối TikTok để đọc tự động).', 'TikTok: typed in by hand (TikTok is not connected for automatic reading).')) : '');
   const pill = (dl?: SocialDelta | null) => {
     if (!dl || dl.pct == null) return '';
     const z = dl.pct === 0;
@@ -861,9 +885,9 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     `<td style="text-align:center;padding:0 4px 7px"><span class="t-h3" style="color:${col};display:inline-block;padding-bottom:4px;border-bottom:3px solid ${col}">${name}</span></td>`;
   const pRows = [
     prow(t('Tổng follower', 'Total followers'), fnum(fb?.followers), fb?.vsPrev?.followers, fnum(ig?.followers), ig?.vsPrev?.followers, fnum(tt?.followers), tt?.vsPrev?.followers),
-    prow(t('Người tiếp cận (Reach)', 'Reach'), fb?.reach == null ? na(t('Facebook: Meta không trả về chỉ số Reach của trang cho tháng này.', 'Facebook: Meta returned no page Reach for this month.')) : (fb?.fbDebug?.reachSource === 'posts' ? `${fnum(fb?.reach)}${fnote(t('Facebook: tổng người xem của từng bài (một người xem hai bài tính hai), vì Meta không trả về reach của cả trang.', 'Facebook: viewers of each post added up (a person who saw two posts counts twice), as Meta returned no page-level reach.'))}` : fnum(fb?.reach)), fb?.reach == null ? null : fb?.vsPrev?.reach, ig?.reach == null ? na(t('Instagram: chưa có số liệu tháng này.', 'Instagram: no data this month.')) : fnum(ig?.reach), ig?.vsPrev?.reach, na(t('TikTok không có chỉ số Reach.', 'TikTok has no Reach metric.')), null),
-    prow(t('Lượt xem (Views)', 'Views'), fnum(fb?.views), fb?.vsPrev?.views, fnum(ig?.views), ig?.vsPrev?.views, fnum(tt?.views), tt?.vsPrev?.views),
-    prow(t('Lượt tương tác', 'Engagements'), fnum(fb?.engagement), fb?.vsPrev?.engagement, fnum(ig?.engagement), ig?.vsPrev?.engagement, fnum(tt?.engagement), tt?.vsPrev?.engagement),
+    prow(t('Người tiếp cận (Reach)', 'Reach'), fb?.reach == null ? na(t('Facebook: Meta không trả về chỉ số Reach của trang cho tháng này.', 'Facebook: Meta returned no page Reach for this month.')) : (fb?.fbDebug?.reachSource === 'posts' ? `${fnum(fb?.reach)}${fnote(t('Facebook: tổng người xem của từng bài (một người xem hai bài tính hai), vì Meta không trả về reach của cả trang.', 'Facebook: viewers of each post added up (a person who saw two posts counts twice), as Meta returned no page-level reach.'))}` : fnum(fb?.reach)), fb?.reach == null ? null : fb?.vsPrev?.reach, ig?.reach == null ? na(igRefused ? t('Instagram: Meta chưa cho Lumio quyền xem số liệu — cần kết nối lại Facebook/Instagram.', 'Instagram: Meta has not given Lumio access to insights — reconnect Facebook/Instagram.') : t('Instagram: chưa có số liệu tháng này.', 'Instagram: no data this month.')) : fnum(ig?.reach), ig?.vsPrev?.reach, na(t('TikTok không có chỉ số Reach.', 'TikTok has no Reach metric.')), null),
+    prow(t('Lượt xem (Views)', 'Views'), fnum(fb?.views) + postsNote(fb, 'views'), fb?.vsPrev?.views, ig?.views == null && igRefused ? na(t('Instagram: Meta chưa cho Lumio quyền xem số liệu — cần kết nối lại Facebook/Instagram.', 'Instagram: Meta has not given Lumio access to insights — reconnect Facebook/Instagram.')) : fnum(ig?.views) + postsNote(ig, 'views'), ig?.vsPrev?.views, fnum(tt?.views) + manualNote(tt), tt?.vsPrev?.views),
+    prow(t('Lượt tương tác', 'Engagements'), fnum(fb?.engagement) + postsNote(fb, 'engagement'), fb?.vsPrev?.engagement, fnum(ig?.engagement) + postsNote(ig, 'engagement'), ig?.vsPrev?.engagement, fnum(tt?.engagement) + manualNote(tt), tt?.vsPrev?.engagement),
     prow(t('Tỉ lệ tương tác', 'Engagement rate'), engR(fb), null, engR(ig), null, engR(tt), null),
     prow(t('Số follow mới', 'Net followers'), fnum(fb?.newFollowers), fb?.vsPrev?.newFollowers, fnum(ig?.newFollowers), ig?.vsPrev?.newFollowers, fnum(tt?.newFollowers), tt?.vsPrev?.newFollowers),
   ].join('');
@@ -936,7 +960,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       ...fbP.map((p) => ({ ...p, _pf: 'FB', _col: '#1877f2', interactions: null as number | null })),
       ...igP.map((p) => ({ ...p, _pf: 'IG', _col: '#e1306c', interactions: null as number | null })),
     ].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 4);
-  const top3 = topAll.map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div class="t-cap" style="width:34px;height:34px;border-radius:6px;background:${p._col}22;color: ${p._col};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700">${p._pf}</div>`; const badge = `<span class="t-cap" style="font-weight:700;color: #fff;background:${p._col};border-radius:4px;padding:1px 5px;margin-right:5px">${p._pf}</span>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div class="t-cap" style="color: #475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${badge}${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div class="t-cap" style="color: #0f2a52"><b>${fnum(p.views)}</b> ${t('xem', 'views')}${p.reach != null ? ` · <b>${fnum(p.reach)}</b> reach` : ''} · <b>${fnum(p.interactions ?? ((p.likes ?? 0) + (p.comments ?? 0)))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div class="t-body" style="color: #94a3b8;">—</div>`;
+  const top3 = topAll.map((p) => { const th = thumbBox(p.thumbnail, 34, p._pf, p._col); const badge = `<span class="t-cap" style="font-weight:700;color: #fff;background:${p._col};border-radius:4px;padding:1px 5px;margin-right:5px">${p._pf}</span>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div class="t-cap" style="color: #475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${badge}${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div class="t-cap" style="color: #0f2a52"><b>${fnum(p.views)}</b> ${t('xem', 'views')}${p.reach != null ? ` · <b>${fnum(p.reach)}</b> reach` : ''} · <b>${fnum(p.interactions ?? ((p.likes ?? 0) + (p.comments ?? 0)))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div class="t-body" style="color: #94a3b8;">—</div>`;
   const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;min-width:0;border-left:1px solid #eef1f6;padding-left:12px"><div class="t-cap" style="color: #94a3b8;margin-bottom:2px">${F && F.top.length ? t('TOP 5 BÀI — theo lượt xem', 'TOP 5 POSTS — by views') : t('TOP BÀI (FB + IG) — theo lượt xem', 'TOP POSTS (FB + IG) — by views')}</div>${top3}</div></div>`;
   const adsPanel = spendLine
     ? `<div class="t-body" style="color: #0f2a52">${t('Tổng chi', 'Spend')}: <b>${money(total)}</b><div class="t-body" style="color: #6b7280;margin-top:4px">${spendLine}</div></div>`

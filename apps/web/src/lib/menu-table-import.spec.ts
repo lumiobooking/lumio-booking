@@ -71,11 +71,13 @@ describe('the templates published for download (public/downloads/templates)', ()
   const path = require('path') as typeof import('path');
   const dir = path.join(__dirname, '../../public/downloads/templates');
   it('match what the importer expects — regenerate them when a template changes', () => {
-    const read = (f: string) => fs.readFileSync(path.join(dir, f), 'utf8');
-    expect(read('lumio-thuc-don-mau.csv')).toBe(menuTemplateCsv(true, 'VND'));
-    expect(read('lumio-menu-template.csv')).toBe(menuTemplateCsv(false, 'USD'));
-    expect(read('lumio-so-do-ban-mau.csv')).toBe(tableTemplateCsv(true));
-    expect(read('lumio-floor-plan-template.csv')).toBe(tableTemplateCsv(false));
+    // Line endings aside: the repo stores text as LF (.gitattributes), the generator writes CRLF for Excel.
+    const lf = (t: string) => t.replace(/\r\n/g, '\n');
+    const read = (f: string) => lf(fs.readFileSync(path.join(dir, f), 'utf8'));
+    expect(read('lumio-thuc-don-mau.csv')).toBe(lf(menuTemplateCsv(true, 'VND')));
+    expect(read('lumio-menu-template.csv')).toBe(lf(menuTemplateCsv(false, 'USD')));
+    expect(read('lumio-so-do-ban-mau.csv')).toBe(lf(tableTemplateCsv(true)));
+    expect(read('lumio-floor-plan-template.csv')).toBe(lf(tableTemplateCsv(false)));
     for (const f of ['lumio-thuc-don-mau.xlsx', 'lumio-menu-template.xlsx', 'lumio-so-do-ban-mau.xlsx', 'lumio-floor-plan-template.xlsx']) {
       expect(fs.statSync(path.join(dir, f)).size).toBeGreaterThan(1000);
     }

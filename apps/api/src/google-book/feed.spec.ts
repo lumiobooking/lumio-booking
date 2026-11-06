@@ -69,9 +69,14 @@ describe('the three feeds', () => {
     expect(feedFileNames('service', at)).toEqual({ data: 'service_1792144800.json', descriptor: 'glam.service.v0-1792144800.filesetdesc.json' });
     expect(descriptor('entity', at, ['entity_1792144800.json'])).toEqual({ generation_timestamp: 1792144800, name: 'reservewithgoogle.entity', data_file: ['entity_1792144800.json'] });
     const files = buildUpload([t], WEB, at);
-    expect(files.map((f) => f.name)).toEqual(['entity_1792144800.json', 'reservewithgoogle.entity-1792144800.filesetdesc.json', 'service_1792144800.json', 'glam.service.v0-1792144800.filesetdesc.json', 'action_1792144800.json', 'reservewithgoogle.action.v2-1792144800.filesetdesc.json']);
-    expect(JSON.parse(files[3].body).name).toBe('glam.service.v0');
-    expect(JSON.parse(files[5].body).name).toBe('reservewithgoogle.action.v2');
+    // Each feed's descriptor goes up BEFORE its data file (Google's rule).
+    expect(files.map((f) => f.name)).toEqual(['reservewithgoogle.entity-1792144800.filesetdesc.json', 'entity_1792144800.json', 'glam.service.v0-1792144800.filesetdesc.json', 'service_1792144800.json', 'reservewithgoogle.action.v2-1792144800.filesetdesc.json', 'action_1792144800.json']);
+    for (const f of files.filter((x) => x.name.includes('.filesetdesc.'))) {
+      const d = JSON.parse(f.body) as { data_file: string[] };
+      for (const name of d.data_file) expect(files.findIndex((x) => x.name === name)).toBeGreaterThan(files.indexOf(f));
+    }
+    expect(JSON.parse(files[2].body).name).toBe('glam.service.v0');
+    expect(JSON.parse(files[4].body).name).toBe('reservewithgoogle.action.v2');
   });
   it('a salon that is not on the list is not in any feed — the list is the scope', () => {
     const other = salon({ id: 't-2', slug: 'other' });

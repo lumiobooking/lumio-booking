@@ -201,8 +201,12 @@ export function buildUpload(tenants: FeedTenant[], webUrl: string, generatedAt: 
   };
   for (const kind of Object.keys(feeds) as FeedKind[]) {
     const names = feedFileNames(kind, generatedAt);
-    out.push({ name: names.data, body: JSON.stringify(feeds[kind]) });
+    // Descriptor FIRST, then its data file. Google (Sandbox onboarding mail,
+    // 6 Nov 2026): "the descriptor file must … be uploaded prior to the first
+    // feed file of each feed type". Uploaded the other way round, the drop
+    // held all six files for hours and nothing was ingested.
     out.push({ name: names.descriptor, body: JSON.stringify(descriptor(kind, generatedAt, [names.data])) });
+    out.push({ name: names.data, body: JSON.stringify(feeds[kind]) });
   }
   return out;
 }

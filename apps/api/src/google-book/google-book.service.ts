@@ -341,9 +341,10 @@ export class GoogleBookService {
   private async sftpUpload(conn: SftpConfig, files: { name: string; body: string }[]): Promise<void> {
     const sftp = await this.sftpClient(conn);
     try {
-      // Data files first, descriptors last: Google reads the descriptor and expects its files to be there.
-      const ordered = [...files.filter((f) => !f.name.includes('.filesetdesc.')), ...files.filter((f) => f.name.includes('.filesetdesc.'))];
-      for (const f of ordered) await sftp.put(Buffer.from(f.body, 'utf8'), `${conn.dir.replace(/\/$/, '')}/${f.name}`);
+      // In buildUpload's order: each feed's descriptor, then that feed's data
+      // file. Google requires the descriptor BEFORE the first data file of its
+      // feed (it was the other way round here, and nothing was ingested).
+      for (const f of files) await sftp.put(Buffer.from(f.body, 'utf8'), `${conn.dir.replace(/\/$/, '')}/${f.name}`);
     } finally {
       await sftp.end().catch(() => undefined);
     }

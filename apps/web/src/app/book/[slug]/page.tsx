@@ -145,7 +145,7 @@ interface Salon {
   industry?: string;
 }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; askAtBooking?: boolean }
-interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; imageUrl?: string | null; addons: Addon[] }
+interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; isFree?: boolean; imageUrl?: string | null; addons: Addon[] }
 interface Category { id: string; name: string; icon?: string | null }
 interface Staff {
   id: string; firstName: string; lastName: string | null; avatarUrl: string | null;
@@ -526,7 +526,7 @@ export default function PublicBookingPage() {
   // Prices: each service keeps its own discount + the best promo for its line.
   const lineAt = (s: Service, size: number) => {
     const promo = lineDeal(promos, priceDay, s.categoryId ?? null, size).pct;
-    return { id: s.id, name: s.name, durationMinutes: s.durationMinutes, fullCents: s.priceCents, priceCents: afterPct(svcNetCents(s), promo), imageUrl: s.imageUrl ?? null };
+    return { id: s.id, name: s.name, durationMinutes: s.durationMinutes, fullCents: s.priceCents, priceCents: afterPct(svcNetCents(s), promo), imageUrl: s.imageUrl ?? null, noPrice: !(s.priceCents > 0) && !s.isFree };
   };
   const lineFor = (s: Service) => lineAt(s, partyN);
 
@@ -555,8 +555,10 @@ export default function PublicBookingPage() {
     .filter((s): s is Service => !!s)
     .map(lineFor);
   const addonLines = selectedAddons.map((a) => ({ id: a.id, name: a.name, durationMinutes: a.durationMinutes, fullCents: a.priceCents, priceCents: a.priceCents, addon: true }));
-  const allLines = [...cartLines, ...addonLines];
+  const allLines: Line[] = [...cartLines, ...addonLines];
   const totalCents = allLines.reduce((s, l) => s + l.priceCents, 0);
+  // Services whose price the tech quotes at the salon (no price on the menu).
+  const unpricedN = allLines.filter((l) => l.noPrice).length;
   const fullCents = allLines.reduce((s, l) => s + l.fullCents, 0);
   const totalDuration = allLines.reduce((s, l) => s + l.durationMinutes, 0);
   const savingsCents = Math.max(0, fullCents - totalCents);
@@ -1190,7 +1192,7 @@ export default function PublicBookingPage() {
     <CartPanel
       today={cardToday}
       fill={!isMobile && !embedded}
-      salon={salon} lines={allLines} fmt={fmt} totalCents={totalCents} fullCents={fullCents}
+      unpriced={unpricedN} salon={salon} lines={allLines} fmt={fmt} totalCents={totalCents} fullCents={fullCents}
       anyDiscount={anyDiscount} totalDuration={totalDuration} employee={employee} slot={slot} selectedDate={selectedDate}
       onRemove={removeLine} canContinue={canContinue} ctaLabel={ctaLabel} onContinue={goNext} step={step} accent={accent} grand={grand}
       party={party} activeGuest={activeGuest} onPickGuest={(i) => { setActiveGuest(i); if (step !== 1) setStep(1); }} onRemoveFor={removeFor}
@@ -1419,7 +1421,7 @@ export default function PublicBookingPage() {
               {step === 4 && slot && (
                 <>
                 <ConfirmStep
-                  salon={salon} slot={slot} employee={employee} lines={allLines} fmt={fmt} totalCents={grand ? grand.cents : totalCents} party={party}
+                  unpriced={party ? party.reduce((n, g) => n + g.lines.filter((x) => x.noPrice).length, 0) : unpricedN} salon={salon} slot={slot} employee={employee} lines={allLines} fmt={fmt} totalCents={grand ? grand.cents : totalCents} party={party}
                   depositCents={depositCents} cardFee={salon?.cardFee} rules={rules} paymentType={paymentType} setPaymentType={setPaymentType}
                   form={form} setForm={setForm} smsConsent={smsConsent} setSmsConsent={setSmsConsent}
                   accent={accent} error={error} infoOk={infoOk} isMobile={isMobile}
@@ -1462,7 +1464,7 @@ export default function PublicBookingPage() {
             hidden below a tall cart / the fold. Hosted desktop keeps its sticky cart. */}
         {(isMobile || embedded) && step < 5 && (
           <MobileBar
-            embedded={!asPage} count={cartLines.length} totalCents={grand ? grand.cents : totalCents} fmt={fmt}
+            unpriced={unpricedN} embedded={!asPage} count={cartLines.length} totalCents={grand ? grand.cents : totalCents} fmt={fmt}
             grandLabel={grand ? (grand.kind === 'visits' ? btf('{n} visits', { n: grand.count }) : btf('group of {n}', { n: grand.count })) : undefined}
             durationMinutes={totalDuration} canContinue={canContinue} label={ctaLabel} onContinue={goNext} accent={accent}
             art={cartArtOf(salon)}
@@ -1488,7 +1490,30 @@ export default function PublicBookingPage() {
 function okImageUrl(u: string): boolean {
   return u.startsWith('https://') || u.startsWith('data:image/') || u.startsWith('http://localhost') || u.startsWith('http://127.0.0.1');
 }
-type Line = { id: string; name: string; durationMinutes: number; priceCents: number; fullCents: number; addon?: boolean; imageUrl?: string | null };
+type Line = { id: string; name: string; durationMinutes: number; priceCents: number; fullCents: number; addon?: boolean; imageUrl?: string | null; noPrice?: boolean };
+
+/**
+ * A price as the customer reads it. 0 is never "$0.00" (customers read it as
+ * free): no price = the tech quotes at the salon; free only when the salon
+ * marked the service free (VN Nails, 6 Nov 2026).
+ */
+function lineMoney(l: { priceCents: number; noPrice?: boolean }, fmt: (c: number) => string): string {
+  if (l.priceCents > 0) return fmt(l.priceCents);
+  return l.noPrice ? bt('Price at salon') : bt('Free');
+}
+/** A total: the priced part, or "Price at salon" when nothing in it has a price. */
+function totalMoney(cents: number, unpriced: number, fmt: (c: number) => string): string {
+  return cents > 0 || !unpriced ? fmt(cents) : bt('Price at salon');
+}
+/** The line under a total that still has services priced at the salon. */
+function UnpricedNote({ cents, unpriced }: { cents: number; unpriced: number }) {
+  if (!unpriced || cents <= 0) return null;
+  return (
+    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, lineHeight: 1.4, textAlign: 'right' }}>
+      {btf(unpriced === 1 ? '+ {n} service priced at the salon' : '+ {n} services priced at the salon', { n: unpriced })}
+    </div>
+  );
+}
 /** A group booking, one entry per person: the booker first, then each guest. */
 type Party = { name: string; lines: Line[]; cents: number; minutes: number }[];
 
@@ -1557,8 +1582,10 @@ function WhoPicker({ who, accent, compact }: { who: WhoProps; accent: string; co
   );
 }
 
-function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill, grand, party, activeGuest, onPickGuest, onRemoveFor, who }: {
+function CartPanel({ unpriced, today, salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill, grand, party, activeGuest, onPickGuest, onRemoveFor, who }: {
   salon: Salon | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; fullCents: number; anyDiscount: boolean;
+  /** How many lines in the cart are priced at the salon. */
+  unpriced?: number;
   /** Today's hours for the salon card's open/closed line. */
   today?: { day: DayHours | undefined; isDayOff: boolean; mode?: unknown; week?: DayHours[]; daysOff?: string[] };
   totalDuration: number; employee: Staff | null; slot: Slot | null; selectedDate: Date | null;
@@ -1610,7 +1637,7 @@ function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscoun
                 <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: on ? accent : INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {g.name} <span style={{ fontWeight: 500, color: 'var(--c94a3b8)' }}>· {btf(g.lines.length === 1 ? '{n} service' : '{n} services', { n: g.lines.length })}</span>
                 </span>
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: INK, whiteSpace: 'nowrap' }}>{fmt(g.cents)}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: INK, whiteSpace: 'nowrap' }}>{totalMoney(g.cents, g.lines.filter((x) => x.noPrice).length, fmt)}</span>
               </button>
               {g.lines.length === 0 ? (
                 <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', padding: '2px 0 8px 24px' }}>{bt('No services yet — tap to pick')}</div>
@@ -1620,7 +1647,7 @@ function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscoun
                     <div style={{ fontSize: 13, fontWeight: 600, color: INK, lineHeight: 1.35 }}>{l.name}</div>
                     {l.durationMinutes > 0 && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{btf('{n} min', { n: l.durationMinutes })}</div>}
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: accent, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: accent, whiteSpace: 'nowrap' }}>{lineMoney(l, fmt)}</div>
                   <button onClick={() => onRemoveFor?.(gi, l.id)} aria-label={bt("Remove")} style={{ width: 20, height: 20, borderRadius: '50%', border: 'none', background: '#e8edf6', color: INK, fontSize: 11, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>✕</button>
                 </div>
               ))}
@@ -1637,7 +1664,7 @@ function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscoun
                 {l.durationMinutes > 0 ? btf('{n} min', { n: l.durationMinutes }) : ''}{employee && step >= 3 ? <>{l.durationMinutes > 0 ? ' · ' : ''}<b style={{ color: accent }}>{employee.firstName}</b></> : null}
               </div>
             </div>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: accent, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: accent, whiteSpace: 'nowrap' }}>{lineMoney(l, fmt)}</div>
             <button onClick={() => onRemove(l.id)} aria-label={bt("Remove")} style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', background: '#e8edf6', color: INK, fontSize: 12, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>✕</button>
           </div>
         ))}
@@ -1648,9 +1675,12 @@ function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscoun
           <span style={{ fontWeight: 700, color: INK, fontSize: 15 }}>{grand ? bt(grand.kind === 'visits' ? 'This visit' : 'Your services') : bt("Total")}</span>
           <span>
             {anyDiscount && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', fontSize: 13, marginRight: 8 }}>{fmt(fullCents)}</span>}
-            <AnimatedMoney cents={totalCents} fmt={fmt} style={{ fontWeight: 700, color: INK, fontSize: 17 }} />
+            {totalCents > 0 || !unpriced
+              ? <AnimatedMoney cents={totalCents} fmt={fmt} style={{ fontWeight: 700, color: INK, fontSize: 17 }} />
+              : <span style={{ fontWeight: 700, color: INK, fontSize: 15 }}>{bt('Price at salon')}</span>}
           </span>
         </div>}
+        {!party && <UnpricedNote cents={totalCents} unpriced={unpriced ?? 0} />}
         {grand && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8, padding: '9px 12px', borderRadius: 10, background: tint(accent, 0.08), border: `1.4px solid ${tint(accent, 0.4)}` }}>
             <span style={{ fontWeight: 700, color: INK, fontSize: 13.5 }}>
@@ -1801,8 +1831,9 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
 }
 
 /** Mobile: floating action bar. Always on screen, never behind the content. */
-function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef, grandLabel, art, who }: {
+function MobileBar({ unpriced, embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef, grandLabel, art, who }: {
   embedded: boolean; count: number; totalCents: number; fmt: (c: number) => string; durationMinutes: number;
+  unpriced?: number;
   canContinue: boolean; label: string; onContinue: () => void; accent: string;
   /** When set, totalCents is the ALL-visits/group figure and this names it ("3 visits"). */
   grandLabel?: string;
@@ -1868,7 +1899,7 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
         <div style={{ fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>
           {count === 0 ? bt('No service yet') : btf(count === 1 ? '{n} service' : '{n} services', { n: count })}{durationMinutes > 0 && <> · {fmtDur(durationMinutes)}</>}{grandLabel && <> · <b style={{ color: INK }}>{btf('total for {label}', { label: grandLabel })}</b></>}
         </div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: INK, letterSpacing: -0.3 }}>{fmt(totalCents)}</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: INK, letterSpacing: -0.3 }}>{totalMoney(totalCents, unpriced ?? 0, fmt)}{totalCents > 0 && (unpriced ?? 0) > 0 ? <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280' }}> + {bt('salon price')}</span> : null}</div>
       </div>
       <button onClick={onContinue} disabled={!canContinue} className="lumio-cta"
         style={{ ...ctaBtn, width: 'auto', padding: '13px 20px', fontSize: 14.5, whiteSpace: 'nowrap',
@@ -2156,6 +2187,12 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                     {s.description?.trim() ? <ServiceDescription text={s.description.trim()} /> : null}
                     <span style={rowMeta}>
                       {s.durationMinutes > 0 && <>⏳ {s.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span>{' '}</>}
+                      {!(s.priceCents > 0) ? (
+                        // No price: never "$0.00" — the tech quotes at the salon.
+                        <b style={{ color: s.isFree ? '#15803d' : '#6b4a2f', background: s.isFree ? '#dcfce7' : '#f5ebe1', borderRadius: 999, padding: '2px 9px', fontSize: 12 }}>
+                          {s.isFree ? bt('Free') : s.priceFrom ? bt('Price varies') : bt('Price at salon')}
+                        </b>
+                      ) : (<>
                       {(disc > 0 || promo > 0) && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', marginRight: 6 }}>{fmt(s.priceCents)}</span>}
                       {dualPct > 0 ? (
                         <>
@@ -2165,6 +2202,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                       ) : (
                         <b style={{ color: promo > 0 ? '#15803d' : accent }}>{s.priceFrom ? 'from ' : ''}{fmt(price)}</b>
                       )}
+                      </>)}
                     </span>
                     {deal?.upcoming && (
                       <span style={{ display: 'block', marginTop: 4, fontSize: 12, fontWeight: 700, color: '#15803d' }}>🏷 {deal.upcoming}</span>
@@ -2552,8 +2590,9 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, dealOn, staffId, 
 // ---------------------------------------------------------------------------
 // Step 4 · Confirm — appointment card, services, your details, payment.
 // ---------------------------------------------------------------------------
-function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile, party, address, setAddress }: {
+function ConfirmStep({ unpriced, salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile, party, address, setAddress }: {
   salon: Salon | null; slot: Slot; employee: Staff | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; party?: Party | null;
+  unpriced?: number;
   depositCents: number; cardFee?: { enabled: boolean; percent: number }; rules: BookingRules; paymentType: 'PAY_ONLINE' | 'PAY_LATER'; setPaymentType: (v: 'PAY_ONLINE' | 'PAY_LATER') => void;
   form: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string };
   // Updated with the previous value (setForm((f) => …)), never a copy taken at
@@ -2583,12 +2622,12 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           <div key={gi} style={{ padding: '8px 0 2px', borderBottom: '1px solid #eef1f6' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13.5, fontWeight: 700, color: accent }}>
               <span>{gi === 0 ? '👤' : '👥'} {g.name} <span style={{ fontWeight: 500, color: 'var(--c94a3b8)' }}>· {btf(g.lines.length === 1 ? '{n} service' : '{n} services', { n: g.lines.length })}</span></span>
-              <span style={{ color: INK }}>{fmt(g.cents)}</span>
+              <span style={{ color: INK }}>{totalMoney(g.cents, g.lines.filter((x) => x.noPrice).length, fmt)}</span>
             </div>
             {g.lines.map((l) => (
               <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '5px 0 5px 22px', fontSize: 13.5 }}>
                 <span style={{ color: INK }}>{l.name}{l.durationMinutes > 0 && <span style={{ color: 'var(--c94a3b8)' }}> · {btf('{n} min', { n: l.durationMinutes })}</span>}</span>
-                <span style={{ fontWeight: 600, color: INK, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</span>
+                <span style={{ fontWeight: 600, color: INK, whiteSpace: 'nowrap' }}>{lineMoney(l, fmt)}</span>
               </div>
             ))}
           </div>
@@ -2602,12 +2641,13 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
               <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{l.durationMinutes > 0 ? `${l.durationMinutes} min` : ''}{employee && <>{l.durationMinutes > 0 ? ' · ' : ''}👤 <b style={{ color: accent }}>{employee.firstName}</b></>}</div>
               </div>
             </div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: INK, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: INK, whiteSpace: 'nowrap' }}>{lineMoney(l, fmt)}</div>
           </div>
         ))}
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, fontWeight: 700, color: INK, fontSize: 15 }}>
-          <span>{party ? `👥 ${btf('Total · group of {n}', { n: party.length })}` : bt("Total")}</span><span>{fmt(totalCents)}</span>
+          <span>{party ? `👥 ${btf('Total · group of {n}', { n: party.length })}` : bt("Total")}</span><span>{totalMoney(totalCents, unpriced ?? 0, fmt)}</span>
         </div>
+        <UnpricedNote cents={totalCents} unpriced={unpriced ?? 0} />
         {salon?.firstVisit?.enabled && (salon.firstVisit.rules?.length ?? 0) > 0 && (
           <div style={{ fontSize: 12, color: '#7c5c22', background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 8, padding: '7px 11px', marginTop: 8, lineHeight: 1.5 }}>
             🎁 Visit reward: we check your visit count automatically (by phone/email) and the matching discount is applied to your booking price.

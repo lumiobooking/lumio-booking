@@ -52,12 +52,12 @@ export function money(minorUnits: number, currency: string | null | undefined): 
 
 /**
  * The price as a customer should read it. A bare "$0" looks like a placeholder
- * to a reviewer and like a mistake to a customer: a free add-on says Free, and
- * a "from $0" (the price is set at the chair) says so in words.
+ * to a reviewer and like "free" to a customer. No price = the tech quotes at
+ * the salon; only a service the salon marked free (isFree) says Free.
  */
-export function priceLabel(cents: number | null | undefined, from: boolean, currency: string | null | undefined): string {
+export function priceLabel(cents: number | null | undefined, from: boolean, currency: string | null | undefined, free = false): string {
   const c = Number(cents) || 0;
-  if (c <= 0) return from ? 'Price set at the salon' : 'Free';
+  if (c <= 0) return free ? 'Free' : from ? 'Price varies' : 'Price at salon';
   return `${from ? 'from ' : ''}${money(c, currency)}`;
 }
 
@@ -81,7 +81,7 @@ export interface StaticMenuInput {
   accentColor: string;
   currency: string;
   hours: SeoHours[];
-  menu?: { id: string; name: string; priceCents: number; priceFrom: boolean; durationMinutes: number; category: string | null }[];
+  menu?: { id: string; name: string; priceCents: number; priceFrom: boolean; isFree?: boolean; durationMinutes: number; category: string | null }[];
   policy?: SeoPolicy | null;
 }
 
@@ -126,7 +126,7 @@ export function staticMenuHtml(s: StaticMenuInput, webUrl = 'https://lumiobookin
     for (const m of items) {
       out.push(`<li style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #e5e7eb;font-size:14px">`
         + `<a href="?service=${encodeURIComponent(m.id)}#book" style="color:#0f172a;text-decoration:none;flex:1">${esc(m.name)}${m.durationMinutes ? `<span style="color:#64748b"> · ${esc(m.durationMinutes)} min</span>` : ''}</a>`
-        + `<b>${esc(priceLabel(m.priceCents, m.priceFrom, s.currency))}</b></li>`);
+        + `<b>${esc(priceLabel(m.priceCents, m.priceFrom, s.currency, Boolean(m.isFree)))}</b></li>`);
     }
     out.push('</ul></div>');
   }

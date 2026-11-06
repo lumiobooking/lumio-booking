@@ -30,6 +30,8 @@ interface Service {
   categoryId?: string | null;
   isFeatured?: boolean;
   priceFrom?: boolean;
+  /** Price 0 + isFree = "Free"; price 0 alone = "Price at salon" (never $0.00). */
+  isFree?: boolean;
   imageUrl?: string | null;
   sortOrder?: number;
   turnValue?: number;
@@ -59,6 +61,8 @@ function ServicesInner() {
   // Cards up to tablet width — an iPad gets every field, not a squeezed table.
   const cardList = useIsMobile(CARD_LIST_MAX);
   const [q, setQ] = useState('');
+  // The amber banner's filter: only the services customers see as "Price at salon".
+  const [onlyUnpriced, setOnlyUnpriced] = useState(false);
   // Arrived from the header search (?q=…): start with that search filled in.
   useEffect(() => { const v = new URLSearchParams(window.location.search).get('q'); if (v) setQ(v); }, []);
   const [services, setServices] = useState<Service[]>([]);
@@ -184,7 +188,10 @@ function ServicesInner() {
   // menu and then looked at a screen that disagreed with the booking page.
   // The server returns [sortOrder asc, createdAt desc]; leaving it alone is
   // what makes "Thứ tự hiển thị" mean anything.
+  // Services with no price and not marked free: customers see "Price at salon".
+  const unpricedCount = services.filter((s) => s.isActive && !(s.priceCents > 0) && !s.isFree).length;
   const visible = services.filter((s) =>
+    (!onlyUnpriced || (!(s.priceCents > 0) && !s.isFree)) &&
     matchesQuery(`${s.name} ${s.description ?? ''}`, q) &&
     (catFilter === 'all' || (catFilter === 'none' ? !s.categoryId : s.categoryId === catFilter)));
   // No pagination on this table.
@@ -255,6 +262,18 @@ function ServicesInner() {
       </>)}
 
       {tab === 'services' && (<>
+      {unpricedCount > 0 && (
+        <div role="status" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', margin: '0 0 12px', padding: '12px 14px', borderRadius: 12, background: 'var(--wash-amber)', color: 'var(--ink-warn)', fontSize: 13.5, lineHeight: 1.45 }}>
+          <span style={{ flex: '1 1 260px' }}>
+            <b>{lang === 'vi' ? `${unpricedCount} dịch vụ chưa có giá` : `${unpricedCount} services have no price`}</b>
+            {' — '}{lang === 'vi' ? 'khách thấy “Price at salon” (không còn hiện $0.00). Dịch vụ không giá cũng không lên nút Đặt lịch trên Google.' : 'customers see “Price at salon” (no more $0.00). Unpriced services are not sent to Google booking.'}
+          </span>
+          <button type="button" onClick={() => setOnlyUnpriced((v) => !v)}
+            style={{ minHeight: 36, padding: '0 12px', borderRadius: 8, border: '1px solid currentColor', background: 'transparent', color: 'inherit', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            {onlyUnpriced ? (lang === 'vi' ? 'Xem tất cả' : 'Show all') : (lang === 'vi' ? 'Chỉ xem dịch vụ chưa có giá' : 'Show only unpriced')}
+          </button>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('sv.searchPh')} />
         <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} {t('sv.serviceWord')}</span>
@@ -825,7 +844,7 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
               <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{s.discountPercent}%</span>
             </span>
           ) : (
-            <>{fmt(s.priceCents)}{s.priceFrom ? <span title={lang === 'vi' ? 'Giá từ (trở lên)' : 'From price (and up)'} style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}>+</span> : null}{s.walkInOnly ? <span title={t('sv.walkInOnlyHelp')} style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-warn)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px', whiteSpace: 'nowrap' }}>{t('sv.walkInOnlyBadge')}</span> : null}</>
+            <>{!(s.priceCents > 0) ? <NoPriceTag s={s} vi={lang === 'vi'} /> : fmt(s.priceCents)}{s.priceFrom && s.priceCents > 0 ? <span title={lang === 'vi' ? 'Giá từ (trở lên)' : 'From price (and up)'} style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}>+</span> : null}{s.walkInOnly ? <span title={t('sv.walkInOnlyHelp')} style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-warn)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px', whiteSpace: 'nowrap' }}>{t('sv.walkInOnlyBadge')}</span> : null}</>
           )}
         </td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
@@ -887,7 +906,7 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
               <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
               <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{s.discountPercent}%</span>
             </span>
-          ) : fmt(s.priceCents)}
+          ) : !(s.priceCents > 0) ? <NoPriceTag s={s} vi={lang === 'vi'} /> : fmt(s.priceCents)}
         </MRow>
         <MActions>
           <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? 'var(--c475569)' : '#0ea5e9')}>{t('sv.edit')}</button>
@@ -955,6 +974,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
     categoryId: service.categoryId ?? '',
     isFeatured: service.isFeatured ?? false,
     priceFrom: service.priceFrom ?? false,
+    isFree: service.isFree ?? false,
     imageUrl: service.imageUrl ?? '',
     turnValue: typeof service.turnValue === 'number' ? service.turnValue : 1,
     walkInOnly: service.walkInOnly ?? false,
@@ -977,11 +997,12 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           // Always sent, so emptying the box really clears the note.
           description: form.description.trim(),
           durationMinutes: form.duration.trim() === '' ? 30 : Math.max(0, parseInt(form.duration, 10) || 0),
-          priceCents: toMinorUnits(form.price, service.currency),
+          priceCents: toMinorUnits(form.price || '0', service.currency),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
           categoryId: form.categoryId || null,
           isFeatured: form.isFeatured,
           priceFrom: form.priceFrom,
+          isFree: form.isFree,
           imageUrl: form.imageUrl.trim(),
           turnValue: form.turnValue,
           walkInOnly: form.walkInOnly,
@@ -998,6 +1019,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           categoryId: updated.categoryId ?? '',
           isFeatured: updated.isFeatured ?? false,
           priceFrom: updated.priceFrom ?? false,
+          isFree: updated.isFree ?? false,
           imageUrl: updated.imageUrl ?? '',
           turnValue: typeof updated.turnValue === 'number' ? updated.turnValue : form.turnValue,
           walkInOnly: updated.walkInOnly ?? form.walkInOnly,
@@ -1019,7 +1041,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
         <label><span style={ui.label}>{t('sv.fName')}</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('sv.fDuration')}</span><input style={ui.input} type="number" min={0} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="30" /></label>
-        <label><span style={ui.label}>{t('sv.fPrice').replace('{c}', service.currency)}</span><input style={ui.input} type="number" min={0} step={priceInputStep(service.currency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
+        <label><span style={ui.label}>{t('sv.fPrice').replace('{c}', service.currency)}</span><input style={{ ...ui.input, opacity: priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' || form.isFree ? 0.5 : 1 }} type="number" min={0} step={priceInputStep(service.currency)} value={priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' || form.isFree ? '' : form.price} placeholder={form.isFree ? (lang === 'vi' ? 'Miễn phí' : 'Free') : priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' ? (lang === 'vi' ? 'Báo giá tại tiệm' : 'At salon') : ''} disabled={priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' || form.isFree} onChange={(e) => { setForm({ ...form, price: e.target.value, isFree: false }); setSaved(false); }} required={priceKindOf(form.price, form.priceFrom, form.isFree) === 'fixed' || form.priceFrom} /></label>
         <label><span style={ui.label}>{t('sv.fDiscount')}</span><input style={ui.input} type="number" min={0} max={90} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginTop: 10, alignItems: 'end' }}>
@@ -1032,9 +1054,8 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8 }}>
           <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> {t('sv.popularLabel')}
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8 }}>
-          <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
-        </label>
+        <PriceKindPicker vi={lang === 'vi'} currency={service.currency} price={form.price} priceFrom={form.priceFrom} isFree={form.isFree}
+          onChange={(p) => { setForm({ ...form, ...p }); setSaved(false); }} />
         <TurnSelect value={form.turnValue} onChange={(v) => { setForm({ ...form, turnValue: v }); setSaved(false); }} t={t} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8 }} title={t('sv.walkInOnlyHelp')}>
           <input type="checkbox" checked={form.walkInOnly} onChange={(e) => { setForm({ ...form, walkInOnly: e.target.checked }); setSaved(false); }} /> {t('sv.walkInOnly')}
@@ -1161,7 +1182,7 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
 function CreateServiceForm({ token, categories, staff, currency, onCreated }: { token: string; categories: Category[]; staff: Staff[]; currency: string; onCreated: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false, imageUrl: '', turnValue: 1, walkInOnly: false });
+  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false, isFree: false, imageUrl: '', turnValue: 1, walkInOnly: false });
   const [staffIds, setStaffIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -1178,11 +1199,12 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
           name: form.name,
           description: form.description || undefined,
           durationMinutes: form.durationMinutes.trim() === '' ? 30 : Math.max(0, parseInt(form.durationMinutes, 10) || 0),
-          priceCents: toMinorUnits(form.price, currency),
+          priceCents: toMinorUnits(form.price || '0', currency),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
           categoryId: form.categoryId || null,
           isFeatured: form.isFeatured,
           priceFrom: form.priceFrom,
+          isFree: form.isFree,
           imageUrl: form.imageUrl.trim() || undefined,
           turnValue: form.turnValue,
           walkInOnly: form.walkInOnly,
@@ -1223,13 +1245,15 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
         <label>
           <span style={ui.label}>{t('sv.fPrice').replace('{c}', currency)}</span>
           <input
-            style={ui.input}
+            style={{ ...ui.input, opacity: priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' || form.isFree ? 0.5 : 1 }}
             type="number"
             min={0}
             step="0.01"
-            value={form.price}
-            onChange={(e) => setForm({ ...form, price: e.target.value })}
-            required
+            value={priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' || form.isFree ? '' : form.price}
+            placeholder={form.isFree ? (lang === 'vi' ? 'Miễn phí' : 'Free') : priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' ? (lang === 'vi' ? 'Báo giá tại tiệm' : 'At salon') : ''}
+            disabled={priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' || form.isFree}
+            onChange={(e) => setForm({ ...form, price: e.target.value, isFree: false })}
+            required={priceKindOf(form.price, form.priceFrom, form.isFree) === 'fixed' || form.priceFrom}
           />
         </label>
         <label>
@@ -1254,9 +1278,8 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8, whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> {t('sv.popularLabel')}
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8, whiteSpace: 'nowrap' }}>
-          <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
-        </label>
+        <PriceKindPicker vi={lang === 'vi'} currency={currency} price={form.price} priceFrom={form.priceFrom} isFree={form.isFree}
+          onChange={(p) => setForm({ ...form, ...p })} />
         <TurnSelect value={form.turnValue} onChange={(v) => setForm({ ...form, turnValue: v })} t={t} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8 }} title={t('sv.walkInOnlyHelp')}>
           <input type="checkbox" checked={form.walkInOnly} onChange={(e) => setForm({ ...form, walkInOnly: e.target.checked })} /> {t('sv.walkInOnly')}
@@ -1933,4 +1956,68 @@ function BulkServiceEdit({ ids, services, categories, currency, token, vi, onDon
       {msg && <div style={{ fontSize: 12.5, color: 'var(--ink-bad)', marginTop: 8 }}>{msg}</div>}
     </div>
   );
+}
+
+
+/* ---------- How the price is set (VN Nails, 6 Nov 2026) ----------
+ * A service with no price used to show "$0.00" on the booking page, which a
+ * customer reads as free. The owner now picks one of four kinds; 0 without
+ * "Free" is shown to customers as "Price at salon". */
+type PriceKind = 'fixed' | 'from' | 'salon' | 'free';
+function priceKindOf(price: string, priceFrom: boolean, isFree: boolean): PriceKind {
+  const n = parseFloat(price);
+  if (n > 0) return priceFrom ? 'from' : 'fixed';
+  if (isFree) return 'free';
+  // A "from" picked while the amount is still empty stays "from" so the box stays open.
+  return priceFrom ? 'from' : 'salon';
+}
+function PriceKindPicker({ vi, price, priceFrom, isFree, currency, onChange }: {
+  vi: boolean; price: string; priceFrom: boolean; isFree: boolean; currency: string;
+  onChange: (next: { price: string; priceFrom: boolean; isFree: boolean }) => void;
+}) {
+  const L = (a: string, b: string) => (vi ? a : b);
+  const kind = priceKindOf(price, priceFrom, isFree);
+  const kinds: [PriceKind, string][] = [
+    ['fixed', L('Giá cố định', 'Fixed price')],
+    ['from', L('Từ … (giá tuỳ mẫu)', 'From … (varies)')],
+    ['salon', L('Báo giá tại tiệm', 'Priced at salon')],
+    ['free', L('Miễn phí', 'Free')],
+  ];
+  const pick = (k: PriceKind) => {
+    const keep = parseFloat(price) > 0 ? price : '';
+    if (k === 'fixed') onChange({ price: keep, priceFrom: false, isFree: false });
+    else if (k === 'from') onChange({ price: keep, priceFrom: true, isFree: false });
+    else onChange({ price: '0', priceFrom: false, isFree: k === 'free' });
+  };
+  const n = parseFloat(price) > 0 ? parseFloat(price) : 0;
+  const shown = kind === 'free' ? 'Free' : kind === 'salon' ? 'Price at salon'
+    : n > 0 ? `${kind === 'from' ? 'from ' : ''}${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}` : '—';
+  return (
+    <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={ui.label}>{L('Cách tính giá', 'How it is priced')}</span>
+      <div role="radiogroup" aria-label={L('Cách tính giá', 'How it is priced')} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {kinds.map(([k, label]) => (
+          <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => pick(k)}
+            style={{ minHeight: 36, padding: '0 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: kind === k ? 700 : 600,
+              border: kind === k ? '1.5px solid #6366f1' : '1px solid var(--c475569)', background: kind === k ? 'rgba(99,102,241,0.14)' : 'transparent', color: kind === k ? 'var(--ca5b4fc)' : 'var(--ccbd5e1)' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
+        {L('Khách thấy:', 'Customers see:')} <b style={{ color: kind === 'free' ? 'var(--ink-good)' : 'var(--ce2e8f0)' }}>{shown}</b>
+        {kind === 'salon' && L(' · thợ báo giá khi xem móng; dịch vụ này không lên nút Đặt lịch trên Google.', ' · the tech quotes after seeing the nails; not sent to Google booking.')}
+      </span>
+    </div>
+  );
+}
+
+/** A list row's price when it has none: what the customer sees, so 0 is never read as "$0". */
+function NoPriceTag({ s, vi }: { s: Service; vi: boolean }) {
+  return s.isFree
+    ? <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)' }}>{vi ? 'Miễn phí' : 'Free'}</span>
+    : <span title={vi ? 'Khách thấy “Price at salon”. Bấm Sửa để nhập giá.' : 'Customers see “Price at salon”. Edit to set a price.'}
+        style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-warn)', background: 'var(--wash-amber)', borderRadius: 999, padding: '2px 9px', whiteSpace: 'nowrap' }}>
+        {vi ? 'Chưa có giá' : 'No price'}
+      </span>;
 }

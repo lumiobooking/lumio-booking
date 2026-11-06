@@ -24,8 +24,10 @@ describe('the booking page a crawler reads', () => {
   });
 
   it('never prints a bare $0', () => {
-    expect(priceLabel(0, false, 'USD')).toBe('Free');
-    expect(priceLabel(0, true, 'USD')).toBe('Price set at the salon');
+    // No price is never "$0" and never "Free" unless the salon said so.
+    expect(priceLabel(0, false, 'USD')).toBe('Price at salon');
+    expect(priceLabel(0, true, 'USD')).toBe('Price varies');
+    expect(priceLabel(0, false, 'USD', true)).toBe('Free');
     expect(priceLabel(4900, false, 'USD')).toBe('$49');
     expect(priceLabel(4500, true, 'USD')).toBe('from $45');
     expect(priceLabel(250000, false, 'VND')).toContain('250,000');

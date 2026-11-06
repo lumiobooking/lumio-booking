@@ -293,7 +293,7 @@ export class PublicSalonController {
     // only — no pictures, no add-ons; the interactive page takes over on load.
     const catName = new Map((categories ?? []).map((c) => [c.id, c.name]));
     const menu = (services ?? []).slice(0, 80).map((sv) => ({
-      id: sv.id, name: sv.name, priceCents: sv.priceCents ?? 0, priceFrom: Boolean(sv.priceFrom), durationMinutes: sv.durationMinutes ?? 0,
+      id: sv.id, name: sv.name, priceCents: sv.priceCents ?? 0, priceFrom: Boolean(sv.priceFrom), isFree: Boolean((sv as { isFree?: boolean }).isFree), durationMinutes: sv.durationMinutes ?? 0,
       category: sv.categoryId ? (catName.get(sv.categoryId) ?? null) : null,
     }));
 

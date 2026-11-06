@@ -264,6 +264,13 @@ const VI: Record<string, string> = {
   'No service yet': 'Chưa chọn dịch vụ',
   'Other services': 'Dịch vụ khác',
   'POPULAR': 'ĐƯỢC CHỌN NHIỀU',
+  // A service with no price: the tech quotes at the salon (never "$0.00").
+  'Price at salon': 'Giá tại tiệm',
+  'Price varies': 'Giá tuỳ mẫu',
+  'Free': 'Miễn phí',
+  'salon price': 'giá tại tiệm',
+  '+ {n} service priced at the salon': '+ {n} dịch vụ báo giá tại tiệm',
+  '+ {n} services priced at the salon': '+ {n} dịch vụ báo giá tại tiệm',
   'Select': 'Chọn',
   '💵 Cash price · 💳 Card price (+{percent}%)': '💵 Giá tiền mặt · 💳 Giá thẻ (+{percent}%)',
   'Scan to keep booking': 'Quét mã để đặt tiếp',

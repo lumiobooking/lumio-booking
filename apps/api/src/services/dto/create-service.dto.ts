@@ -72,6 +72,11 @@ export class CreateServiceDto {
   @IsBoolean()
   priceFrom?: boolean;
 
+  // Price 0 + isFree = really free ("Free"); price 0 alone = "Price at salon".
+  @IsOptional()
+  @IsBoolean()
+  isFree?: boolean;
+
   // Optional photo shown on the booking menu. Empty string clears it.
   @IsOptional()
   @IsString()

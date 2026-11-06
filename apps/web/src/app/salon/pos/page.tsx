@@ -31,7 +31,7 @@ import { isTableIndustry } from '../../../lib/restaurant-till';
 import { RestaurantTill } from '../../../components/RestaurantTill';
 import { isBookable } from '../../../lib/bookable-staff';
 
-interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
+interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; isFree?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null; imageUrl?: string | null }
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string | null; categoryId?: string | null; askAtBooking?: boolean; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean; tipQrUrl?: string | null; tipHandle?: string | null }
@@ -741,7 +741,17 @@ function Register() {
 
   function addService(s: Service) {
     const d = s.discountPercent ?? 0;
-    setCart((c) => [...c, { uid: `u${uidSeq++}`, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: net(s.priceCents, d), discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: '' }]);
+    const uid = `u${uidSeq++}`;
+    setCart((c) => [...c, { uid, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: net(s.priceCents, d), discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: '' }]);
+    // Priced at the salon (no menu price, not free): open the price box at once
+    // so the cashier types what the tech quoted instead of charging $0.
+    if (!(s.priceCents > 0) && !s.isFree) setEditUid(uid);
+  }
+  /** A service line still at 0 whose menu has no price (and is not marked free): the price is still to be typed. */
+  function needsPrice(l: Line): boolean {
+    if (l.kind !== 'SERVICE' || l.isAddon || l.unitPriceCents > 0) return false;
+    const sv = services.find((x) => x.id === l.refId);
+    return !!sv && !(sv.priceCents > 0) && !sv.isFree;
   }
   /** An add-on line. Picked under a service on the bill, it sits right after
    *  that service and goes to the same technician (her tip and commission). */
@@ -1972,7 +1982,13 @@ function Register() {
       )}
     </button>
   );
-  const priceTag = (cents: number, disc?: number, from?: boolean) => {
+  const priceTag = (cents: number, disc?: number, from?: boolean, free?: boolean) => {
+    if (!(cents > 0)) {
+      // No menu price: never "$0" on the tile — it is quoted at the chair.
+      return free
+        ? <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-good)' }}>{L('Miễn phí', 'Free')}</span>
+        : <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-warn)' }}>{L('Giá tại tiệm', 'Price at salon')}</span>;
+    }
     const d = disc ?? 0;
     const netC = d > 0 ? Math.round((cents * (100 - d)) / 100) : cents;
     return (
@@ -1987,7 +2003,7 @@ function Register() {
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', margin: '0 -8px', padding: '10px 8px 12px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gridAutoRows: tileRow, gap: layout === 'phone' ? 8 : layout === 'wide' && !tightTop ? 12 : 10, alignContent: 'start' }}>
         {tab === 'SERVICE' && flatServices.map((s) => tile(
-          s.id, s.name, s.durationMinutes > 0 ? `${s.durationMinutes} ${L('phút', 'min')}` : (s.category && catFilter === null ? niceName(s.category.name) : ''), priceTag(s.priceCents, s.discountPercent, s.priceFrom),
+          s.id, s.name, s.durationMinutes > 0 ? `${s.durationMinutes} ${L('phút', 'min')}` : (s.category && catFilter === null ? niceName(s.category.name) : ''), priceTag(s.priceCents, s.discountPercent, s.priceFrom, s.isFree),
           qtyInCart.get(s.id) || 0, () => addService(s), s.category ? catHue.get(s.category.id) : undefined, false, s.imageUrl,
         ))}
         {tab === 'ADDON' && addonGroups.flatMap((g) => g.items).map((a) => tile(
@@ -2084,7 +2100,9 @@ function Register() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
             <button type="button" onClick={() => setEditUid(open ? null : l.uid)} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'right' }}>
               {l.discountPercent > 0 && <span style={{ display: 'block', fontSize: 12, color: 'var(--c64748b)', textDecoration: 'line-through' }}>{fmt(l.origUnitPriceCents * l.quantity)}</span>}
-              <span style={{ fontSize: dense ? 15 : 16, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{fmt(l.unitPriceCents * l.quantity)}</span>
+              {needsPrice(l)
+                ? <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-warn)', border: '1px dashed currentColor', borderRadius: 8, padding: '3px 8px', whiteSpace: 'nowrap' }}>{L('Nhập giá', 'Set price')}</span>
+                : <span style={{ fontSize: dense ? 15 : 16, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{fmt(l.unitPriceCents * l.quantity)}</span>}
             </button>
             {!dense && (
               <button type="button" onClick={() => removeLine(l.uid)} aria-label={L('Bỏ dòng này', 'Remove line')} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--c94a3b8)' }}><IcoX /></button>

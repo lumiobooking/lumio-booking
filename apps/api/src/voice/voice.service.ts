@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { chosenIndustry, personaFor } from '../common/business-persona';
+import { aiPriceText } from '../common/price-label';
 import { VOICE_CATALOG, cleanVoiceSetting, parseVoices } from './voice-catalog';
 import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor, agentFallbackLines, transferLines } from './voice-lang';
 import { isTransientStatus } from '../messenger/agent-fallback';
@@ -1270,7 +1271,7 @@ export class VoiceService implements OnModuleInit {
       this.instructions ? this.instructions.forTurn(tenantId, 'voice', '').catch(() => null) : Promise.resolve(null),
       this.prisma.service.findMany({
         where: { tenantId, isActive: true },
-        select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true, categoryId: true, ...({ walkInOnly: true } as object) } as never,
+        select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true, categoryId: true, ...({ walkInOnly: true, isFree: true } as object) } as never,
         orderBy: { name: 'asc' }, take: 250,
       }) as unknown as Promise<{ id: string; name: string; priceCents: number; durationMinutes: number; currency: string; priceFrom: boolean; categoryId: string | null; walkInOnly?: boolean }[]>,
       // "Ask before booking" extras (Design?) the salon requires on some services.
@@ -1337,9 +1338,9 @@ export class VoiceService implements OnModuleInit {
     const shown = menuRows.slice(0, 150);
     const servicesBlock = shown.length
       ? 'Menu (pass the code, e.g. S3, to the tools; never say a code out loud):\n' +
-        shown.map((s, i) => `- ${serviceCode(i)} ${s.name} — ${formatMoneyShort(s.priceCents, (s as { currency?: string }).currency ?? 'USD', menuLocale)}${(s as { priceFrom?: boolean }).priceFrom ? ' and up (a starting price — say it that way)' : ''}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''}`).join('\n') +
+        shown.map((s, i) => `- ${serviceCode(i)} ${s.name} — ${aiPriceText(s as never, (c) => formatMoneyShort(c, (s as { currency?: string }).currency ?? 'USD', menuLocale))}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''}`).join('\n') +
         (menuRows.length > shown.length ? `\n(Only ${shown.length} of this ${persona.venueNoun}'s ${menuRows.length} services are listed here. If the caller asks for something not on this list, call get_services and search the full menu before saying anything about it.)` : '') +
-        (walkInRows.length ? `\nWALK-IN ONLY — never booked, first come, first served: ${walkInRows.map((s) => `${s.name} (${formatMoneyShort(s.priceCents, s.currency ?? 'USD', menuLocale)})`).join(', ')}. If the caller wants one of these, say the ${persona.venueNoun} takes it walk-in only — no appointment needed, just come in — and do not book it.` : '') +
+        (walkInRows.length ? `\nWALK-IN ONLY — never booked, first come, first served: ${walkInRows.map((s) => `${s.name} (${aiPriceText(s as never, (c) => formatMoneyShort(c, s.currency ?? 'USD', menuLocale))})`).join(', ')}. If the caller wants one of these, say the ${persona.venueNoun} takes it walk-in only — no appointment needed, just come in — and do not book it.` : '') +
         (asks.length ? `\nASK BEFORE BOOKING — the ${persona.venueNoun} requires these questions (a yes makes the visit longer):\n` + asks.map((a) => {
           const scope = a.serviceId ? `booking ${a.service?.name ?? 'that service'}` : a.categoryId ? `booking any ${a.category?.name ?? ''} service` : 'every booking';
           const cost = [a.priceCents > 0 ? `+${formatMoneyShort(a.priceCents, a.currency ?? 'USD', menuLocale)}` : '', a.durationMinutes > 0 ? `+${a.durationMinutes} min` : ''].filter(Boolean).join(', ');
@@ -1786,7 +1787,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },
-          select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true, ...({ walkInOnly: true } as object) } as never,
+          select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true, ...({ walkInOnly: true, isFree: true } as object) } as never,
           orderBy: { name: 'asc' }, take: 250,
         }) as unknown as { id: string; name: string; priceCents: number; durationMinutes: number; currency: string; priceFrom?: boolean; walkInOnly?: boolean }[];
         if (!services.length) return 'No services are configured.';
@@ -1797,7 +1798,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         // The take was also 40, which quietly hid the rest of a long menu —
         // the same cut that once made the bot say a service did not exist.
         const { locale: svcLocale } = await this.localeInfo(tenantId);
-        return JSON.stringify(services.map((s) => ({ code: s.walkInOnly ? 'WALK-IN ONLY (never book — first come, first served, just come in)' : codeOf(s.id), name: s.name, price: formatMoneyShort(s.priceCents, s.currency, svcLocale) + ((s as { priceFrom?: boolean }).priceFrom ? ' and up' : ''), minutes: s.durationMinutes })));
+        return JSON.stringify(services.map((s) => ({ code: s.walkInOnly ? 'WALK-IN ONLY (never book — first come, first served, just come in)' : codeOf(s.id), name: s.name, price: aiPriceText(s as never, (c) => formatMoneyShort(c, s.currency, svcLocale)), minutes: s.durationMinutes })));
       }
       if (name === 'create_booking') {
         const firstName = String(input.customerFirstName || '').trim();

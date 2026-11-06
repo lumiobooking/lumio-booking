@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { StaffRole, UserRole } from '@prisma/client';
+import { aiPriceText } from '../common/price-label';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
@@ -581,11 +582,11 @@ export class AiBrainService {
     const tenant: Row | null = await this.db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true, market: true, businessType: true } }).catch(() => null);
     const tz = tenant?.timezone || 'America/New_York';
     const memory = dto.customerId ? await this.getMemory(tenantId, dto.customerId) : null;
-    const services: Row[] = await this.db.service.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true }, orderBy: { name: 'asc' }, take: 150 }).catch(() => []);
+    const services: Row[] = await this.db.service.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true, ...({ isFree: true } as object) } as never, orderBy: { name: 'asc' }, take: 150 }).catch(() => []);
     const menu: MenuItem[] = services.map((s) => ({ id: s.id, name: s.name, minutes: s.durationMinutes > 0 ? s.durationMinutes : 30 }));
     const staff: Row[] = await this.db.staffMember.findMany({ where: { tenantId, isActive: true, takesAppointments: true }, select: { id: true, firstName: true, lastName: true }, take: 60 }).catch(() => []);
     const locale = String(tenant?.market ?? '').toUpperCase() === 'VN' ? 'vi-VN' : 'en-US';
-    const menuText = services.map((s, i) => `- ${serviceCode(i)} ${s.name} — ${formatMoneyShort(s.priceCents, s.currency ?? 'USD', locale)}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''}`).join('\n');
+    const menuText = services.map((s, i) => `- ${serviceCode(i)} ${s.name} — ${aiPriceText(s as never, (c) => formatMoneyShort(c, s.currency ?? 'USD', locale))}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''}`).join('\n');
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const lastUser = msgs[msgs.length - 1].content;
     const insCh: InstructionChannel = opts.on ?? (channel === 'voice' ? 'voice' : 'messenger');

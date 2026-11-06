@@ -1,5 +1,6 @@
 import { GROUP_NOTICE_DELAY_MS, groupLead, groupSummary, visitPeople, type GroupMember } from './group-notice';
 import { shouldConfirmOnCreate } from './auto-confirm';
+import { totalText } from '../common/price-label';
 import {
   Injectable,
   NotFoundException,
@@ -1726,9 +1727,9 @@ export class BookingsService {
     // Was `cents / 100` with a hard en-US: a 200,000₫ service was quoted to the
     // customer as ₫2,000 — a hundredth of the real price, in the message that
     // is supposed to confirm what they will pay.
-    const total = formatMoney(appointment.priceCents, appointment.currency, loc);
-
     const vi = loc.toLowerCase().startsWith('vi');
+    // 0 = priced at the salon (never "$0.00", which reads as free).
+    const total = totalText(appointment.priceCents, (c) => formatMoney(c, appointment.currency, loc), vi);
     // Where the salon is. Optional — a salon that has not filled it in simply
     // gets no address row, exactly as before.
     const extra = await this.settings.getCompanyExtra(tenantId).catch(() => ({ address: '' } as { address?: string }));
@@ -1768,7 +1769,7 @@ export class BookingsService {
       const gs = groupSummary(opts.group, vi);
       d.service = gs.service;
       d.lineup = gs.lineup;
-      d.total = formatMoney(gs.totalCents, appointment.currency, loc);
+      d.total = totalText(gs.totalCents, (c) => formatMoney(c, appointment.currency, loc), vi);
       d.addons = '';
       d.addonsOnly = '';
       // Everyone starts together; each person's length differs, so the party's
@@ -2510,7 +2511,7 @@ export class BookingsService {
     const addonNames = lineItems.map((a) => a.name).filter(Boolean).join(', ');
     const serviceLines = lineItems.filter((l) => l.kind === 'service');
     const addonOnlyNames = lineItems.filter((l) => l.kind !== 'service').map((a) => a.name).filter(Boolean).join(', ');
-    const total = formatMoney(appt.priceCents, appt.currency, loc);
+    const total = totalText(appt.priceCents, (c) => formatMoney(c, appt.currency, loc), loc.toLowerCase().startsWith('vi'));
     const salon = tenant?.name ?? 'Our salon';
     const accent = this.settings.brandingFrom(tenant?.branding).accentColor;
     const contact = tenant?.contactEmail ?? tenant?.contactPhone ?? '';
@@ -2657,7 +2658,7 @@ export class BookingsService {
         priceFrom: true,
         imageUrl: true,
         sortOrder: true,
-        ...({ walkInOnly: true } as object),
+        ...({ walkInOnly: true, isFree: true } as object),
         addons: {
           where: { isActive: true },
           select: { id: true, name: true, durationMinutes: true, priceCents: true, currency: true, ...({ askAtBooking: true } as object) },

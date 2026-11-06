@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { discountRules, promoKnowledge, type PromoInputs } from './promo-knowledge';
+import { aiPriceText } from '../common/price-label';
 import { AiBrainService } from '../ai-brain/ai-brain.service';
 import { conversationLanguage as brainConversationLanguage } from '../ai-brain/brain-rules';
 import type { Lang as BrainLang } from '../ai-brain/brain-settings';
@@ -5479,7 +5480,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     try {
       services = await this.prisma.service.findMany({
         where: { tenantId, isActive: true },
-        select: { name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true, description: true, categoryId: true, category: { select: { name: true } }, ...({ walkInOnly: true } as object) } as never,
+        select: { name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true, description: true, categoryId: true, category: { select: { name: true } }, priceFrom: true, ...({ walkInOnly: true, isFree: true } as object) } as never,
         orderBy: [{ discountPercent: 'desc' }, { name: 'asc' }],
         take: 60,
       }) as unknown as SvcRow[];
@@ -5514,16 +5515,16 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         if (sv.walkInOnly) continue;
         const off = sv.discountPercent > 0;
         const final = Math.round(sv.priceCents * (100 - sv.discountPercent) / 100);
-        const price = off
-          ? `${money(final, sv.currency)} (was ${money(sv.priceCents, sv.currency)}, −${sv.discountPercent}% ON SALE NOW)`
-          : money(sv.priceCents, sv.currency);
+        const price = off && sv.priceCents > 0
+          ? `${money(final, sv.currency)}${(sv as { priceFrom?: boolean }).priceFrom ? ' and up' : ''} (was ${money(sv.priceCents, sv.currency)}, −${sv.discountPercent}% ON SALE NOW)`
+          : aiPriceText(sv as never, (c) => money(c, sv.currency));
         const cat = sv.category?.name ? ` [${sv.category.name}]` : '';
         const desc = sv.description ? ` — ${sv.description.slice(0, 90)}` : '';
         out.push(`- ${sv.name}${cat}: ${price} · ${sv.durationMinutes} min${desc}`);
       }
       if (walkIn.length) {
         const money = (c: number, cur: string) => formatMoneyShort(c, cur, promptLocale);
-        out.push(`WALK-IN ONLY — NEVER BOOK THESE (first come, first served): ${walkIn.map((sv) => `${sv.name} (${money(sv.priceCents, sv.currency)})`).join(', ')}. If someone asks to book one of these, say in one line that the salon takes it walk-in only — no appointment needed, just come in — and do NOT call create_booking for it.`);
+        out.push(`WALK-IN ONLY — NEVER BOOK THESE (first come, first served): ${walkIn.map((sv) => `${sv.name} (${aiPriceText(sv as never, (c) => money(c, sv.currency))})`).join(', ')}. If someone asks to book one of these, say in one line that the salon takes it walk-in only — no appointment needed, just come in — and do NOT call create_booking for it.`);
       }
       if (asks.length) {
         const money = (c: number, cur: string) => formatMoneyShort(c, cur, promptLocale);
@@ -5851,9 +5852,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },
-          select: { id: true, name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true, ...({ walkInOnly: true } as object) } as never,
+          select: { id: true, name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true, priceFrom: true, ...({ walkInOnly: true, isFree: true } as object) } as never,
           orderBy: { name: 'asc' }, take: 250,
-        }) as unknown as { id: string; name: string; priceCents: number; durationMinutes: number; discountPercent: number; currency: string; walkInOnly?: boolean }[];
+        }) as unknown as { id: string; name: string; priceCents: number; durationMinutes: number; discountPercent: number; currency: string; priceFrom?: boolean; isFree?: boolean; walkInOnly?: boolean }[];
         if (!services.length) return 'No services are configured.';
         const toolLocale = await this.customerLocale(tenantId);
         return JSON.stringify(services.map((sv) => {
@@ -5864,7 +5865,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           return {
             id: sv.id,
             name: sv.name,
-            price: formatMoneyShort(final, sv.currency, toolLocale),
+            price: sv.priceCents > 0 ? formatMoneyShort(final, sv.currency, toolLocale) + (sv.priceFrom ? ' and up' : '') : aiPriceText(sv, (c) => formatMoneyShort(c, sv.currency, toolLocale)),
             ...(sv.discountPercent > 0 ? { wasPrice: formatMoneyShort(sv.priceCents, sv.currency, toolLocale), discountPercent: sv.discountPercent } : {}),
             minutes: sv.durationMinutes,
             ...(sv.walkInOnly ? { walkInOnly: true, note: 'WALK-IN ONLY — first come, first served; never book this, tell them to just come in.' } : {}),

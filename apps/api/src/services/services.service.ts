@@ -241,6 +241,7 @@ export class ServicesService {
           sortOrder: dto.sortOrder ?? 0,
           isFeatured: dto.isFeatured ?? false,
           priceFrom: dto.priceFrom ?? false,
+          ...({ isFree: Boolean(dto.isFree) && !(dto.priceCents > 0) } as object),
           imageUrl: cleanImageUrl(dto.imageUrl),
           ...({ turnValue: cleanTurnValue(dto.turnValue) ?? 1, walkInOnly: dto.walkInOnly ?? false } as Record<string, unknown>),
         },
@@ -284,6 +285,8 @@ export class ServicesService {
       sortOrder: dto.sortOrder,
       isFeatured: dto.isFeatured,
       priceFrom: dto.priceFrom,
+      // A price entered turns "free" off; isFree only sticks to a 0 price.
+      ...(dto.isFree !== undefined || (dto.priceCents ?? 0) > 0 ? { isFree: Boolean(dto.isFree) && !((dto.priceCents ?? 0) > 0) } as object : {}),
     };
     if (dto.imageUrl !== undefined) data.imageUrl = cleanImageUrl(dto.imageUrl);
     if (dto.turnValue !== undefined) (data as Record<string, unknown>).turnValue = cleanTurnValue(dto.turnValue) ?? 1;

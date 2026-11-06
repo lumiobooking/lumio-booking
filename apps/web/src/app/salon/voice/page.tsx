@@ -589,6 +589,8 @@ function Inner() {
           <div style={{ ...ui.card, marginBottom: 16, fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.65 }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 8 }}>{t('forwardTitle')}</div>
             <p style={{ margin: '0 0 14px' }}>{t('fwKey')}</p>
+            <ForwardGuide vi={lang === 'vi'} n={n} enabled={!!c.enabled} mode={c.mode}
+              ringsSalon={!!n && `${c.forwardNumbers ?? ''},${c.transferNumber ?? ''}`.split(/[,;\n]/).some((x) => dialDigits(x) === n)} />
 
             <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{t('fwA')}</div>
             <p style={{ margin: '0 0 6px' }}>{t('fwAWhen')}</p>
@@ -723,5 +725,100 @@ function Stat({ label, value }: { label: string; value: number | string }) {
       <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--ca5b4fc)', lineHeight: 1 }}>{value}</div>
       <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{label}</div>
     </div>
+  );
+}
+
+/**
+ * HƯỚNG DẪN CÀI TỪNG BƯỚC — the owner asked for a guide detailed enough that a
+ * salon sets forwarding up without mistakes (6 Nov 2026). What went wrong in
+ * practice: codes dialed from the wrong phone, +1 added, old forwarding left
+ * on, the mode in Lumio not saved, testing from the salon phone itself, the
+ * ring list holding the salon number (a loop), mobile voicemail answering
+ * first. Each is a step or a line under "Lỗi thường gặp". The live state of
+ * the hotline (on, mode) is checked in step 1 so a wrong setting shows here.
+ */
+function ForwardGuide({ vi, n, enabled, mode, ringsSalon }: { vi: boolean; n: string; enabled: boolean; mode: string; ringsSalon: boolean }) {
+  const L = (a: string, b: string) => (vi ? a : b);
+  const code: CSSProperties = { ...codeS, fontSize: 12.5, whiteSpace: 'nowrap' };
+  const C = ({ children }: { children: string }) => <code style={code}>{children}</code>;
+  const step: CSSProperties = { display: 'grid', gridTemplateColumns: '28px 1fr', gap: 10, padding: '10px 0', borderTop: '1px solid var(--line)' };
+  const num: CSSProperties = { width: 26, height: 26, borderRadius: 13, background: 'var(--ink-link)', color: '#fff', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' };
+  const ok = (good: boolean, yes: string, no: string) => (
+    <span style={{ display: 'block', marginTop: 4, fontWeight: 600, color: good ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{good ? '✓ ' + yes : '⚠ ' + no}</span>
+  );
+  const modeOk = mode === 'ai' || mode === 'ring_first';
+  return (
+    <details open style={{ border: '1px solid var(--line)', borderRadius: 12, padding: '10px 14px', margin: '0 0 16px', background: 'var(--wash-blue)' }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14.5 }}>
+        📋 {L('Hướng dẫn cài đặt từng bước — đọc hết trước khi bấm mã', 'Step-by-step setup — read it all before dialing')}
+      </summary>
+
+      <div style={{ margin: '10px 0 4px', fontWeight: 700, color: 'var(--ce2e8f0)' }}>{L('Chuẩn bị', 'Before you start')}</div>
+      <ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>
+        <li>{L('Số Lumio của tiệm (số AI nghe máy):', 'Your Lumio number (the one the AI answers):')} <C>{n || '—'}</C>. {L('Khi bấm mã chỉ dùng đúng 10 số này — KHÔNG thêm 1, +1, dấu cách hay gạch ngang.', 'In every code use exactly these 10 digits — NO 1, +1, spaces or dashes.')}</li>
+        <li>{L('Xác định số tiệm là loại nào: máy bàn (xem hoá đơn: AT&T, Spectrum, Xfinity/Comcast, Frontier…), điện thoại di động (AT&T, T-Mobile, Verizon…) hay tổng đài internet/VoIP (Zoom Phone, RingCentral, Ooma, Google Voice…). Không chắc thì xem hoá đơn điện thoại hằng tháng của tiệm.', 'Know what the salon number is: a landline (see the bill: AT&T, Spectrum, Xfinity/Comcast, Frontier…), a mobile (AT&T, T-Mobile, Verizon…) or an internet/VoIP system (Zoom Phone, RingCentral, Ooma, Google Voice…). Not sure? Check the monthly phone bill.')}</li>
+        <li>{L('Mã phải bấm từ CHÍNH máy/đường dây đang giữ số tiệm. Bấm từ máy khác thì chỉ cài cho máy đó. Máy bàn có nhiều line: bấm trên line của số tiệm.', 'Dial the codes FROM the phone/line that holds the salon number. Dialed elsewhere, they set up that other phone. Multi-line desk phone: use the salon number’s line.')}</li>
+        <li>{L('Chọn MỘT cách: Cách 1 (nhân viên nghe trước) hoặc Cách 2 (AI nghe liền). Không bấm mã của cả hai cách.', 'Pick ONE way: Option 1 (staff first) or Option 2 (AI at once). Never dial both sets of codes.')}</li>
+      </ul>
+
+      <div style={step}>
+        <span style={num}>1</span>
+        <div>
+          <b>{L('Cài trong Lumio trước', 'Set Lumio first')}</b><br />
+          {L('Bật hotline, ở mục “Cách tổng đài trả lời” chọn “AI trả lời ngay” rồi bấm “Lưu cài đặt cuộc gọi”. Kiểm tra khung giờ AI nghe máy có gồm giờ bây giờ (để thử được).', 'Turn the hotline on, under “How the hotline behaves” choose “The assistant answers right away” and press “Save call handling”. Make sure the AI’s hours include now (so you can test).')}
+          {ok(enabled, L('Hotline đang BẬT.', 'The hotline is ON.'), L('Hotline đang TẮT — bật lên ở đầu trang, nếu không khách gọi sẽ không gặp AI.', 'The hotline is OFF — turn it on at the top, or callers never reach the AI.'))}
+          {ok(modeOk, mode === 'ai' ? L('Đang chọn “AI trả lời ngay”.', '“Answers right away” is selected.') : L('Đang chọn “Đổ chuông cho tiệm trước” — chỉ đúng với Cách 2 và khi số đổ chuông là số DI ĐỘNG của nhân viên.', '“Ring first” is selected — only right with Option 2, ringing staff MOBILE numbers.'),
+            L('Đang chọn “Chỉ chuyển cho người” — AI sẽ không nói. Đổi sang “AI trả lời ngay”.', '“Forward only” is selected — the AI will not talk. Switch to “Answers right away”.'))}
+          {ringsSalon && <span style={{ display: 'block', marginTop: 4, fontWeight: 600, color: 'var(--ink-bad)' }}>⛔ {L('Ô “Số điện thoại đổ chuông” hoặc “Số lễ tân” đang là chính số Lumio → cuộc gọi chạy vòng. Nhập số DI ĐỘNG của nhân viên (cũng không nhập số tiệm nếu số tiệm đã chuyển về Lumio).', 'A ring / receptionist number is the Lumio number itself → the call loops. Enter staff MOBILE numbers (not the salon number either, once it forwards to Lumio).')}</span>}
+        </div>
+      </div>
+
+      <div style={step}>
+        <span style={num}>2</span>
+        <div>
+          <b>{L('Tắt chuyển hướng cũ (nếu có)', 'Turn off any old forwarding')}</b><br />
+          {L('Nếu số tiệm từng cài chuyển hướng (sang di động chủ, dịch vụ trả lời khác…), tắt trước:', 'If the salon number ever forwarded somewhere (an owner’s cell, an answering service…), clear it first:')}{' '}
+          {L('máy bàn / Verizon', 'landline / Verizon')} <C>*73</C> {L('(và', '(and')} <C>*93</C> · <C>*91</C>{L('); di động AT&T / T-Mobile', '); AT&T / T-Mobile mobile')} <C>##002#</C>. {L('Bấm, nhấn gọi, nghe thông báo rồi cúp.', 'Dial, press call, wait for the confirmation, hang up.')}
+        </div>
+      </div>
+
+      <div style={step}>
+        <span style={num}>3</span>
+        <div>
+          <b>{L('Bấm mã bật chuyển hướng (ở bảng bên dưới)', 'Dial the forwarding code (table below)')}</b>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+            <li><b>{L('Máy bàn:', 'Landline:')}</b> {L('nhấc máy, chờ tiếng tút mời quay số, bấm mã (VD Cách 2:', 'lift the handset, wait for the dial tone, dial the code (e.g. Option 2:')} <C>{`*72 ${n}`}</C>{L('). Với ', '). With ')}<C>*72</C>{L(' nhà mạng sẽ gọi thử sang số Lumio — AI bắt máy là được, chờ vài giây rồi cúp. Nếu không nghe gì hoặc không ai trả lời: cúp, bấm lại đúng mã đó một lần nữa trong vòng 2 phút.', ' the carrier test-calls the Lumio number — when the AI answers, wait a few seconds and hang up. If nothing answers: hang up and dial the same code again within 2 minutes.')}</li>
+            <li><b>{L('Di động:', 'Mobile:')}</b> {L('mở bàn phím gọi (không dùng danh bạ), gõ đủ các dấu * và # (VD Cách 2 AT&T:', 'open the dial pad (not contacts), type every * and # (e.g. Option 2 AT&T:')} <C>{`*21*${n}#`}</C>{L('), nhấn Gọi. Màn hình báo “Đã đăng ký / Registration successful / Call forwarding activated” là xong.', '), press Call. “Registration successful / Call forwarding activated” on screen means done.')}</li>
+            <li><b>{L('Cách 1 trên di động:', 'Option 1 on a mobile:')}</b> {L('bấm cả 3 mã — không trả lời, máy bận và', 'dial all 3 — no answer, busy and')} <C>{`**62*${n}#`}</C> {L('(tắt máy / mất sóng). Thiếu mã nào thì lúc đó khách vào hộp thư thoại.', '(off / no signal). Miss one and in that case callers land in voicemail.')}</li>
+            <li><b>VoIP / Zoom:</b> {L('không bấm mã — vào trang quản trị của tổng đài (Zoom: Phone → Settings → Call Handling) → chuyển tiếp “Tất cả” (Cách 2) hoặc “Khi không trả lời” (Cách 1) → External number → nhập', 'no codes — open the phone system’s admin (Zoom: Phone → Settings → Call Handling) → forward “All calls” (Option 2) or “No answer” (Option 1) → External number → enter')} <C>{n}</C>. {L('Bật thêm “giữ số người gọi / pass through caller ID” nếu có, để AI nhắn tin xác nhận đúng số khách.', 'Also turn on “pass through caller ID” if offered, so the AI texts the caller, not the salon.')}</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style={step}>
+        <span style={num}>4</span>
+        <div>
+          <b>{L('Gọi thử', 'Test call')}</b><br />
+          {L('Dùng một điện thoại KHÁC (không phải máy tiệm, cũng không phải số trong ô đổ chuông) gọi vào SỐ TIỆM, trong khung giờ AI nghe máy.', 'From ANOTHER phone (not the salon phone, not a number in the ring list) call the SALON number during the AI’s hours.')}
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+            <li>{L('Cách 2: AI chào ngay hồi chuông đầu.', 'Option 2: the AI greets on the first ring.')}</li>
+            <li>{L('Cách 1: không ai bắt máy ở tiệm; sau khoảng 4–6 hồi AI chào.', 'Option 1: nobody at the salon picks up; after about 4–6 rings the AI greets.')}</li>
+            <li>{L('Đặt thử một lịch qua điện thoại, kiểm tra tin nhắn xác nhận về đúng máy vừa gọi và lịch hiện trên Lịch hẹn. Cuộc gọi cũng hiện ở “Cuộc gọi gần đây” bên dưới.', 'Book a test appointment by phone; check the confirmation text reaches the phone you called from and the booking shows on the calendar. The call also shows under recent calls below.')}</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style={{ margin: '12px 0 4px', fontWeight: 700, color: 'var(--ce2e8f0)' }}>{L('Lỗi thường gặp và cách sửa', 'Common problems')}</div>
+      <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4 }}>
+        <li><b>{L('Nghe “mã không hợp lệ / dịch vụ chưa đăng ký”:', '“Invalid code / feature not available”:')}</b> {L('đường dây chưa mở tính năng Call Forwarding. Gọi tổng đài nhà mạng (thường là 611 từ máy đó, hoặc số trên hoá đơn), nói: “Please turn on call forwarding and forward all calls to', 'the line has no call forwarding. Call the carrier (usually 611 from that phone, or the number on the bill) and say: “Please turn on call forwarding and forward all calls to')} {n}”. {L('Một số nhà mạng tính phí nhỏ hằng tháng.', 'Some charge a small monthly fee.')}</li>
+        <li><b>{L('Gọi thử vẫn vào hộp thư thoại của tiệm:', 'The test call reaches the salon voicemail:')}</b> {L('với Cách 1 trên di động, hộp thư thoại thường bắt máy sau ~20 giây trước khi chuyển. Dùng Cách 2, hoặc nhờ nhà mạng tắt hộp thư thoại / tăng thời gian đổ chuông trước khi chuyển. Máy bàn có máy trả lời tự động: tắt máy trả lời đó.', 'on a mobile with Option 1 its voicemail often answers at ~20 s before forwarding. Use Option 2, or ask the carrier to turn voicemail off / lengthen the ring time before forwarding. A desk answering machine: switch it off.')}</li>
+        <li><b>{L('Gọi thử từ chính máy tiệm không thấy chuyển:', 'Calling from the salon phone itself doesn’t forward:')}</b> {L('bình thường — luôn thử bằng máy khác.', 'normal — always test from another phone.')}</li>
+        <li><b>{L('Chuyển được nhưng nghe tút bận / im lặng / bị ngắt:', 'Forwarded but busy tone / silence / cut off:')}</b> {L('kiểm tra hotline đang BẬT, giờ gọi nằm trong khung giờ AI, còn phút sử dụng (xem số phút phía trên), và số trong mã đúng 10 số Lumio.', 'check the hotline is ON, the call is inside the AI’s hours, minutes are left (see usage above), and the code holds the exact 10-digit Lumio number.')}</li>
+        <li><b>{L('Đổ chuông mãi, không ai nghe, không có AI:', 'Rings forever, no AI:')}</b> {L('số trong ô “Số điện thoại đổ chuông” hoặc “Số lễ tân” chính là số tiệm (đang chuyển về Lumio) → chạy vòng. Đổi sang số di động khác.', 'the ring or receptionist number is the salon number (which forwards to Lumio) → a loop. Use another mobile.')}</li>
+        <li><b>{L('Tin nhắn xác nhận gửi nhầm về số tiệm:', 'Confirmation texts go to the salon number:')}</b> {L('tổng đài VoIP đang gửi số tiệm thay cho số khách — bật “pass through caller ID” trong cài đặt VoIP.', 'the VoIP system sends its own number instead of the caller’s — turn on “pass through caller ID”.')}</li>
+        <li><b>{L('Muốn tạm để tiệm tự nghe (VD hôm AI bảo trì):', 'Want staff to answer for a while:')}</b> {L('bấm mã ở cột “Tắt”. Không cần bấm lại mỗi ngày — muốn AI chỉ nghe ngoài giờ thì chỉnh khung giờ trong Lumio.', 'dial the code in the “Off” column. No need to do this daily — for after-hours only, set the AI’s hours in Lumio.')}</li>
+        <li><b>{L('Đổi nhà mạng, chuyển số, đổi điện thoại:', 'Changed carrier, ported the number or changed phone:')}</b> {L('chuyển hướng có thể mất — làm lại bước 2–4.', 'forwarding may be lost — redo steps 2–4.')}</li>
+      </ul>
+    </details>
   );
 }

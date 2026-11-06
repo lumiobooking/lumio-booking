@@ -67,13 +67,13 @@ const DICT: Record<string, { vi: string; en: string }> = {
   },
   modeAi: { vi: 'AI trả lời ngay', en: 'The assistant answers right away' },
   modeAiHint: {
-    vi: 'Dùng khi anh chị đã cài chuyển hướng ở nhà mạng (số hồi chuông do nhà mạng quyết định).',
-    en: 'Use this when your carrier already forwards on no-answer (the carrier decides the ring count).',
+    vi: 'AI nghe máy ngay khi cuộc gọi tới Lumio. Dùng cùng chuyển hướng ở nhà mạng (bảng bên dưới): chuyển TẤT CẢ → AI bắt máy liền; chuyển khi KHÔNG trả lời → máy tiệm đổ chuông trước, số hồi do nhà mạng quyết định.',
+    en: 'The assistant picks up as soon as a call reaches Lumio. Use it with carrier forwarding (table below): forward ALL → the assistant answers at once; forward on NO answer → your phone rings first and the carrier decides how long.',
   },
   modeRing: { vi: 'Đổ chuông cho tiệm trước — không ai bắt máy thì AI mới nghe', en: 'Ring your phones first — the assistant only takes over if nobody picks up' },
   modeRingHint: {
-    vi: 'Khuyến nghị. Lumio gọi vào số của tiệm/điện thoại anh chị trước. Hết số giây bên dưới mà không ai bắt — hoặc máy bận, hoặc bấm từ chối — thì AI mới trả lời. Số hồi chuông và trường hợp máy bận do Lumio kiểm soát, chính xác 100%.',
-    en: 'Recommended. Lumio rings your own phones first. If nobody answers within the time below — or the line is busy or declined — the assistant takes over. Rings and busy are controlled by Lumio, so it is exact.',
+    vi: 'Lumio gọi vào điện thoại của anh chị trước. Hết số giây bên dưới mà không ai bắt — hoặc máy bận, hoặc bấm từ chối — thì AI mới trả lời. Số giây do Lumio đếm. Lưu ý: đổ chuông vào điện thoại di động thì chọn tối đa 3–4 hồi, nếu không hộp thư thoại của điện thoại sẽ bắt máy trước AI.',
+    en: 'Lumio rings your phones first. If nobody answers within the time below — or the line is busy or declined — the assistant takes over. Lumio counts the time. Note: when ringing a mobile, pick 3–4 rings at most, or that phone’s voicemail answers before the assistant.',
   },
   modeFwd: { vi: 'Chỉ chuyển cho người — không dùng AI', en: 'Ring people only — never use the assistant' },
   modeFwdHint: {
@@ -82,7 +82,7 @@ const DICT: Record<string, { vi: string; en: string }> = {
   },
   numbersLabel: { vi: 'Số điện thoại đổ chuông (cách nhau bằng dấu phẩy, tối đa 5 số)', en: 'Phone numbers to ring (comma-separated, up to 5)' },
   numbersHint: {
-    vi: 'Nhập số đầy đủ, ví dụ +1 403 555 0123. Lưu ý: số này KHÔNG được cài chuyển hướng về Lumio, nếu không cuộc gọi sẽ chạy vòng tròn. Nên dùng số cell của chủ/quản lý.',
+    vi: 'Nhập số đầy đủ có mã nước, ví dụ +1 408 555 0123. Lưu ý: số này KHÔNG được cài chuyển hướng về Lumio (vd. chính số tiệm khi đã chuyển tất cả) — nếu không cuộc gọi sẽ chạy vòng tròn. Nên dùng số di động của chủ/quản lý.',
     en: 'Use the full number, e.g. +1 403 555 0123. Important: these numbers must NOT forward back to Lumio, or the call will loop. A mobile number is safest.',
   },
   ringsLabel: { vi: 'Đổ chuông bao lâu trước khi AI bắt máy', en: 'How long to ring before the assistant answers' },
@@ -93,8 +93,8 @@ const DICT: Record<string, { vi: string; en: string }> = {
   },
   transferLabel: { vi: 'Số điện thoại lễ tân đang cầm', en: 'The phone your front desk is holding' },
   transferHint: {
-    vi: 'Nhập số đầy đủ, ví dụ +1 631 320 3255. Để trống thì AI dùng các số đổ chuông ở trên; nếu cũng không có số nào, AI sẽ hẹn nhân viên gọi lại. Số này KHÔNG được cài chuyển hướng về Lumio.',
-    en: 'Full number, e.g. +1 631 320 3255. Leave empty to use the ring numbers above; with no number at all, the assistant promises a call-back instead. This number must NOT forward back to Lumio.',
+    vi: 'Nhập số đầy đủ có mã nước, ví dụ +1 408 555 0123 — nên là số DI ĐỘNG của lễ tân. Để trống thì AI dùng các số đổ chuông ở trên; nếu cũng không có số nào, AI không chuyển máy mà nhận lời nhắn và hẹn tiệm gọi lại. Không nhập chính số tiệm nếu số tiệm đang chuyển tất cả về Lumio (sẽ chạy vòng tròn).',
+    en: 'Full number with country code, e.g. +1 408 555 0123 — ideally the front desk’s MOBILE. Leave empty to use the ring numbers above; with no number at all, the assistant takes a message and promises a call-back instead of transferring. Never the salon number itself if it forwards all calls to Lumio (it would loop).',
   },
   transferRings: { vi: 'Đổ chuông bao lâu khi chuyển máy', en: 'How long to ring when transferring' },
   rings: { vi: 'hồi chuông', en: 'rings' },
@@ -110,8 +110,8 @@ const DICT: Record<string, { vi: string; en: string }> = {
   },
   naLabel: { vi: 'Khi AI không trả lời và không ai bắt máy', en: 'When the assistant may not answer and nobody picks up' },
   naVoicemail: { vi: 'Cho khách để lại lời nhắn (hộp thư thoại)', en: 'Let the caller leave a voicemail' },
-  naMessage: { vi: 'Đọc một lời nhắn rồi cúp máy', en: 'Play an announcement, then hang up' },
-  naHangup: { vi: 'Đọc lời nhắn ngắn rồi cúp máy', en: 'Say a short notice, then hang up' },
+  naMessage: { vi: 'Đọc lời nhắn, mời khách gọi lại trong giờ mở cửa, rồi cúp máy', en: 'Read the message, ask them to call back during business hours, then hang up' },
+  naHangup: { vi: 'Chỉ đọc lời nhắn rồi cúp máy', en: 'Read the message only, then hang up' },
   awayLabel: { vi: 'Lời nhắn đọc cho khách (để trống là dùng câu mặc định)', en: 'Message read to the caller (leave empty for the default)' },
   vmSmsLabel: { vi: 'Nhắn tin báo lời nhắn mới về số', en: 'Text new voicemails to' },
   vmSmsHint: {
@@ -130,7 +130,7 @@ const DICT: Record<string, { vi: string; en: string }> = {
     en: 'Option 1 (cleanest): publish the Lumio number above as your salon’s contact number (website, Google, Facebook).',
   },
   ringSetup2: {
-    vi: 'Cách 2: giữ số cũ và cài chuyển hướng TẤT CẢ cuộc gọi (unconditional) về số Lumio — máy bàn thường là',
+    vi: 'Cách 2: giữ số cũ và cài chuyển hướng TẤT CẢ cuộc gọi về số Lumio (mã từng nhà mạng ở bảng bên dưới, cột “Chuyển TẤT CẢ”) — máy bàn thường là',
     en: 'Option 2: keep your number and forward ALL calls (unconditional) to the Lumio number — on most landlines that is',
   },
   ringSetupWarn: {
@@ -149,8 +149,13 @@ const DICT: Record<string, { vi: string; en: string }> = {
   fwCarrier: { vi: 'Nhà mạng', en: 'Carrier' },
   fwLandline: { vi: 'Máy bàn (AT&T, Spectrum, Xfinity, Frontier…)', en: 'Landline (AT&T, Spectrum, Xfinity, Frontier…)' },
   fwOff: { vi: 'Tắt', en: 'Off' },
+  phExample: { vi: 'VD: +1 408 555 0123 (chưa nhập)', en: 'e.g. +1 408 555 0123 (not set)' },
+  phExampleMany: { vi: 'VD: +1 408 555 0123, +1 408 555 0456', en: 'e.g. +1 408 555 0123, +1 408 555 0456' },
+  phVmSms: { vi: 'Để trống = gửi về số quản trị', en: 'Empty = the admin phone' },
+  fwUnreach: { vi: 'Điện thoại di động (AT&T, T-Mobile): bấm thêm mã này để khi máy tắt hoặc mất sóng, cuộc gọi cũng sang AI thay vì hộp thư thoại:', en: 'Mobile (AT&T, T-Mobile): also dial this so calls go to the AI — not voicemail — when the phone is off or has no signal:' },
+  ringVmHint: { vi: 'Nếu đổ chuông vào điện thoại DI ĐỘNG: chọn tối đa 3–4 hồi (18–24 giây). Lâu hơn, hộp thư thoại của điện thoại đó sẽ bắt máy trước — khách bị kẹt ở hộp thư thoại, AI không vào được.', en: 'Ringing a MOBILE phone: pick 3–4 rings at most (18–24 s). Longer, and that phone’s voicemail answers first — the caller lands in its voicemail and the AI never comes in.' },
   fwAll: { vi: 'Chuyển TẤT CẢ cuộc gọi:', en: 'Forward ALL calls:' },
-  fwTest: { vi: 'Kiểm tra: gọi số tiệm từ một điện thoại khác. Cách 1 — đừng bắt máy, sau 4–5 hồi chuông phải nghe AI chào. Cách 2 — AI chào ngay.', en: 'Test it: call the salon number from another phone. Option 1 — don’t pick up; after 4–5 rings the AI should greet. Option 2 — the AI greets at once.' },
+  fwTest: { vi: 'Kiểm tra: gọi số tiệm từ một điện thoại KHÁC (không gọi từ chính máy đã cài). Cách 1 — đừng bắt máy, sau khoảng 4–6 hồi chuông phải nghe AI chào. Cách 2 — AI chào ngay.', en: 'Test it: call the salon number from another phone. Option 1 — don’t pick up; after 4–5 rings the AI should greet. Option 2 — the AI greets at once.' },
   fwDial: { vi: 'Bấm xong nhấn gọi; nghe tiếng bíp hoặc thông báo là đã cài. Mã có thể khác một chút theo nhà mạng.', en: 'Dial it and press call; a beep or an announcement confirms it. Codes can differ slightly by carrier.' },
   forwardIntro: {
     vi: 'Cài “chuyển hướng khi không trả lời” trên số của tiệm để nhân viên vẫn bắt máy trước; sau vài hồi chuông không ai nghe thì mới sang AI.',
@@ -164,8 +169,8 @@ const DICT: Record<string, { vi: string; en: string }> = {
   codeBusy: { vi: 'Chuyển khi máy BẬN:', en: 'Forward on BUSY:' },
   codeOff: { vi: 'Tắt chuyển hướng:', en: 'Turn forwarding off:' },
   forwardVoip: {
-    vi: 'Dùng tổng đài VoIP (RingCentral, Ooma, Google Voice…)? Vào phần Cài đặt cuộc gọi → Chuyển hướng khi không trả lời → nhập số Lumio ở trên.',
-    en: 'On a VoIP phone system (RingCentral, Ooma, Google Voice…)? Go to Call Settings → Forward on no-answer → enter the Lumio number above.',
+    vi: 'Dùng tổng đài VoIP (Zoom Phone, RingCentral, Ooma, Google Voice…)? Vào Cài đặt cuộc gọi (Zoom: Phone → Settings → Call Handling) → Chuyển tiếp khi không trả lời (hoặc chuyển tất cả) → Số bên ngoài (External number) → nhập số Lumio ở trên.',
+    en: 'On a VoIP phone system (Zoom Phone, RingCentral, Ooma, Google Voice…)? Open call settings (Zoom: Phone → Settings → Call Handling) → forward on no answer (or all calls) → External number → enter the Lumio number above.',
   },
   forwardHelp: {
     vi: 'Không chắc mã của nhà mạng? Gọi nhà mạng và nói: Cách 1 — “conditional call forwarding on no answer and busy”; Cách 2 — “unconditional call forwarding”, rồi đưa số Lumio ở trên.',
@@ -228,6 +233,12 @@ const OUTCOME: Record<string, { vi: string; en: string; color: string }> = {
   in_progress: { vi: 'Đang gọi', en: 'In progress', color: '#a78bfa' },
   error: { vi: 'Lỗi', en: 'Error', color: 'var(--ink-bad)' },
 };
+
+/** The Lumio number as a US carrier code wants it: 10 digits (no +1). Other countries keep every digit. */
+function dialDigits(num: string | null | undefined): string {
+  const d = String(num || '').replace(/\D/g, '');
+  return d.length === 11 && d.startsWith('1') ? d.slice(1) : d;
+}
 
 export default function VoicePage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -385,7 +396,7 @@ function Inner() {
             <div style={{ marginBottom: 16 }}>
               <label style={ui.label}>{t('numbersLabel')}</label>
               <input value={c.forwardNumbers} onChange={(e) => setC({ ...c, forwardNumbers: e.target.value })}
-                placeholder="+1 403 555 0123, +1 403 555 0456" style={{ ...ui.input, width: '100%' }} />
+                placeholder={t('phExampleMany')} style={{ ...ui.input, width: '100%' }} />
               <p style={{ color: 'var(--cfbbf24)', fontSize: 12, margin: '6px 0 0', lineHeight: 1.5 }}>{t('numbersHint')}</p>
 
               {c.mode === 'ring_first' && (
@@ -404,6 +415,7 @@ function Inner() {
                       );
                     })}
                   </div>
+                  <p style={{ color: 'var(--cfbbf24)', fontSize: 12, margin: '6px 0 0', lineHeight: 1.5 }}>{t('ringVmHint')}</p>
                 </div>
               )}
             </div>
@@ -416,7 +428,7 @@ function Inner() {
               <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '4px 0 10px', lineHeight: 1.5 }}>{t('transferIntro')}</p>
               <label style={ui.label}>{t('transferLabel')}</label>
               <input value={c.transferNumber ?? ''} onChange={(e) => setC({ ...c, transferNumber: e.target.value })}
-                placeholder="+1 631 320 3255" inputMode="tel" style={{ ...ui.input, width: '100%' }} />
+                placeholder={t('phExample')} inputMode="tel" style={{ ...ui.input, width: '100%' }} />
               <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '6px 0 0', lineHeight: 1.5 }}>{t('transferHint')}</p>
               {c.mode === 'ai' && (
                 <div style={{ marginTop: 12 }}>
@@ -434,6 +446,7 @@ function Inner() {
                       );
                     })}
                   </div>
+                  <p style={{ color: 'var(--cfbbf24)', fontSize: 12, margin: '6px 0 0', lineHeight: 1.5 }}>{t('ringVmHint')}</p>
                 </div>
               )}
             </div>
@@ -505,7 +518,7 @@ function Inner() {
               <div style={{ marginTop: 10 }}>
                 <label style={ui.label}>{t('vmSmsLabel')}</label>
                 <input value={c.voicemailSms} onChange={(e) => setC({ ...c, voicemailSms: e.target.value })}
-                  placeholder="+1 403 555 0123" style={{ ...ui.input, width: '100%' }} />
+                  placeholder={t('phVmSms')} style={{ ...ui.input, width: '100%' }} />
                 <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '6px 0 0' }}>{t('vmSmsHint')}</p>
               </div>
             )}
@@ -524,7 +537,7 @@ function Inner() {
           <p style={{ margin: '0 0 10px' }}>{t('ringSetupIntro')}</p>
           <ul style={{ margin: '0 0 12px', paddingLeft: 18 }}>
             <li style={{ marginBottom: 6 }}>{t('ringSetup1')}</li>
-            <li>{t('ringSetup2')} <code style={codeS}>*72 {c.lumioNumber}</code> ({t('codeOff')} <code style={codeS}>*73</code>)</li>
+            <li>{t('ringSetup2')} <code style={codeS}>*72 {dialDigits(c.lumioNumber)}</code> ({t('codeOff')} <code style={codeS}>*73</code>)</li>
           </ul>
           <p style={{ margin: 0, padding: '10px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.12)', border: '1px solid #b45309', color: 'var(--cfde68a)' }}>
             {t('ringSetupWarn')}
@@ -537,12 +550,14 @@ function Inner() {
         // number and get the AI — not the number you gave me?" and "which
         // code makes the AI pick up straight away?". Two options, every
         // carrier's codes, the Lumio number already filled in.
-        const n = String(c.lumioNumber || '').replace(/^\+/, '');
+        // Carriers take the 10-digit number (no +1); AT&T and T-Mobile need
+        // the ** form for no-answer / busy (a single * did not register on AT&T).
+        const n = dialDigits(c.lumioNumber);
         const rows: { who: string; noAnswer: string; busy: string; all: string; off: string }[] = [
           { who: t('fwLandline'), noAnswer: `*92 ${n}`, busy: `*90 ${n}`, all: `*72 ${n}`, off: '*93 · *91 · *73' },
           { who: 'Verizon', noAnswer: `*71 ${n}`, busy: `*71 ${n}`, all: `*72 ${n}`, off: '*73' },
-          { who: 'AT&T (di động / mobile)', noAnswer: `*61*${n}#`, busy: `*67*${n}#`, all: `*21*${n}#`, off: '##61# · ##67# · ##21#' },
-          { who: 'T-Mobile', noAnswer: `**61*${n}#`, busy: `**67*${n}#`, all: `**21*${n}#`, off: '##61# · ##67# · ##21#' },
+          { who: 'AT&T (di động / mobile)', noAnswer: `**61*${n}#`, busy: `**67*${n}#`, all: `*21*${n}#`, off: '##61# · ##67# · ##21# · ##002#' },
+          { who: 'T-Mobile', noAnswer: `**61*${n}#`, busy: `**67*${n}#`, all: `**21*${n}#`, off: '##61# · ##67# · ##21# · ##002#' },
         ];
         const th: CSSProperties = { textAlign: 'left', fontSize: 11.5, color: 'var(--c94a3b8)', fontWeight: 600, padding: '6px 8px', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' };
         const td: CSSProperties = { padding: '7px 8px', borderBottom: '1px solid var(--line)', verticalAlign: 'top', fontSize: 13, whiteSpace: 'nowrap' };
@@ -578,6 +593,7 @@ function Inner() {
             <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{t('fwA')}</div>
             <p style={{ margin: '0 0 6px' }}>{t('fwAWhen')}</p>
             {table(['noAnswer', 'busy'])}
+            <p style={{ margin: '0 0 6px', color: 'var(--c94a3b8)', fontSize: 12.5 }}>{t('fwUnreach')} <code style={codeS}>**62*{dialDigits(c.lumioNumber)}#</code></p>
 
             <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', margin: '14px 0 4px' }}>{t('fwB')}</div>
             <p style={{ margin: '0 0 6px' }}>{t('fwBWhen')}</p>

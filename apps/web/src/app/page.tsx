@@ -433,7 +433,7 @@ export default function HomePage() {
             </div>
             <FooterCol title="Product" links={[['Features', '/#product'], ['Pricing', '/#pricing'], ['Sign in', '/login'], ['Start free trial', '/signup']]} />
             <FooterCol title="For clients" links={[['How booking works', '/#clients'], ['Cancellation policy', '/booking-policy'], ['Text message alerts', '/sms-optin'], ['Delete my data', '/data-deletion']]} />
-            <FooterCol title="Company" links={[['About and contact', '/company'], ['Support', '/support'], ['Merchant agreement', '/merchant-terms']]} />
+            <FooterCol title="Company" links={[['About and contact', '/company'], ['Support', '/support'], ['Merchant agreement', '/merchant-terms'], ['Opt out of booking on Google', '/google-opt-out']]} />
             <FooterCol title="Legal" links={[['Privacy policy', '/privacy'], ['Terms of service', '/terms'], ['Messaging terms', '/terms']]} />
           </div>
           {/* SMS program disclosure — public and verifiable for A2P 10DLC review. */}

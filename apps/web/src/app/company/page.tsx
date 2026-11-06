@@ -104,6 +104,7 @@ export default function CompanyPage() {
               <Link href="/privacy" style={a}>Privacy policy</Link>
               <Link href="/booking-policy" style={a}>Booking and cancellation policy</Link>
               <Link href="/merchant-terms" style={a}>Merchant agreement</Link>
+              <Link href="/google-opt-out" style={a}>Opt out of booking on Google</Link>
               <Link href="/terms" style={a}>Messaging terms</Link>
               <Link href="/data-deletion" style={a}>Delete my data</Link>
             </div>

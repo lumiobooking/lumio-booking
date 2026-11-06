@@ -61,6 +61,17 @@ describe('the three feeds', () => {
     expect((rows[1].service_price as { price_interpretation: string }).price_interpretation).toBe('INTERPRETATION_STARTS_AT');
     expect((rows[1].localized_service_category as { value: string }).value).toBe('Pedicure');
   });
+  it('two services of one salon that read the same go once — Google refuses duplicates (DUPLICATE_ENTITY_CONTENT)', () => {
+    const dup = salon({ services: [
+      { id: 's-a', name: 'Gel Manicure', priceCents: 3500, durationMinutes: 40, category: 'Manicure' },
+      { id: 's-b', name: ' gel  manicure ', priceCents: 3500, durationMinutes: 40, category: 'manicure' },
+      { id: 's-c', name: 'Gel Manicure', priceCents: 4000, durationMinutes: 40, category: 'Manicure' },
+    ] });
+    expect((buildServicesFeed([dup], WEB).data as { service_id: string }[]).map((r) => r.service_id)).toEqual(['s-a', 's-c']);
+    // The same service in another salon is not a duplicate.
+    const two = buildServicesFeed([dup, salon({ id: 't-2', slug: 'b', services: dup.services })], WEB).data as { merchant_id: string }[];
+    expect(two.filter((r) => r.merchant_id === 't-2')).toHaveLength(2);
+  });
   it('action: the salon-level book link', () => {
     expect(buildActionFeed([t], WEB).data).toEqual([{ entity_id: 't-1', link_id: 't-1-book', url: 'https://lumiobooking.com/mt-hawthorn-nail-spa/gbp', actions: [{ appointment_info: {} }] }]);
   });

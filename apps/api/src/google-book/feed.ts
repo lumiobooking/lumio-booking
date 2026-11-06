@@ -79,7 +79,18 @@ export function bookingUrl(webUrl: string, slug: string, serviceId?: string): st
  * displayed" for it rather than inventing a number.
  */
 export function feedableServices(t: FeedTenant): FeedService[] {
-  return t.services.filter((s) => s.isActive !== false && !s.walkInOnly && s.priceCents > 0 && s.durationMinutes >= 0);
+  // Google refuses (DUPLICATE_ENTITY_CONTENT) two services of one salon that
+  // read the same — name, duration, category and price. A salon that keeps a
+  // copy of a service (say, in two menus) still books both on its own page;
+  // the feed carries only the first, in menu order.
+  const seen = new Set<string>();
+  return t.services.filter((s) => {
+    if (s.isActive === false || s.walkInOnly || !(s.priceCents > 0) || !(s.durationMinutes >= 0)) return false;
+    const key = [s.name, s.category ?? ''].map((v) => v.trim().replace(/\s+/g, ' ').toLowerCase()).join('|') + `|${s.durationMinutes}|${s.priceCents}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** Google's ServiceDuration: exact when the salon set a length, INTERPRETATION_NOT_DISPLAYED when it did not. */

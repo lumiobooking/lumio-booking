@@ -101,6 +101,22 @@ describe('the Google feed, salon by salon', () => {
     expect(out.error).toMatch(/^SFTP chưa cấu hình/); // it went on to the upload step
   });
 
+  it('a salon switched off keeps its Book link at night; only a person, for that salon, takes it off', async () => {
+    const { svc } = build();
+    const calls: boolean[] = [];
+    const g = (svc as unknown as { google: Row }).google;
+    g.syncBookingActionLink = async (_t: string, _u: string, _h: string[], want: boolean) => { calls.push(want); return { others: 0 }; };
+    const s = svc as unknown as Row;
+    s.inspect = async () => ({ tenant: { slug: 'amys' }, lint: { status: 'off', issues: [{ code: 'disabled' }] } });
+    s.bookingLinkState = async () => ({ state: 'linked', uri: 'https://lumiobooking.com/amys/gbp', at: '2026-11-06T03:00:00Z' });
+    const night = await svc.syncBookingLink('t-amy');
+    expect(night.state).toBe('linked'); // left as it was
+    expect(calls).toEqual([]); // nothing removed
+    const byHand = await svc.syncBookingLink('t-amy', 'u-agency');
+    expect(byHand.state).toBe('removed');
+    expect(calls).toEqual([false]);
+  });
+
   it('fixing a shouted name is audited and touches only that salon', async () => {
     const { svc, audits } = build();
     // The mock has no tenant.update: give it one that records the id.

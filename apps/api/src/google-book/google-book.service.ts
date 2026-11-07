@@ -1,3 +1,4 @@
+import { partnerLinkHost } from './partner-host';
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -93,6 +94,16 @@ export class GoogleBookService {
 
   private webUrl(): string { return (process.env.WEB_URL ?? process.env.NEXT_PUBLIC_WEB_URL ?? 'https://lumiobooking.com').replace(/\/$/, ''); }
 
+  /**
+   * Where the links in the PARTNER feed point: RWG_LINK_HOST (e.g.
+   * https://book.lumiobooking.com) when set, else the main domain. Google's
+   * brand domain is then the partner host only, so whatever Google does with
+   * partner links never touches the salons' everyday lumiobooking.com links
+   * (7/11/2026: a main-domain brand broke every salon's Maps "Book online").
+   * The Book link on each salon's own Google profile keeps the main domain.
+   */
+  partnerUrl(): string { return partnerLinkHost(process.env) ?? this.webUrl(); }
+
   async getSetting(tenantId: string): Promise<GoogleBookSetting> {
     const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: GOOGLE_BOOK_KEY } } }).catch(() => null);
     return { ...DEFAULT, ...((row?.value ?? {}) as Partial<GoogleBookSetting>) };
@@ -111,7 +122,7 @@ export class GoogleBookService {
   /** Lumio's own hosts: a link on one of these is Lumio's to replace. */
   private ownHosts(): string[] {
     const hosts = new Set<string>(['lumiobooking.com']);
-    for (const u of [process.env.WEB_URL, process.env.NEXT_PUBLIC_WEB_URL, this.webUrl()]) {
+    for (const u of [process.env.WEB_URL, process.env.NEXT_PUBLIC_WEB_URL, this.webUrl(), partnerLinkHost(process.env)]) {
       try { if (u) hosts.add(new URL(u).host.toLowerCase()); } catch { /* not a URL */ }
     }
     return [...hosts];
@@ -137,6 +148,14 @@ export class GoogleBookService {
       const block = bookingLinkBlock(lint);
       const prev = await this.bookingLinkState(tenantId);
       if (block && lint.issues.some((i) => i.code === 'disabled') && prev?.state === 'linked') {
+        // Taking a salon's Book link off its Google profile is done ONLY by a
+        // person, for that salon (the agency's per-salon button). The nightly
+        // run never removes one: on 7/11/2026 all salons were switched off to
+        // pull them from the partner FEED, and the owner chose to keep their
+        // Book links — switching off the feed must not also take the links
+        // down. The state is left as it was, so a later explicit run still
+        // knows the link is Lumio's to remove.
+        if (!userId) return prev;
         await this.google.syncBookingActionLink(tenantId, uri, this.ownHosts(), false);
         out = { state: 'removed', uri: null, at, reason: block };
       } else if (block) {
@@ -265,7 +284,7 @@ export class GoogleBookService {
       const { tenant } = await this.inspect(row.id);
       ready.push(cleanForFeed(tenant).tenant);
     }
-    return { files: buildUpload(ready, this.webUrl(), now), ready: ready.map((t) => t.id), held };
+    return { files: buildUpload(ready, this.partnerUrl(), now), ready: ready.map((t) => t.id), held };
   }
 
   /**

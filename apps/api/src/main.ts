@@ -1,3 +1,4 @@
+import { partnerLinkHost } from './google-book/partner-host';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -71,6 +72,9 @@ async function bootstrap() {
   const corsOrigins = (config.get<string>('CORS_ORIGINS') ?? 'http://localhost:3005')
     .split(',')
     .map((origin) => origin.trim());
+  // The Google partner host serves the same booking pages (google-book/partner-host).
+  const partnerOrigin = partnerLinkHost(process.env);
+  if (partnerOrigin && !corsOrigins.includes(partnerOrigin)) corsOrigins.push(partnerOrigin);
   // maxAge: the browser remembers the preflight answer for a day. Without
   // it every authenticated call — GETs included, since the client sends
   // Authorization — was two round trips: an OPTIONS the browser forgot after

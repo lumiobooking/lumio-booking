@@ -89,6 +89,18 @@ describe('the Google feed, salon by salon', () => {
     expect(svc.getLastRun()).toEqual(r);
   });
 
+  it('no salon ready: the nightly run uploads nothing; only an explicit withdraw sends empty feeds', async () => {
+    const { svc } = build();
+    delete process.env.RWG_SFTP_HOST;
+    (svc as unknown as { buildFeeds: unknown }).buildFeeds = async () => ({ files: [{ name: 'entity_1.json', body: '{"data":[]}' }], ready: [], held: ['t-x'] });
+    const nightly = await svc.runDaily(new Date('2026-11-07T03:10:00Z'), { links: false });
+    expect(nightly.error).toBe('no salon ready');
+    expect(nightly.withdrawn).toBeUndefined();
+    const out = await svc.runDaily(new Date('2026-11-07T03:10:00Z'), { links: false, withdraw: true });
+    expect(out.withdrawn).toBe(true);
+    expect(out.error).toMatch(/^SFTP chưa cấu hình/); // it went on to the upload step
+  });
+
   it('fixing a shouted name is audited and touches only that salon', async () => {
     const { svc, audits } = build();
     // The mock has no tenant.update: give it one that records the id.

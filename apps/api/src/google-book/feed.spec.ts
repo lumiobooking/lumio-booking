@@ -157,3 +157,17 @@ describe('lint — what Google would refuse', () => {
     expect(titleCase('NAILS FOR US')).toBe('Nails For Us');
   });
 });
+
+describe('withdrawing every merchant (7/11/2026)', () => {
+  it('an empty upload is still three complete feeds, each descriptor before its file, with no merchants in them', () => {
+    const files = buildUpload([], 'https://lumiobooking.com', new Date('2026-11-07T08:00:00Z'));
+    expect(files).toHaveLength(6);
+    for (let i = 0; i < 6; i += 2) expect(files[i].name).toMatch(/filesetdesc/);
+    const data = files.filter((f) => !/filesetdesc/.test(f.name)).map((f) => JSON.parse(f.body));
+    for (const d of data) {
+      const arrays = Object.values(d).filter(Array.isArray) as unknown[][];
+      expect(arrays.length).toBeGreaterThan(0);
+      for (const a of arrays) expect(a).toHaveLength(0);
+    }
+  });
+});

@@ -80,7 +80,7 @@ export class GoogleBookController {
 
   /** Build and upload now, instead of waiting for the nightly run. */
   @Post('run')
-  run(@Query('links') links?: string) {
-    return this.svc.runDaily(new Date(), { links: links !== '0' });
+  run(@Query('links') links?: string, @Query('withdraw') withdraw?: string) {
+    return this.svc.runDaily(new Date(), { links: links !== '0', withdraw: withdraw === '1' });
   }
 }

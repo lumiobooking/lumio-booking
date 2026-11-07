@@ -33,7 +33,7 @@ export const GBP_PROFILE_KEY = 'gbp_profile';
 export interface GoogleBookSetting { enabled: boolean }
 const DEFAULT: GoogleBookSetting = { enabled: true };
 
-export interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string; hint?: string; sandbox?: boolean; user?: string | null }
+export interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string; hint?: string; sandbox?: boolean; user?: string | null; withdrawn?: boolean }
 export interface SftpTestResult { ok: boolean; at: string; host: string | null; user: string | null; port: number; dir: string; sandbox: boolean; files?: number; ms?: number; error?: string; hint?: string; missing?: string[] }
 
 /** Which Google environment the credentials point at — the agency sets RWG_SANDBOX=1 while on the sandbox user. */
@@ -274,7 +274,14 @@ export class GoogleBookService {
    * key = private key PEM; RWG_SFTP_PORT optional). Without them the feeds are
    * only built — the agency can download them from the readiness screen.
    */
-  async runDaily(now = new Date(), opts: { links?: boolean } = {}): Promise<RunReport> {
+  /**
+   * @param opts.withdraw  Upload the feeds even when NO salon is ready — empty
+   *   files, which tell Google (complete snapshot) to drop every merchant. Only
+   *   on purpose, from the agency's button: an empty board by accident (a
+   *   database hiccup) must never wipe everyone, so the nightly run never does it.
+   *   Used 7/11/2026 when sandbox matching broke production "Book online".
+   */
+  async runDaily(now = new Date(), opts: { links?: boolean; withdraw?: boolean } = {}): Promise<RunReport> {
     const report: RunReport = { at: now.toISOString(), tenants: 0, ready: 0, held: 0, files: [], uploaded: false };
     // The Book link on each salon's own profile does not depend on the partner
     // feed (or on SFTP): it runs first, every night. The agency's "upload now"
@@ -285,7 +292,8 @@ export class GoogleBookService {
     try {
       const { files, ready, held } = await this.buildFeeds(now);
       report.tenants = ready.length + held.length; report.ready = ready.length; report.held = held.length; report.files = files.map((f) => f.name);
-      if (!ready.length) { report.error = 'no salon ready'; this.lastRun = report; return report; }
+      if (!ready.length && !opts.withdraw) { report.error = 'no salon ready'; this.lastRun = report; return report; }
+      if (!ready.length) report.withdrawn = true;
       const env = readSftpEnv(process.env);
       report.sandbox = rwgSandbox(process.env); report.user = env.user;
       if (!env.config) {

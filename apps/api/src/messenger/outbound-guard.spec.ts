@@ -159,3 +159,19 @@ describe('one bad sentence does not sink a good reply', () => {
     expect(withoutBadSentences('See you Friday at 2pm! 😊', [banDoubleCheck])).toBe('See you Friday at 2pm! 😊');
   });
 });
+
+import { describeMedia, localizeStage } from './inbound-media';
+
+describe('an English salon never reads our Vietnamese stage directions', () => {
+  it('translates what we stored, for the inbox and the model', () => {
+    expect(localizeStage('[Khách gửi 1 ảnh]', 'en')).toBe('[Customer sent a photo]');
+    expect(localizeStage('[Khách gửi tệp đính kèm]', 'en')).toBe('[Customer sent an attachment]');
+    expect(localizeStage(describeMedia([{ kind: 'image', url: 'a' }, { kind: 'image', url: 'b' }, { kind: 'video', url: null }]), 'en')).toBe('[Customer sent 2 photos, sent a video]');
+    expect(localizeStage('[Đã gửi 2 ảnh: Ombre brows]', 'en')).toBe('[Sent 2 photos: Ombre brows]');
+  });
+  it('leaves everything else — and Vietnamese salons — alone', () => {
+    expect(localizeStage('[Khách gửi 1 ảnh]', 'vi')).toBe('[Khách gửi 1 ảnh]');
+    expect(localizeStage('Thank you Love. Hơ you doing?', 'en')).toBe('Thank you Love. Hơ you doing?');
+    expect(localizeStage('[Khách gửi gì đó lạ]', 'en')).toBe('[Khách gửi gì đó lạ]');
+  });
+});

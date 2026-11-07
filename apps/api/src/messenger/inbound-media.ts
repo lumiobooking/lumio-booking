@@ -143,3 +143,37 @@ export function imageMediaType(contentType: string | null | undefined): 'image/j
 
 /** The API refuses images past 5 MB; a phone photo is often more. */
 export const IMAGE_MAX_BYTES = 4_500_000;
+
+const STAGE_EN: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [/^gửi 1 ảnh$/, () => 'sent a photo'],
+  [/^gửi (\d+) ảnh$/, (m) => `sent ${m[1]} photos`],
+  [/^gửi video$/, () => 'sent a video'],
+  [/^gửi tin nhắn thoại$/, () => 'sent a voice message'],
+  [/^gửi file$/, () => 'sent a file'],
+  [/^gửi sticker$/, () => 'sent a sticker'],
+  [/^gửi vị trí$/, () => 'sent a location'],
+  [/^gửi tệp đính kèm$/, () => 'sent an attachment'],
+];
+
+/**
+ * Our own stage directions ("[Khách gửi 1 ảnh]", "[Đã gửi 2 ảnh: …]") in the
+ * salon's language, for an English-speaking salon's inbox and for the model.
+ * Stored as written — other code recognises the stored form — and translated
+ * only where people and the model read them. Anything else is returned as is.
+ */
+export function localizeStage(text: string | null | undefined, lang: string | null | undefined): string {
+  const t = String(text ?? '');
+  if (lang !== 'en' || !t.startsWith('[')) return t;
+  const cust = /^\[Khách (.+)\]$/.exec(t);
+  if (cust) {
+    const parts = cust[1].split(', ').map((p) => {
+      for (const [re, en] of STAGE_EN) { const m = re.exec(p); if (m) return en(m); }
+      return null;
+    });
+    if (parts.every(Boolean)) return `[Customer ${parts.join(', ')}]`;
+    return t;
+  }
+  const sent = /^\[Đã gửi (\d+) ảnh(?:: ([\s\S]*))?\]$/.exec(t);
+  if (sent) return `[Sent ${sent[1]} photo${sent[1] === '1' ? '' : 's'}${sent[2] ? `: ${sent[2]}` : ''}]`;
+  return t;
+}

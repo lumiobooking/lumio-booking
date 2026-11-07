@@ -25,7 +25,7 @@ import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOO
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
 import {
-  metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, type InboundMedia,
+  metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, localizeStage, type InboundMedia,
 } from './inbound-media';
 import { escalationPush, fallbackText, heldPush, isTransientStatus, sendFailedPush } from './agent-fallback';
 import { conversationLang, defaultLangForMarket, localeForLang, replyLangRule, sayIn, type ReplyLang } from '../common/reply-language';
@@ -1876,6 +1876,8 @@ export class MessengerService implements OnModuleInit {
     const nudgeLines = new Set(localTurns.filter((t) => t && t.nudge).map((t) => String(t.content ?? '').trim()));
     const followRow = await this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_FOLLOWUP_KEY }, select: { value: true } }).catch(() => null);
     const followSettings = followUpSettingsFrom(followRow?.value);
+    // Our own stage directions ("[Khách gửi 1 ảnh]") in the salon's language.
+    const stageLang = await this.salonLangOf(tenantId);
     const followCustom = { vi: followSettings.messageVi, en: followSettings.messageEn, vi2: followSettings.messageVi2, en2: followSettings.messageEn2 };
 
     const notes = await this.prisma.messengerNote.findMany({
@@ -1906,7 +1908,7 @@ export class MessengerService implements OnModuleInit {
         .filter((t) => !isHidden(t as never, hiddenTurns))
         // messageId rides along so the screen can name a message back to us
         // when somebody hides it. See turnKeys - a position cannot do that job.
-        .map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual, messageId: (t as { messageId?: string | null }).messageId ?? null, ...(t.manual && t.by ? { by: t.by } : {}), ...(t.images?.length ? { images: t.images } : {}),
+        .map((t) => ({ role: t.role, content: localizeStage(t.content, stageLang), at: t.at ?? null, manual: !!t.manual, messageId: (t as { messageId?: string | null }).messageId ?? null, ...(t.manual && t.by ? { by: t.by } : {}), ...(t.images?.length ? { images: t.images } : {}),
           // Whether the customer actually got it. Dropped here before, so a reply
           // Meta refused looked exactly like one it delivered.
           ...(t.failed ? { failed: true, sendError: (t as { sendError?: string | null }).sendError ?? null } : {}),
@@ -4823,9 +4825,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // Meta's own notices ("X replied to an ad." / "X đã trả lời một quảng cáo.")
     // sit in the transcript as if the Page had said them. They are not our
     // words, and a Vietnamese one pulled English chats into Vietnamese.
+    const stageLang = await this.salonLangOf(tenantId);
     const hist: { role: string; content: unknown }[] = history
       .filter((h) => !(h.role === 'assistant' && isMetaSystemLine(h.content)))
-      .map((h) => ({ role: h.role, content: h.role === 'user' ? withNote(h) : h.content }));
+      .map((h) => ({ role: h.role, content: h.role === 'user' ? withNote({ ...h, content: localizeStage(h.content, stageLang) }) : localizeStage(h.content, stageLang) }));
     // The API needs the first turn to be the customer's. When our greeting is
     // first we must pin something in front of it — but WHAT we pin is read by
     // the model as fact, and it used to always say the chat had just opened.
@@ -5767,6 +5770,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * said enough to tell: the market's language — English everywhere but
    * Vietnam. See defaultLangForMarket.
    */
+  /**
+   * The language the salon works in: the AI brain's main language when it has
+   * one, else the market's. An English-only salon reads English stage
+   * directions, and the model never sees Vietnamese ones (which nudged it
+   * toward answering in Vietnamese).
+   */
+  private async salonLangOf(tenantId: string): Promise<ReplyLang> {
+    const primary = this.brain ? await this.brain.getBrain(tenantId).then((b) => (b as unknown as { language?: { primary?: string } }).language?.primary ?? null).catch(() => null) : null;
+    return primary === 'vi' || primary === 'en' ? primary : this.defaultLangOf(tenantId);
+  }
+
   private async defaultLangOf(tenantId: string): Promise<ReplyLang> {
     return defaultLangForMarket((await this.basicsOf(tenantId)).market);
   }

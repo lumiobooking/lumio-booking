@@ -1560,7 +1560,7 @@ export function InboxView() {
                           ))}
                         </div>
                       )}
-                      {(!t.images?.length || !/^\[Khách gửi/.test(t.content)) && (
+                      {(!t.images?.length || !/^\[(?:Khách gửi|Customer sent)/.test(t.content)) && (
                         <div style={{
                           padding: narrow ? '10px 13px' : '10px 14px',
                           borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',

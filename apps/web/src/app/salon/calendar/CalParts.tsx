@@ -69,6 +69,8 @@ const PATHS: Record<string, ReactNode> = {
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   clock: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
   lock: <><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
+  cal: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><circle cx="12" cy="16" r="1.6" fill="currentColor" /></>,
+  back: <><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></>,
 };
 export function Icon({ name, size = 16, color = 'currentColor', sw = 2 }: { name: keyof typeof PATHS | string; size?: number; color?: string; sw?: number }) {
   return (
@@ -200,6 +202,33 @@ function LoadBar({ info, on, h = 4 }: { info: DayInfo; on?: boolean; h?: number 
 const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DOW_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
+/**
+ * The way back to today, made to be seen: brand indigo, 44 px tall (a finger
+ * on an iPad or phone), a calendar icon. When the salon is looking at another
+ * day it says "Back to today" with a return arrow and a soft ring, so the way
+ * home is the most obvious thing in the bar.
+ */
+export function TodayBtn({ onToday, label, backLabel, onClick, round }: { onToday: boolean; label: string; backLabel: string; onClick: () => void; round?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={onToday} title={onToday ? label : backLabel}
+      style={{ height: 44, padding: '0 16px 0 12px', borderRadius: round ? 999 : 12, border: 0, ...onIndigo, fontFamily: 'inherit', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7, flexShrink: 0, whiteSpace: 'nowrap',
+        boxShadow: onToday ? '0 4px 12px -2px rgba(79,70,229,.45)' : `0 0 0 4px ${C.indigoLine}, 0 4px 12px -2px rgba(79,70,229,.45)` }}>
+      <Icon name={onToday ? 'cal' : 'back'} size={18} sw={2.3} />
+      {onToday ? label : backLabel}
+    </button>
+  );
+}
+
+/** Previous / next: 44 px, tinted so they read as buttons, not decoration. */
+export function NavArrow({ dir, label, onClick, w = 44, h = 44 }: { dir: 'left' | 'right'; label: string; onClick: () => void; w?: number; h?: number | string }) {
+  return (
+    <button type="button" aria-label={label} title={label} onClick={onClick}
+      style={{ width: w, height: h, padding: 0, borderRadius: 12, background: C.indigoSoft, border: `1.5px solid ${C.indigoLine}`, color: C.indigoText, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', boxSizing: 'border-box' }}>
+      <Icon name={dir} size={20} sw={2.6} />
+    </button>
+  );
+}
+
 /** One day of the strip. `solid` = the phone's filled selection. */
 function DayCell({ d, info, selected, isToday, vi, onPick, compact, solid, short }: { d: Date; info: DayInfo; selected: boolean; isToday: boolean; vi: boolean; onPick: (d: Date) => void; compact?: boolean; solid?: boolean; short?: boolean }) {
   const filled = selected && solid;
@@ -208,7 +237,7 @@ function DayCell({ d, info, selected, isToday, vi, onPick, compact, solid, short
     <button type="button" onClick={() => onPick(d)} aria-pressed={selected}
       aria-label={`${d.toDateString()}${info.closed ? (vi ? ', nghỉ' : ', closed') : `, ${info.count}`}`}
       style={{ position: 'relative', flex: 1, minWidth: 0, boxSizing: 'border-box', border: 0, borderRadius: 11, padding: compact ? '6px 2px 7px' : '7px 4px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: compact ? 4 : 5, cursor: 'pointer', fontFamily: 'inherit',
-        ...(filled ? onIndigo : { background: selected ? C.indigoSoft : 'transparent', boxShadow: selected ? `inset 0 0 0 1.5px ${C.indigo}` : 'none' }) }}>
+        ...(filled ? onIndigo : { background: selected ? C.indigoSoft : 'transparent', boxShadow: selected ? `inset 0 0 0 1.5px ${C.indigo}` : isToday ? `inset 0 0 0 2px ${C.indigo}` : 'none' }) }}>
       {isToday && !filled && <span style={{ position: 'absolute', top: 3, right: 3, width: 5, height: 5, borderRadius: '50%', background: C.indigo }} />}
       <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 0.3, textTransform: 'uppercase', color: filled ? 'inherit' : selected ? C.indigoText : C.muted }}>{(vi ? DOW_VI : DOW_EN)[d.getDay()]}</span>
       <span style={{ fontSize: compact ? 16 : 16, fontWeight: 700, lineHeight: 1, color: filled ? 'inherit' : selected ? C.indigoText : tone }}>{d.getDate()}</span>

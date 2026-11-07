@@ -25,7 +25,7 @@ import { DateTimeField } from '../../../components/DateTimeField';
 import { ind } from '../../../lib/ui-industry';
 import { clockText, withHoursOverride } from '../../../lib/desk-hours';
 import { ListView, type ShiftStaffFull } from './ListView';
-import { C, Seg, IconBtn, Icon, btn, onIndigo, Popover, Sheet, DayStrip, MonthPicker, FilterBody, FilterFooter, ActiveChips, type DayInfo } from './CalParts';
+import { C, Seg, IconBtn, Icon, btn, onIndigo, TodayBtn, NavArrow, Popover, Sheet, DayStrip, MonthPicker, FilterBody, FilterFooter, ActiveChips, type DayInfo } from './CalParts';
 import { applyFilters, facetCounts, activeFilterCount, NO_FILTERS, stripDays, suggestStart, isClosedDay, capacityMinutes, loadOf, bookedMinutes, addDays, type CalFilters, type HoursDay } from '../../../lib/cal-day';
 import { minutesInZone } from '../../../lib/salon-card';
 import { NewBookingModal, type NewBookingPrefill } from '../../../components/NewBookingModal';
@@ -572,7 +572,8 @@ function Inner() {
   );
   const rel = (d: Date) => (d.getTime() === today.getTime() ? L('Hôm nay', 'Today')
     : d.getTime() === addDays(today, 1).getTime() ? L('Ngày mai', 'Tomorrow')
-    : d.getTime() === addDays(today, -1).getTime() ? L('Hôm qua', 'Yesterday') : '');
+    : d.getTime() === addDays(today, -1).getTime() ? L('Hôm qua', 'Yesterday')
+    : (() => { const n = Math.round((d.getTime() - today.getTime()) / 86_400_000); return n > 0 ? L(`${n} ngày nữa`, `in ${n} days`) : L(`${-n} ngày trước`, `${-n} days ago`); })());
   const monthAnchor = monthFocus ?? (view.getMonth() === today.getMonth() && view.getFullYear() === today.getFullYear() ? today : new Date(view.getFullYear(), view.getMonth(), 1));
   const stripAnchor = mode === 'month' ? monthAnchor : dayDate;
   const stripSelected = mode === 'month' ? (monthFocus ?? (monthAnchor.getTime() === today.getTime() ? today : new Date(-1))) : dayDate;
@@ -583,6 +584,7 @@ function Inner() {
   // Phone week strip: a week back / forward keeps the same weekday selected.
   const weekStep = (delta: number) => pickStrip(addDays(mode === 'month' ? (monthFocus ?? stripAnchor) : dayDate, delta * 7));
   const stripMonth = (mode === 'month' ? (monthFocus ?? view) : dayDate).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+  const onToday = stripSelected.getTime() === today.getTime();
   const goToday = () => { setMonthFocus(null); setMonthPage(0); if (mode === 'month') setView(new Date(today.getFullYear(), today.getMonth(), 1)); else goDay(today); };
   const pickStrip = (d: Date) => {
     if (mode === 'month') { setMonthFocus(d); setMonthPage(0); setShowPast(false); if (d.getMonth() !== view.getMonth()) setView(new Date(d.getFullYear(), d.getMonth(), 1)); }
@@ -646,23 +648,24 @@ function Inner() {
               strip you can swipe (or step with the arrows at its sides). */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 44, padding: '0 4px 0 0' }}>
             <button type="button" onClick={() => { setPickMonth(new Date((mode === 'month' ? view : dayDate).getFullYear(), (mode === 'month' ? view : dayDate).getMonth(), 1)); setDateOpen(true); }}
-              style={{ minWidth: 0, height: 44, padding: '0 8px', border: 0, background: 'transparent', color: C.ink, fontFamily: 'inherit', fontSize: 16, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'capitalize' }}>
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stripMonth}</span><Icon name="down" size={15} color="var(--c94a3b8)" />
+              style={{ flex: 1, minWidth: 0, height: 48, padding: '0 6px', border: 0, background: 'transparent', color: C.ink, fontFamily: 'inherit', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 1, textAlign: 'left' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%', fontSize: 16, fontWeight: 800, textTransform: 'capitalize' }}>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mode === 'month' ? stripMonth : dayDate.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'numeric' })}</span><Icon name="down" size={15} color="var(--c94a3b8)" />
+              </span>
+              {mode !== 'month' && rel(dayDate) && <span style={{ fontSize: 12, fontWeight: 700, color: onToday ? C.indigoText : C.sub }}>{rel(dayDate)}</span>}
             </button>
-            <span style={{ flex: 1 }} />
-            <button type="button" onClick={goToday} aria-pressed={stripSelected.getTime() === today.getTime()}
-              style={{ height: 34, padding: '0 14px', borderRadius: 999, border: `1px solid ${C.indigoLine}`, background: C.indigoSoft, color: C.indigoText, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>{t('cal.today')}</button>
+            <TodayBtn round onToday={onToday} label={t('cal.today')} backLabel={L('Về hôm nay', 'Back to today')} onClick={goToday} />
           </div>
-          <div style={{ position: 'relative', padding: '0 28px' }}
+          <div style={{ position: 'relative', padding: '0 40px', marginTop: 4 }}
             onTouchStart={(e) => { const p = e.touches[0]; weekSwipe.current = { x: p.clientX, y: p.clientY }; }}
             onTouchEnd={(e) => {
               const st = weekSwipe.current; weekSwipe.current = null; if (!st) return;
               const p = e.changedTouches[0]; const dx = p.clientX - st.x, dy = p.clientY - st.y;
               if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) weekStep(dx < 0 ? 1 : -1);
             }}>
-            <button type="button" aria-label={L('Tuần trước', 'Previous week')} onClick={() => weekStep(-1)} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, border: 0, background: 'transparent', color: C.indigoText, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><Icon name="left" size={18} sw={2.6} /></button>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, display: 'flex', alignItems: 'stretch' }}><NavArrow dir="left" w={36} h="100%" label={L('Tuần trước', 'Previous week')} onClick={() => weekStep(-1)} /></div>
             <DayStrip compact solid days={stripDays(stripAnchor, 7)} selected={stripSelected} today={today} info={dayInfo} vi={vi} onPick={pickStrip} />
-            <button type="button" aria-label={L('Tuần sau', 'Next week')} onClick={() => weekStep(1)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, border: 0, background: 'transparent', color: C.indigoText, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><Icon name="right" size={18} sw={2.6} /></button>
+            <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, display: 'flex', alignItems: 'stretch' }}><NavArrow dir="right" w={36} h="100%" label={L('Tuần sau', 'Next week')} onClick={() => weekStep(1)} /></div>
           </div>
         </div>
       )}
@@ -714,16 +717,16 @@ function Inner() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: '8px 10px 8px 12px', marginBottom: 14 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button type="button" onClick={goToday} style={{ ...btn(false, 32), padding: '0 12px' }}>{t('cal.today')}</button>
-              <IconBtn name="left" size={32} label={mode === 'month' ? L('Tháng trước', 'Previous month') : L('Ngày trước', 'Previous day')} onClick={() => step(-1)} />
-              <IconBtn name="right" size={32} label={mode === 'month' ? L('Tháng sau', 'Next month') : L('Ngày sau', 'Next day')} onClick={() => step(1)} />
+              <TodayBtn onToday={onToday} label={t('cal.today')} backLabel={L('Về hôm nay', 'Back to today')} onClick={goToday} />
+              <NavArrow dir="left" label={mode === 'month' ? L('Tháng trước', 'Previous month') : L('Ngày trước', 'Previous day')} onClick={() => step(-1)} />
+              <NavArrow dir="right" label={mode === 'month' ? L('Tháng sau', 'Next month') : L('Ngày sau', 'Next day')} onClick={() => step(1)} />
             </div>
             <div style={{ position: 'relative' }}>
               <button type="button" data-pop-trigger onClick={openPicker} aria-expanded={dateOpen}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, border: 0, background: 'transparent', padding: '0 2px', cursor: 'pointer', fontFamily: 'inherit', color: C.ink }}>
                 <span style={{ fontSize: 17, fontWeight: 700, whiteSpace: 'nowrap', textTransform: 'capitalize', letterSpacing: -0.2 }}>{dateTitle}</span>
                 <Icon name="down" size={16} color="var(--c94a3b8)" />
-                {mode !== 'month' && rel(dayDate) && <span style={{ fontSize: 12, color: C.muted, marginLeft: 2 }}>{rel(dayDate)}</span>}
+                {mode !== 'month' && rel(dayDate) && <span style={{ fontSize: 12.5, fontWeight: 700, color: onToday ? C.indigoText : C.sub, marginLeft: 2 }}>{rel(dayDate)}</span>}
               </button>
               <Popover open={dateOpen} onClose={() => setDateOpen(false)} width={360}>{picker}</Popover>
             </div>

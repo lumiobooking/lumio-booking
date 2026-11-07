@@ -1750,7 +1750,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
         timing.judgeMs = Date.now() - tJudge;
         if (chk?.broken.length) {
           const sameLang = chk.broken.every((i) => { const l = detectBrainLanguage(i.text); return !l || l === insLang; });
-          said = lastResort(chk.broken, chk.rewrite, sameLang) || checkingLine(insLang);
+          said = lastResort(chk.broken, chk.rewrite, sameLang) || checkingLine(insLang, owner.all);
           this.logger.warn(`voice line replaced (owner instruction): ${text.slice(0, 120)}`);
         }
         if (chk) this.instructions.noteUse(tenantId, chk.applied, chk.broken);

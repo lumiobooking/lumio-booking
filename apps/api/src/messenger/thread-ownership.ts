@@ -73,7 +73,7 @@ export interface OwnershipView {
 }
 
 /** Minutes a GUESSED human keeps the floor after their last message. */
-export const DEFAULT_ACTIVE_MINS = 15;
+export const DEFAULT_ACTIVE_MINS = 120;
 
 function asTime(v: Date | string | null | undefined): number | null {
   if (!v) return null;

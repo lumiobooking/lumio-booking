@@ -4,7 +4,7 @@ import { Reflector } from '@nestjs/core';
 import { UserRole } from '@prisma/client';
 import {
   botSignedOff, cleanFollowUp, contextualNudge, customerClosed, decideFollowUp, DEFAULT_FOLLOWUP,
-  isNudgeLine, NUDGE_TEMPLATES, threadStateFrom, type StoredTurn,
+  isNudgeLine, builtInNudgeLines, NUDGE_TEMPLATES, threadStateFrom, type StoredTurn,
 } from './followup';
 import { SettingsService } from '../settings/settings.service';
 import { AiBrainController, TEACH_KEYS } from '../ai-brain/ai-brain.controller';
@@ -91,8 +91,39 @@ describe('the salon writes its own reminder, and none is sent twice', () => {
     const custom = { vi: 'Dạ chị ơi, tiệm còn chỗ chiều nay ạ.', en: 'We still have an opening this afternoon if you’d like it.' };
     expect(contextualNudge('Anything else?', false, 1, { custom })).toBe(custom.en);
     expect(contextualNudge('Anything else?', true, 1, { custom })).toBe(custom.vi);
-    // A concrete ask (confirm the recap) keeps its specific line first.
-    expect(contextualNudge('Shall I book it?', false, 1, { custom })).toMatch(/reply "yes"/);
+    // The salon's line wins even over the specific asks: once the salon wrote
+    // its own reminder, no built-in sentence reaches a customer.
+    expect(contextualNudge('Shall I book it?', false, 1, { custom })).toBe(custom.en);
+    expect(contextualNudge('Your name and phone number?', true, 1, { custom })).toBe(custom.vi);
+  });
+
+  it('the second reminder is the salon’s second line — never the built-in “I am still here…”', () => {
+    const custom = { vi: 'Lần 1 VI', en: 'First EN', vi2: 'Lần 2 VI', en2: 'Second EN' };
+    expect(contextualNudge('Anything else?', false, 2, { custom, sent: ['First EN'] })).toBe('Second EN');
+    expect(contextualNudge('Anything else?', true, 2, { custom, sent: ['Lần 1 VI'] })).toBe('Lần 2 VI');
+    // No second line written: no second reminder at all.
+    const onlyFirst = { vi: 'Lần 1 VI', en: 'First EN' };
+    expect(contextualNudge('Anything else?', false, 2, { custom: onlyFirst, sent: ['First EN'] })).toBeNull();
+    // The salon wrote only Vietnamese: an English customer gets nothing, not the default.
+    expect(contextualNudge('Anything else?', false, 1, { custom: { vi: 'Chỉ tiếng Việt' } })).toBeNull();
+    // Never the built-in line, whatever the situation, once any custom line exists.
+    for (const ask of ['Shall I book it?', 'Your phone?', 'What time works?', 'Anything else?']) {
+      for (const nth of [1, 2]) {
+        for (const vi of [true, false]) {
+          const line = contextualNudge(ask, vi, nth, { custom: onlyFirst });
+          expect(builtInNudgeLines()).not.toContain(line);
+        }
+      }
+    }
+    // Already sent once: not again.
+    expect(contextualNudge('Anything else?', false, 1, { custom, sent: ['first en'] })).toBeNull();
+  });
+
+  it('the second reminder lines are stored cleaned', () => {
+    const c = cleanFollowUp({ messageEn2: '  Last  call ', messageVi2: 42 });
+    expect(c.messageEn2).toBe('Last call');
+    expect(c.messageVi2).toBe('');
+    expect(isNudgeLine('Last call', { en2: 'Last call' })).toBe(true);
   });
 
   it('a second nudge is never the same sentence; when nothing new is left, nothing is sent', () => {

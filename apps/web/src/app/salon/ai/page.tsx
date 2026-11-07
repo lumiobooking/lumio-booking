@@ -605,12 +605,12 @@ function ChatSection({ brain, patch, vi, canEdit, view, token }: { brain: Brain;
         <label style={f.label}>{f.L('Dặn thêm chỉ khi nhắn tin', 'Extra notes for messages only')}</label>
         <textarea value={c.extra} disabled={!canEdit} rows={3} maxLength={1500} onChange={(e) => setC('extra', e.target.value)} placeholder={f.L('vd: Trả lời ngắn, tối đa 3 câu.', 'e.g. Keep replies to three lines.')} style={{ ...f.input, resize: 'vertical' }} />
       </Card>
-      <Card title={L(vi, 'Khi nhân viên đang trả lời', 'When staff are answering')} hint={L(vi, 'Nhân viên vừa nhắn trong X phút thì mỗi tin mới của khách được nhường Y phút cho người thật; hết Y phút AI mới trả lời.', 'If staff wrote within X minutes, each new customer message waits Y minutes for a person before the AI answers.')}>
+      <Card title={L(vi, 'Khi nhân viên đang trả lời', 'When staff are answering')} hint={L(vi, 'Nhân viên vừa nhắn trong X phút thì AI im lặng, để người thật trả lời. Y = 0 (khuyên dùng): AI không bao giờ chen vào khi nhân viên đang trực — muốn AI trả lời lại sớm thì bấm “Trả bot” trong Hộp thư. Y > 0: tin nào nhân viên để quá Y phút chưa trả lời thì AI trả lời thay.', 'While staff wrote within the last X minutes, the AI stays quiet and lets the person answer. Y = 0 (recommended): the AI never speaks over staff — press “Back to bot” in the Inbox to hand it back sooner. Y > 0: a message staff leave unanswered for Y minutes gets the AI.')}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
           <label style={{ ...f.label, display: 'flex', flexDirection: 'column', gap: 6 }}>{f.L('Nhân viên "đang trực" trong (phút) — X', 'Staff count as active for (min) — X')}
             <input type="number" min={1} max={720} value={brain.handoff.staffQuietMins} disabled={!canEdit} onChange={(e) => setH('staffQuietMins', Math.max(1, Math.min(720, Number(e.target.value) || 1)))} style={f.input} />
           </label>
-          <label style={{ ...f.label, display: 'flex', flexDirection: 'column', gap: 6 }}>{f.L('AI nhường người thật (phút) — Y', 'AI yields to a person for (min) — Y')}
+          <label style={{ ...f.label, display: 'flex', flexDirection: 'column', gap: 6 }}>{f.L('AI trả lời thay sau (phút, 0 = không bao giờ) — Y', 'AI answers for staff after (min, 0 = never) — Y')}
             <input type="number" min={0} max={60} value={c.yieldMins} disabled={!canEdit} onChange={(e) => setC('yieldMins', Math.max(0, Math.min(60, Number(e.target.value) || 0)))} style={f.input} />
           </label>
         </div>

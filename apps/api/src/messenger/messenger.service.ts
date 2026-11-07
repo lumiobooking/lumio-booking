@@ -15,7 +15,7 @@ import {
   killsTheLead, dodgesTheQuestion, guessesGender, disclosesBeforeQualifying, hasIdentitySignal,
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
-import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
+import { ownershipOf, waitingMinutes, replyWindow, DEFAULT_ACTIVE_MINS } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
@@ -27,14 +27,14 @@ import { isWebPage, webPageId } from './web-chat';
 import {
   metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, type InboundMedia,
 } from './inbound-media';
-import { escalationPush, fallbackText, isTransientStatus, sendFailedPush } from './agent-fallback';
+import { escalationPush, fallbackText, heldPush, isTransientStatus, sendFailedPush } from './agent-fallback';
 import { conversationLang, defaultLangForMarket, localeForLang, replyLangRule, sayIn, type ReplyLang } from '../common/reply-language';
 import {
   sharedAiHealth, recordAiSuccess, recordAiFailure, shouldAlert, markAlerted, aiAlertLine,
 } from './ai-health';
 import { chat as llmChat, openAiEnabled, type ChatMessage, type ToolDef, type TextBlock } from '../common/llm';
 import { AiInstructionsService, instructionChannel } from '../ai-brain/instructions.service';
-import { checkingLine, correctionFor, lastResort } from '../ai-brain/instructions';
+import { correctionFor, lastResort } from '../ai-brain/instructions';
 import { detectLanguage as detectBrainLanguage } from '../ai-brain/brain-rules';
 import { withBookingLink } from './booking-link';
 import { FbPageRow, FbPagesBody, walkFbPages } from './fb-pages';
@@ -57,7 +57,8 @@ import { BookingsService, walkInOnlyMessage } from '../bookings/bookings.service
 import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { mergeBurst, alreadySaid, BURST_MS, repeatCount, repeatVerdict, repeatWasAnswered } from './burst';
+import { mergeBurst, alreadySaid, BURST_MS, MAX_SUPERSEDE, mayDropReply, repeatCount, repeatVerdict, repeatWasAnswered } from './burst';
+import { SILENT, HELD, isSilent, outboundVerdict, silentOnCloser, isNoReply, NO_REPLY_RULE, withoutBadSentences } from './outbound-guard';
 import { mayAnswerMirrored, rescueVerdict } from './rescue-stuck';
 import { isMetaAdGreeting, isMetaSystemLine, isMetaAiLine } from './meta-system-lines';
 import { AD_HOLD_RETRY_MS, FRESH_RETRY_AFTER_MIN, describeRefusal, freshWindowRefusal, readSendRefusal, retryableRefusal, retryNote, type GraphError } from './send-errors';
@@ -471,11 +472,11 @@ export class MessengerService implements OnModuleInit {
       closing: (c as unknown as { closing?: string | null } | null)?.closing ?? '',
       agentName: (c as unknown as { agentName?: string | null } | null)?.agentName ?? '',
       bizIntro: (c as unknown as { bizIntro?: string | null } | null)?.bizIntro ?? '',
-      humanActiveMins: (c as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15,
+      humanActiveMins: (c as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? DEFAULT_ACTIVE_MINS,
       chatAssignMode: (c as unknown as { chatAssignMode?: string } | null)?.chatAssignMode ?? 'off',
       chatMaxOpenPerAgent: (c as unknown as { chatMaxOpenPerAgent?: number } | null)?.chatMaxOpenPerAgent ?? 5,
       chatPreferUsualTech: (c as unknown as { chatPreferUsualTech?: boolean } | null)?.chatPreferUsualTech ?? true,
-      graceMins: (c as unknown as { graceMins?: number } | null)?.graceMins ?? 5,
+      graceMins: (c as unknown as { graceMins?: number } | null)?.graceMins ?? 0,
       aiInstruction: c?.aiInstruction ?? '',
       botFacts: Array.isArray(c?.botFacts) ? (c!.botFacts as unknown as BotFact[]) : [],
       botMode: ((c as unknown as { botMode?: string } | null)?.botMode === 'sales' ? 'sales' : 'booking'),
@@ -1402,7 +1403,7 @@ export class MessengerService implements OnModuleInit {
       const last = hist[hist.length - 1];
       const verdict = rescueVerdict(
         { ...t, lastRole: last?.role ?? null },
-        { botOn: !!conn.enabled, botFirst: turnSettingsOf(conn as never).botFirst, graceMins: conn.graceMins ?? 5 },
+        { botOn: !!conn.enabled, botFirst: turnSettingsOf(conn as never).botFirst, graceMins: conn.graceMins ?? 0, activeMins: (conn as unknown as { humanActiveMins?: number }).humanActiveMins ?? DEFAULT_ACTIVE_MINS },
         now,
       );
       if (!verdict.rescue || !last) continue;
@@ -1505,8 +1506,8 @@ export class MessengerService implements OnModuleInit {
       closing: typeof dto.closing === 'string' ? (dto.closing.trim().slice(0, 500) || null) : ((cur as unknown as { closing?: string | null } | null)?.closing ?? null),
       agentName: typeof dto.agentName === 'string' ? (dto.agentName.trim().slice(0, 80) || null) : ((cur as unknown as { agentName?: string | null } | null)?.agentName ?? null),
       bizIntro: typeof dto.bizIntro === 'string' ? (dto.bizIntro.trim().slice(0, 300) || null) : ((cur as unknown as { bizIntro?: string | null } | null)?.bizIntro ?? null),
-      humanActiveMins: Number.isInteger(dto.humanActiveMins) ? Math.min(720, Math.max(1, dto.humanActiveMins as number)) : ((cur as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15),
-      graceMins: Number.isInteger(dto.graceMins) ? Math.min(60, Math.max(0, dto.graceMins as number)) : ((cur as unknown as { graceMins?: number } | null)?.graceMins ?? 5),
+      humanActiveMins: Number.isInteger(dto.humanActiveMins) ? Math.min(720, Math.max(1, dto.humanActiveMins as number)) : ((cur as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? DEFAULT_ACTIVE_MINS),
+      graceMins: Number.isInteger(dto.graceMins) ? Math.min(60, Math.max(0, dto.graceMins as number)) : ((cur as unknown as { graceMins?: number } | null)?.graceMins ?? 0),
       // Turning auto-distribution on changes who answers customers, so it is
       // only ever written when the salon explicitly sends a value. Anything
       // unrecognised falls back to what is already stored rather than to 'on'.
@@ -1573,7 +1574,7 @@ export class MessengerService implements OnModuleInit {
   async listThreads(user: AuthenticatedUser, opts: { before?: string; take?: number } = {}) {
     const tenantId = this.tenantId(user);
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
-    const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15;
+    const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? DEFAULT_ACTIVE_MINS;
     const botFirst = turnSettingsOf(conn as never).botFirst;
     // A page of the list, newest first. The first page used to be the WHOLE
     // list: fifty rows, no way to ask for more. On a busy Page fifty
@@ -1749,7 +1750,7 @@ export class MessengerService implements OnModuleInit {
     if (!row) throw new NotFoundException('Thread not found');
 
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
-    const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15;
+    const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? DEFAULT_ACTIVE_MINS;
     const now = new Date();
     const botFirst = turnSettingsOf(conn as never).botFirst;
     const view = ownershipOf(row as never, { now, activeMins, botFirst });
@@ -1875,7 +1876,7 @@ export class MessengerService implements OnModuleInit {
     const nudgeLines = new Set(localTurns.filter((t) => t && t.nudge).map((t) => String(t.content ?? '').trim()));
     const followRow = await this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_FOLLOWUP_KEY }, select: { value: true } }).catch(() => null);
     const followSettings = followUpSettingsFrom(followRow?.value);
-    const followCustom = { vi: followSettings.messageVi, en: followSettings.messageEn };
+    const followCustom = { vi: followSettings.messageVi, en: followSettings.messageEn, vi2: followSettings.messageVi2, en2: followSettings.messageEn2 };
 
     const notes = await this.prisma.messengerNote.findMany({
       where: { tenantId, threadId: String(row.id) },
@@ -3557,15 +3558,19 @@ export class MessengerService implements OnModuleInit {
       // already in history above, so the person sees it when they open the
       // inbox; the bot simply does not answer for them.
       const tune = conn as unknown as { humanActiveMins?: number; graceMins?: number };
-      const view = ownershipOf(thread as never, { activeMins: tune.humanActiveMins ?? 15 });
+      const view = ownershipOf(thread as never, { activeMins: tune.humanActiveMins ?? DEFAULT_ACTIVE_MINS });
       if (!view.botMaySpeak && view.reason === 'human-holding') return;
 
       const at = (thread as unknown as { handoffAt?: Date | null }).handoffAt;
       const activeAgo = at ? Date.now() - new Date(at).getTime() : Number.POSITIVE_INFINITY;
-      const activeMs = Math.max(1, tune.humanActiveMins ?? 15) * 60_000;
-      const graceMs = Math.max(0, tune.graceMins ?? 5) * 60_000;
-      if (activeAgo < activeMs && graceMs > 0) {
-        this.scheduleGraceReply(thread.id, text, eventTs, at ? new Date(at).getTime() : 0, graceMs, imgTurn);
+      const activeMs = Math.max(1, tune.humanActiveMins ?? DEFAULT_ACTIVE_MINS) * 60_000;
+      const graceMs = Math.max(0, tune.graceMins ?? 0) * 60_000;
+      if (activeAgo < activeMs) {
+        // A person is in this conversation. By default (Y = 0) the bot does not
+        // speak over them at all — "chị đang trực tiếp trả lời mà AI vẫn chen
+        // vào". A salon that wants a safety net sets Y: then a message nobody
+        // answers within Y minutes gets the bot.
+        if (graceMs > 0) this.scheduleGraceReply(thread.id, text, eventTs, at ? new Date(at).getTime() : 0, graceMs, imgTurn);
         return;
       }
       await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { handoff: false, handoffAt: null } as never });
@@ -3635,6 +3640,8 @@ export class MessengerService implements OnModuleInit {
     threadId: string, senderId: string,
   ): Promise<void> {
     const beat = () => new Promise<void>((r) => { const t = setTimeout(r, BURST_MS); t.unref?.(); });
+    /** Replies dropped in a row for newer messages (reset by one that is sent). */
+    let superseded = 0;
     try {
       await beat();
       for (;;) {
@@ -3649,7 +3656,29 @@ export class MessengerService implements OnModuleInit {
         const ts = q.ts;
         q.ts = undefined;
         const merged = mergeBurst(texts);
-        if (merged) await this.replyAndRecord(conn, threadId, senderId, merged, ts, { ...(images.length ? { images } : {}), ...(media.length ? { media } : {}) }, rids);
+        // More messages may land while this reply is being written. Then it is
+        // dropped unsent (replyAndRecord checks just before sending) and these
+        // messages go back in front of the new ones: the next pass answers the
+        // whole lot ONCE — two questions in a row get one reply, not two that
+        // half-repeat each other. Capped, so somebody typing non-stop still
+        // gets an answer.
+        const supersede = superseded < MAX_SUPERSEDE ? () => (this.bursts.get(threadId)?.texts.length ?? 0) > 0 : undefined;
+        const out = merged
+          ? await this.replyAndRecord(conn, threadId, senderId, merged, ts, { ...(images.length ? { images } : {}), ...(media.length ? { media } : {}) }, rids, supersede)
+          : undefined;
+        if (out === 'superseded') {
+          superseded += 1;
+          const q2 = this.bursts.get(threadId);
+          if (q2) {
+            q2.texts.unshift(...texts);
+            q2.images.unshift(...images);
+            q2.media.unshift(...media);
+            q2.rids.unshift(...rids);
+            if (ts !== undefined && (q2.ts === undefined || ts < q2.ts)) q2.ts = ts;
+          }
+        } else {
+          superseded = 0;
+        }
         if (!this.bursts.get(threadId)?.texts.length) break;
         await beat();
       }
@@ -3749,7 +3778,14 @@ export class MessengerService implements OnModuleInit {
     attach: Partial<Turn> = {},
     /** Ids of this burst's customer turns already written on arrival. */
     rids: string[] = [],
-  ): Promise<void> {
+    /**
+     * True once the customer has written again while this reply was being
+     * written. The reply is then dropped unsent and the burst loop writes ONE
+     * answer to everything (./burst) — the customer who asks two things in a
+     * row gets one reply, not two that half-repeat each other.
+     */
+    superseded?: () => boolean,
+  ): Promise<void | 'superseded'> {
     const fresh = await this.prisma.messengerThread.findUnique({ where: { id: threadId } });
     if (!fresh) return;
     // THE BOT DOES NOT ANSWER JUNK.
@@ -3807,6 +3843,18 @@ export class MessengerService implements OnModuleInit {
         this.events.publish(conn.tenantId, 'message');
       }
       this.logger.log(`bot silent on repeated message (${verdict}) thread ${threadId}`);
+      return;
+    }
+    // "No thx", "ok thanks", a thumbs-up: the conversation is over and an
+    // answer would read as a bot that cannot stop talking. A plain thanks/ok
+    // still gets an answer when the bot was waiting on one ("Shall I book
+    // 2pm?" — "ok" is a yes). See ./outbound-guard silentOnCloser.
+    if (!inImages.length && silentOnCloser(text, [...prior].reverse().find((h) => h.role === 'assistant')?.content as string | undefined)) {
+      if (!userAlready) {
+        const inAtClose = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+        await this.appendTurns(threadId, history, this.threadSummary(fresh), [{ role: 'user', content: text, at: inAtClose, ...imgTurn }]);
+      }
+      this.logger.log(`bot silent: customer closed the conversation on thread ${threadId}`);
       return;
     }
     // Long-term memory + how long they were away (returning-customer handling).
@@ -3889,6 +3937,53 @@ export class MessengerService implements OnModuleInit {
         await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtDrop, ...imgTurn }]);
       }
       return;
+    }
+    // The customer wrote again while this was being written: drop it, the
+    // burst loop answers everything at once. Only a turn not yet on record
+    // (the website chat) is written here — the others are already there.
+    if (superseded?.() && mayDropReply((agentCtx as { toolsRun?: string[] } | null)?.toolsRun ?? [])) {
+      this.logger.log(`reply superseded by a newer customer message on thread ${threadId}`);
+      if (!userAlready) {
+        const inAtSup = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+        await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtSup, ...imgTurn }]);
+      }
+      return 'superseded';
+    }
+    // THE LAST DOOR (./outbound-guard). Whatever wrote this line — the model,
+    // a fallback, a canned sentence — it does not reach the customer if it
+    // says what the owner forbade, or reads like an instruction to the bot.
+    // Silence (the bot chose it, or nothing compliant was left) is recorded
+    // the same way: the customer's turn kept, nothing sent; a HELD reply also
+    // tells the staff, so a person answers instead.
+    {
+      const ownerList = this.instructions ? await this.instructions.allFor(conn.tenantId).catch(() => []) : [];
+      let door = outboundVerdict(reply, ownerList);
+      // One bad sentence in an otherwise good reply: that sentence goes.
+      if (!door.ok && door.why !== 'silent' && !isSilent(reply)) {
+        const trimmed = withoutBadSentences(reply, ownerList);
+        if (trimmed) {
+          this.logger.warn(`reply trimmed (${door.why}) on thread ${threadId}`);
+          reply = trimmed;
+          door = { ok: true };
+        }
+      }
+      if (!door.ok) {
+        if (!userAlready) {
+          const inAtHeld = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+          await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtHeld, ...imgTurn }]);
+        }
+        if (door.why === 'silent') {
+          this.logger.log(`bot chose silence on thread ${threadId}`);
+          return;
+        }
+        this.logger.warn(`reply held back (${door.why}) on thread ${threadId}: ${String(reply).slice(0, 140)}`);
+        await this.audit(conn.tenantId, 'messenger.reply_held').catch(() => undefined);
+        const who = (fresh as unknown as { senderName?: string | null }).senderName ?? null;
+        const vi = conversationLang([...history.filter((h) => h.role === 'user').map((h) => String(h.content ?? '')), text]) !== 'en';
+        void this.push.sendToTenant(conn.tenantId, heldPush(who, vi)).catch(() => undefined);
+        this.events.publish(conn.tenantId, 'message');
+        return;
+      }
     }
     // Word for word what we said last time? Then it tells the customer nothing
     // they cannot already see on their screen, and sending it makes the page
@@ -4717,7 +4812,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         + (ctx.mode === 'sales' ? '\nWhen a photo shows their shop and they confirm (or simply carry on), call save_lead with salonName, city and phone taken from the photo — use their Facebook name as the name if they have not typed one.' : '')
       : '';
     const crossMemoryBlock = ctx.crossMemory ? `\n${ctx.crossMemory}` : '';
-    const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang));
+    const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang)) + NO_REPLY_RULE;
     const system = [
       { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicSystem },
@@ -4838,6 +4933,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         for (const blk of blocks) {
           if (blk.type !== 'tool_use') continue;
           toolsUsed.add(blk.name || '');
+          // Remembered on the context: a reply whose run DID something is never
+          // dropped for a newer message (./burst mayDropReply).
+          (ctx as { toolsRun?: string[] }).toolsRun = [...((ctx as { toolsRun?: string[] }).toolsRun ?? []), blk.name || ''];
           // The SAME object, not a copy: send_photos and create_booking leave
           // what they did on it, and the caller reads that back afterwards.
           const out = await this.runTool(tenantId, tz, blk.name || '', blk.input || {}, Object.assign(ctx, { lang: customerLang }));
@@ -4847,6 +4945,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         continue;
       }
       const text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      // The model chose not to answer (the customer declined, said goodbye,
+      // nothing is left to say) — see the NO_REPLY line in the system prompt.
+      if (isNoReply(text)) return SILENT;
 
       // The gate. Only sales mode: a booking bot saying "we don't do that
       // service" is correct, a sales bot saying it has just lost a customer.
@@ -5033,8 +5134,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           }
           const sameLang = chk.broken.every((i) => { const l = detectBrainLanguage(i.text); return !l || l === insLang; });
           const last = lastResort(chk.broken, chk.rewrite, sameLang);
-          this.logger.warn(`Reply blocked twice (owner instruction); ${last ? 'sending the corrected reply' : 'no correction available'}`);
-          return last ? withBookingLink(last, ctx.booked?.url) : checkingLine(insLang);
+          this.logger.warn(`Reply blocked twice (owner instruction); ${last ? 'sending the corrected reply' : 'no correction available — holding the reply for a person'}`);
+          // Nothing compliant: the reply is HELD for a person (the staff are
+          // told). Never a canned "let me double-check" — that sentence is
+          // exactly what an owner forbids, and it went out regardless.
+          if (!last || isNoReply(last)) return isNoReply(last) ? SILENT : HELD;
+          return withBookingLink(last, ctx.booked?.url);
         } else if (chk?.applied.length) {
           this.instructions.noteUse(tenantId, chk.applied, []);
         }
@@ -6734,10 +6839,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       const lang = conversationLang(history.filter((h) => h.role === 'user').map((h) => String(h.content ?? ''))) ?? await this.defaultLangOf(tenantId);
       // The salon's own wording first; never a sentence this thread already got.
       const text = contextualNudge(state.lastBotText, lang === 'vi', d.nth, {
-        custom: { vi: settings.messageVi, en: settings.messageEn },
+        custom: { vi: settings.messageVi, en: settings.messageEn, vi2: settings.messageVi2, en2: settings.messageEn2 },
         sent: state.sentNudges,
       });
       if (!text) continue;
+      // The same last door as every reply (./outbound-guard): a reminder that
+      // says what the owner forbade is not sent.
+      const ownerList = this.instructions ? await this.instructions.allFor(tenantId).catch(() => []) : [];
+      if (!outboundVerdict(text, ownerList).ok) { this.logger.warn(`follow-up held back on thread ${t.id}`); continue; }
       const r = await this.sendText(token, t.senderId, text, t.channel === 'instagram' ? 'instagram' : 'messenger', tenantId);
       if (!r.ok) continue;
       await this.appendTurns(t.id, history, this.threadSummary(t), [{ role: 'assistant', content: text, at: now.toISOString(), nudge: true }]);

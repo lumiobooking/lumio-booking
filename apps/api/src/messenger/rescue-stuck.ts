@@ -1,3 +1,4 @@
+import { DEFAULT_ACTIVE_MINS } from './thread-ownership';
 /**
  * Which conversations were left hanging, and may the bot answer them now.
  *
@@ -42,6 +43,8 @@ export interface RescueRules {
   botFirst: boolean;
   /** Grace a guessed human gets before the bot answers (minutes, salon setting). */
   graceMins: number;
+  /** Minutes a person counts as still in the chat after their last line (the salon's X). */
+  activeMins?: number;
   /** How long the live path is given before a line counts as dropped. */
   settleMs?: number;
 }
@@ -79,7 +82,13 @@ export function rescueVerdict(t: StuckThreadLike, rules: RescueRules, now = Date
   const human = ms(t.handoffAt);
   if (human !== null && human >= wrote) return { rescue: false, why: 'human-grace' };
   const graceMs = Math.max(0, rules.graceMins) * 60_000;
-  if (age < graceMs + 60_000) return { rescue: false, why: 'human-grace' };
+  // The person is still in the conversation (wrote within the "active" window):
+  // the bot does not speak over them. Only a salon that set a grace (Y > 0)
+  // lets the bot answer a message the person left unanswered for Y minutes.
+  const activeMs = Math.max(1, rules.activeMins ?? DEFAULT_ACTIVE_MINS) * 60_000;
+  const stillThere = human === null || now - human < activeMs;
+  if (stillThere && (graceMs === 0 || age < graceMs + 60_000)) return { rescue: false, why: 'human-grace' };
+  if (!stillThere && age < 60_000) return { rescue: false, why: 'human-grace' };
   return { rescue: true, release: true };
 }
 

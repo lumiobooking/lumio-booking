@@ -664,7 +664,7 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
           const sameLang = chk.broken.every((i) => { const l = detectLanguage(i.text); return !l || l === lang; });
           const last = lastResort(chk.broken, chk.rewrite, sameLang);
           trace.push('blocked twice: replaced');
-          return { reply: last || checkingLine(lang), lang, trace, ms: Date.now() - t0, check: { followed: !!last, corrected: true, draft: firstDraft ?? text, broken: firstBroken ?? brokenText, applied: chk.applied.map((i) => i.id) } };
+          return { reply: last || checkingLine(lang, owner.all), lang, trace, ms: Date.now() - t0, check: { followed: !!last, corrected: true, draft: firstDraft ?? text, broken: firstBroken ?? brokenText, applied: chk.applied.map((i) => i.id) } };
         }
         return { reply: text, lang, trace, ms: Date.now() - t0, check: { followed: true, corrected, draft: firstDraft, broken: firstBroken ?? [], applied: (chk?.applied ?? []).map((i) => i.id) } };
       }

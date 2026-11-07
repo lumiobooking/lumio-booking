@@ -19,6 +19,8 @@ export interface FollowUp {
   enabled: boolean; firstAfterMin: number; secondAfterMin: number; maxPerWindow: number; hourFrom: number; hourTo: number;
   /** The salon's own reminder wording; '' = the built-in lines. Absent on an older server. */
   messageVi?: string; messageEn?: string;
+  /** The second reminder's own wording. Absent on an older server. */
+  messageVi2?: string; messageEn2?: string;
 }
 
 /** Same cap as the server (messenger/followup NUDGE_MAX_CHARS). */
@@ -33,14 +35,17 @@ export const DEFAULT_NUDGE = {
  * The two reminder lines the owner may write — one per language the bot
  * answers in. Shared by the settings box and the Inbox "Fix" on a reminder.
  */
-export function NudgeWordingFields({ vi, valueVi, valueEn, onChange, disabled }: {
+export function NudgeWordingFields({ vi, valueVi, valueEn, onChange, disabled, second, hint = true }: {
   vi: boolean; valueVi: string; valueEn: string; disabled?: boolean;
   onChange: (next: { messageVi: string; messageEn: string }) => void;
+  /** The second reminder's fields (no built-in placeholder: empty = no second reminder). */
+  second?: boolean;
+  hint?: boolean;
 }) {
   const L = (v: string, e: string) => ind(vi ? v : e);
   const field = (lang: 'vi' | 'en') => {
     const value = lang === 'vi' ? valueVi : valueEn;
-    const id = `nudge-${lang}`;
+    const id = `nudge${second ? '2' : ''}-${lang}`;
     return (
       <div style={{ display: 'grid', gap: 5 }}>
         <label htmlFor={id} style={{ ...ui.label, margin: 0, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -48,7 +53,7 @@ export function NudgeWordingFields({ vi, valueVi, valueEn, onChange, disabled }:
           <span style={{ fontWeight: 500, color: value.length > NUDGE_MAX - 20 ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>{value.length}/{NUDGE_MAX}</span>
         </label>
         <textarea id={id} rows={2} maxLength={NUDGE_MAX} value={value} disabled={disabled}
-          placeholder={DEFAULT_NUDGE[lang]}
+          placeholder={second ? (lang === 'vi' ? L('Để trống = không nhắn lần 2', 'Empty = no second reminder') : 'Empty = no second reminder') : DEFAULT_NUDGE[lang]}
           onChange={(e) => onChange(lang === 'vi' ? { messageVi: e.target.value, messageEn: valueEn } : { messageVi: valueVi, messageEn: e.target.value })}
           style={{ ...ui.input, minHeight: 60, lineHeight: 1.5, resize: 'vertical', fontFamily: 'inherit' }} />
       </div>
@@ -58,10 +63,12 @@ export function NudgeWordingFields({ vi, valueVi, valueEn, onChange, disabled }:
     <div style={{ display: 'grid', gap: 10 }}>
       {field('vi')}
       {field('en')}
-      <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
-        {L('Để trống = dùng câu mặc định (chữ mờ). Bot gửi đúng nguyên văn câu bạn viết, và không bao giờ gửi một câu hai lần cho cùng khách. Khách đang chờ xác nhận lịch hoặc chưa gửi tên/SĐT vẫn nhận câu hỏi đúng chỗ đó trước.',
-          'Empty = the default line (greyed). The bot sends your words exactly, and never sends the same line twice to one customer. A customer who still has to confirm, or send a name and phone, gets that specific ask first.')}
-      </span>
+      {hint && (
+        <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+          {L('Đã viết câu của tiệm thì bot CHỈ gửi câu của tiệm, đúng nguyên văn — không bao giờ gửi câu mặc định (chữ mờ). Ô của tiếng nào để trống thì khách nói tiếng đó không được nhắc. Không viết gì cả = dùng câu mặc định.',
+            'Once you write your own line, the bot sends ONLY your words, exactly — never the default (greyed) line. A language left empty means customers in that language get no reminder. Nothing written at all = the default lines.')}
+        </span>
+      )}
     </div>
   );
 }
@@ -74,15 +81,17 @@ export function FollowUpBox({ token, vi }: { token: string | null; vi: boolean }
   const [s, setS] = useState<FollowUp | null>(null);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [words, setWords] = useState<{ messageVi: string; messageEn: string } | null>(null);
+  const [words2, setWords2] = useState<{ messageVi: string; messageEn: string }>({ messageVi: '', messageEn: '' });
   const L = (v: string, e: string) => ind(vi ? v : e);
 
   useEffect(() => {
     if (!token) return;
     apiFetch<FollowUp>('/settings/chat-followup', { token })
-      .then((r) => { setS(r); setWords({ messageVi: r.messageVi ?? '', messageEn: r.messageEn ?? '' }); })
+      .then((r) => { setS(r); setWords({ messageVi: r.messageVi ?? '', messageEn: r.messageEn ?? '' }); setWords2({ messageVi: r.messageVi2 ?? '', messageEn: r.messageEn2 ?? '' }); })
       .catch(() => setState('error'));
   }, [token]);
-  const wordsDirty = !!s && !!words && (words.messageVi.trim() !== (s.messageVi ?? '') || words.messageEn.trim() !== (s.messageEn ?? ''));
+  const wordsDirty = !!s && !!words && (words.messageVi.trim() !== (s.messageVi ?? '') || words.messageEn.trim() !== (s.messageEn ?? '')
+    || words2.messageVi.trim() !== (s.messageVi2 ?? '') || words2.messageEn.trim() !== (s.messageEn2 ?? ''));
 
   async function save(patch: Partial<FollowUp>) {
     if (!token || !s) return;
@@ -92,7 +101,7 @@ export function FollowUpBox({ token, vi }: { token: string | null; vi: boolean }
     try {
       const r = await apiFetch<FollowUp>('/settings/chat-followup', { method: 'PATCH', token, body: patch });
       setS(r); setState('saved'); window.setTimeout(() => setState('idle'), 1800);
-      if ('messageVi' in patch || 'messageEn' in patch) setWords({ messageVi: r.messageVi ?? '', messageEn: r.messageEn ?? '' });
+      if ('messageVi' in patch || 'messageEn' in patch) { setWords({ messageVi: r.messageVi ?? '', messageEn: r.messageEn ?? '' }); setWords2({ messageVi: r.messageVi2 ?? '', messageEn: r.messageEn2 ?? '' }); }
     } catch { setState('error'); }
   }
 
@@ -154,10 +163,18 @@ export function FollowUpBox({ token, vi }: { token: string | null; vi: boolean }
 
       {on && words && (
         <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(99,102,241,0.10)', border: '1px solid rgba(99,102,241,0.30)', display: 'grid', gap: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cc7d2fe)' }}>{L('Câu nhắc lại của tiệm', 'Your follow-up wording')}</div>
-          <NudgeWordingFields vi={vi} valueVi={words.messageVi} valueEn={words.messageEn} onChange={setWords} disabled={state === 'saving'} />
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cc7d2fe)' }}>{L('Câu nhắc lần 1 của tiệm', 'Your first reminder')}</div>
+          <NudgeWordingFields vi={vi} valueVi={words.messageVi} valueEn={words.messageEn} onChange={setWords} disabled={state === 'saving'} hint={false} />
+          {(s?.secondAfterMin ?? 0) > 0 && (<>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cc7d2fe)', marginTop: 4 }}>{L('Câu nhắc lần 2 của tiệm', 'Your second reminder')}</div>
+            <NudgeWordingFields second vi={vi} valueVi={words2.messageVi} valueEn={words2.messageEn} onChange={setWords2} disabled={state === 'saving'} hint={false} />
+          </>)}
+          <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+            {L('Đã viết câu của tiệm thì bot CHỈ gửi câu của tiệm, đúng nguyên văn — không bao giờ gửi câu mặc định (chữ mờ). Ô nào để trống thì lần nhắc đó, với khách nói tiếng đó, không gửi. Không viết gì cả = dùng câu mặc định.',
+              'Once you write your own lines, the bot sends ONLY your words, exactly — never the default (greyed) line. An empty box means that reminder is not sent to customers in that language. Nothing written at all = the default lines.')}
+          </span>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="button" disabled={!wordsDirty || state === 'saving'} onClick={() => words && save({ messageVi: words.messageVi.trim(), messageEn: words.messageEn.trim() })}
+            <button type="button" disabled={!wordsDirty || state === 'saving'} onClick={() => words && save({ messageVi: words.messageVi.trim(), messageEn: words.messageEn.trim(), messageVi2: words2.messageVi.trim(), messageEn2: words2.messageEn.trim() })}
               style={{ ...ui.primaryBtn, minHeight: 40, padding: '0 16px', opacity: wordsDirty && state !== 'saving' ? 1 : 0.5 }}>
               {L('Lưu câu nhắc', 'Save wording')}
             </button>

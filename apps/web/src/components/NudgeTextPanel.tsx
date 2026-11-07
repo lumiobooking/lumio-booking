@@ -31,6 +31,7 @@ export function NudgeTextPanel(p: {
   const mobile = useIsMobile();
   const [s, setS] = useState<FollowUp | null>(null);
   const [words, setWords] = useState({ messageVi: '', messageEn: '' });
+  const [words2, setWords2] = useState({ messageVi: '', messageEn: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -38,7 +39,7 @@ export function NudgeTextPanel(p: {
   useEffect(() => {
     if (!p.token) return;
     apiFetch<FollowUp>('/settings/chat-followup', { token: p.token })
-      .then((r) => { setS(r); setWords({ messageVi: r.messageVi ?? '', messageEn: r.messageEn ?? '' }); })
+      .then((r) => { setS(r); setWords({ messageVi: r.messageVi ?? '', messageEn: r.messageEn ?? '' }); setWords2({ messageVi: r.messageVi2 ?? '', messageEn: r.messageEn2 ?? '' }); })
       .catch((e) => setErr(e instanceof Error ? e.message : L(vi, 'Không tải được cài đặt', 'Could not load the settings')));
   }, [p.token, vi]);
 
@@ -48,14 +49,15 @@ export function NudgeTextPanel(p: {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const dirty = !!s && (words.messageVi.trim() !== (s.messageVi ?? '') || words.messageEn.trim() !== (s.messageEn ?? ''));
+  const dirty = !!s && (words.messageVi.trim() !== (s.messageVi ?? '') || words.messageEn.trim() !== (s.messageEn ?? '')
+    || words2.messageVi.trim() !== (s.messageVi2 ?? '') || words2.messageEn.trim() !== (s.messageEn2 ?? ''));
 
   async function patch(body: Partial<FollowUp>, ok: string) {
     if (!p.token || busy) return;
     setBusy(true); setErr(null);
     try {
       const r = await apiFetch<FollowUp>('/settings/chat-followup', { method: 'PATCH', token: p.token, body });
-      setS(r); setWords({ messageVi: r.messageVi ?? '', messageEn: r.messageEn ?? '' });
+      setS(r); setWords({ messageVi: r.messageVi ?? '', messageEn: r.messageEn ?? '' }); setWords2({ messageVi: r.messageVi2 ?? '', messageEn: r.messageEn2 ?? '' });
       setDone(ok);
       window.setTimeout(() => onClose(), 1200);
     } catch (e) {
@@ -99,7 +101,12 @@ export function NudgeTextPanel(p: {
             <div role="note" style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L(vi, 'Chỉ chủ tiệm sửa được câu nhắc lại.', 'Only the salon owner can change the follow-up.')}</div>
           )}
 
+          {s && <span style={sectionLabel}>{L(vi, 'CÂU NHẮC LẦN 1', 'FIRST REMINDER')}</span>}
           {s && <NudgeWordingFields vi={vi} valueVi={words.messageVi} valueEn={words.messageEn} onChange={setWords} disabled={!p.canEdit || busy} />}
+          {s && s.secondAfterMin > 0 && (<>
+            <span style={sectionLabel}>{L(vi, 'CÂU NHẮC LẦN 2', 'SECOND REMINDER')}</span>
+            <NudgeWordingFields second hint={false} vi={vi} valueVi={words2.messageVi} valueEn={words2.messageEn} onChange={setWords2} disabled={!p.canEdit || busy} />
+          </>)}
           {!s && !err && <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L(vi, 'Đang tải…', 'Loading…')}</span>}
 
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
@@ -119,7 +126,7 @@ export function NudgeTextPanel(p: {
             </button>
           )}
           <button type="button" disabled={!p.canEdit || !dirty || busy}
-            onClick={() => void patch({ messageVi: words.messageVi.trim(), messageEn: words.messageEn.trim() }, L(vi, 'Đã lưu — lần nhắc sau dùng câu mới.', 'Saved — the next follow-up uses it.'))}
+            onClick={() => void patch({ messageVi: words.messageVi.trim(), messageEn: words.messageEn.trim(), messageVi2: words2.messageVi.trim(), messageEn2: words2.messageEn.trim() }, L(vi, 'Đã lưu — lần nhắc sau dùng câu mới.', 'Saved — the next follow-up uses it.'))}
             style={{ ...ui.primaryBtn, flex: '2 1 200px', minHeight: 44, fontSize: 14, fontWeight: 700, background: '#4f46e5', opacity: p.canEdit && dirty && !busy ? 1 : 0.55 }}>
             {busy ? L(vi, 'Đang lưu…', 'Saving…') : L(vi, 'Lưu câu nhắc', 'Save wording')}
           </button>

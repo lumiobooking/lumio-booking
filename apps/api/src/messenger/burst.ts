@@ -22,7 +22,28 @@
  */
 
 /** How long to wait for the rest of a burst before answering. */
-export const BURST_MS = 4_000;
+export const BURST_MS = 6_000;
+
+/**
+ * How many replies in a row may be dropped because the customer wrote again
+ * while they were being written (MessengerService.drainBurst). Two: somebody
+ * typing non-stop still gets an answer within three passes.
+ */
+export const MAX_SUPERSEDE = 2;
+
+/**
+ * Tools that only LOOK. A reply whose run used anything else (booked, moved or
+ * cancelled a visit, sent photos or price cards, saved a contact, logged a
+ * callback) is never dropped for a newer message: the customer must hear what
+ * was done, and a second run would do it again.
+ */
+export const READ_ONLY_TOOLS = new Set(['check_availability', 'find_appointment', 'get_pricing', 'get_services', 'get_software_plans', 'quote_price']);
+
+/** May a reply written with these tools be dropped and rewritten? */
+export function mayDropReply(toolsUsed: Iterable<string>): boolean {
+  for (const t of toolsUsed) if (!READ_ONLY_TOOLS.has(t)) return false;
+  return true;
+}
 
 /** An exactly-repeated reply is worth nothing to the reader for this long. */
 export const REPEAT_WINDOW_MS = 10 * 60_000;

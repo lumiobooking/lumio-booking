@@ -1,3 +1,4 @@
+import { forbiddenPhrases, looksLikeNote, saysForbidden } from '../messenger/outbound-guard';
 /**
  * THE OWNER'S WORD IS FINAL — instructions a salon owner gives its AI.
  *
@@ -326,7 +327,11 @@ Rewrite your reply now so it obeys them exactly. Keep everything else that was r
  */
 export function lastResort(broken: Instruction[], rewrite: string, sameLanguage: boolean): string {
   if (rewrite.trim()) return rewrite.trim();
-  const a = broken.find((i) => i.kind === 'answer');
+  // An answer is sent as the owner wrote it only when it is a message to a
+  // customer. A note that talks to the AI ("when they say no thanks, don't
+  // reply") is an instruction — sending it hands the customer the salon's
+  // internal notes, which is exactly what happened (./messenger/outbound-guard).
+  const a = broken.find((i) => i.kind === 'answer' && (i.mode === 'verbatim' || !looksLikeNote(i.text)));
   if (a && sameLanguage) return a.text;
   return '';
 }
@@ -335,10 +340,14 @@ export function lastResort(broken: Instruction[], rewrite: string, sameLanguage:
  * Said when a reply broke an instruction twice and nothing compliant exists:
  * an honest "let me check", never the reply the owner forbade.
  */
-export function checkingLine(lang: string | null | undefined): string {
-  return lang === 'vi'
-    ? 'Dạ để em kiểm tra lại với tiệm cho chính xác rồi báo anh/chị ngay ạ.'
-    : "Let me double-check that with the salon so I give you the right answer — I'll get back to you shortly.";
+export function checkingLine(lang: string | null | undefined, list?: Instruction[] | null): string {
+  // Never a sentence the owner forbade: an owner who wrote "never say 'let me
+  // double-check with the salon'" got exactly that line from this fallback.
+  const lines = lang === 'vi'
+    ? ['Dạ để em kiểm tra lại với tiệm cho chính xác rồi báo anh/chị ngay ạ.', 'Dạ em ghi lại để tiệm trả lời anh/chị sớm nhất ạ.']
+    : ["Let me double-check that with the salon so I give you the right answer — I'll get back to you shortly.", "I've noted your question so the team can answer you shortly."];
+  const banned = forbiddenPhrases(list ?? []);
+  return lines.find((l) => !saysForbidden(l, banned)) ?? '';
 }
 
 // ---------------------------------------------------------------- what the owner means

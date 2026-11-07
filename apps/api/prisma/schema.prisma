@@ -1746,8 +1746,8 @@ model MessengerConnection {
   greeting  String? // optional opening line
   closing   String? // optional goodbye/thank-you spirit the bot adapts when a chat wraps up
   agentName String? // persona: the bot introduces itself with this human name (never "assistant")
-  humanActiveMins Int @default(15) // staff counts as "in the chat" this long after their last message
-  graceMins       Int @default(5)  // how long an active staffer gets to answer before the bot steps in
+  humanActiveMins Int @default(120) // staff counts as "in the chat" this long after their last message
+  graceMins       Int @default(0)   // 0 = the bot never speaks over an active staffer; N = it answers a message they left N minutes
   // Auto-distribution of conversations to staff. 'off' by default: turning it on
   // changes who answers customers, and that is the salon's decision rather than
   // a behaviour they acquire by taking an update.

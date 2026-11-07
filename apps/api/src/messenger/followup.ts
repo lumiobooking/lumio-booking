@@ -68,6 +68,13 @@ export interface FollowUpSettings {
    */
   messageVi: string;
   messageEn: string;
+  /**
+   * The SECOND reminder's own wording. Empty = no second reminder when the
+   * salon wrote a first one — the built-in lines never stand in for the
+   * salon's ("Chị không muốn câu cũ này được gửi cho bất kỳ khách nào nữa").
+   */
+  messageVi2: string;
+  messageEn2: string;
 }
 
 /** Longest custom nudge. One short line reopens a door; a paragraph reads as an ad. */
@@ -82,6 +89,8 @@ export const DEFAULT_FOLLOWUP: FollowUpSettings = {
   hourTo: 20,
   messageVi: '',
   messageEn: '',
+  messageVi2: '',
+  messageEn2: '',
 };
 
 /** One clean line of salon text: no control characters, collapsed spaces, capped. */
@@ -119,6 +128,8 @@ export function cleanFollowUp(raw: unknown): FollowUpSettings {
     hourTo: hourTo > hourFrom ? hourTo : DEFAULT_FOLLOWUP.hourTo,
     messageVi: cleanNudgeText(o.messageVi),
     messageEn: cleanNudgeText(o.messageEn),
+    messageVi2: cleanNudgeText(o.messageVi2),
+    messageEn2: cleanNudgeText(o.messageEn2),
   };
 }
 
@@ -338,9 +349,16 @@ export function nudgeKindFor(lastBotText: string | null | undefined): NudgeKind 
 /** Lines compared without case, spacing or trailing punctuation/emoji. */
 const sameLine = (a: string) => a.toLowerCase().replace(/[\s.!😊🙏]+/gu, ' ').trim();
 
+export interface CustomNudges { vi?: string | null; en?: string | null; vi2?: string | null; en2?: string | null }
+
+/** Has the salon written any reminder line of its own, in any language? */
+export function hasCustomNudge(c: CustomNudges | null | undefined): boolean {
+  return [c?.vi, c?.en, c?.vi2, c?.en2].some((x) => cleanNudgeText(x).length > 0);
+}
+
 export interface NudgeOpts {
-  /** The salon's own lines (FollowUpSettings.messageVi / messageEn). */
-  custom?: { vi?: string | null; en?: string | null } | null;
+  /** The salon's own lines (FollowUpSettings.messageVi / messageEn, and vi2 / en2 for the second reminder). */
+  custom?: CustomNudges | null;
   /** Every nudge already sent in this thread — none of them is said twice. */
   sent?: string[];
 }
@@ -355,8 +373,19 @@ export interface NudgeOpts {
  * because they ask for one concrete thing.
  */
 export function contextualNudge(lastBotText: string | null | undefined, vi: boolean, nth = 1, opts: NudgeOpts = {}): string | null {
+  const said = new Set((opts.sent ?? []).map((x) => sameLine(String(x ?? ''))));
+  // THE SALON WROTE ITS OWN REMINDERS: only those are ever sent. The first
+  // reminder is the first line, the second is the second line; a missing line
+  // (that reminder, or this customer's language) means no reminder at all —
+  // never a built-in sentence in its place. The salon owner asked that the
+  // old default lines never reach a customer again, and a reminder skipped
+  // costs far less than a line the salon took back.
+  if (hasCustomNudge(opts.custom)) {
+    const line = cleanNudgeText(nth > 1 ? (vi ? opts.custom?.vi2 : opts.custom?.en2) : (vi ? opts.custom?.vi : opts.custom?.en));
+    return line && !said.has(sameLine(line)) ? line : null;
+  }
   const kind = nth > 1 ? 'general' : nudgeKindFor(lastBotText);
-  const custom = cleanNudgeText(vi ? opts.custom?.vi : opts.custom?.en);
+  const custom = '';
   const time = vi ? NUDGE_TEMPLATES[0].vi : NUDGE_TEMPLATES[0].en;
   const general = vi ? NUDGE_TEMPLATES[1].vi : NUDGE_TEMPLATES[1].en;
   const confirm = vi
@@ -370,7 +399,6 @@ export function contextualNudge(lastBotText: string | null | undefined, vi: bool
       : kind === 'contact' ? [contact, custom, general, time]
         : kind === 'time' ? [custom, time, general]
           : [custom, general, time];
-  const said = new Set((opts.sent ?? []).map((x) => sameLine(String(x ?? ''))));
   return order.find((line) => line && !said.has(sameLine(line))) ?? null;
 }
 
@@ -388,10 +416,10 @@ export function builtInNudgeLines(): string[] {
 }
 
 /** Is this bot line one of the salon's reminders (built-in or its own)? */
-export function isNudgeLine(text: string | null | undefined, custom?: { vi?: string | null; en?: string | null } | null): boolean {
+export function isNudgeLine(text: string | null | undefined, custom?: CustomNudges | null): boolean {
   const t = sameLine(String(text ?? ''));
   if (!t) return false;
-  const lines = [...builtInNudgeLines(), cleanNudgeText(custom?.vi), cleanNudgeText(custom?.en)].filter(Boolean);
+  const lines = [...builtInNudgeLines(), cleanNudgeText(custom?.vi), cleanNudgeText(custom?.en), cleanNudgeText(custom?.vi2), cleanNudgeText(custom?.en2)].filter(Boolean);
   return lines.some((l) => sameLine(l) === t);
 }
 

@@ -99,3 +99,18 @@ export function sendFailedPush(name: string | null | undefined, reason: string, 
     tag: 'lumio-inbox-send-failed',
   };
 }
+
+/**
+ * The bot's reply was held back before it was sent — it said what the owner
+ * forbade, or read like an internal note (./outbound-guard). The customer got
+ * nothing, on purpose: a person answers instead.
+ */
+export function heldPush(name: string | null | undefined, vi: boolean): { title: string; body: string; url: string; tag: string } {
+  const who = String(name ?? '').trim() || (vi ? 'Khách' : 'A customer');
+  return {
+    title: vi ? `AI đã giữ lại một câu trả lời — ${who} đang chờ` : `The AI held a reply back — ${who} is waiting`,
+    body: vi ? 'Câu AI định gửi trái với lời dặn của tiệm nên không gửi. Vào trả lời khách nhé.' : 'The reply went against the salon’s instructions, so it was not sent. Please answer the customer.',
+    url: '/staff/inbox',
+    tag: 'lumio-inbox-held',
+  };
+}

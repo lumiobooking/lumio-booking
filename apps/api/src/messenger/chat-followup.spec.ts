@@ -211,7 +211,7 @@ describe('what the nudge says', () => {
 
   it('Vietnamese nudges never guess anh or chị', () => {
     for (const ask of ['em đặt lịch luôn nhé?', 'cho em xin tên và số điện thoại', 'anh/chị muốn hôm nào ạ?', '']) {
-      const line = contextualNudge(ask, true);
+      const line = contextualNudge(ask, true)!;
       expect(line.toLowerCase()).toContain('anh/chị');
       // \b is ASCII-only and never matches after "ị", so test the words directly.
       const rest = line.replace(/anh\/chị/gi, '');

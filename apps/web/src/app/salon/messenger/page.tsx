@@ -1045,11 +1045,11 @@ function Inner() {
           <div>
             <label style={ui.label}>{lang === 'vi' ? 'Nhân viên "đang trực" trong (phút)' : 'Staff counts as active for (min)'}</label>
             <input type="number" min={1} max={720} value={c.humanActiveMins}
-              onChange={(e) => setC({ ...c, humanActiveMins: Math.min(720, Math.max(1, Number(e.target.value) || 15)) })}
+              onChange={(e) => setC({ ...c, humanActiveMins: Math.min(720, Math.max(1, Number(e.target.value) || 120)) })}
               onBlur={() => save({})} style={ui.input} />
           </div>
           <div>
-            <label style={ui.label}>{lang === 'vi' ? 'Bot nhường người thật (phút)' : 'Bot yields to a human for (min)'}</label>
+            <label style={ui.label}>{lang === 'vi' ? 'Bot trả lời thay sau (phút, 0 = không bao giờ)' : 'Bot answers for staff after (min, 0 = never)'}</label>
             <input type="number" min={0} max={60} value={c.graceMins}
               onChange={(e) => setC({ ...c, graceMins: Math.min(60, Math.max(0, Number(e.target.value) || 0)) })}
               onBlur={() => save({})} style={ui.input} />

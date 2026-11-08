@@ -81,12 +81,36 @@ export class PaypalConnector implements PaymentConnector {
   async refund(secret: string, captureId: string, amountCents?: number): Promise<RefundResult> {
     return this.refundOnline(secret, { transactionId: captureId, reference: captureId, amountCents: amountCents ?? 0, currency: 'USD' });
   }
+  /** What the booking page needs to show PayPal's own buttons: the PUBLIC client id (PayPal's buttons are built for it) and which environment. Never the secret. */
+  publicConfig(secret: string): { clientId: string; env: 'sandbox' | 'live' } | null {
+    const p = pairOf(secret);
+    return p.id ? { clientId: p.id, env: p.env === 'sandbox' ? 'sandbox' : 'live' } : null;
+  }
+
   verifyWebhook(): WebhookResult {
     throw new Error('PayPal payments are confirmed by reading the order, not by webhook');
   }
 
-  async startOnlineCheckout(secret: string, amountCents: number, currency: string, reference: string, opts?: { returnUrl?: string; cancelUrl?: string; description?: string; brandName?: string }) {
+  async startOnlineCheckout(secret: string, amountCents: number, currency: string, reference: string, opts?: { returnUrl?: string; cancelUrl?: string; description?: string; brandName?: string; sdk?: boolean }) {
     const p = pairOf(secret);
+    // For PayPal's own buttons ON the booking page (the Venmo button): the
+    // order carries no payment source — the button picks Venmo — and the
+    // browser gets the order id to hand to it. Paid is still decided here,
+    // by reading and capturing the order (lookupOnlinePaymentByOrder).
+    if (opts?.sdk) {
+      const o = await httpJson('POST', `${this.base(p)}/v2/checkout/orders`, await this.headers(p, { 'PayPal-Request-Id': randomUUID() }), {
+        intent: 'CAPTURE',
+        purchase_units: [{
+          reference_id: reference.slice(0, 256),
+          custom_id: reference.slice(0, 127),
+          description: (opts?.description || 'Booking deposit').slice(0, 127),
+          amount: { currency_code: currency.toUpperCase(), value: decimalAmount(amountCents) },
+        }],
+        application_context: { shipping_preference: 'NO_SHIPPING', ...(opts?.brandName ? { brand_name: opts.brandName.slice(0, 127) } : {}) },
+      });
+      if (!o.ok || !o.json?.id) throw new Error(this.err(o));
+      return { orderId: String(o.json.id), externalRef: String(o.json.id) };
+    }
     const r = await httpJson('POST', `${this.base(p)}/v2/checkout/orders`, await this.headers(p, { 'PayPal-Request-Id': randomUUID() }), {
       intent: 'CAPTURE',
       purchase_units: [{

@@ -1,3 +1,4 @@
+import { venmoOption } from './venmo-option';
 import { OnlineDepositService } from './online-deposit.service';
 import { HOLD_REF } from '../payments/deposit-hold';
 import { BadRequestException, Body, Controller, Get, Header, Headers, NotFoundException, Param, Post, Query, Req, Res } from '@nestjs/common';
@@ -491,7 +492,7 @@ export class PublicSalonController {
    */
   @RateLimit(12, 60_000)
   @Post(':slug/bookings/:id/online-checkout')
-  async startOnlineCheckout(@Param('slug') slug: string, @Param('id') id: string) {
+  async startOnlineCheckout(@Param('slug') slug: string, @Param('id') id: string, @Query('sdk') sdk?: string) {
     const tenantId = await this.resolveTenantId(slug);
     const appt = await this.prisma.appointment.findFirst({
       where: { id, tenantId },
@@ -515,7 +516,25 @@ export class PublicSalonController {
       customerName: appt.customer?.firstName ?? undefined,
       brandName: appt.tenant?.name ?? undefined,
       brandColor: this.settings.brandingFrom(appt.tenant?.branding).accentColor ?? undefined,
+      // PayPal's own button on the page (Venmo): an order id, not a page link.
+      ...(sdk === '1' ? { sdk: true } : {}),
     });
+  }
+
+  /**
+   * Can this booking page offer Venmo? Only when the salon takes online
+   * payments through its own PayPal, in US dollars (Venmo is US-only). The
+   * answer carries PayPal's PUBLIC client id for its button — never a secret.
+   */
+  @RateLimit(30, 60_000)
+  @Get(':slug/pay-options')
+  async payOptions(@Param('slug') slug: string) {
+    const tenantId = await this.resolveTenantId(slug);
+    const deposit = await this.settings.getDepositSettings(tenantId);
+    const cfg = await this.hub.onlinePublicConfig(tenantId, deposit.provider).catch(() => null);
+    const rules = await this.settings.getBookingRules(tenantId).catch(() => null) as { currency?: string } | null;
+    const currency = String(rules?.currency ?? 'USD').toUpperCase();
+    return { venmo: venmoOption(cfg, currency) };
   }
 
   /**

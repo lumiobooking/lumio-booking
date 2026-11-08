@@ -677,6 +677,21 @@ export class PaymentOrchestrator {
     return ok[0] ?? null;
   }
 
+  /**
+   * Public settings the booking page may know about the salon's online
+   * provider. Today: PayPal's public client id, for the Venmo button. Never a
+   * secret; null when nothing applies.
+   */
+  async onlinePublicConfig(tenantId: string, preferred?: string | null): Promise<{ provider: string; paypal?: { clientId: string; env: 'sandbox' | 'live' } } | null> {
+    const provider = await this.onlineProviderFor(tenantId, preferred);
+    if (!provider) return null;
+    if (provider !== 'paypal') return { provider };
+    const cred = await this.creds.loadCred(tenantId, provider as ProviderId).catch(() => null);
+    const connector: any = this.registry.get(provider);
+    const paypal = cred && typeof connector.publicConfig === 'function' ? connector.publicConfig(cred.secret) : null;
+    return paypal ? { provider, paypal } : { provider };
+  }
+
   /** Start a hosted online checkout for a server-computed amount. */
   async onlineStart(tenantId: string, amountCents: number, currency: string, reference: string, opts: OnlineCheckoutOpts & { preferred?: string | null } = {}) {
     const provider = await this.onlineProviderFor(tenantId, opts.preferred);

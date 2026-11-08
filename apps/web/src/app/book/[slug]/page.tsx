@@ -30,6 +30,7 @@ import { planOpeningBar } from '../../../lib/opening-bar';
 import { bookLangForCountry, setBookLang, setBookIndustry, bt, btf, bookLocale, bookLang } from '../../../lib/i18n-book';
 import { cartCopy, type ArtKind } from '../../../lib/cart-art';
 import { CartArt } from '../../../components/CartArt';
+import { VenmoButton, type VenmoConfig } from '../../../components/VenmoButton';
 import { SalonCard } from '../../../components/SalonCard';
 import { industryText, isIndustryKey, type IndustryKey } from '../../../lib/ui-industry';
 import { afterPct, anyDealPct, dayKey, lineDeal, nextDeal, promoDeal, windowEnded, type Promos } from '../../../lib/booking-promos';
@@ -418,8 +419,12 @@ export default function PublicBookingPage() {
     restCents: number;
     /** When the unpaid hold releases the time (ms), or null when nothing is held. */
     heldUntil: number | null;
-    phase: 'starting' | 'open' | 'checking' | 'failed' | 'paid'; error?: string;
+    phase: 'ready' | 'starting' | 'open' | 'checking' | 'failed' | 'paid'; error?: string;
+    /** The salon's online provider ('paypal' offers the Venmo button). */
+    provider?: string;
   } | null>(null);
+  /** Venmo through the salon's PayPal — set only when the salon can take it (US dollars, PayPal connected). */
+  const [venmo, setVenmo] = useState<VenmoConfig | null>(null);
   const patchDue = (p: Partial<NonNullable<typeof onlineDue>>) => setOnlineDue((d) => (d ? { ...d, ...p } : d));
   // A one-second clock for the "time held" countdown — only while money is owed.
   const [nowTs, setNowTs] = useState(() => Date.now());
@@ -901,13 +906,22 @@ export default function PublicBookingPage() {
         const dep = (body?.depositCents ?? 0) > 0;
         const price = typeof body?.booking?.priceCents === 'number' ? body.booking.priceCents : totalCents;
         const holdMin = dep ? (salon?.deposit?.holdMinutes ?? 30) : 0;
+        // PayPal salons: the customer CHOOSES — Venmo, or PayPal / card — on
+        // our page first. (Opening PayPal's tab on its own after a network
+        // call is also what popup blockers stop.) Others open as before.
+        const viaPaypal = String(body.onlineProvider) === 'paypal';
         setOnlineDue({
           bookingId: String(body.booking.id), cents: dep ? body.depositCents : body.payNowCents, kind: dep ? 'deposit' : 'full',
           restCents: dep ? Math.max(0, price - body.depositCents) : 0,
           heldUntil: holdMin > 0 ? Date.now() + holdMin * 60_000 : null,
-          phase: 'starting',
+          phase: viaPaypal ? 'ready' : 'starting',
+          provider: String(body.onlineProvider),
         });
-        void payDepositOnline(String(body.booking.id));
+        if (viaPaypal) {
+          fetch(`${base}/pay-options`).then((r) => (r.ok ? r.json() : null)).then((o) => setVenmo(o?.venmo ?? null)).catch(() => setVenmo(null));
+        } else {
+          void payDepositOnline(String(body.booking.id));
+        }
       } else {
         setOnlineDue(null);
       }
@@ -1262,6 +1276,15 @@ export default function PublicBookingPage() {
             bookedVisits={bookedVisits} paidOnline={result?.paymentStatus === 'PAID' || onlineDue?.phase === 'paid'}
             due={onlineDue} pending={duePending} now={nowTs} refundHours={salon?.deposit?.refundHours ?? 24} holdMinutes={salon?.deposit?.holdMinutes ?? 30}
             onPay={() => { if (onlineDue) void payDepositOnline(onlineDue.bookingId); }}
+            venmoSlot={onlineDue && onlineDue.provider === 'paypal' && venmo && onlineDue.phase !== 'checking' && onlineDue.phase !== 'paid' ? (
+              <VenmoButton
+                cfg={venmo} base={base} bookingId={onlineDue.bookingId}
+                onStart={() => patchDue({ phase: 'checking', error: undefined })}
+                onPaid={() => { setResult({ paymentStatus: 'PAID' }); patchDue({ phase: 'paid', error: undefined }); }}
+                onFail={(msg) => patchDue({ phase: 'failed', error: msg })}
+                failText={{ notCompleted: bt('The payment was not completed.'), network: bt('Venmo could not be opened. Try again, or pay with PayPal or a card.') }}
+              />
+            ) : null}
             onPickTime={() => { setOnlineDue(null); setResult(null); setBookedVisits([]); setSlot(null); setAvail(null); setSelectedDate(null); setStep(3); }}
             onReset={reset}
           />
@@ -2768,7 +2791,7 @@ function ConfirmStep({ unpriced, salon, slot, employee, lines, fmt, totalCents, 
 
 type OnlineDue = {
   bookingId: string; cents: number; kind: 'deposit' | 'full'; restCents: number; heldUntil: number | null;
-  phase: 'starting' | 'open' | 'checking' | 'failed' | 'paid'; error?: string;
+  phase: 'ready' | 'starting' | 'open' | 'checking' | 'failed' | 'paid'; error?: string; provider?: string;
 };
 
 const svgLock = (size = 18) => (
@@ -2784,11 +2807,13 @@ const svgCheck = (size = 18) => (
  * to try again. Only a payment our server has verified turns it into
  * "You're booked". Nothing owed → the plain confirmation.
  */
-function AfterBooking({ embedded, accent, fmt, salonName, salonAddress, firstName, serviceName, when, bookedVisits, paidOnline, due, pending, now, refundHours, holdMinutes, onPay, onPickTime, onReset }: {
+function AfterBooking({ embedded, accent, fmt, salonName, salonAddress, firstName, serviceName, when, bookedVisits, paidOnline, due, pending, now, refundHours, holdMinutes, onPay, onPickTime, onReset, venmoSlot }: {
   embedded: boolean; accent: string; fmt: (c: number) => string; salonName: string; salonAddress: string;
   firstName: string; serviceName: string; when: string; bookedVisits: string[]; paidOnline: boolean;
   due: OnlineDue | null; pending: boolean; now: number; refundHours: number; holdMinutes: number;
   onPay: () => void; onPickTime: () => void; onReset: () => void;
+  /** "Pay with Venmo" (PayPal salons in US dollars), shown above the regular pay button. */
+  venmoSlot?: React.ReactNode;
 }) {
   const shell: React.CSSProperties = { background: '#fff', borderRadius: embedded ? 12 : '0 0 14px 14px', padding: 'clamp(18px, 4vw, 32px) clamp(14px, 4vw, 32px)' };
   const col: React.CSSProperties = { maxWidth: 460, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 };
@@ -2806,6 +2831,7 @@ function AfterBooking({ embedded, accent, fmt, salonName, salonAddress, firstNam
       : due.phase === 'failed' ? bt('The payment didn’t go through')
       : due.phase === 'checking' ? bt('Checking your payment…')
       : due.phase === 'open' ? bt('Complete the payment in the secure window')
+      : due.phase === 'ready' ? bt('Choose how to pay')
       : bt('Opening secure payment…');
     const warn = expired || due.phase === 'failed';
     return (
@@ -2826,6 +2852,8 @@ function AfterBooking({ embedded, accent, fmt, salonName, salonAddress, firstNam
               <span style={{ fontSize: 13.5, lineHeight: 1.5, color: '#7c2d12' }}>{due.error}</span>
             ) : due.phase === 'open' ? (
               <span style={{ fontSize: 13.5, lineHeight: 1.5, color: '#475569' }}>{bt('Enter your card in the payment window. Your booking is confirmed the moment the payment goes through.')}</span>
+            ) : due.phase === 'ready' ? (
+              <span style={{ fontSize: 13.5, lineHeight: 1.5, color: '#475569' }}>{venmoSlot ? bt('Pay with Venmo, PayPal or a card. Your booking is confirmed the moment the payment goes through.') : bt('Pay with PayPal or a card. Your booking is confirmed the moment the payment goes through.')}</span>
             ) : null}
           </div>
 
@@ -2854,6 +2882,7 @@ function AfterBooking({ embedded, accent, fmt, salonName, salonAddress, firstNam
             {serviceName && <span style={{ fontSize: 12.5, color: '#64748b' }}>{serviceName}{when ? ` · ${when}` : ''}</span>}
           </div>
 
+          {!expired && venmoSlot}
           {expired ? (
             <button type="button" onClick={onPickTime} className="lumio-cta" style={big}>{bt('Pick a time again')}</button>
           ) : (
@@ -2861,6 +2890,7 @@ function AfterBooking({ embedded, accent, fmt, salonName, salonAddress, firstNam
               {svgLock(18)}
               {due.phase === 'starting' ? bt('Opening secure payment…')
                 : due.phase === 'checking' ? bt('Checking payment…')
+                : due.provider === 'paypal' ? btf('Pay {amount} with PayPal or card', { amount: fmt(due.cents) })
                 : due.phase === 'failed' ? btf('Try again · {amount}', { amount: fmt(due.cents) })
                 : btf('Pay {amount} now', { amount: fmt(due.cents) })}
             </button>

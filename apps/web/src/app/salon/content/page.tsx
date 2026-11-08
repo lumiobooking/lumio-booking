@@ -54,6 +54,8 @@ import type { TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
 import type { TrendCard } from '../../../components/TrendsTab';
 import { fitForSocial, videoPosterDataUrl } from '../../../lib/image';
+import { phashOfUrl } from '../../../lib/media-hash';
+import { guardLines, mergeGuards, type MediaGuardView } from '../../../lib/media-guard-view';
 import { PromoStrategyCard, type StrategyView } from '../../../components/PromoStrategyCard';
 import { ind } from '../../../lib/ui-industry';
 import { AutoCommentsSettings, CommentOutcome, PostCommentsPicker, type AutoCommentsView, type CommentJob, type PostCommentOverride } from '../../../components/AutoCommentsBox';
@@ -846,6 +848,14 @@ function Inner() {
   const [driveJob, setDriveJob] = useState<{ pct: number | null; loadedMb: number; sizeMb: number | null } | null>(null);
   /** What the fitter did to the last upload — crop, padding, or nothing. */
   const [fitNote, setFitNote] = useState<string | null>(null);
+  // Wrong-salon check on each uploaded file, by its url. `ok` = the person
+  // looked and confirmed it IS this salon's (audited on the server).
+  const [mediaGuards, setMediaGuards] = useState<Record<string, { g: MediaGuardView; ok: boolean }>>({});
+  const noteGuard = (url: string, g: unknown) => {
+    const v = g as MediaGuardView | undefined;
+    if (!v || !Array.isArray(v.warnings) || !v.warnings.length) return;
+    setMediaGuards((m) => ({ ...m, [url]: { g: mergeGuards(m[url]?.g, v), ok: false } }));
+  };
   /**
    * Post now, or put it on the calendar.
    *
@@ -1337,9 +1347,11 @@ function Inner() {
           // picture needs nothing like that: past this the upload is slower and
           // nothing on screen looks better.
           const { dataUrl, note } = await fitForSocial(file, { maxChars: 1_600_000 });
-          const { url } = await apiFetch<{ url: string }>('/uploads/service-photo', {
-            method: 'POST', token, body: { dataUrl },
+          const phash = await phashOfUrl(dataUrl);
+          const { url, guard } = await apiFetch<{ url: string; guard?: unknown }>('/uploads/service-photo', {
+            method: 'POST', token, body: { dataUrl, check: true, ...(phash ? { phash } : {}) },
           });
+          noteGuard(url, guard);
           setPostDraft((d) => (d ? { ...d, media: [...d.media, { url, kind: 'image' }] } : d));
           if (note) notes.push(files.length > 1 ? `${file.name}: ${note}` : note);
         } catch (e) {
@@ -1386,16 +1398,22 @@ function Inner() {
     }
     setVideoPct(0); setPostErr(null);
     try {
-      const { url } = await apiUpload('/uploads/post-video', file, token, setVideoPct);
+      // The still frame first: its picture hash goes with the clip, so the
+      // same video uploaded to another salon is recognised even re-exported.
+      const frame = await videoPosterDataUrl(file).catch(() => null);
+      const phash = frame ? await phashOfUrl(frame) : null;
+      const { url, guard } = await apiUpload('/uploads/post-video', file, token, setVideoPct, { phash });
+      noteGuard(url, guard);
       // A still frame for Google: its post API takes no video, and without a
       // picture the Google post goes up as bare text. Best effort — a video
       // whose frame cannot be read still uploads and posts everywhere else.
+      // Checked too: what the frame SHOWS (a sign, a phone) is read by the AI.
       let poster: string | undefined;
       try {
-        const frame = await videoPosterDataUrl(file);
         if (frame) {
-          const up = await apiFetch<{ url: string }>('/uploads/service-photo', { method: 'POST', token, body: { dataUrl: frame } });
+          const up = await apiFetch<{ url: string; guard?: unknown }>('/uploads/service-photo', { method: 'POST', token, body: { dataUrl: frame, check: true, ...(phash ? { phash } : {}) } });
           if (up?.url) poster = up.url;
+          noteGuard(url, up?.guard);
         }
       } catch { /* no poster — the video itself is fine */ }
       setPostDraft((d) => (d ? { ...d, media: [...d.media, { url, kind: 'video', ...(poster ? { poster } : {}) }] } : d));
@@ -1423,11 +1441,12 @@ function Inner() {
       const { jobId } = await apiFetch<{ jobId: string }>('/uploads/import-drive', { method: 'POST', token, body: { url } });
       for (;;) {
         await new Promise((r) => setTimeout(r, 2000));
-        const j = await apiFetch<{ state: 'running' | 'done' | 'error'; pct: number | null; loadedMb: number; sizeMb: number | null; url: string | null; kind: 'image' | 'video' | null; error: string | null }>(`/uploads/import-drive/${jobId}`, { token });
+        const j = await apiFetch<{ state: 'running' | 'done' | 'error'; pct: number | null; loadedMb: number; sizeMb: number | null; url: string | null; kind: 'image' | 'video' | null; error: string | null; guard?: unknown }>(`/uploads/import-drive/${jobId}`, { token });
         setDriveJob({ pct: j.pct, loadedMb: j.loadedMb, sizeMb: j.sizeMb });
         if (j.state === 'error') throw new Error(j.error || 'error');
         if (j.state === 'done' && j.url) {
           const kind = j.kind ?? 'video';
+          noteGuard(j.url, j.guard);
           setPostDraft((d) => (d ? { ...d, media: [...d.media, { url: j.url as string, kind }] } : d));
           setMediaInput('');
           notify('success', T(`Đã lấy ${kind === 'video' ? 'video' : 'ảnh'} từ Google Drive (${j.sizeMb ?? j.loadedMb} MB).`, `Fetched the ${kind} from Google Drive (${j.sizeMb ?? j.loadedMb} MB).`));
@@ -3893,7 +3912,14 @@ function Inner() {
               const kit = queue?.postKit;
               const check = kit ? checkPost(postDraft.message, kit.shop) : { findings: [], unchecked: [] };
               const ttGate = tiktokGate(postDraft, queue?.tiktok ?? null, ttClip && ttClip.url === postDraft.media.find((m) => m.kind === 'video')?.url ? ttClip.sec : null, vi);
-              const blocked = (check.findings.length > 0 && !contactOverride) || ttGate.length > 0;
+              const flagged = postDraft.media.filter((m) => mediaGuards[m.url] && !mediaGuards[m.url].ok);
+              const blocked = (check.findings.length > 0 && !contactOverride) || ttGate.length > 0 || flagged.length > 0;
+              const staffView = Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN';
+              const recentPics = (queue?.posts ?? [])
+                .filter((p) => p.id !== postDraft.id && (p.status === 'posted' || p.status === 'scheduled'))
+                .flatMap((p) => p.media.map((m) => (m.kind === 'image' ? m.url : m.poster)).filter((u): u is string => Boolean(u)))
+                .filter((u) => !postDraft.media.some((m) => m.url === u))
+                .slice(0, 6);
               return (
                 /* A POPUP over the calendar, not a card above it. The person
                    picked a day on the calendar and wants the calendar back when
@@ -4126,6 +4152,73 @@ function Inner() {
                       {postDraft.channels.includes('google') && ` — ${T('Google Business: Google không cho gắn video vào bài qua hệ thống — bài lên kèm chữ + ảnh bìa cắt từ video, còn video được thêm vào mục Ảnh & video của hồ sơ', 'Google Business: Google does not let apps attach a video to a post — the post goes out with the text and a cover frame from the video, and the video is added to the profile\u2019s Photos & videos')}`}
                       {postDraft.channels.includes('tiktok') && ` — ${T('TikTok cần 1 video .mp4', 'TikTok needs one .mp4 video')}`}
                     </div>
+
+                    {/* Which salon these files go to — big, before anything is
+                        picked — with the photos this salon already posted, so
+                        a picture from another shop stands out by eye. */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                      padding: '9px 12px', marginBottom: 8, borderRadius: 10,
+                      background: 'var(--c0f172a)', border: '1px solid #6366f1', borderLeft: '5px solid #6366f1',
+                    }}>
+                      <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                        <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{T('Đang tải ảnh / video cho tiệm', 'Uploading photos / video for')}</div>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {kit?.shop.name ?? queue?.connected?.pageName ?? '—'}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+                          {recentPics.length ? T('Ảnh tiệm đã đăng — đối chiếu trước khi tải:', 'This salon’s recent photos — compare before uploading:') : T('Kiểm tra đúng file của tiệm này trước khi tải.', 'Make sure the files belong to this salon.')}
+                        </div>
+                      </div>
+                      {recentPics.length > 0 && (
+                        <div style={{ display: 'flex', gap: 5 }}>
+                          {recentPics.map((u) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={u} src={u} alt="" loading="lazy" style={{ width: 46, height: 46, objectFit: 'cover', borderRadius: 7, border: '1px solid var(--c334155)' }} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {flagged.length > 0 && (
+                      <div role="alert" style={{ margin: '0 0 8px', padding: '10px 12px', borderRadius: 10, background: 'rgba(239,68,68,.12)', border: '1px solid #ef4444' }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ink-bad)', marginBottom: 6 }}>
+                          ⚠️ {T(`Có ${flagged.length} file có thể KHÔNG phải của tiệm ${kit?.shop.name ?? 'này'}`, `${flagged.length} file(s) may NOT belong to ${kit?.shop.name ?? 'this salon'}`)}
+                        </div>
+                        {flagged.map((m) => (
+                          <div key={m.url} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderTop: '1px solid rgba(239,68,68,.25)' }}>
+                            {m.kind === 'image' || m.poster
+                              // eslint-disable-next-line @next/next/no-img-element
+                              ? <img src={m.kind === 'image' ? m.url : m.poster} alt="" style={{ width: 54, height: 54, objectFit: 'cover', borderRadius: 7, flexShrink: 0 }} />
+                              : <div style={{ width: 54, height: 54, borderRadius: 7, background: 'var(--c1e293b)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>🎬</div>}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              {guardLines(mediaGuards[m.url].g, vi, staffView).map((line, i) => (
+                                <div key={i} style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>• {line}</div>
+                              ))}
+                              <div style={{ display: 'flex', gap: 7, marginTop: 6, flexWrap: 'wrap' }}>
+                                <button
+                                  onClick={() => {
+                                    setPostDraft((d) => (d ? { ...d, media: d.media.filter((x) => x.url !== m.url) } : d));
+                                    setMediaGuards((g) => { const n = { ...g }; delete n[m.url]; return n; });
+                                  }}
+                                  style={{ minHeight: 32, padding: '0 12px', borderRadius: 8, border: 'none', background: '#ef4444', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                                >🗑 {T('Bỏ file này', 'Remove this file')}</button>
+                                <button
+                                  onClick={() => {
+                                    setMediaGuards((g) => ({ ...g, [m.url]: { ...g[m.url], ok: true } }));
+                                    void apiFetch('/uploads/guard/ack', { method: 'POST', token, body: { sha256: mediaGuards[m.url].g.sha256 } }).catch(() => undefined);
+                                  }}
+                                  style={{ minHeight: 32, padding: '0 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
+                                >✓ {T(`Đúng là của ${kit?.shop.name ?? 'tiệm này'} — giữ lại`, `It IS ${kit?.shop.name ?? 'this salon'}’s — keep it`)}</button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-bad)', marginTop: 4 }}>
+                          {T('Chưa xử lý xong thì chưa lên lịch / đăng được bài (lưu nháp vẫn được).', 'The post cannot be scheduled or published until these are resolved (saving a draft still works).')}
+                        </div>
+                      </div>
+                    )}
 
                     <MediaList
                       media={postDraft.media}

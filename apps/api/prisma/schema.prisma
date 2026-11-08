@@ -328,6 +328,7 @@ model Tenant {
   turnAdjustments      TurnAdjustment[]
   voiceLine            VoiceLine?
   contentIdeas         ContentIdea[]
+  mediaFingerprints    MediaFingerprint[]
   contentSuggestions   ContentSuggestion[]
   contentWeeks         ContentWeek[]
   scheduledPosts       ScheduledPost[]
@@ -4222,4 +4223,26 @@ model AgencyNote {
 
   @@index([tenantId, doneAt])
   @@map("agency_notes")
+}
+
+/// One uploaded photo or clip, by its fingerprint — so a file uploaded to the
+/// WRONG salon is caught (8 Nov 2026: staff uploading one shop's media to
+/// another). Compared across salons by the server only; a salon never reads
+/// another salon's rows, and only Lumio staff see the other salon's name.
+model MediaFingerprint {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String?
+  /// SHA-256 of the exact bytes (hex).
+  sha256    String
+  /// 64-bit perceptual hash (16 hex), from the browser: survives re-encoding and resizing.
+  phash     String?
+  kind      String
+  url       String?
+  createdAt DateTime @default(now())
+
+  @@index([sha256])
+  @@index([tenantId, createdAt])
+  @@map("media_fingerprints")
 }

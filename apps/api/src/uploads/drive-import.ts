@@ -69,6 +69,8 @@ export interface ImportJob {
   kind: 'image' | 'video' | null;
   error: string | null;
   startedAt: number;
+  /** The wrong-salon check, once the file is up. */
+  guard?: import('./media-guard').MediaGuard;
 }
 
 /** What the screen polls. Percent is null until the size is known. */
@@ -82,5 +84,6 @@ export function jobView(j: ImportJob) {
     url: j.url,
     kind: j.kind,
     error: j.error,
+    ...(j.guard ? { guard: j.guard } : {}),
   };
 }

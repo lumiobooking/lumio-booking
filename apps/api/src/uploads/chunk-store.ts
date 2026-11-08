@@ -68,7 +68,7 @@ export async function assemble(tenantId: string, uploadId: string, total: number
  * The outcome of `finish`, kept next to the pieces so a phone that asks
  * again after its own request timed out gets the same answer.
  */
-export interface FinishResult { url?: string; kind?: 'image' | 'video'; driveFileId?: string; driveUrl?: string; thumbUrl?: string; error?: string; at: number }
+export interface FinishResult { url?: string; kind?: 'image' | 'video'; driveFileId?: string; driveUrl?: string; thumbUrl?: string; error?: string; at: number; guard?: import('./media-guard').MediaGuard }
 
 export async function putResult(tenantId: string, uploadId: string, r: FinishResult): Promise<void> {
   const dir = dirOf(tenantId, uploadId);

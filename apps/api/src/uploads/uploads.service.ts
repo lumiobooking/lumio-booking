@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Client as FtpClient } from 'basic-ftp';
 import { Readable } from 'stream';
@@ -9,6 +9,9 @@ import { EXT_BY_MIME, resolveMime } from './media-mime';
 import { driveFileIdFrom, drivePublicDownloadUrl, importCheck, jobView, type ImportJob } from './drive-import';
 import { PROBE_PNG, probeName } from './storage-probe';
 import { Transform } from 'stream';
+import { createHash } from 'crypto';
+import { MediaGuardService, type GuardCtx } from './media-guard.service';
+import type { MediaGuard } from './media-guard';
 
 interface FtpConfig {
   host: string; port: number; user: string; password: string; secure: boolean;
@@ -50,7 +53,25 @@ export class UploadsService {
   constructor(
     private readonly platform: PlatformConfigService,
     private readonly drive: GoogleDriveService,
+    @Optional() private readonly guard?: MediaGuardService,
   ) {}
+
+  /**
+   * The wrong-salon check (./media-guard) on a file just stored. Only when the
+   * caller asked (ctx given) — logos and service photos are not checked.
+   * Never throws: a failed check is a missing warning, not a failed upload.
+   */
+  private async check(tenantId: string, ctx: GuardCtx | undefined, f: { sha256?: string; buf?: Buffer; kind: 'image' | 'video'; mime: string; url: string }): Promise<MediaGuard | undefined> {
+    if (!ctx || !this.guard) return undefined;
+    try {
+      const sha256 = f.sha256 || (f.buf ? MediaGuardService.sha256(f.buf) : '');
+      if (!sha256) return undefined;
+      return await this.guard.inspect(tenantId, { sha256, kind: f.kind, mime: f.mime, url: f.url, buf: f.buf ?? null }, ctx);
+    } catch (e) {
+      this.log.warn(`media guard failed: ${e instanceof Error ? e.message : e}`);
+      return undefined;
+    }
+  }
 
   private async config(): Promise<FtpConfig | null> {
     const [host, port, user, password, secure, basePath, publicBase] = await Promise.all([
@@ -109,7 +130,8 @@ export class UploadsService {
   async uploadFile(
     tenantId: string,
     file: { buffer: Buffer; mimetype?: string; originalname?: string },
-  ): Promise<{ url: string; kind: 'image' | 'video' }> {
+    ctx?: GuardCtx,
+  ): Promise<{ url: string; kind: 'image' | 'video'; guard?: MediaGuard }> {
     const c = await this.config();
     if (!c) throw new BadRequestException('STORAGE_NOT_CONFIGURED');
 
@@ -164,7 +186,9 @@ export class UploadsService {
       if (!reachable) break;
     }
     if (reachable) throw new BadRequestException(reachable);
-    return { url, kind: isVideo ? 'video' : 'image' };
+    const kind = isVideo ? 'video' as const : 'image' as const;
+    const guard = await this.check(tenantId, ctx, { buf, kind, mime, url });
+    return { url, kind, ...(guard ? { guard } : {}) };
   }
 
   /**
@@ -175,7 +199,7 @@ export class UploadsService {
   async uploadStream(
     tenantId: string,
     src: { stream: NodeJS.ReadableStream; mime: string; onProgress?: (loaded: number) => void },
-  ): Promise<{ url: string; kind: 'image' | 'video' }> {
+  ): Promise<{ url: string; kind: 'image' | 'video'; sha256: string }> {
     const c = await this.config();
     if (!c) throw new BadRequestException('STORAGE_NOT_CONFIGURED');
     const mime = resolveMime({ declared: src.mime });
@@ -187,8 +211,9 @@ export class UploadsService {
     const remoteDir = `${c.basePath}/${safeTenant}`;
 
     let loaded = 0;
+    const hash = createHash('sha256');
     const counter = new Transform({
-      transform(chunk, _enc, cb) { loaded += chunk.length; src.onProgress?.(loaded); cb(null, chunk); },
+      transform(chunk, _enc, cb) { loaded += chunk.length; hash.update(chunk); src.onProgress?.(loaded); cb(null, chunk); },
     });
     const client = new FtpClient(10 * 60_000);
     try {
@@ -209,7 +234,7 @@ export class UploadsService {
       if (!reachable) break;
     }
     if (reachable) throw new BadRequestException(reachable);
-    return { url, kind: isVideo ? 'video' : 'image' };
+    return { url, kind: isVideo ? 'video' : 'image', sha256: hash.digest('hex') };
   }
 
   // ---- from Google Drive ------------------------------------------------------------
@@ -229,7 +254,7 @@ export class UploadsService {
    * link. Size and type are checked before a byte moves, so a 3 GB export
    * is refused in a second, not after ten minutes.
    */
-  async importFromDrive(tenantId: string, url: string): Promise<{ jobId: string }> {
+  async importFromDrive(tenantId: string, url: string, ctx?: GuardCtx): Promise<{ jobId: string }> {
     const id = driveFileIdFrom(url);
     if (!id) throw new BadRequestException('Không nhận ra link Google Drive. Dùng link dạng drive.google.com/file/d/…/view.');
     if (!(await this.config())) throw new BadRequestException('STORAGE_NOT_CONFIGURED');
@@ -238,7 +263,7 @@ export class UploadsService {
 
     const job: ImportJob = { id: randomUUID(), tenantId, state: 'running', loaded: 0, size: null, url: null, kind: null, error: null, startedAt: Date.now() };
     this.imports.set(job.id, job);
-    void this.runImport(job, id).catch((e) => {
+    void this.runImport(job, id, ctx).catch((e) => {
       job.state = 'error';
       job.error = e instanceof Error ? e.message.replace(/^Bad Request Exception:?\s*/i, '') : 'lỗi không xác định';
       this.log.warn(`drive import ${job.id} failed: ${job.error}`);
@@ -252,7 +277,7 @@ export class UploadsService {
     return jobView(j);
   }
 
-  private async runImport(job: ImportJob, fileId: string): Promise<void> {
+  private async runImport(job: ImportJob, fileId: string, ctx?: GuardCtx): Promise<void> {
     // Door 1: the agency's Drive account.
     let source: { stream: NodeJS.ReadableStream; mime: string; size: number | null; name: string } | null = null;
     const meta = await this.drive.fileMeta(fileId);
@@ -280,6 +305,7 @@ export class UploadsService {
     const out = await this.uploadStream(job.tenantId, { stream: source.stream, mime: source.mime, onProgress: (n) => { job.loaded = n; } });
     job.url = out.url;
     job.kind = out.kind;
+    job.guard = await this.check(job.tenantId, ctx, { sha256: out.sha256, kind: out.kind, mime: source.mime, url: out.url });
     job.state = 'done';
   }
 
@@ -336,7 +362,7 @@ export class UploadsService {
    * answer is written next to the pieces, so even a phone whose own request
    * timed out gets it on the next ask.
    */
-  async finishChunks(tenantId: string, dto: { uploadId: string; total: number; mime: string; name?: string }): Promise<{ pending: true } | FinishResult> {
+  async finishChunks(tenantId: string, dto: { uploadId: string; total: number; mime: string; name?: string }, ctx?: GuardCtx): Promise<{ pending: true } | FinishResult> {
     const total = Math.round(Number(dto.total));
     if (!Number.isInteger(total) || total < 1 || total > PIECES_MAX) throw new BadRequestException('Số mảnh không hợp lệ.');
     // A stored SUCCESS is the answer for good. A stored failure is not: the
@@ -357,7 +383,7 @@ export class UploadsService {
         try {
           const buf = await assemble(tenantId, dto.uploadId, total);
           if (!buf) throw new Error('MISSING_CHUNKS:');
-          const out = await this.storeMedia(tenantId, { buffer: buf, mimetype: dto.mime, originalname: dto.name });
+          const out = await this.storeMedia(tenantId, { buffer: buf, mimetype: dto.mime, originalname: dto.name }, ctx);
           r = { ...out, at: Date.now() };
         } catch (e) {
           r = { error: e instanceof Error ? e.message : 'failed', at: Date.now() };
@@ -393,12 +419,13 @@ export class UploadsService {
   async storeMedia(
     tenantId: string,
     file: { buffer: Buffer; mimetype?: string; originalname?: string },
-  ): Promise<{ url: string; kind: 'image' | 'video'; driveFileId?: string; driveUrl?: string; thumbUrl?: string }> {
+    ctx?: GuardCtx,
+  ): Promise<{ url: string; kind: 'image' | 'video'; driveFileId?: string; driveUrl?: string; thumbUrl?: string; guard?: MediaGuard }> {
     const mime = resolveMime({ declared: file.mimetype, name: file.originalname });
     const isVideo = mime.startsWith('video/');
     const isImage = mime.startsWith('image/');
     if (!isVideo && !isImage) throw new BadRequestException('Chỉ nhận ảnh hoặc video.');
-    if (!(await this.drive.configured())) return this.uploadFile(tenantId, file);
+    if (!(await this.drive.configured())) return this.uploadFile(tenantId, file, ctx);
 
     const cap = isVideo ? 120_000_000 : 12_000_000;
     if (file.buffer.length > cap) {
@@ -411,11 +438,22 @@ export class UploadsService {
     const name = `${day}_${base}_${randomUUID().slice(0, 6)}.${ext}`;
     try {
       const f = await this.drive.store(tenantId, name, mime, file.buffer);
-      return { url: f.url, kind: isVideo ? 'video' : 'image', driveFileId: f.id, driveUrl: f.url, thumbUrl: f.thumbUrl };
+      const kind = isVideo ? 'video' as const : 'image' as const;
+      const guard = await this.check(tenantId, ctx, { buf: file.buffer, kind, mime, url: f.url });
+      return { url: f.url, kind, driveFileId: f.id, driveUrl: f.url, thumbUrl: f.thumbUrl, ...(guard ? { guard } : {}) };
     } catch (e) {
       this.log.error(`Drive store failed: ${e instanceof Error ? e.message : e}`);
       throw new BadRequestException('Không lưu được vào Google Drive. Thử lại giúp em.');
     }
+  }
+
+  /** uploadDataUrl, then the wrong-salon check on the same bytes (post photos). */
+  async uploadDataUrlChecked(tenantId: string, dataUrl: string, ctx: GuardCtx): Promise<{ url: string; guard?: MediaGuard }> {
+    const url = await this.uploadDataUrl(tenantId, dataUrl);
+    const m = /^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=]+)$/.exec((dataUrl || '').trim());
+    if (!m) return { url };
+    const guard = await this.check(tenantId, ctx, { buf: Buffer.from(m[2], 'base64'), kind: 'image', mime: m[1].replace('jpg', 'jpeg'), url });
+    return { url, ...(guard ? { guard } : {}) };
   }
 
   /** Decode a small data: image URL and push it to FTP, return its public https URL. */

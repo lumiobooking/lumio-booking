@@ -52,6 +52,8 @@ export const AI_FEATURES = [
   'bot-facts',
   /** The "suggest a greeting" button. */
   'greeting',
+  /** Reading the visible text on an uploaded photo (wrong-salon check). */
+  'media-guard',
   /** Anything not yet named. Should stay at zero; if it does not, name it. */
   'other',
 ] as const;
@@ -68,6 +70,7 @@ export const FEATURE_LABEL: Record<AiFeature, { vi: string; en: string }> = {
   'chat-summary': { vi: 'Tóm tắt hội thoại dài', en: 'Long chat summaries' },
   'bot-facts': { vi: 'Học kiến thức cho chatbot', en: 'Bot knowledge learning' },
   'greeting': { vi: 'Gợi ý lời chào', en: 'Greeting suggestions' },
+  'media-guard': { vi: 'Kiểm tra ảnh tải lên có đúng tiệm', en: 'Wrong-salon photo check' },
   'other': { vi: 'Khác', en: 'Other' },
 };
 
@@ -87,6 +90,7 @@ export const AUTOMATIC: Record<AiFeature, boolean> = {
   'chat-summary': false,
   'bot-facts': false,
   'greeting': false,
+  'media-guard': false,
   'other': false,
 };
 

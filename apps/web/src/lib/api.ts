@@ -204,9 +204,12 @@ export function apiUpload(
   file: File,
   token: string | null,
   onProgress?: (pct: number) => void,
-): Promise<{ url: string; kind: 'image' | 'video' }> {
+  /** Extra form fields sent with the file (e.g. the picture hash for the wrong-salon check). */
+  fields?: Record<string, string | null | undefined>,
+): Promise<{ url: string; kind: 'image' | 'video'; guard?: unknown }> {
   return new Promise((resolve, reject) => {
     const form = new FormData();
+    for (const [k, v] of Object.entries(fields ?? {})) if (v) form.append(k, v);
     form.append('file', file);
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${API_URL}${path}`);
@@ -221,7 +224,7 @@ export function apiUpload(
       let body: unknown = null;
       try { body = JSON.parse(xhr.responseText); } catch { /* server sent no JSON */ }
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(body as { url: string; kind: 'image' | 'video' });
+        resolve(body as { url: string; kind: 'image' | 'video'; guard?: unknown });
       } else {
         const msg = (body as { message?: string })?.message;
         reject(new ApiError(msg || 'Không tải lên được', xhr.status, body));

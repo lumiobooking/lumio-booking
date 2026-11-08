@@ -1,19 +1,33 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import { UploadsService } from './uploads.service';
+import { MediaGuardService } from './media-guard.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
 class UploadDto {
   @IsString() @MaxLength(4_500_000) dataUrl!: string; // compressed image, base64 data URL
+  /** A post photo: run the wrong-salon check (fingerprint + what the picture shows). */
+  @IsOptional() @IsBoolean() check?: boolean;
+  /** 64-bit perceptual hash from the browser (16 hex). */
+  @IsOptional() @IsString() @MaxLength(32) phash?: string;
+}
+
+/** Who is uploading, for the wrong-salon check (./media-guard). */
+function guardCtx(user: AuthenticatedUser, phash?: unknown) {
+  return {
+    userId: user.userId,
+    staff: Boolean(user.supportSession) || user.role === UserRole.SUPER_ADMIN,
+    phash: typeof phash === 'string' ? phash : null,
+  };
 }
 
 @Controller('uploads')
 export class UploadsController {
-  constructor(private readonly uploads: UploadsService) {}
+  constructor(private readonly uploads: UploadsService, private readonly guard: MediaGuardService) {}
 
   /** Any salon admin may upload a photo (goes to platform-configured storage). */
   @Roles(UserRole.SALON_ADMIN)
@@ -21,8 +35,21 @@ export class UploadsController {
   async servicePhoto(@CurrentUser() user: AuthenticatedUser, @Body() dto: UploadDto) {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) throw new BadRequestException('No salon in scope.');
+    if (dto.check) return this.uploads.uploadDataUrlChecked(tenantId, dto.dataUrl, guardCtx(user, dto.phash));
     const url = await this.uploads.uploadDataUrl(tenantId, dto.dataUrl);
     return { url };
+  }
+
+  /**
+   * "Yes, this IS this salon's file" — after a wrong-salon warning. Nothing
+   * changes but the audit log: who looked, and said so.
+   */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('guard/ack')
+  guardAck(@CurrentUser() user: AuthenticatedUser, @Body() body: { sha256?: string }) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    return this.guard.acknowledge(tenantId, user.userId, String(body?.sha256 ?? ''));
   }
 
   /**
@@ -40,11 +67,12 @@ export class UploadsController {
   async media(
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file: { buffer: Buffer; mimetype?: string; originalname?: string } | undefined,
+    @Body() body: { phash?: string },
   ) {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) throw new BadRequestException('No salon in scope.');
     if (!file) throw new BadRequestException('Chưa chọn được file.');
-    return this.uploads.storeMedia(tenantId, file);
+    return this.uploads.storeMedia(tenantId, file, guardCtx(user, body?.phash));
   }
 
   /**
@@ -63,6 +91,7 @@ export class UploadsController {
   async postVideo(
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file: { buffer: Buffer; mimetype?: string; originalname?: string } | undefined,
+    @Body() body: { phash?: string },
   ) {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) throw new BadRequestException('No salon in scope.');
@@ -70,7 +99,7 @@ export class UploadsController {
     const declared = String(file.mimetype ?? '');
     const byName = /\.(mp4|mov|m4v|webm)$/i.test(String(file.originalname ?? ''));
     if (!declared.startsWith('video/') && !byName) throw new BadRequestException('Chỉ nhận video (MP4/MOV/WebM).');
-    return this.uploads.uploadFile(tenantId, file);
+    return this.uploads.uploadFile(tenantId, file, guardCtx(user, body?.phash));
   }
 
   /**
@@ -83,7 +112,7 @@ export class UploadsController {
   importDrive(@CurrentUser() user: AuthenticatedUser, @Body() body: { url?: string }) {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) throw new BadRequestException('No salon in scope.');
-    return this.uploads.importFromDrive(tenantId, String(body?.url ?? ''));
+    return this.uploads.importFromDrive(tenantId, String(body?.url ?? ''), guardCtx(user));
   }
 
   @Roles(UserRole.SALON_ADMIN)
@@ -133,12 +162,12 @@ export class UploadsController {
 
   @Roles(UserRole.SALON_ADMIN)
   @Post('media/finish')
-  mediaFinish(@CurrentUser() user: AuthenticatedUser, @Body() body: { uploadId?: string; total?: number; mime?: string; name?: string }) {
+  mediaFinish(@CurrentUser() user: AuthenticatedUser, @Body() body: { uploadId?: string; total?: number; mime?: string; name?: string; phash?: string }) {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) throw new BadRequestException('No salon in scope.');
     return this.uploads.finishChunks(tenantId, {
       uploadId: String(body?.uploadId ?? ''), total: Number(body?.total), mime: String(body?.mime ?? ''), name: body?.name,
-    });
+    }, guardCtx(user, body?.phash));
   }
 
   /** Frontend asks whether storage exists — if not, it keeps the inline fallback. */

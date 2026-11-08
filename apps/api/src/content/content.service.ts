@@ -114,6 +114,7 @@ import { holidayIdeas, ideaAsRequest, type HolidayIdea } from './holiday-offers'
 import { hasAgencyWork } from './agency-work';
 import { parseOffer, DEFAULT_OFFER, type WeekOffer } from './week-offer';
 import { isTransientStatus } from '../messenger/agent-fallback';
+import { agentModel, forModel } from '../common/ai-model';
 
 /**
  * The weekly marketing playbook, per salon.
@@ -153,7 +154,7 @@ export class ContentService {
     this.usage?.record({
       feature,
       tenantId,
-      model: d.model || process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5',
+      model: d.model || agentModel(),
       input: Number(d.usage?.input_tokens ?? 0) || 0,
       output: Number(d.usage?.output_tokens ?? 0) || 0,
       cacheRead: Number(d.usage?.cache_read_input_tokens ?? 0) || 0,
@@ -2479,12 +2480,12 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({
-          model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+        body: JSON.stringify(forModel({
+          model: agentModel(),
           max_tokens: 2000,
           system,
           messages: [{ role: 'user', content: userMsg }],
-        }),
+        })),
         signal: AbortSignal.timeout(60_000),
       }).catch(() => null);
       if (res && res.ok) {
@@ -2551,7 +2552,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
             trend: trendRef ? { title: trendRef.title, source: trendRef.source, thumbUrl: trendRef.thumbUrl ?? null, url: trendRef.url ?? null } : null,
             pillar: Number(idea.rank) === 1 || created === 0 ? pillarLabel : null,
           } as never,
-          aiModel: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+          aiModel: agentModel(),
         },
       }).catch((e: unknown) => this.logger.warn(`idea save failed: ${String(e).slice(0, 120)}`));
       created += 1;
@@ -2771,8 +2772,8 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+      body: JSON.stringify(forModel({
+        model: agentModel(),
         // The answer is a bilingual JSON: six sources, five post types, three
         // habits, four keyword lists, every field in Vietnamese AND English.
         // At 3,000 it hit the ceiling EVERY time, which truncated the JSON,
@@ -2783,7 +2784,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         max_tokens: 8000,
         system,
         messages: [{ role: 'user', content: user }],
-      }),
+      })),
       signal: AbortSignal.timeout(90_000),
     }).catch(() => null);
     if (!res || !res.ok) {
@@ -4189,12 +4190,12 @@ TRẢ VỀ JSON THUẦN:
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+      body: JSON.stringify(forModel({
+        model: agentModel(),
         max_tokens: 1200,
         system,
         messages: [{ role: 'user', content: chunks.join('\n\n').slice(0, 30_000) }],
-      }),
+      })),
       signal: AbortSignal.timeout(45_000),
     }).catch(() => null);
 

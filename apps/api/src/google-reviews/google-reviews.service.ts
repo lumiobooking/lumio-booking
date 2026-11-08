@@ -17,6 +17,7 @@ type GStatus = 'NEW' | 'DRAFTED' | 'REPLIED' | 'NEEDS_ATTENTION' | 'SKIPPED';
 
 const GBR_KEY = 'googleReviews';
 import { otherBookingLinks, placeActionsError, planBookingLink, type PlaceLink } from './place-action-links';
+import { reviewModel, forModel } from '../common/ai-model';
 const SCOPE = 'https://www.googleapis.com/auth/business.manage';
 const STAR_MAP: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 
@@ -1271,12 +1272,12 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
-        max_tokens: 300,
+      body: JSON.stringify(forModel({
+        model: reviewModel(),
+        max_tokens: 400, // Haiku 5.5 counts ~30% more tokens for the same text
         system,
         messages: [{ role: 'user', content: userMsg }],
-      }),
+      })),
     });
     if (!res.ok) {
       this.usage?.record({ feature: 'review-reply', tenantId, model: 'unknown', input: 0, output: 0, failed: true });
@@ -1285,7 +1286,7 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
     const data = (await res.json()) as { content?: { text?: string }[]; model?: string; usage?: Record<string, number> };
     this.usage?.record({
       feature: 'review-reply', tenantId,
-      model: data.model || process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5',
+      model: data.model || reviewModel(),
       input: Number(data.usage?.input_tokens ?? 0) || 0,
       output: Number(data.usage?.output_tokens ?? 0) || 0,
       cacheRead: Number(data.usage?.cache_read_input_tokens ?? 0) || 0,

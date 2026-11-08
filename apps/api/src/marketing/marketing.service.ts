@@ -22,6 +22,7 @@ import { alignWithPosts, mergeOrganic, sameViewsMeasure } from './organic-merge'
 import { monthFacts as computeMonthFacts, prevMonthKey, type MonthFacts } from './month-facts';
 import { guardNarrative, correctionFor, type GuardReport } from './report-guard';
 import { cleanReportPolicy, lifecycleOf, nextActionOf, autoSendDue, DEFAULT_REPORT_POLICY, REPORT_POLICY_KEY, type ReportPolicy } from './report-lifecycle';
+import { agentModel, forModel } from '../common/ai-model';
 
 /**
  * Marketing module — Phase 0 (read-only).
@@ -740,7 +741,7 @@ export class MarketingService {
   ): Promise<{ content?: any; model?: string; error?: string; payload?: unknown }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return { error: 'ANTHROPIC_API_KEY chưa được đặt trên server' };
-    const model = process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001';
+    const model = agentModel();
 
     const system =
       'You are a senior marketing analyst at an agency, writing the MONTHLY client report for a nail-salon owner who is NOT technical. ' +
@@ -817,7 +818,7 @@ export class MarketingService {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 8000, system, messages }),
+        body: JSON.stringify(forModel({ model, max_tokens: 8000, system, messages })),
       });
       if (!res.ok) { const body = (await res.text().catch(() => '')).slice(0, 200); this.logger.warn(`Anthropic ${res.status}: ${body}`); return { error: `Anthropic API ${res.status}: ${body}` }; }
       const json = (await res.json()) as { content?: Array<{ type: string; text?: string }>; stop_reason?: string };

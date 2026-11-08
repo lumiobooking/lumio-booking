@@ -27,6 +27,7 @@ import { asksForNumber, claimsDone, goodbyeLine, impossibleNanp, keypadHint, key
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import { CallCache } from './call-cache';
 import { relayEnabledFor, relayTwiml, ttsFor } from './relay';
+import { agentModel, forModel } from '../common/ai-model';
 
 /** Convert a salon-local wall time ("2026-07-10T14:00") to the correct UTC ISO
  *  instant for the salon's timezone (handles DST). Shared shape with messenger. */
@@ -250,7 +251,7 @@ export class VoiceService implements OnModuleInit {
     this.aiUsage?.record({
       feature: 'voice',
       tenantId,
-      model: d.model || process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5',
+      model: d.model || agentModel(),
       input: Number(d.usage?.input_tokens ?? 0) || 0,
       output: Number(d.usage?.output_tokens ?? 0) || 0,
       cacheRead: Number(d.usage?.cache_read_input_tokens ?? 0) || 0,
@@ -1632,8 +1633,8 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({
-          model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+        body: JSON.stringify(forModel({
+          model: agentModel(),
           // Spoken replies are kept short by the prompt; this is ROOM, not length.
           // At 180 a turn that books two people, or moves two visits and changes
           // their technicians, was cut off INSIDE the tool call — nothing was
@@ -1644,7 +1645,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
           system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }, { type: 'text', text: turnPart }],
           tools,
           messages,
-        }),
+        })),
         signal: AbortSignal.timeout(9_000),
       });
       if (!res.ok) {
@@ -2189,13 +2190,13 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
   /** Live health of the ONE Anthropic key the whole platform shares. */
   async aiDiag(): Promise<{ keyPresent: boolean; model: string; ok: boolean; status: number | null; error: string | null }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
-    const model = process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001';
+    const model = agentModel();
     if (!key) return { keyPresent: false, model, ok: false, status: null, error: 'ANTHROPIC_API_KEY is not set on this service.' };
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 8, messages: [{ role: 'user', content: 'ping' }] }),
+        body: JSON.stringify(forModel({ model, max_tokens: 16, messages: [{ role: 'user', content: 'ping' }] })),
         signal: AbortSignal.timeout(10_000),
       });
       // Eight tokens, pressed by hand — counted anyway, so the report never

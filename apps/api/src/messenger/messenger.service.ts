@@ -72,6 +72,7 @@ import { carouselTitles, packageFromPayload, packagePayload, tapAsCustomerLine }
 import { oauthBase, bookingUrl } from '../common/public-url.util';
 import { staffLabel } from './staff-name';
 import { BOOKED_HERE_KEY, PRIVACY_REFUSAL, isAnonymousChannel, mayChangeBooking, rememberIds, visibleBookings } from './booking-privacy';
+import { agentModel, forModel } from '../common/ai-model';
 
 // A blank/masked secret must never overwrite a stored Page token.
 function cleanSecret(v: unknown): string | null {
@@ -343,7 +344,7 @@ export class MessengerService implements OnModuleInit {
     this.usage?.record({
       feature,
       tenantId,
-      model: d.model || process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5',
+      model: d.model || agentModel(),
       input: Number(d.usage?.input_tokens ?? 0) || 0,
       output: Number(d.usage?.output_tokens ?? 0) || 0,
       cacheRead: Number(d.usage?.cache_read_input_tokens ?? 0) || 0,
@@ -3400,11 +3401,11 @@ export class MessengerService implements OnModuleInit {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+      body: JSON.stringify(forModel({
+        model: agentModel(),
         max_tokens: 500,
         messages: [{ role: 'user', content: prompt }],
-      }),
+      })),
       signal: AbortSignal.timeout(30_000),
     }).catch(() => null);
     if (!res || !res.ok) {
@@ -5317,12 +5318,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+      body: JSON.stringify(forModel({
+        model: agentModel(),
         max_tokens: 1800,
         system: 'You organize a business owner\'s pasted notes for their chat assistant. Reply with ONLY a JSON object: {"facts": [{"label": string, "value": string}], "greeting": string|null, "closing": string|null, "instruction": string|null}. Rules: facts = up to 15 rows of information customers may be told — VERBATIM-faithful (prices, hours, links, names exactly as written; skip anything unclear; never invent). greeting = only if the notes suggest how to WELCOME customers: one warm line, <=200 chars, in the notes\' language. closing = only if they suggest how to THANK or say goodbye: one warm line, <=200 chars. instruction = only if the notes contain tone/style/selling rules: condensed imperative notes <=400 chars. Use null when a slot has nothing.',
         messages: [{ role: 'user', content: raw }],
-      }),
+      })),
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) { this.meter('bot-facts', null, null, false); throw new BadRequestException('The AI reader is busy — try again in a minute.'); }
@@ -5351,12 +5352,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+      body: JSON.stringify(forModel({
+        model: agentModel(),
         max_tokens: 2600,
         system: 'You turn raw business text into a compact fact sheet for a chat assistant. Reply with ONLY a JSON array of {"label": string, "value": string} — no prose. Up to 24 facts. If the text opens with a "THÔNG TIN DOANH NGHIỆP" block, that block came from the structured data published by the website itself — treat it as authoritative and put those rows first. Facts must be VERBATIM-faithful: prices, hours, addresses, links and names exactly as written in the source — never guess, never embellish, skip anything unclear. Prefer: what the business does/sells, plans & prices, key services, address, phone, links, hours, policies. label ≤ 30 chars, value ≤ 200 chars, in the same language as the source.',
         messages: [{ role: 'user', content: raw }],
-      }),
+      })),
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) { this.meter('bot-facts', null, null, false); throw new BadRequestException('The AI reader is busy — try again in a minute.'); }
@@ -5440,11 +5441,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+      body: JSON.stringify(forModel({
+        model: agentModel(),
         max_tokens: 700,
         messages: [{ role: 'user', content: prompt }],
-      }),
+      })),
       signal: AbortSignal.timeout(30_000),
     });
     const json = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };

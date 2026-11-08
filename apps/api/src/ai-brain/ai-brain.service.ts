@@ -20,6 +20,7 @@ export const AI_LEGACY_MERGED_KEY = 'ai_legacy_merged';
 import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLanguage, type EndReason } from './brain-rules';
 import { AiInstructionsService, instructionChannel } from './instructions.service';
 import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, needsMeaning, type Instruction, type InstructionChannel } from './instructions';
+import { agentModel, forModel } from '../common/ai-model';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -335,7 +336,7 @@ export class AiBrainService {
         const res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{ role: 'user', content: prompt }] }),
+          body: JSON.stringify(forModel({ model: agentModel(), max_tokens: 520, messages: [{ role: 'user', content: prompt }] })),
           signal: AbortSignal.timeout(30_000),
         });
         if (res.ok) {
@@ -619,7 +620,7 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
     for (let loop = 0; loop < 6; loop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 300, system, tools, messages }),
+        body: JSON.stringify(forModel({ model: agentModel(), max_tokens: 420, system, tools, messages })),
         signal: AbortSignal.timeout(20_000),
       });
       if (!res.ok) throw new BadRequestException(`AI answered ${res.status}`);

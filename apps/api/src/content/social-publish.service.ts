@@ -36,6 +36,7 @@ import { salonYmd } from '../settings/promo-window';
 import {
   cleanStage, statusFor, keepDriveLinks, unarchived, postFolderName, mediaFileName, type Stage, type MediaRef,
 } from './post-workflow';
+import { agentModel, forModel } from '../common/ai-model';
 
 const GRAPH = 'https://graph.facebook.com/' + (process.env.META_GRAPH_VERSION || 'v21.0');
 
@@ -1708,12 +1709,12 @@ export class SocialPublishService {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+      body: JSON.stringify(forModel({
+        model: agentModel(),
         max_tokens: 700,
         system,
         messages: [{ role: 'user', content }],
-      }),
+      })),
       signal: AbortSignal.timeout(45_000),
     }).catch(() => null);
     if (!res || !res.ok) {
@@ -1728,7 +1729,7 @@ export class SocialPublishService {
     };
     this.usage?.record({
       feature: 'gbp-screen', tenantId,
-      model: data.model || process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5',
+      model: data.model || agentModel(),
       input: Number(data.usage?.input_tokens ?? 0) || 0,
       output: Number(data.usage?.output_tokens ?? 0) || 0,
       cacheRead: Number(data.usage?.cache_read_input_tokens ?? 0) || 0,

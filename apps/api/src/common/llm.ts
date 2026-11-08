@@ -29,6 +29,7 @@
  */
 
 import { classifyAiFailure, type AiFailureKind } from '../messenger/ai-health';
+import { agentModel, forModel, DEFAULT_AI_MODEL } from './ai-model';
 
 // ---- the shape the callers already use (Anthropic's) ----------------------
 
@@ -194,7 +195,7 @@ export function fromOpenAI(choice: OaiChoice | undefined): Omit<ChatReply, 'prov
 
 // ---- the network -------------------------------------------------------------
 
-export const ANTHROPIC_DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
+export const ANTHROPIC_DEFAULT_MODEL = DEFAULT_AI_MODEL;
 /**
  * The OpenAI model used ONLY when Anthropic could not answer. Cheapest
  * current chat model with tools and vision as of Sept 2026; override with
@@ -228,13 +229,13 @@ async function callAnthropic(req: ChatRequest): Promise<ChatResult> {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: req.model || process.env.ANTHROPIC_AGENT_MODEL || ANTHROPIC_DEFAULT_MODEL,
+      body: JSON.stringify(forModel({
+        model: req.model || agentModel(),
         max_tokens: req.max_tokens,
         system: req.system,
         ...(req.tools?.length ? { tools: req.tools } : {}),
         messages: req.messages,
-      }),
+      })),
       signal: AbortSignal.timeout(req.timeoutMs ?? 30_000),
     });
     if (!res.ok) {
@@ -253,7 +254,7 @@ async function callAnthropic(req: ChatRequest): Promise<ChatResult> {
         stop_reason: data.stop_reason ?? 'end_turn',
         content: data.content ?? [],
         provider: 'anthropic',
-        usage: anthropicUsage(data.usage, data.model || req.model || process.env.ANTHROPIC_AGENT_MODEL || ANTHROPIC_DEFAULT_MODEL),
+        usage: anthropicUsage(data.usage, data.model || req.model || agentModel()),
       },
     };
   } catch (e) {

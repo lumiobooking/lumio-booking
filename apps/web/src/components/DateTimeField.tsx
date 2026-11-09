@@ -12,7 +12,7 @@
 // Same contract as the native field it replaces: value / onChange carry a
 // wall-clock "YYYY-MM-DDTHH:mm" string, so callers keep their conversions.
 
-import { useRef, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { uiLocale } from '../lib/datetime';
 import { ui } from '../lib/ui';
 
@@ -34,6 +34,15 @@ export function DateTimeField({ value, onChange, style, wrapStyle, step = 15, di
   const loc = uiLocale();
   const vi = loc.startsWith('vi');
   const dateRef = useRef<HTMLInputElement>(null);
+  // Phones and tablets (9 Nov 2026, iPhone): Safari opens a date picker only
+  // when the person taps the date field ITSELF — showPicker() and a scripted
+  // click on a hidden field do nothing, so "Change date" could not be changed.
+  // On a touch screen the real field therefore lies over the button, invisible,
+  // and takes the tap; the button underneath only shows the date.
+  const [touch, setTouch] = useState(false);
+  useEffect(() => {
+    try { setTouch(window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window); } catch { /* desktop */ }
+  }, []);
   const [d = '', t0 = ''] = String(value || '').split('T');
   const t = t0.slice(0, 5);
   const today = (() => { const n = new Date(); return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`; })();
@@ -56,13 +65,24 @@ export function DateTimeField({ value, onChange, style, wrapStyle, step = 15, di
   return (
     <span style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1, minWidth: 0, ...wrapStyle }}>
       <span style={{ position: 'relative', flex: '1 1 150px', minWidth: 0 }}>
-        <button type="button" onClick={openPicker} disabled={disabled} aria-label={ariaLabel ? `${ariaLabel} — ${vi ? 'ngày' : 'date'}` : (vi ? 'Ngày' : 'Date')}
+        <button type="button" onClick={touch ? undefined : openPicker} disabled={disabled} tabIndex={touch ? -1 : undefined} aria-label={ariaLabel ? `${ariaLabel} — ${vi ? 'ngày' : 'date'}` : (vi ? 'Ngày' : 'Date')}
           style={{ ...ui.input, ...style, width: '100%', boxSizing: 'border-box', textAlign: 'left', cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 0 }}>
           {dateLabel}
         </button>
-        <input ref={dateRef} type="date" tabIndex={-1} aria-hidden="true" value={d} required={required} disabled={disabled}
+        <input ref={dateRef} type="date" tabIndex={touch ? 0 : -1} aria-hidden={touch ? undefined : true}
+          aria-label={touch ? (ariaLabel ? `${ariaLabel} — ${vi ? 'ngày' : 'date'}` : (vi ? 'Ngày' : 'Date')) : undefined}
+          value={d} required={required} disabled={disabled}
           onChange={(e) => { if (e.target.value) onChange(`${e.target.value}T${t || '09:00'}`); }}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, pointerEvents: 'none', border: 0, padding: 0, margin: 0 }} />
+          style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, padding: 0, margin: 0,
+            // Not 0: some iOS versions ignore taps on a fully transparent field.
+            opacity: touch ? 0.011 : 0,
+            pointerEvents: touch && !disabled ? 'auto' : 'none',
+            zIndex: touch ? 1 : undefined,
+            // 16px keeps iOS from zooming the page when the field takes focus.
+            fontSize: 16, WebkitAppearance: 'none', appearance: 'none', background: 'transparent', color: 'transparent',
+            cursor: disabled ? 'default' : 'pointer',
+          }} />
       </span>
       <select value={t} disabled={disabled} required={required} aria-label={ariaLabel ? `${ariaLabel} — ${vi ? 'giờ' : 'time'}` : (vi ? 'Giờ' : 'Time')}
         onChange={(e) => onChange(`${d || today}T${e.target.value}`)}

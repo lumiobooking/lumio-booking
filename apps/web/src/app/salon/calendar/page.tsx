@@ -1467,8 +1467,9 @@ function NoteBox({ label, text }: { label: string; text: string }) {
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
-      <span style={{ color: 'var(--c94a3b8)' }}>{label}</span>
-      <span style={{ textAlign: 'right', wordBreak: 'break-word' }}>{value}</span>
+      {/* The label never breaks mid-word ("Duratio / n" on a phone); the value wraps instead. */}
+      <span style={{ color: 'var(--c94a3b8)', flexShrink: 0, whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ textAlign: 'right', overflowWrap: 'anywhere', minWidth: 0 }}>{value}</span>
     </div>
   );
 }

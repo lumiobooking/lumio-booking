@@ -34,6 +34,8 @@ interface MetaConf {
 }
 interface GbpConf {
   connected: boolean; connectedEmail: string; locationTitle: string; hasLocation: boolean; enabled: boolean; clientConfigured?: boolean;
+  /** The listing on Google Maps, once Lumio has read its place id. */
+  mapsUrl?: string | null;
 }
 interface TikTokConf {
   connected: boolean; displayName: string | null; username: string | null; avatarUrl: string | null; needsReconnect: boolean;
@@ -147,6 +149,10 @@ function Inner() {
                     <b>{p.pageName ?? p.pageId}</b>
                     {p.igUsername ? <span style={{ color: 'var(--c94a3b8)' }}> · Instagram @{p.igUsername}</span> : <span style={{ color: 'var(--c64748b)' }}> · {T('chưa liên kết Instagram', 'no Instagram linked')}</span>}
                     {!p.enabled && <span style={{ color: 'var(--cfde68a)' }}> · {T('đang tắt', 'switched off')}</span>}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 5 }}>
+                      {/^\d{5,25}$/.test(p.pageId) && <OpenOn href={`https://www.facebook.com/${p.pageId}`} color="#1877f2" label={T('Mở Trang Facebook', 'Open Facebook Page')} />}
+                      {p.igUsername && /^[A-Za-z0-9._]{1,30}$/.test(p.igUsername) && <OpenOn href={`https://www.instagram.com/${p.igUsername}/`} color="#d62976" label={T('Mở Instagram', 'Open Instagram')} />}
+                    </div>
                   </div>
                 ))}
                 {meta.data.pages.length > 3 && (
@@ -179,6 +185,9 @@ function Inner() {
               <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
                 <b>{gbp.data.locationTitle || T('(chưa chọn địa điểm)', '(no location chosen)')}</b>
                 {gbp.data.connectedEmail && <span style={{ color: 'var(--c94a3b8)' }}> · {gbp.data.connectedEmail}</span>}
+                {gbp.data.mapsUrl && (
+                  <div style={{ marginTop: 5 }}><OpenOn href={gbp.data.mapsUrl} color="#1a73e8" label={T('Mở trên Google Maps', 'Open on Google Maps')} /></div>
+                )}
                 {!gbp.data.hasLocation && <div style={{ color: 'var(--cfde68a)', fontSize: 12, marginTop: 3 }}>{T('Đã kết nối tài khoản nhưng chưa chọn địa điểm — vào Đánh giá Google để chọn.', 'Account connected but no location chosen — open Google reviews to pick one.')}</div>}
               </div>
             ) : (
@@ -218,6 +227,9 @@ function Inner() {
                   {tt.data.displayName
                     ? <><b>{tt.data.displayName}</b>{tt.data.username && <span style={{ color: 'var(--c94a3b8)' }}> · @{tt.data.username}</span>}</>
                     : <span style={{ color: 'var(--ink-warn)' }}>{T('Đã kết nối, nhưng chưa đọc được tên tài khoản — bấm "Kết nối lại TikTok".', 'Connected, but the account name could not be read — press "Reconnect TikTok".')}</span>}
+                  {tt.data.username && /^[A-Za-z0-9._]{2,24}$/.test(tt.data.username) && (
+                    <div style={{ marginTop: 5 }}><OpenOn href={`https://www.tiktok.com/@${tt.data.username}`} color="#e2e8f0" ink="#0f172a" label={T('Mở trên TikTok', 'Open on TikTok')} /></div>
+                  )}
                   {tt.data.needsReconnect && <div style={{ color: 'var(--cfde68a)', fontSize: 12 }}>{T('Quyền đã hết hạn (TikTok cấp tối đa 1 năm) — kết nối lại.', 'Permission expired (TikTok grants at most a year) — reconnect.')}</div>}
                   {tt.data.creator && tt.data.creator.privacyOptions.length === 1 && tt.data.creator.privacyOptions[0] === 'SELF_ONLY' && (
                     <div style={{ color: 'var(--cfde68a)', fontSize: 12 }}>{T('App Lumio chưa được TikTok duyệt: bài chỉ đăng riêng tư cho tới khi duyệt xong.', 'Lumio’s app is not audited by TikTok yet: posts stay private until it is.')}</div>
@@ -288,6 +300,19 @@ function Card({ icon, title, uses, status, vi, children }: { icon: string; title
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? 'Dùng cho' : 'Used for'}: {uses.join(' · ')}</div>
       {children}
     </div>
+  );
+}
+
+/**
+ * Opens the connected account on the platform itself, in a new tab — so staff
+ * can see with their own eyes that the RIGHT page / profile is connected.
+ */
+function OpenOn({ href, label, color, ink = '#fff' }: { href: string; label: string; color: string; ink?: string }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 999, background: color, color: ink, fontSize: 12.5, fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+      {label} ↗
+    </a>
   );
 }
 

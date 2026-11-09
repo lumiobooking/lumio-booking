@@ -1,5 +1,6 @@
 'use client';
 
+import { buttonLook, socialLook, socialStyleOf, SOCIAL_META, type SocialChannel } from '../../lib/booking-buttons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
@@ -48,7 +49,7 @@ interface SettingsData {
   market?: string;
   company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string; country?: string };
   booking: Booking;
-  branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; priceListImageUrl?: string; storefrontImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number; cartArt?: string; cartTitle?: string; cartHint?: string; checkinQr?: string };
+  branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; priceListImageUrl?: string; storefrontImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number; cartArt?: string; cartTitle?: string; cartHint?: string; checkinQr?: string; buttonColor?: string; buttonTextColor?: string; socialStyle?: string };
   rebooking?: { enabled: boolean; daysAfter: number; email: boolean; sms: boolean };
   /** How the technician app shows client phones / emails (server-side masking). */
   staffPrivacy?: { contact: 'hidden' | 'last4' | 'full' };
@@ -1743,6 +1744,84 @@ function BotPhotoField({ label, hint, value, token, lang, onChange }: { label: s
   );
 }
 
+/**
+ * The booking page's buttons in the salon's colours, and its follow buttons
+ * (9 Nov 2026). Empty = as before (the accent colour, white text). A live
+ * sample shows exactly what customers will see.
+ */
+function ButtonColors({ vi, accent, f, set }: {
+  vi: boolean; accent: string;
+  f: { buttonColor?: string; buttonTextColor?: string; socialStyle?: string };
+  set: (patch: { buttonColor?: string; buttonTextColor?: string; socialStyle?: string }) => void;
+}) {
+  const look = buttonLook(f, accent);
+  const style = socialStyleOf(f.socialStyle);
+  const picker = (label: string, value: string | undefined, fallback: string, key: 'buttonColor' | 'buttonTextColor', autoLabel: string) => (
+    <Field label={label}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input type="color" value={value || fallback} onChange={(e) => set({ [key]: e.target.value })} style={{ width: 44, height: 38, border: 'none', background: 'transparent', cursor: 'pointer' }} />
+        <input style={ui.input} value={value || ''} placeholder={autoLabel} onChange={(e) => set({ [key]: e.target.value.trim() })} />
+        {value && (
+          <button type="button" onClick={() => set({ [key]: '' })}
+            style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '8px 10px', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+            {vi ? 'Tự động' : 'Auto'}
+          </button>
+        )}
+      </div>
+    </Field>
+  );
+  const bad = (v?: string) => Boolean(v) && !/^#[0-9a-fA-F]{6}$/.test(v as string);
+  return (
+    <div style={{ marginTop: 14, padding: 14, borderRadius: 12, border: '1px solid var(--c334155)' }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{vi ? 'Màu nút trên trang đặt lịch' : 'Booking page buttons'}</div>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>
+        {vi ? 'Để trống = theo màu chủ đạo, chữ trắng (như hiện tại).' : 'Leave empty = the accent colour with white text (as today).'}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 10, alignItems: 'end' }}>
+        {picker(vi ? 'Màu nền nút' : 'Button colour', f.buttonColor, accent, 'buttonColor', vi ? 'Theo màu chủ đạo' : 'Accent colour')}
+        {picker(vi ? 'Màu chữ trên nút' : 'Button text colour', f.buttonTextColor, look.ink, 'buttonTextColor', vi ? 'Tự động (dễ đọc)' : 'Automatic (readable)')}
+        <Field label={vi ? 'Nút mạng xã hội (Facebook, Instagram, Google Maps, TikTok)' : 'Social buttons (Facebook, Instagram, Google Maps, TikTok)'}>
+          <select style={ui.input} value={style} onChange={(e) => set({ socialStyle: e.target.value })}>
+            <option value="brand">{vi ? 'Màu riêng của từng nền tảng' : 'Each platform’s own colour'}</option>
+            <option value="salon">{vi ? 'Cùng màu nút của tiệm' : 'Same as my button colour'}</option>
+            <option value="outline">{vi ? 'Viền màu tiệm, nền trắng' : 'Outline in my colour'}</option>
+            <option value="off">{vi ? 'Ẩn — không hiện' : 'Hidden'}</option>
+          </select>
+        </Field>
+      </div>
+      {(bad(f.buttonColor) || bad(f.buttonTextColor)) && (
+        <div style={{ color: 'var(--ink-bad)', fontSize: 12, marginTop: 6 }}>{vi ? 'Mã màu phải dạng #RRGGBB, ví dụ #be185d.' : 'Colours must look like #RRGGBB, e.g. #be185d.'}</div>
+      )}
+      {!look.readable && (
+        <div style={{ color: 'var(--ink-warn)', fontSize: 12, marginTop: 6 }}>{vi ? 'Màu chữ này khó đọc trên nền nút — trang khách sẽ tự dùng màu chữ dễ đọc hơn.' : 'That text colour is hard to read on the button — the page will use a readable one instead.'}</div>
+      )}
+      {/* Live sample, on the booking page's own white background. */}
+      <div style={{ marginTop: 12, padding: 14, borderRadius: 12, background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 11.5, color: '#64748b', fontWeight: 600 }}>{vi ? 'XEM TRƯỚC — khách sẽ thấy' : 'PREVIEW — what customers see'}</div>
+        <button type="button" style={{ alignSelf: 'stretch', maxWidth: 360, padding: '14px 18px', borderRadius: 999, border: 'none', fontWeight: 700, fontSize: 15, color: look.ink, background: `linear-gradient(120deg, ${look.bg}, ${look.dark})`, cursor: 'default' }}>
+          {vi ? 'Đặt lịch ngay' : 'Book now'} →
+        </button>
+        {style !== 'off' && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: '#64748b' }}>{vi ? 'Theo dõi tiệm' : 'Follow us'}</span>
+            {(['facebook', 'instagram', 'google', 'tiktok'] as SocialChannel[]).map((c) => {
+              const s = socialLook(c, style, look);
+              return (
+                <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 32, padding: '0 12px', borderRadius: 999, background: s.bg, color: s.ink, border: `1.5px solid ${s.border}`, fontSize: 12.5, fontWeight: 700 }}>
+                  <span aria-hidden>{SOCIAL_META[c].icon}</span>{SOCIAL_META[c].name}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: '#64748b' }}>
+          {vi ? 'Trang đặt lịch chỉ hiện nút của những kênh tiệm đã kết nối ở mục Kết nối kênh social.' : 'The booking page only shows buttons for channels connected under Social channels.'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -1821,6 +1900,8 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           </select>
         </Field>
       </div>
+
+      <ButtonColors vi={lang === 'vi'} accent={prevAccent} f={f} set={(patch) => setF((prev) => ({ ...prev, ...patch }))} />
 
       <div style={{ marginTop: 14 }}>
         <Field label={ind(lang === 'vi' ? 'Ô giỏ hàng trống trên trang đặt lịch — chọn mẫu theo ngành' : 'Empty cart on the booking page — pick a template for your trade')}>

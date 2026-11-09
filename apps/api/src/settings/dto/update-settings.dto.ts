@@ -97,6 +97,10 @@ export class UpdateBrandingDto {
   @IsOptional() @IsString() @MaxLength(140) cartHint?: string;
   /** What the check-in kiosk's side panel offers to scan. */
   @IsOptional() @IsIn(['checkin', 'review', 'both']) checkinQr?: string;
+  /** Booking-page buttons: '' = the accent colour / automatic text. */
+  @IsOptional() @IsString() @Matches(/^(#[0-9a-fA-F]{6})?$/) buttonColor?: string;
+  @IsOptional() @IsString() @Matches(/^(#[0-9a-fA-F]{6})?$/) buttonTextColor?: string;
+  @IsOptional() @IsIn(['brand', 'salon', 'outline', 'off']) socialStyle?: string;
 }
 
 /**

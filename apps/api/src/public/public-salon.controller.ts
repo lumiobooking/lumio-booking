@@ -1,3 +1,4 @@
+import { socialLinks } from '../common/social-links';
 import { venmoOption } from './venmo-option';
 import { OnlineDepositService } from './online-deposit.service';
 import { HOLD_REF } from '../payments/deposit-hold';
@@ -171,9 +172,24 @@ export class PublicSalonController {
     return tenant;
   }
 
+  /** This salon's own connected channels, as public links. Nothing secret is selected. */
+  private async socialFor(tenantId: string) {
+    const [pages, rows] = await Promise.all([
+      this.prisma.messengerPage.findMany({ where: { tenantId, enabled: true }, select: { pageId: true, pageName: true, igUsername: true, enabled: true }, orderBy: { createdAt: 'asc' } }).catch(() => [] as { pageId: string; pageName: string | null; igUsername: string | null; enabled: boolean }[]),
+      this.prisma.setting.findMany({ where: { tenantId, key: { in: ['googleReviews', 'tiktok'] } }, select: { key: true, value: true } }).catch(() => [] as { key: string; value: unknown }[]),
+    ]);
+    const val = (k: string) => (rows.find((r) => r.key === k)?.value ?? {}) as Record<string, unknown>;
+    const g = val('googleReviews'); const t = val('tiktok');
+    return socialLinks({
+      pages,
+      google: { connected: Boolean(g.connected), placeId: typeof g.placeId === 'string' ? g.placeId : null },
+      tiktok: { connected: Boolean(t.connected) && Boolean(t.refreshToken), username: typeof t.username === 'string' ? t.username : null },
+    });
+  }
+
   private async buildSalon(tenant: { id: string; name: string; slug: string; businessType: string; timezone: string; branding: unknown; contactPhone: string | null }) {
     // Read the settings rows in parallel (avoids sequential DB round-trips).
-    const [booking, weekdayDiscounts, dateDiscounts, deposit, firstVisit, groupDiscount, pos, areaRows, extra, ratingAgg, analytics, industryRow, partyDep] = await Promise.all([
+    const [booking, weekdayDiscounts, dateDiscounts, deposit, firstVisit, groupDiscount, pos, areaRows, extra, ratingAgg, analytics, industryRow, partyDep, social] = await Promise.all([
       this.settings.getBookingRules(tenant.id),
       this.settings.getWeekdayDiscounts(tenant.id),
       this.settings.getDateDiscounts(tenant.id),
@@ -190,6 +206,8 @@ export class PublicSalonController {
       (async () => { try { return await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId: tenant.id, key: INDUSTRY_KEY } }, select: { value: true } }); } catch { return null; } })(),
       // Per-guest deposit for big parties (payments/party-deposit.ts).
       this.settings.getPartyDeposit(tenant.id),
+      // Follow buttons: the channels THIS salon connected (common/social-links.ts).
+      this.socialFor(tenant.id).catch(() => []),
     ]);
     const brand = this.settings.brandingFrom(tenant.branding);
     const autoCount = (ratingAgg as { _count?: { _all?: number } } | null)?._count?._all ?? 0;
@@ -220,6 +238,7 @@ export class PublicSalonController {
       areas: areaRows.map((a: { area: string | null }) => a.area).filter((x: string | null): x is string => !!x),
       timezone: tenant.timezone,
       branding: brandingPublic,
+      social: brand.socialStyle === 'off' ? [] : social,
       booking,
       // The booking page shows (and quotes) only what a customer booking
       // online gets: walk-in-only promotions stay off it.

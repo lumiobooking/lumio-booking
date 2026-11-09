@@ -775,6 +775,19 @@ export interface Branding {
   /** Check-in kiosk side panel QR: 'checkin' (scan to check in on your phone),
    *  'review' (Google review) or 'both' (alternating). */
   checkinQr: string;
+  /**
+   * Booking-page buttons, the salon's own colours (9 Nov 2026). Empty = as
+   * before: the main buttons take the accent colour, white text.
+   */
+  buttonColor: string;
+  /** Text on those buttons; empty = white or near-black, whichever reads. */
+  buttonTextColor: string;
+  /**
+   * Follow buttons for the salon's connected channels on the booking page:
+   * 'brand' (each platform's own colour), 'salon' (the button colour),
+   * 'outline', or 'off' (not shown).
+   */
+  socialStyle: string;
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -792,6 +805,9 @@ export const DEFAULT_BRANDING: Branding = {
   cartTitle: '',
   cartHint: '',
   checkinQr: 'checkin',
+  buttonColor: '',
+  buttonTextColor: '',
+  socialStyle: 'brand',
 };
 
 // ===========================================================================

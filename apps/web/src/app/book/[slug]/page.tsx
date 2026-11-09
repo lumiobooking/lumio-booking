@@ -14,6 +14,7 @@
 // do it, and only the times when they are actually free.
 // ===========================================================================
 
+import { buttonVars, buttonLook, socialLook, socialStyleOf, safeSocial, SOCIAL_META, type SocialLink } from '../../../lib/booking-buttons';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
@@ -132,7 +133,9 @@ interface DateDiscounts { enabled: boolean; rules: DateRule[] }
 interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; holdMinutes?: number }
 interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
-  branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string; cartArt?: string; cartTitle?: string; cartHint?: string }; booking?: BookingRules;
+  branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string; cartArt?: string; cartTitle?: string; cartHint?: string; buttonColor?: string; buttonTextColor?: string; socialStyle?: string }; booking?: BookingRules;
+  /** The salon's connected channels (api common/social-links) — follow buttons. */
+  social?: SocialLink[];
   weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy; cardFee?: { enabled: boolean; percent: number };
   partyDeposit?: { enabled: boolean; fromParty: number; perPersonCents: number };
   firstVisit?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] } & PromoWindow;
@@ -458,6 +461,9 @@ export default function PublicBookingPage() {
   const baseAccent = salon?.branding?.accentColor || '#6366f1';
   // Effective accent = the salon's colour, unless they turned on a seasonal theme.
   const accent = seasonalAccent(salon?.branding?.seasonalTheme, baseAccent);
+  // The salon's own button colours (Settings → Branding); empty = the accent.
+  const btnVars = buttonVars(salon?.branding, accent);
+  const follow = socialStyleOf(salon?.branding?.socialStyle) === 'off' ? [] : safeSocial(salon?.social);
   const service = services.find((s) => s.id === serviceId) ?? null;
   const employee = staff.find((s) => s.id === staffId) ?? null;
   // The "choose your tech" step only earns its place when there are at least two
@@ -1217,14 +1223,14 @@ export default function PublicBookingPage() {
   // The phone embed, before it is opened: one tap, and the real thing appears.
   if (launcher) {
     return (
-      <Shell accent={accent} fullscreen={false}>
+      <Shell accent={accent} fullscreen={false} vars={btnVars}>
         <Launcher salon={salon} accent={accent} onOpen={openFull} rules={rules} services={services} />
       </Shell>
     );
   }
 
   return (
-    <Shell accent={accent} fullscreen={fullscreen}>
+    <Shell accent={accent} fullscreen={fullscreen} vars={btnVars}>
       <div className="lumio-book" style={{ width: '100%', maxWidth: 1120, margin: '0 auto', ['--accent' as string]: accent } as React.CSSProperties}>
         {/* Top bar — salon name (step 1) or the step name with a back arrow.
             Sticky only where a real viewport exists (hosted page / full-screen). */}
@@ -1267,6 +1273,9 @@ export default function PublicBookingPage() {
             <button onClick={closeFull} aria-label={bt("Close")} style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 17, cursor: 'pointer', flexShrink: 0 }}>✕</button>
           )}
         </div>
+        {(step === 1 || step === 5) && follow.length > 0 && (
+          <FollowRow links={follow} style={socialStyleOf(salon?.branding?.socialStyle)} branding={salon?.branding} accent={accent} label={bt('Follow us')} />
+        )}
 
         {step === 5 ? (
           <AfterBooking
@@ -2819,7 +2828,7 @@ function AfterBooking({ embedded, accent, fmt, salonName, salonAddress, firstNam
   const col: React.CSSProperties = { maxWidth: 460, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 };
   const box: React.CSSProperties = { border: '1px solid #e6eaf2', borderRadius: 16, padding: '12px 14px', background: '#fff' };
   const row: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14 };
-  const big: React.CSSProperties = { ...ctaBtn, minHeight: 54, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontSize: 16, fontWeight: 800, background: accent, boxShadow: 'none' };
+  const big: React.CSSProperties = { ...ctaBtn, minHeight: 54, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontSize: 16, fontWeight: 800, background: `var(--btn, ${accent})`, color: 'var(--btn-ink, #fff)', boxShadow: 'none' };
 
   if (pending && due) {
     const left = due.heldUntil ? Math.max(0, due.heldUntil - now) : null;
@@ -2960,7 +2969,7 @@ function AfterBooking({ embedded, accent, fmt, salonName, salonAddress, firstNam
             {bt('Each visit has its own confirmation and its own cancel link, so you can change one without touching the others.')}
           </p>
         )}
-        <button type="button" onClick={onReset} style={{ ...primaryBtn, alignSelf: 'center', minHeight: 46, padding: '0 26px', background: accent }}>{bt('Book another')}</button>
+        <button type="button" onClick={onReset} style={{ ...primaryBtn, alignSelf: 'center', minHeight: 46, padding: '0 26px' }}>{bt('Book another')}</button>
       </div>
     </div>
   );
@@ -3574,7 +3583,30 @@ function BookingSkeleton() {
     </div>
   );
 }
-function Shell({ children, accent, fullscreen }: { children: React.ReactNode; accent: string; fullscreen: boolean }) {
+/**
+ * Follow buttons: the channels the salon itself connected in Lumio (Social
+ * channels). Opens in a new tab so the booking is never lost.
+ */
+function FollowRow({ links, style, branding, accent, label }: { links: SocialLink[]; style: ReturnType<typeof socialStyleOf>; branding: Salon['branding']; accent: string; label: string }) {
+  const btn = buttonLook(branding, accent);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 14px', background: '#fff', borderBottom: '1px solid #eef2f8' }}>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: '#64748b' }}>{label}</span>
+      {links.map((l) => {
+        const look = socialLook(l.channel, style, btn);
+        const m = SOCIAL_META[l.channel];
+        return (
+          <a key={l.channel} href={l.url} target="_blank" rel="noopener noreferrer" aria-label={`${m.name}${l.handle ? ` ${l.handle}` : ''}`}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 34, padding: '0 13px', borderRadius: 999, background: look.bg, color: look.ink, border: `1.5px solid ${look.border}`, fontSize: 13, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+            <span aria-hidden>{m.icon}</span>{m.name}
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+function Shell({ children, accent, fullscreen, vars }: { children: React.ReactNode; accent: string; fullscreen: boolean; vars?: Record<string, string> }) {
   const [embedded, setEmbedded] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -3635,6 +3667,7 @@ function Shell({ children, accent, fullscreen }: { children: React.ReactNode; ac
         ['--accent-glow' as string]: tint(accent, 0.55),
         ['--accent-dark' as string]: shade(accent, 0.28),
         ['--stage' as string]: '#eef2f8',
+        ...(vars ?? {}),
       } as React.CSSProperties}>
         {children}
       </div>
@@ -3752,9 +3785,10 @@ const moreBtn: React.CSSProperties = {
 };
 const inputStyle: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #dbe2ee', background: '#fff', color: INK, fontSize: 14 };
 const ctaBtn: React.CSSProperties = {
-  width: '100%', padding: '15px 18px', borderRadius: 999, border: 'none', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer',
-  background: 'linear-gradient(120deg, var(--accent, #6366f1), var(--accent-dark, #4f46e5))',
-  boxShadow: '0 16px 32px -16px var(--accent-glow, rgba(99,102,241,.8))',
+  width: '100%', padding: '15px 18px', borderRadius: 999, border: 'none', color: 'var(--btn-ink, #fff)', fontWeight: 700, fontSize: 15, cursor: 'pointer',
+  // The salon's button colour (lib/booking-buttons), else the accent as before.
+  background: 'linear-gradient(120deg, var(--btn, var(--accent, #6366f1)), var(--btn-dark, var(--accent-dark, #4f46e5)))',
+  boxShadow: '0 16px 32px -16px var(--btn-glow, var(--accent-glow, rgba(99,102,241,.8)))',
 };
-const primaryBtn: React.CSSProperties = { padding: '12px 22px', borderRadius: 999, border: 'none', background: 'var(--accent, #6366f1)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { padding: '12px 22px', borderRadius: 999, border: 'none', background: 'var(--btn, var(--accent, #6366f1))', color: 'var(--btn-ink, #fff)', fontWeight: 700, fontSize: 14, cursor: 'pointer' };
 const arrowBtn: React.CSSProperties = { width: 34, height: 34, borderRadius: '50%', border: '1px solid #e6eaf2', background: '#fff', color: INK, fontSize: 18, cursor: 'pointer', flexShrink: 0 };

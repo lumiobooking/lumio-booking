@@ -1,3 +1,4 @@
+import { googleMapsUrl } from '../common/social-links';
 import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { NotificationChannel, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
@@ -325,6 +326,8 @@ export class GoogleReviewsService {
       hasLocation: Boolean(s.accountId && s.locationId),
       /** Google's own review link for the chosen location — feeds the review QR. */
       reviewLink: s.newReviewUri || (s.placeId ? `https://search.google.com/local/writereview?placeid=${encodeURIComponent(s.placeId)}` : ''),
+      /** The listing on Google Maps — "Open on Google Maps" on Social channels. */
+      mapsUrl: googleMapsUrl(s.placeId),
       autoMinStars: s.autoMinStars,
       alertMaxStars: s.alertMaxStars,
       approveFirst: s.approveFirst,

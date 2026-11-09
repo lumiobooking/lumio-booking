@@ -121,6 +121,7 @@ const VI: Record<string, string> = {
   'Next': 'Tiếp tục',
   'Continue': 'Tiếp tục',
   'Book another': 'Đặt thêm lịch',
+  'Follow us': 'Theo dõi tiệm',
   'Payment: ': 'Thanh toán: ',
   'Pay online': 'Trả online',
   'Pay at the shop': 'Trả tại tiệm',

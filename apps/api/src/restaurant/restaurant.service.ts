@@ -7,6 +7,7 @@ import { SettingsService } from '../settings/settings.service';
 import { resolvePayAccount } from '../settings/pay-account';
 import { bankLabel, qrLine, vietQrPayload } from '../common/vietqr';
 import { PosService } from '../pos/pos.service';
+import { MENU_CATEGORIES_KEY, allCategories, cleanCategoryList, orderByCategories } from '../menu/menu-categories';
 import { PushService } from '../push/push.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { hasCapability } from '../auth/capabilities';
@@ -14,7 +15,7 @@ import { cleanLayout, withDefaults } from '../tables/floor';
 import {
   CALL_REASONS, CallReason, DEFAULT_SETTINGS, Lang, LineLike, RestaurantSettings, SETTINGS_KEY, bankCredits, checkLabel, checkTotals, chosenOf,
   cleanGuestOrder, cleanNote, cleanOptionGroups, cleanSettings, clockText, groupForSend, langFor, moneyText, optionsKey, payCodeIn, payCodeOf,
-  pickOptions, prebillText, qty, serviceChargeOf, soldOutNow, stationFor, stationName, stationsCooking, ticketText, vatInside, vietQrUrl,
+  pickOptions, prebillText, qty, serviceChargeOf, billOf, ymdIn, soldOutNow, stationFor, stationName, stationsCooking, ticketText, vatInside, vietQrUrl,
 } from './check-logic';
 
 const LIVE = ['OPEN', 'PAYING'];
@@ -116,6 +117,14 @@ export class RestaurantService {
     return { currency, tz: tenant?.timezone || 'UTC', lang: langFor(currency) as Lang };
   }
 
+  /** The owner's category order (Thực đơn › Danh mục), for the till and the guest QR menu. */
+  private async categoryOrder(tenantId: string): Promise<string[]> {
+    try {
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: MENU_CATEGORIES_KEY } } });
+      return cleanCategoryList(row?.value ?? []);
+    } catch { return []; }
+  }
+
   private async tableNames(tenantId: string): Promise<Map<string, string>> {
     const rows = await this.prisma.restaurantTable.findMany({ where: { tenantId }, select: { id: true, name: true } });
     return new Map(rows.map((t) => [t.id, t.name]));
@@ -135,10 +144,12 @@ export class RestaurantService {
     if (check.status !== 'OPEN') throw new ConflictException(check.status === 'PAYING' ? 'CHECK_PAYING' : 'CHECK_CLOSED');
   }
 
-  private view(check: Awaited<ReturnType<RestaurantService['loadCheck']>>, names: Map<string, string>, lang: Lang, settings: RestaurantSettings = DEFAULT_SETTINGS) {
+  private view(check: Awaited<ReturnType<RestaurantService['loadCheck']>>, names: Map<string, string>, lang: Lang, settings: RestaurantSettings = DEFAULT_SETTINGS, ymd: string = ymdIn('UTC')) {
     const totals = checkTotals(check.lines as LineLike[]);
-    const serviceCents = serviceChargeOf(totals.subtotalCents, settings.serviceChargePercent);
-    const billCents = totals.subtotalCents + serviceCents;
+    // Service, the day's surcharge and discount: one rule everywhere (check-logic billOf).
+    const parts = billOf(totals.subtotalCents, settings, ymd);
+    const serviceCents = parts.serviceCents;
+    const billCents = parts.billCents;
     const payCode = payCodeOf(check.number);
     return {
       id: check.id,
@@ -163,6 +174,8 @@ export class RestaurantService {
       ...totals,
       serviceChargePercent: settings.serviceChargePercent,
       serviceCents,
+      surcharge: parts.surcharge,
+      promo: parts.promo,
       billCents,
       vatPercent: settings.vatPercent,
       vatIncluded: settings.vatIncluded,
@@ -215,11 +228,13 @@ export class RestaurantService {
   /** The dishes the till can sell: station, options, and whether they are sold out today. */
   async menu(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
-    const [items, settings, ctx] = await Promise.all([
+    const [raw, settings, ctx, order] = await Promise.all([
       this.prisma.menuItem.findMany({ where: { tenantId, isActive: true }, orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }] }),
       this.getSettings(tenantId),
       this.context(tenantId),
+      this.categoryOrder(tenantId),
     ]);
+    const items = orderByCategories(raw, allCategories(order, raw.map((m) => m.category)));
     const now = new Date();
     return items.map((m) => ({
       id: m.id, name: m.name, category: m.category, priceCents: m.priceCents, imageUrl: m.imageUrl,
@@ -240,7 +255,7 @@ export class RestaurantService {
   async getCheck(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
     const [check, names, ctx, settings] = await Promise.all([this.loadCheck(tenantId, id), this.tableNames(tenantId), this.context(tenantId), this.getSettings(tenantId)]);
-    const v = this.view(check, names, ctx.lang, settings);
+    const v = this.view(check, names, ctx.lang, settings, ymdIn(ctx.tz));
     return { ...v, qrUrl: v.billCents > 0 ? vietQrUrl(settings.bank, v.billCents - Math.min(v.bankPaidCents, v.billCents), v.payCode) : null };
   }
 
@@ -500,14 +515,16 @@ export class RestaurantService {
     const live = check.lines.filter((l) => l.state !== 'VOID' && l.state !== 'PENDING');
     const label = checkLabel(check.tableIds, names, check.number, ctx.lang);
     const settings = await this.getSettings(tenantId);
-    const service = serviceChargeOf(totals.subtotalCents, settings.serviceChargePercent);
-    const bill = totals.subtotalCents + service;
+    const parts = billOf(totals.subtotalCents, settings, ymdIn(ctx.tz, now));
+    const service = parts.serviceCents;
+    const bill = parts.billCents;
     const text = prebillText({
       lang: ctx.lang, business: profile?.shop.name ?? '', address: profile?.shop.address, phone: profile?.shop.phone,
       tables: label, takeaway: check.tableIds.length === 0, checkNumber: check.number, count, at: clockText(now, ctx.tz, ctx.lang), cashier,
       guests: check.guests, server: check.serverName,
       lines: mergeForGuest(live.map((l) => ({ quantity: l.quantity, name: l.name, unitPriceCents: l.unitPriceCents, options: chosenOf(l.options).map((o) => o.name) }))),
       serviceCents: service, servicePercent: settings.serviceChargePercent,
+      subtotalCents: totals.subtotalCents, surcharge: parts.surcharge, promo: parts.promo,
       vatPercent: settings.vatPercent, vatIncluded: settings.vatIncluded, vatCents: settings.vatIncluded ? vatInside(bill, settings.vatPercent) : 0,
       payCode: settings.bank ? payCodeOf(check.number) : null,
       payQr: payQrBlock(settings, bill, payCodeOf(check.number), ctx.currency),
@@ -738,7 +755,12 @@ export class RestaurantService {
     const [names, ctx] = await Promise.all([this.tableNames(tenantId), this.context(tenantId)]);
     const label = checkLabel(check.tableIds, names, check.number, ctx.lang);
     const subtotal = live.reduce((sum, l) => sum + l.quantity * l.unitPriceCents, 0);
-    const service = serviceChargeOf(subtotal, settings.serviceChargePercent);
+    // The same bill the guest check showed: service, the day's surcharge and discount.
+    const parts = billOf(subtotal, settings, ymdIn(ctx.tz));
+    const service = parts.serviceCents;
+    const vi = ctx.lang === 'vi';
+    // A discount typed at the till (pos.discount), on top of the day's discount, never below 0.
+    const manual = Math.min(Math.max(0, Math.round(Number(dto.manualDiscountCents ?? 0)) || 0), parts.billCents);
     let order: { id: string; status?: string; orderNumber?: number } | null = null;
     try {
       order = await this.pos.createOrder(user, {
@@ -750,10 +772,12 @@ export class RestaurantService {
             unitPriceCents: l.unitPriceCents,
             quantity: l.quantity,
           };
-        }), ...(service > 0 ? [{ kind: OrderItemKind.PRODUCT, name: `${ctx.lang === 'vi' ? 'Phí phục vụ' : 'Service charge'} ${settings.serviceChargePercent}%`, unitPriceCents: service, quantity: 1 }] : [])],
+        }), ...(service > 0 ? [{ kind: OrderItemKind.PRODUCT, name: `${vi ? 'Phí phục vụ' : 'Service charge'} ${settings.serviceChargePercent}%`, unitPriceCents: service, quantity: 1 }] : []),
+        ...(parts.surcharge ? [{ kind: OrderItemKind.PRODUCT, name: `${parts.surcharge.name} +${parts.surcharge.percent}%`.slice(0, 160), unitPriceCents: parts.surcharge.cents, quantity: 1 }] : [])],
         tenders: tenders.map((t) => ({ method: t.method, amountCents: Math.round(Number(t.amountCents)) })),
-        discountCents: dto.discountCents,
-        manualDiscountCents: dto.manualDiscountCents,
+        // The day's discount (Settings › price rules) plus what the cashier typed.
+        discountCents: (parts.promo?.cents ?? 0) + manual || undefined,
+        manualDiscountCents: manual || undefined,
         customerId,
         note: [`${label} · #${check.number}`, check.note, dto.note, invoice ? `HĐ VAT: ${[invoice.company, invoice.taxCode && `MST ${invoice.taxCode}`, invoice.email].filter(Boolean).join(', ')}` : null].filter(Boolean).join(' · ').slice(0, 500),
       } as never) as unknown as { id: string; status?: string; orderNumber?: number };
@@ -763,7 +787,7 @@ export class RestaurantService {
       throw e;
     }
     await this.prisma.tableCheck.updateMany({ where: { id, tenantId, status: 'PAYING' }, data: { status: 'PAID', orderId: order.id, closedAt: new Date(), ...(invoice ? { invoiceInfo: invoice as never } : {}) } });
-    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.check_paid', resourceType: 'table_check', resourceId: id, metadata: { orderId: order.id, orderNumber: order.orderNumber } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.check_paid', resourceType: 'table_check', resourceId: id, metadata: { orderId: order.id, orderNumber: order.orderNumber, ...(manual ? { manualDiscountCents: manual } : {}), ...(parts.promo ? { promo: parts.promo } : {}), ...(parts.surcharge ? { surcharge: parts.surcharge } : {}) } });
     return { order, check: await this.getCheck(user, id) };
   }
 
@@ -902,12 +926,14 @@ export class RestaurantService {
   /** What a guest sees after scanning: the restaurant, the table, the menu, and what this table has ordered. */
   async guestMenu(token: string) {
     const { table, settings, tenantId } = await this.tableByToken(token);
-    const [tenant, items, ctx, open] = await Promise.all([
+    const [tenant, raw, ctx, open, order] = await Promise.all([
       this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, branding: true } }),
       this.prisma.menuItem.findMany({ where: { tenantId, isActive: true }, orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }] }),
       this.context(tenantId),
       this.openCheckOn(tenantId, table.id),
+      this.categoryOrder(tenantId),
     ]);
+    const items = orderByCategories(raw, allCategories(order, raw.map((m) => m.category)));
     const lines = open ? await this.prisma.tableCheckLine.findMany({ where: { tenantId, checkId: open.id, state: { not: 'VOID' } }, select: { name: true, quantity: true, state: true, unitPriceCents: true, readyAt: true }, orderBy: { createdAt: 'asc' } }) : [];
     const now = new Date();
     return {

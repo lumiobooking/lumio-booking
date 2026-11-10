@@ -44,6 +44,24 @@ export interface RestaurantSettings {
   bank: { bin: string; accountNo: string; accountName: string } | null;
   /** Print the VietQR on the guest check (from Settings › Payments; not stored here). */
   printPayQr?: boolean;
+  /**
+   * Price rules by date (10/11/2026): an event / grand-opening discount, or a
+   * holiday surcharge (staff working Tết, 30/4…). Both are a % of the dishes,
+   * shown on the guest check and the receipt as their own line.
+   */
+  priceRules: PriceRule[];
+}
+
+export interface PriceRule {
+  id: string;
+  kind: 'discount' | 'surcharge';
+  /** Printed on the bill: "Khai trương", "Phụ thu Tết". */
+  name: string;
+  percent: number;
+  /** Salon-local days, inclusive, YYYY-MM-DD. */
+  from: string;
+  to: string;
+  on: boolean;
 }
 
 export const SETTINGS_KEY = 'restaurant_service';
@@ -64,6 +82,7 @@ export const DEFAULT_SETTINGS: RestaurantSettings = {
   vatPercent: 0,
   vatIncluded: true,
   bank: null,
+  priceRules: [],
 };
 
 const KEY_RE = /^[A-Z0-9_]{2,20}$/;
@@ -116,6 +135,7 @@ export function cleanSettings(raw: unknown): RestaurantSettings {
     vatPercent: [0, 5, 8, 10].includes(Math.round(Number(r.vatPercent))) ? Math.round(Number(r.vatPercent)) : 0,
     vatIncluded: bool(r.vatIncluded, true),
     bank: cleanBank(r.bank),
+    priceRules: cleanPriceRules(r.priceRules),
   };
 }
 
@@ -314,6 +334,11 @@ export interface PrebillInput {
   lines: { quantity: number; name: string; amountCents: number; options?: string[] | null }[];
   /** Phí phục vụ, already in totalCents. */
   serviceCents?: number;
+  /** The dishes alone, when a surcharge or discount sits between them and the total. */
+  subtotalCents?: number;
+  /** The day's surcharge / discount (already in totalCents). */
+  surcharge?: { name: string; percent: number; cents: number } | null;
+  promo?: { name: string; percent: number; cents: number } | null;
   servicePercent?: number;
   /** VAT printed as "included" (or as added, when the till adds it). */
   vatPercent?: number;
@@ -352,8 +377,10 @@ export function prebillText(p: PrebillInput): string {
     for (const o of l.options ?? []) out.push(...wrap(`+ ${o}`, '    '));
   }
   out.push(rule());
-  out.push(twoCol(vi ? `Cộng ${count} món` : `${count} items`, p.money(p.totalCents - (p.serviceCents ?? 0))));
+  out.push(twoCol(vi ? `Cộng ${count} món` : `${count} items`, p.money(p.subtotalCents ?? (p.totalCents - (p.serviceCents ?? 0)))));
   if (p.serviceCents) out.push(twoCol(`${vi ? 'Phí phục vụ' : 'Service charge'} ${p.servicePercent ?? ''}%`, p.money(p.serviceCents)));
+  if (p.surcharge?.cents) out.push(twoCol(`${p.surcharge.name} +${p.surcharge.percent}%`, p.money(p.surcharge.cents)));
+  if (p.promo?.cents) out.push(twoCol(`${p.promo.name} -${p.promo.percent}%`, `-${p.money(p.promo.cents)}`));
   if (p.vatPercent && p.vatCents) out.push(twoCol(p.vatIncluded === false ? `VAT ${p.vatPercent}%` : `${vi ? 'Đã gồm VAT' : 'Incl. VAT'} ${p.vatPercent}%`, p.money(p.vatCents)));
   out.push(dbl());
   out.push(twoCol(vi ? 'TỔNG CỘNG' : 'TOTAL', p.money(p.totalCents)));
@@ -597,3 +624,65 @@ export function cleanGuestOrder(raw: unknown): { menuItemId: string; quantity: n
 
 export const CALL_REASONS = ['staff', 'bill', 'water', 'cutlery'] as const;
 export type CallReason = typeof CALL_REASONS[number];
+
+
+// ------------------------------------------------------------ price rules --
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Whatever was stored or sent, as at most 30 well-formed rules. */
+export function cleanPriceRules(raw: unknown): PriceRule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PriceRule[] = [];
+  for (const x of raw.slice(0, 30)) {
+    const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+    const kind = o.kind === 'surcharge' ? 'surcharge' : o.kind === 'discount' ? 'discount' : null;
+    const name = String(o.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    const percent = Math.round(Number(o.percent) * 10) / 10;
+    let from = String(o.from ?? '').trim();
+    let to = String(o.to ?? '').trim() || from;
+    if (!kind || !name || !YMD.test(from) || !YMD.test(to)) continue;
+    if (!Number.isFinite(percent) || percent <= 0 || percent > (kind === 'discount' ? 100 : 50)) continue;
+    if (to < from) [from, to] = [to, from];
+    const id = /^[A-Za-z0-9_-]{4,40}$/.test(String(o.id ?? '')) ? String(o.id) : `r${out.length + 1}${from.replace(/-/g, '')}`;
+    out.push({ id, kind, name, percent, from, to, on: o.on !== false });
+  }
+  return out;
+}
+
+/** The salon-local calendar day of an instant, YYYY-MM-DD. */
+export function ymdIn(tz: string, at: Date = new Date()): string {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(at); }
+  catch { return at.toISOString().slice(0, 10); }
+}
+
+/** The rule of each kind in force that day; when two overlap, the larger one (they never stack). */
+export function rulesOn(rules: PriceRule[] | undefined, ymd: string): { discount: PriceRule | null; surcharge: PriceRule | null } {
+  const live = (rules ?? []).filter((r) => r.on && r.from <= ymd && ymd <= r.to);
+  const top = (k: PriceRule['kind']) => live.filter((r) => r.kind === k).sort((a, b) => b.percent - a.percent)[0] ?? null;
+  return { discount: top('discount'), surcharge: top('surcharge') };
+}
+
+export interface BillParts {
+  serviceCents: number;
+  surcharge: { name: string; percent: number; cents: number } | null;
+  promo: { name: string; percent: number; cents: number } | null;
+  /** Dishes + service + surcharge − promo: what the guest pays (before a manual discount). */
+  billCents: number;
+}
+
+/**
+ * One bill, the same everywhere (screen, guest check, payment): the service
+ * charge, the day's surcharge and the day's discount are each a % of the
+ * dishes, never of each other.
+ */
+export function billOf(subtotalCents: number, settings: Pick<RestaurantSettings, 'serviceChargePercent' | 'priceRules'>, ymd: string): BillParts {
+  const sub = Math.max(0, Math.round(subtotalCents));
+  const serviceCents = serviceChargeOf(sub, settings.serviceChargePercent);
+  const on = rulesOn(settings.priceRules, ymd);
+  const part = (r: PriceRule | null) => (r && sub > 0 ? { name: r.name, percent: r.percent, cents: Math.round((sub * r.percent) / 100) } : null);
+  const surcharge = part(on.surcharge);
+  const promo = part(on.discount);
+  const billCents = Math.max(0, sub + serviceCents + (surcharge?.cents ?? 0) - (promo?.cents ?? 0));
+  return { serviceCents, surcharge, promo, billCents };
+}

@@ -176,3 +176,27 @@ describe('restaurant till', () => {
     });
   });
 });
+
+import { manualDiscountCents, ruleState } from './restaurant-till';
+
+describe('discount typed at the till (Nẩu Chill, 10/11/2026)', () => {
+  const vnd = (s: string) => Number(s.replace(/\D/g, ''));
+  it('a percent of what is due, or an amount as typed', () => {
+    expect(manualDiscountCents('10', 'percent', 350_000, vnd)).toBe(35_000);
+    expect(manualDiscountCents('10%', 'percent', 350_000, vnd)).toBe(35_000);
+    expect(manualDiscountCents('50.000', 'amount', 350_000, vnd)).toBe(50_000);
+  });
+  it('never more than due, never negative, empty = none', () => {
+    expect(manualDiscountCents('500.000', 'amount', 350_000, vnd)).toBe(350_000);
+    expect(manualDiscountCents('150', 'percent', 350_000, vnd)).toBe(350_000);
+    expect(manualDiscountCents('-5', 'percent', 350_000, vnd)).toBe(0);
+    expect(manualDiscountCents('', 'amount', 350_000, vnd)).toBe(0);
+  });
+  it('a rule reads as running, coming, over or off', () => {
+    const r = { id: 'a', kind: 'discount' as const, name: 'Khai trương', percent: 10, from: '2026-11-15', to: '2026-11-20', on: true };
+    expect(ruleState(r, '2026-11-10')).toBe('soon');
+    expect(ruleState(r, '2026-11-15')).toBe('on');
+    expect(ruleState(r, '2026-11-21')).toBe('over');
+    expect(ruleState({ ...r, on: false }, '2026-11-16')).toBe('off');
+  });
+});

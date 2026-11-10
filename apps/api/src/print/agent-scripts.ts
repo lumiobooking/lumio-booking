@@ -59,6 +59,102 @@ function Pick-Font([string]$name) {
 # Draws one ticket like the bill designer's preview: a normal font, the shop
 # name and title large, rules as dashed lines, centred lines centred, amounts
 # pinned to the right edge, the total bold, the table huge on kitchen tickets.
+#
+# The paper is cut to the ticket's own length: many thermal drivers default
+# to a very long page (e.g. 80 x 3276 mm), and the printer then feeds the
+# whole page - a metre of blank paper after a short bill (Nau Chill, 10/11).
+# So the ticket is measured first and the page made exactly that long.
+function Layout-Ticket($g, [single]$W, [single]$H, [bool]$draw) {
+  $fam = $script:PsFamily
+  $sz = [single]$script:PsSize
+  $fN = New-Object System.Drawing.Font($fam, $sz)
+  $fB = New-Object System.Drawing.Font($fam, [single]($sz * 1.15), [System.Drawing.FontStyle]::Bold)
+  $fT = New-Object System.Drawing.Font($fam, [single]($sz * 1.5), [System.Drawing.FontStyle]::Bold)
+  $fH = New-Object System.Drawing.Font($fam, [single]($sz * 2.1), [System.Drawing.FontStyle]::Bold)
+  $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::Black, [single]1)
+  $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+  $ink = [System.Drawing.Brushes]::Black
+  $gap = [single]($fN.GetHeight($g) * 0.15)
+  $y = [single]0
+  while ($script:PsIndex -lt $script:PsRows.Count) {
+    $row = $script:PsRows[$script:PsIndex]
+    $role = [string]$row.r
+    $text = ([string]$row.t).TrimEnd()
+    if ($role -ceq 'q') {
+      $qm = @($row.m)
+      $qn = $qm.Count
+      if ($qn -gt 0) {
+        $side = [single][Math]::Min($W * 0.62, 170)
+        $cell = [single]($side / $qn)
+        $x0 = [single](($W - $side) / 2)
+        $h = [single]($side + $gap * 4)
+        if ($y -gt 0 -and ($y + $h) -gt $H) { return @{ y = $y; more = $true } }
+        $top = [single]($y + $gap * 2)
+        if ($draw) {
+          for ($qy = 0; $qy -lt $qn; $qy++) {
+            $line = [string]$qm[$qy]
+            $qx = 0
+            while ($qx -lt $line.Length) {
+              if ($line[$qx] -ne '1') { $qx++; continue }
+              $qe = $qx
+              while ($qe -lt $line.Length -and $line[$qe] -eq '1') { $qe++ }
+              $g.FillRectangle($ink, [single]($x0 + $qx * $cell), [single]($top + $qy * $cell), [single](($qe - $qx) * $cell + 0.3), [single]($cell + 0.3))
+              $qx = $qe
+            }
+          }
+        }
+        $y = [single]($y + $h)
+      }
+      $script:PsIndex = $script:PsIndex + 1
+      continue
+    }
+    if ($role -ceq 's') {
+      $h = [single]($fN.GetHeight($g) * 0.8)
+      if ($y -gt 0 -and ($y + $h) -gt $H) { return @{ y = $y; more = $true } }
+      $mid = [single]($y + $h / 2)
+      if ($draw) { $g.DrawLine($pen, [single]0, $mid, $W, $mid) }
+      $y = [single]($y + $h)
+      $script:PsIndex = $script:PsIndex + 1
+      continue
+    }
+    $font = $fN
+    if ($role -ceq 'b') { $font = $fB }
+    if ($role -ceq 't') { $font = $fT }
+    if ($role -ceq 'h') { $font = $fH }
+    $sf = New-Object System.Drawing.StringFormat
+    $right = ''
+    if ($row.c) { $text = $text.Trim(); $sf.Alignment = [System.Drawing.StringAlignment]::Center }
+    elseif ($row.a) {
+      $right = [string]$row.a
+      if ($text.EndsWith($right)) { $text = $text.Substring(0, $text.Length - $right.Length).TrimEnd() }
+    }
+    $leftW = $W
+    if ($right) { $leftW = [single][Math]::Max(40, $W - $g.MeasureString($right, $font).Width - 4) }
+    $measure = $text
+    if ($measure.Length -eq 0) { $measure = ' ' }
+    $box = New-Object System.Drawing.SizeF($leftW, [single]100000)
+    $h = [single]([Math]::Max($g.MeasureString($measure, $font, $box, $sf).Height, $font.GetHeight($g)) + $gap)
+    if ($y -gt 0 -and ($y + $h) -gt $H) { return @{ y = $y; more = $true } }
+    if ($draw) {
+      $g.DrawString($text, $font, $ink, (New-Object System.Drawing.RectangleF([single]0, $y, $leftW, $h)), $sf)
+      if ($right) {
+        $sfr = New-Object System.Drawing.StringFormat
+        $sfr.Alignment = [System.Drawing.StringAlignment]::Far
+        $g.DrawString($right, $font, $ink, (New-Object System.Drawing.RectangleF([single]0, $y, $W, $h)), $sfr)
+      }
+    }
+    $y = [single]($y + $h)
+    $script:PsIndex = $script:PsIndex + 1
+  }
+  return @{ y = $y; more = $false }
+}
+
+# The width the ticket is drawn on, in 1/100 inch.
+function Ticket-Width([single]$W) {
+  if ($script:PsMaxW -gt 50 -and $W -gt $script:PsMaxW) { $W = [single]$script:PsMaxW }
+  return [single]($W - 6)
+}
+
 function Invoke-GdiPrint($rows, [string]$printer, [int]$maxWidth, [string]$fontName, [double]$baseSize) {
   $script:PsRows = @($rows)
   $script:PsIndex = 0
@@ -72,6 +168,23 @@ function Invoke-GdiPrint($rows, [string]$printer, [int]$maxWidth, [string]$fontN
   if (-not $doc.PrinterSettings.IsValid) { throw ('Khong thay may in: ' + $printer) }
   $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
   $doc.OriginAtMargins = $false
+  # Measure the whole ticket, then make the page exactly that long (plus room
+  # for the cutter). A driver that ignores custom sizes prints as before.
+  try {
+    $mg = $doc.PrinterSettings.CreateMeasurementGraphics($doc.DefaultPageSettings)
+    try {
+      $pw = [single]$doc.DefaultPageSettings.PrintableArea.Width
+      if ($pw -lt 50) { $pw = [single]$doc.DefaultPageSettings.PaperSize.Width }
+      $script:PsIndex = 0
+      $m = Layout-Ticket $mg (Ticket-Width $pw) ([single]1000000) $false
+      $script:PsIndex = 0
+      $paperW = [int]$doc.DefaultPageSettings.PaperSize.Width
+      if ($paperW -lt 100) { $paperW = 315 }
+      $paperH = [int][Math]::Ceiling([double]$m.y + 60)
+      if ($paperH -lt 150) { $paperH = 150 }
+      $doc.DefaultPageSettings.PaperSize = New-Object System.Drawing.Printing.PaperSize('Lumio', $paperW, $paperH)
+    } finally { $mg.Dispose() }
+  } catch { Write-Log ('measure: ' + $_); $script:PsIndex = 0 }
   $doc.add_PrintPage({
     param($src, $e)
     $g = $e.Graphics
@@ -81,89 +194,10 @@ function Invoke-GdiPrint($rows, [string]$printer, [int]$maxWidth, [string]$fontN
     if ($W -lt 50) { $W = [single]$e.PageBounds.Width }
     $vis = [single]$g.VisibleClipBounds.Width
     if ($vis -gt 50 -and $vis -lt $W) { $W = $vis }
-    # A thermal roll prints 72 of its 80 mm (48 of 58): some drivers claim the whole paper.
-    if ($script:PsMaxW -gt 50 -and $W -gt $script:PsMaxW) { $W = [single]$script:PsMaxW }
     $H = [single]$area.Height
     if ($H -lt 50) { $H = [single]$e.PageBounds.Height }
-    $W = [single]($W - 6)
-    $fam = $script:PsFamily
-    $sz = [single]$script:PsSize
-    $fN = New-Object System.Drawing.Font($fam, $sz)
-    $fB = New-Object System.Drawing.Font($fam, [single]($sz * 1.15), [System.Drawing.FontStyle]::Bold)
-    $fT = New-Object System.Drawing.Font($fam, [single]($sz * 1.5), [System.Drawing.FontStyle]::Bold)
-    $fH = New-Object System.Drawing.Font($fam, [single]($sz * 2.1), [System.Drawing.FontStyle]::Bold)
-    $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::Black, [single]1)
-    $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
-    $ink = [System.Drawing.Brushes]::Black
-    $gap = [single]($fN.GetHeight($g) * 0.15)
-    $y = [single]0
-    while ($script:PsIndex -lt $script:PsRows.Count) {
-      $row = $script:PsRows[$script:PsIndex]
-      $role = [string]$row.r
-      $text = ([string]$row.t).TrimEnd()
-      if ($role -ceq 'q') {
-        $qm = @($row.m)
-        $qn = $qm.Count
-        if ($qn -gt 0) {
-          $side = [single][Math]::Min($W * 0.62, 170)
-          $cell = [single]($side / $qn)
-          $x0 = [single](($W - $side) / 2)
-          $h = [single]($side + $gap * 4)
-          if ($y -gt 0 -and ($y + $h) -gt $H) { $e.HasMorePages = $true; return }
-          $top = [single]($y + $gap * 2)
-          for ($qy = 0; $qy -lt $qn; $qy++) {
-            $line = [string]$qm[$qy]
-            $qx = 0
-            while ($qx -lt $line.Length) {
-              if ($line[$qx] -ne '1') { $qx++; continue }
-              $qe = $qx
-              while ($qe -lt $line.Length -and $line[$qe] -eq '1') { $qe++ }
-              $g.FillRectangle($ink, [single]($x0 + $qx * $cell), [single]($top + $qy * $cell), [single](($qe - $qx) * $cell + 0.3), [single]($cell + 0.3))
-              $qx = $qe
-            }
-          }
-          $y = [single]($y + $h)
-        }
-        $script:PsIndex = $script:PsIndex + 1
-        continue
-      }
-      if ($role -ceq 's') {
-        $h = [single]($fN.GetHeight($g) * 0.8)
-        if ($y -gt 0 -and ($y + $h) -gt $H) { $e.HasMorePages = $true; return }
-        $mid = [single]($y + $h / 2)
-        $g.DrawLine($pen, [single]0, $mid, $W, $mid)
-        $y = [single]($y + $h)
-        $script:PsIndex = $script:PsIndex + 1
-        continue
-      }
-      $font = $fN
-      if ($role -ceq 'b') { $font = $fB }
-      if ($role -ceq 't') { $font = $fT }
-      if ($role -ceq 'h') { $font = $fH }
-      $sf = New-Object System.Drawing.StringFormat
-      $right = ''
-      if ($row.c) { $text = $text.Trim(); $sf.Alignment = [System.Drawing.StringAlignment]::Center }
-      elseif ($row.a) {
-        $right = [string]$row.a
-        if ($text.EndsWith($right)) { $text = $text.Substring(0, $text.Length - $right.Length).TrimEnd() }
-      }
-      $leftW = $W
-      if ($right) { $leftW = [single][Math]::Max(40, $W - $g.MeasureString($right, $font).Width - 4) }
-      $measure = $text
-      if ($measure.Length -eq 0) { $measure = ' ' }
-      $box = New-Object System.Drawing.SizeF($leftW, [single]100000)
-      $h = [single]([Math]::Max($g.MeasureString($measure, $font, $box, $sf).Height, $font.GetHeight($g)) + $gap)
-      if ($y -gt 0 -and ($y + $h) -gt $H) { $e.HasMorePages = $true; return }
-      $g.DrawString($text, $font, $ink, (New-Object System.Drawing.RectangleF([single]0, $y, $leftW, $h)), $sf)
-      if ($right) {
-        $sfr = New-Object System.Drawing.StringFormat
-        $sfr.Alignment = [System.Drawing.StringAlignment]::Far
-        $g.DrawString($right, $font, $ink, (New-Object System.Drawing.RectangleF([single]0, $y, $W, $h)), $sfr)
-      }
-      $y = [single]($y + $h)
-      $script:PsIndex = $script:PsIndex + 1
-    }
-    $e.HasMorePages = $false
+    $r = Layout-Ticket $g (Ticket-Width $W) $H $true
+    $e.HasMorePages = [bool]$r.more
   })
   try { $doc.Print() } finally { $doc.Dispose() }
 }

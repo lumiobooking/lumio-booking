@@ -338,7 +338,24 @@ export function printHtml(html: string): void {
   if (!win || !doc) return;
   doc.open(); doc.write(html); doc.close();
   let printed = false;
-  const fire = () => { if (printed) return; printed = true; try { win.focus(); win.print(); } catch { /* ignore */ } };
+  const fire = () => {
+    if (printed) return; printed = true;
+    // "@page { size: 80mm auto }" leaves the length to the printer driver, and
+    // thermal drivers often default to a very long page (80 x 3276 mm): a short
+    // bill then came out with a metre of blank paper. Give the page the bill's
+    // own length (Nau Chill, 10/11/2026).
+    try {
+      const px = Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight ?? 0);
+      const mm = Math.ceil((px * 25.4) / 96) + 8;
+      const paper = /size:\s*(\d+)mm/.exec(html)?.[1];
+      if (paper && mm > 20) {
+        const st = doc.createElement('style');
+        st.textContent = `@page{size:${paper}mm ${mm}mm;margin:0}`;
+        doc.head.appendChild(st);
+      }
+    } catch { /* keep the stylesheet's own page */ }
+    try { win.focus(); win.print(); } catch { /* ignore */ }
+  };
   iframe.onload = () => setTimeout(fire, 60);
   setTimeout(fire, 400); // some mobile browsers never fire onload
   setTimeout(() => iframe.remove(), 60000);

@@ -19,6 +19,33 @@ export class MenuController {
     return this.menu.list(user);
   }
 
+  // Categories (Danh mục): create, order, rename, delete. Declared before
+  // ':id' so "categories" is never read as a dish id.
+  @Get('categories')
+  categories(@CurrentUser() user: AuthenticatedUser) {
+    return this.menu.categories(user);
+  }
+
+  @Post('categories')
+  addCategory(@CurrentUser() user: AuthenticatedUser, @Body() body: { name?: string }) {
+    return this.menu.addCategory(user, body?.name);
+  }
+
+  @Post('categories/order')
+  orderCategories(@CurrentUser() user: AuthenticatedUser, @Body() body: { names?: string[] }) {
+    return this.menu.orderCategories(user, body?.names);
+  }
+
+  @Post('categories/rename')
+  renameCategory(@CurrentUser() user: AuthenticatedUser, @Body() body: { from?: string; to?: string }) {
+    return this.menu.renameCategory(user, body?.from, body?.to);
+  }
+
+  @Post('categories/delete')
+  deleteCategory(@CurrentUser() user: AuthenticatedUser, @Body() body: { name?: string }) {
+    return this.menu.deleteCategory(user, body?.name);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateMenuItemDto) {
     return this.menu.create(user, dto);

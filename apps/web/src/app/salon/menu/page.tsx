@@ -13,6 +13,7 @@ import { MenuOptionsEditor, type OptionGroupDraft } from '../../../components/Me
 import { currencySymbolFor } from '../../../lib/money';
 import { useIsMobile } from '../../../lib/responsive';
 import { foldText } from '../../../lib/menu-nav';
+import { MenuCategoryManager, type MenuCategories } from '../../../components/MenuCategoryManager';
 
 interface Item { id: string; name: string; category: string | null; priceCents: number; currency: string; description: string | null; imageUrl: string | null; isActive: boolean; sortOrder: number; options?: unknown[] }
 
@@ -40,6 +41,9 @@ function MenuThumb({ url, onSet, onClear }: { url: string | null; onSet: (dataUr
   );
 }
 
+/** Dishes with no category. */
+const OTHER = '—';
+
 export default function MenuPage() {
   return <SalonShell><Inner /></SalonShell>;
 }
@@ -61,6 +65,9 @@ function Inner() {
   const [form, setForm] = useState({ name: '', category: '', price: '', description: '' });
   const [busy, setBusy] = useState(false);
   const [activeCat, setActiveCat] = useState<string>('');
+  // The category list (Danh mục): order, and categories with no dish yet.
+  const [catData, setCatData] = useState<MenuCategories>({ categories: [], uncategorized: 0 });
+  const [showCats, setShowCats] = useState(false);
   // Many categories: a side list on a wide screen, one dropdown on a phone, and a search over every dish.
   const narrow = useIsMobile(900);
   const [q, setQ] = useState('');
@@ -68,11 +75,13 @@ function Inner() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [list, settings] = await Promise.all([
+      const [list, settings, catList] = await Promise.all([
         apiFetch<Item[]>('/menu-items', { token }),
         apiFetch<{ booking?: { currency?: string } }>('/settings', { token }).catch(() => null),
+        apiFetch<MenuCategories>('/menu-items/categories', { token }).catch(() => null),
       ]);
       setItems(list);
+      if (catList) setCatData(catList);
       setPageCurrency(settings?.booking?.currency || list[0]?.currency || 'USD');
     }
     catch (e) { setErr(e instanceof Error ? e.message : (vi ? 'Không tải được thực đơn' : 'Failed to load')); }
@@ -88,7 +97,8 @@ function Inner() {
         method: 'POST', token,
         body: {
           name: form.name.trim(),
-          category: form.category.trim() || undefined,
+          // Picked a category on the left: a new dish goes in it unless typed otherwise.
+          category: form.category.trim() || (activeCat && activeCat !== '__all' && activeCat !== OTHER ? activeCat : '') || undefined,
           priceCents: toMinorUnits(form.price, pageCurrency),
           description: form.description.trim() || undefined,
         },
@@ -119,10 +129,19 @@ function Inner() {
   }
 
   const grouped = useMemo(() => {
+    // The owner's categories in order (empty ones too), then dishes with none ("Khác").
+    const key = (c: string | null | undefined) => String(c ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
     const m = new Map<string, Item[]>();
-    for (const it of items) { const k = it.category || '—'; const a = m.get(k) ?? []; a.push(it); m.set(k, a); }
+    for (const c of catData.categories) m.set(c.name, []);
+    for (const it of items) {
+      const hit = it.category ? [...m.keys()].find((k) => key(k) === key(it.category)) : undefined;
+      const k = hit ?? (it.category?.trim() || OTHER);
+      const a = m.get(k) ?? []; a.push(it); m.set(k, a);
+    }
+    const other = m.get(OTHER);
+    if (other) { m.delete(OTHER); if (other.length) m.set(OTHER, other); }
     return Array.from(m.entries());
-  }, [items]);
+  }, [items, catData]);
   const cats = useMemo(() => grouped.map(([c]) => c), [grouped]);
   useEffect(() => { if (cats.length && activeCat !== '__all' && !cats.includes(activeCat)) setActiveCat(cats[0]); }, [cats, activeCat]);
   const query = foldText(q);
@@ -169,12 +188,23 @@ function Inner() {
         </div>
       )}
 
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+        <button type="button" onClick={() => setShowCats((x) => !x)} aria-expanded={showCats}
+          style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #6366f1', color: 'var(--ink-link)' }}>
+          🗂 {vi ? `Danh mục (${catData.categories.length})` : `Categories (${catData.categories.length})`} · {vi ? 'tạo / sắp xếp' : 'add / order'}
+        </button>
+      </div>
+      {showCats && (
+        <MenuCategoryManager vi={vi} token={token} data={catData} onClose={() => setShowCats(false)}
+          onChanged={(d) => { setCatData(d); void load(); }} />
+      )}
+
       <form onSubmit={add} style={{ ...ui.card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ flex: '2 1 160px' }}><span style={ui.label}>{t('mn.name')}</span>
           <input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Phở tái" /></label>
         <label style={{ flex: '1 1 120px' }}><span style={ui.label}>{t('mn.category')}</span>
           <input style={ui.input} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Phở" list="mn-cats" />
-          <datalist id="mn-cats">{Array.from(new Set(items.map((i) => i.category).filter(Boolean))).map((c) => <option key={c} value={c as string} />)}</datalist></label>
+          <datalist id="mn-cats">{Array.from(new Set([...catData.categories.map((c) => c.name), ...items.map((i) => i.category).filter(Boolean) as string[]])).map((c) => <option key={c} value={c} />)}</datalist></label>
         <label style={{ flex: '0 1 90px' }}><span style={ui.label}>{t('mn.price')} ({sym})</span>
           <input style={ui.input} type="number" min={0} step={priceInputStep(pageCurrency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder={pageCurrency === 'VND' ? '85000' : '14'} /></label>
         <label style={{ flex: '3 1 200px' }}><span style={ui.label}>{t('mn.desc')}</span>
@@ -184,9 +214,9 @@ function Inner() {
 
       {items.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 14, marginTop: 16 }}>{t('mn.empty')}</p>}
 
-      {items.length > 0 && (
+      {(items.length > 0 || catData.categories.length > 0) && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', margin: '18px 0 12px' }}>
-          {narrow && grouped.length > 1 && (
+          {narrow && grouped.length > 0 && (
             <select value={activeCat} onChange={(e) => pickCat(e.target.value)} aria-label={vi ? 'Danh mục' : 'Category'}
               style={{ ...ui.input, flex: '1 1 200px', fontWeight: 600 }}>
               <option value="__all">{vi ? 'Tất cả danh mục' : 'All categories'} ({items.length})</option>
@@ -200,7 +230,7 @@ function Inner() {
       )}
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-      {!narrow && grouped.length > 1 && (
+      {!narrow && grouped.length > 0 && (
         <nav aria-label={vi ? 'Danh mục' : 'Categories'} style={{ width: 230, flexShrink: 0, position: 'sticky', top: 12, maxHeight: 'calc(100vh - 120px)', overflowY: 'auto', border: '1px solid var(--c334155)', borderRadius: 12, padding: 6, background: 'var(--c0f172a)' }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--c64748b)', padding: '6px 10px 4px' }}>{vi ? `Danh mục · ${grouped.length}` : `Categories · ${grouped.length}`}</div>
           <button type="button" onClick={() => pickCat('__all')} style={catRow(!query && activeCat === '__all')}>
@@ -230,6 +260,7 @@ function Inner() {
       {shownGroups.map(([cat, list]) => (
         <div key={cat} style={{ marginTop: 4 }}>
           {showHeads && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c818cf8)', textTransform: 'uppercase', letterSpacing: 0.4, margin: '14px 0 6px' }}>{cat} <span style={{ color: 'var(--ink-faint)' }}>· {list.length}</span></div>}
+          {list.length === 0 && <div style={{ fontSize: 13, color: 'var(--c94a3b8)', padding: '10px 0' }}>{vi ? `“${cat}” chưa có món. Thêm món ở ô bên trên — món mới tự vào danh mục đang chọn.` : `“${cat}” has no dishes yet. Add one above — it goes into the selected category.`}</div>}
           {!showHeads && <div style={{ fontSize: 17, fontWeight: 700, margin: '4px 0 8px' }}>{cat} <span style={{ fontSize: 13, color: 'var(--c94a3b8)', fontWeight: 500 }}>· {list.length} {vi ? 'món' : 'dishes'}</span></div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {list.map((it) => (

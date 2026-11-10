@@ -70,6 +70,9 @@ export interface CheckView extends FloorCheck {
   lines: CheckLine[];
   serviceChargePercent?: number;
   serviceCents?: number;
+  /** The day's holiday surcharge / event discount (Settings › price rules), already in billCents. */
+  surcharge?: BillAdjust | null;
+  promo?: BillAdjust | null;
   /** Dishes + service charge (what the bank QR asks for, before the till's own tax). */
   billCents?: number;
   vatPercent?: number;
@@ -358,4 +361,42 @@ export function cashQuickAmounts(totalCents: number, currency: string): number[]
     if (out.size >= 5) break;
   }
   return [...out].sort((a, b) => a - b).slice(0, 5);
+}
+
+
+// ---------------------------------------------------- discounts & surcharges --
+
+export interface BillAdjust { name: string; percent: number; cents: number }
+
+/** A date-ranged price rule (api restaurant/check-logic PriceRule). */
+export interface PriceRule { id: string; kind: 'discount' | 'surcharge'; name: string; percent: number; from: string; to: string; on: boolean }
+
+/**
+ * The discount typed at the till, in money: "10" with % = 10 % of what is
+ * due; an amount is taken as typed. Never more than what is due, never negative.
+ */
+export function manualDiscountCents(raw: string, mode: 'amount' | 'percent', dueCents: number, parseAmount: (s: string) => number): number {
+  const t = String(raw ?? '').trim();
+  if (!t || dueCents <= 0) return 0;
+  if (mode === 'percent') {
+    const p = Number(t.replace(',', '.').replace('%', ''));
+    if (!Number.isFinite(p) || p <= 0) return 0;
+    return Math.min(dueCents, Math.round((dueCents * Math.min(p, 100)) / 100));
+  }
+  const c = parseAmount(t);
+  return Number.isFinite(c) && c > 0 ? Math.min(dueCents, Math.round(c)) : 0;
+}
+
+/** Today's salon-local day as YYYY-MM-DD, for the date fields of a new rule. */
+export function todayYmd(at: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${at.getFullYear()}-${p(at.getMonth() + 1)}-${p(at.getDate())}`;
+}
+
+/** Where a rule stands today: running, coming, over, or switched off. */
+export function ruleState(r: PriceRule, today: string): 'on' | 'soon' | 'over' | 'off' {
+  if (!r.on) return 'off';
+  if (today < r.from) return 'soon';
+  if (today > r.to) return 'over';
+  return 'on';
 }

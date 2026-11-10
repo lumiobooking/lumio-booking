@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
@@ -8,6 +8,8 @@ import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { cleanOptionGroups } from '../restaurant/check-logic';
 import { currencyFixes } from './menu-currency';
 import { planMenuImport, type MenuImportRow } from './menu-import';
+import { MENU_CATEGORIES_KEY, allCategories, catKey, cleanCategoryList, cleanCategoryName, orderByCategories } from './menu-categories';
+import { SETTINGS_KEY as RESTAURANT_KEY } from '../restaurant/check-logic';
 
 /**
  * Restaurant menu (dish catalog) — tenant-scoped like tables/staff. Every query
@@ -41,10 +43,12 @@ export class MenuService {
   async list(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const currency = await this.currencyOf(tenantId);
-    const items = await this.prisma.menuItem.findMany({
-      where: { tenantId },
-      orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-    });
+    const [raw, order] = await Promise.all([
+      this.prisma.menuItem.findMany({ where: { tenantId }, orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }] }),
+      this.storedCategories(tenantId),
+    ]);
+    // The owner's category order (Danh mục), then the rest A–Z.
+    const items = orderByCategories(raw, allCategories(order, raw.map((i) => i.category)));
     const fixes = currencyFixes(items, currency);
     if (fixes.length) {
       for (const f of fixes) {
@@ -139,5 +143,98 @@ export class MenuService {
     await this.prisma.menuItem.deleteMany({ where: { id, tenantId } });
     await this.audit.log({ tenantId, userId: user.userId, action: 'menu.deleted', resourceType: 'menu_item', resourceId: id });
     return { ok: true };
+  }
+
+  // ------------------------------------------------------------ categories --
+
+  /** The owner's category list (order + empty categories), this tenant only. */
+  async storedCategories(tenantId: string): Promise<string[]> {
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: MENU_CATEGORIES_KEY } } }).catch(() => null);
+    return cleanCategoryList(row?.value ?? []);
+  }
+
+  private async saveCategoryList(tenantId: string, names: string[]) {
+    const value = cleanCategoryList(names);
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: MENU_CATEGORIES_KEY } },
+      update: { value: value as never },
+      create: { tenantId, key: MENU_CATEGORIES_KEY, value: value as never },
+    });
+    return value;
+  }
+
+  /** Every category with its dish count, in menu order. */
+  async categories(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const [stored, groups] = await Promise.all([
+      this.storedCategories(tenantId),
+      this.prisma.menuItem.groupBy({ by: ['category'], where: { tenantId }, _count: { _all: true } }),
+    ]);
+    const list = allCategories(stored, groups.map((g) => g.category));
+    const count = (c: string) => groups.filter((g) => g.category && catKey(g.category) === catKey(c)).reduce((n, g) => n + g._count._all, 0);
+    return { categories: list.map((name) => ({ name, dishes: count(name) })), uncategorized: groups.filter((g) => !cleanCategoryName(g.category)).reduce((n, g) => n + g._count._all, 0) };
+  }
+
+  /** Create a category (may stay empty until dishes are added to it). */
+  async addCategory(user: AuthenticatedUser, nameRaw: unknown) {
+    const tenantId = this.tenantId(user);
+    const name = cleanCategoryName(nameRaw);
+    if (!name) throw new BadRequestException('CATEGORY_NAME_REQUIRED');
+    const stored = await this.storedCategories(tenantId);
+    const groups = await this.prisma.menuItem.groupBy({ by: ['category'], where: { tenantId } });
+    const list = allCategories(stored, groups.map((g) => g.category));
+    if (list.some((c) => catKey(c) === catKey(name))) throw new BadRequestException('CATEGORY_EXISTS');
+    await this.saveCategoryList(tenantId, [...list, name]);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'menu.category_created', resourceType: 'menu_category', metadata: { name } });
+    return this.categories(user);
+  }
+
+  /** Save the order the owner arranged (unknown names dropped, missing ones kept at the end). */
+  async orderCategories(user: AuthenticatedUser, namesRaw: unknown) {
+    const tenantId = this.tenantId(user);
+    const stored = await this.storedCategories(tenantId);
+    const groups = await this.prisma.menuItem.groupBy({ by: ['category'], where: { tenantId } });
+    const known = allCategories(stored, groups.map((g) => g.category));
+    const wanted = cleanCategoryList(namesRaw).filter((n) => known.some((k) => catKey(k) === catKey(n)));
+    await this.saveCategoryList(tenantId, allCategories(wanted.map((n) => known.find((k) => catKey(k) === catKey(n))!), known));
+    return this.categories(user);
+  }
+
+  /** Rename: every dish in it, the list, and the till's kitchen routing follow. */
+  async renameCategory(user: AuthenticatedUser, fromRaw: unknown, toRaw: unknown) {
+    const tenantId = this.tenantId(user);
+    const from = cleanCategoryName(fromRaw);
+    const to = cleanCategoryName(toRaw);
+    if (!from || !to) throw new BadRequestException('CATEGORY_NAME_REQUIRED');
+    const items = await this.prisma.menuItem.findMany({ where: { tenantId }, select: { id: true, category: true } });
+    const ids = items.filter((i) => catKey(i.category) === catKey(from)).map((i) => i.id);
+    if (ids.length) await this.prisma.menuItem.updateMany({ where: { tenantId, id: { in: ids } }, data: { category: to } });
+    const list = allCategories(await this.storedCategories(tenantId), items.map((i) => i.category));
+    const exists = list.some((c) => catKey(c) === catKey(to) && catKey(c) !== catKey(from));
+    await this.saveCategoryList(tenantId, exists ? list.filter((c) => catKey(c) !== catKey(from)) : list.map((c) => (catKey(c) === catKey(from) ? to : c)));
+    // The kitchen station this category printed at stays with it.
+    const rs = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: RESTAURANT_KEY } } }).catch(() => null);
+    const val = (rs?.value && typeof rs.value === 'object' ? rs.value : null) as { byCategory?: Record<string, string> } | null;
+    if (val?.byCategory && val.byCategory[catKey(from)] && !val.byCategory[catKey(to)]) {
+      const byCategory = { ...val.byCategory, [catKey(to)]: val.byCategory[catKey(from)] };
+      delete byCategory[catKey(from)];
+      await this.prisma.setting.updateMany({ where: { tenantId, key: RESTAURANT_KEY }, data: { value: { ...val, byCategory } as never } });
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'menu.category_renamed', resourceType: 'menu_category', metadata: { from, to, dishes: ids.length } });
+    return this.categories(user);
+  }
+
+  /** Delete a category. Its dishes are kept, without a category (they show under "Khác"). */
+  async deleteCategory(user: AuthenticatedUser, nameRaw: unknown) {
+    const tenantId = this.tenantId(user);
+    const name = cleanCategoryName(nameRaw);
+    if (!name) throw new BadRequestException('CATEGORY_NAME_REQUIRED');
+    const items = await this.prisma.menuItem.findMany({ where: { tenantId }, select: { id: true, category: true } });
+    const ids = items.filter((i) => catKey(i.category) === catKey(name)).map((i) => i.id);
+    if (ids.length) await this.prisma.menuItem.updateMany({ where: { tenantId, id: { in: ids } }, data: { category: null } });
+    const stored = await this.storedCategories(tenantId);
+    await this.saveCategoryList(tenantId, stored.filter((c) => catKey(c) !== catKey(name)));
+    await this.audit.log({ tenantId, userId: user.userId, action: 'menu.category_deleted', resourceType: 'menu_category', metadata: { name, dishes: ids.length } });
+    return this.categories(user);
   }
 }

@@ -255,3 +255,50 @@ describe('phase 3: hold & fire, QR orders, money, bank feed', () => {
     expect(bankCredits(null)).toEqual([]);
   });
 });
+
+import { cleanPriceRules, rulesOn, billOf, ymdIn } from './check-logic';
+
+describe('price rules: event discount and holiday surcharge (Nẩu Chill, 10/11/2026)', () => {
+  const rules = cleanPriceRules([
+    { kind: 'discount', name: 'Khai trương', percent: 10, from: '2026-11-15', to: '2026-11-20' },
+    { kind: 'surcharge', name: 'Phụ thu Tết', percent: 20, from: '2027-02-05', to: '2027-02-10' },
+    { kind: 'discount', name: 'Black Friday', percent: 15, from: '2026-11-20', to: '2026-11-20' },
+    { kind: 'surcharge', name: 'Bad', percent: 80, from: '2026-01-01', to: '2026-01-02' }, // over 50 %: dropped
+    { kind: 'discount', name: '', percent: 10, from: '2026-01-01' }, // no name: dropped
+    { kind: 'discount', name: 'Tắt', percent: 50, from: '2026-11-16', to: '2026-11-16', on: false },
+  ]);
+  it('keeps only well-formed rules', () => {
+    expect(rules.map((r) => r.name)).toEqual(['Khai trương', 'Phụ thu Tết', 'Black Friday', 'Tắt']);
+  });
+  it('applies the rule of the day; overlapping discounts never stack — the larger wins', () => {
+    expect(rulesOn(rules, '2026-11-14')).toEqual({ discount: null, surcharge: null });
+    expect(rulesOn(rules, '2026-11-16').discount?.name).toBe('Khai trương'); // the switched-off 50 % is ignored
+    expect(rulesOn(rules, '2026-11-20').discount?.name).toBe('Black Friday');
+    expect(rulesOn(rules, '2027-02-07').surcharge?.percent).toBe(20);
+  });
+  it('one bill: service, surcharge and discount each a % of the dishes', () => {
+    const s = { serviceChargePercent: 5, priceRules: rules };
+    expect(billOf(200_000, s, '2026-11-14')).toEqual({ serviceCents: 10_000, surcharge: null, promo: null, billCents: 210_000 });
+    expect(billOf(200_000, s, '2026-11-16')).toMatchObject({ promo: { cents: 20_000 }, billCents: 190_000 });
+    expect(billOf(200_000, s, '2027-02-07')).toMatchObject({ surcharge: { name: 'Phụ thu Tết', cents: 40_000 }, billCents: 250_000 });
+    expect(billOf(200_000, { serviceChargePercent: 0, priceRules: [] }, '2026-11-16').billCents).toBe(200_000);
+  });
+  it('the day is the salon’s own day', () => {
+    // 23:30 UTC on the 14th is already the 15th in Ho Chi Minh City.
+    expect(ymdIn('Asia/Ho_Chi_Minh', new Date('2026-11-14T23:30:00Z'))).toBe('2026-11-15');
+    expect(ymdIn('Not/AZone', new Date('2026-11-14T23:30:00Z'))).toBe('2026-11-14');
+  });
+});
+
+describe('the guest check prints the day’s surcharge and discount', () => {
+  it('as their own lines, the dishes subtotal kept apart', () => {
+    const p = prebillText({ lang: 'vi', business: 'Nẩu Chill', tables: 'B2', checkNumber: 9, count: 1, at: 'x',
+      lines: [{ quantity: 1, name: 'Lẩu', amountCents: 200000 }], subtotalCents: 200000,
+      surcharge: { name: 'Phụ thu Tết', percent: 20, cents: 40000 }, promo: { name: 'Khai trương', percent: 10, cents: 20000 },
+      totalCents: 220000, money: (c) => moneyText(c, 'VND') });
+    expect(p).toMatch(/Cộng 1 món\s+200\.000/);
+    expect(p).toMatch(/Phụ thu Tết \+20%\s+40\.000/);
+    expect(p).toMatch(/Khai trương -10%\s+-20\.000/);
+    expect(p).toMatch(/TỔNG CỘNG\s+220\.000/);
+  });
+});

@@ -32,8 +32,8 @@ import { MAP_COLORS, TillFloorMap } from './TillFloorMap';
 import { SlipPreview } from './SlipPreview';
 import { CashShiftPanel, useShiftState } from './CashShiftPanel';
 import {
-  byTableName, callText, cashQuickAmounts, combinedState, evenShares, lineGroups, minutesOpen, optionsReady, pendingLines, priceWith, tillError, timerTone, vietQr, VN_BANKS,
-  type BankAccount, type CheckLine, type CheckView, type FloorCheck, type InvoiceInfo, type OptionGroup, type TableState,
+  byTableName, callText, cashQuickAmounts, combinedState, evenShares, lineGroups, manualDiscountCents, minutesOpen, optionsReady, pendingLines, priceWith, ruleState, tillError, timerTone, todayYmd, vietQr, VN_BANKS,
+  type BankAccount, type PriceRule, type CheckLine, type CheckView, type FloorCheck, type InvoiceInfo, type OptionGroup, type TableState,
 } from '../lib/restaurant-till';
 import { floorStats, inFilter, mapBox, qtyByDish, spotTop, todoOrder, type FloorFilter, type Spot } from '../lib/till-floor';
 import { tintFor } from '../lib/guest-order';
@@ -45,6 +45,8 @@ interface Settings {
   stations: Station[]; byCategory: Record<string, string>; defaultStation: string; printVoid: boolean; printMove: boolean;
   voidNeedsApproval: boolean; warnMinutes: number; lateMinutes: number; soldOutReset: boolean; cashierUserIds: string[];
   qrOrdering: 'off' | 'confirm' | 'auto'; serviceChargePercent: number; vatPercent: number; vatIncluded: boolean; bank: BankAccount | null;
+  /** Event / opening discounts and holiday surcharges by date. */
+  priceRules?: PriceRule[];
 }
 interface Table { id: string; name: string; seats: number; area: string | null }
 interface Floor { currency: string; settings: Settings; canPay: boolean; tables: Table[]; checks: FloorCheck[]; layout?: Record<string, Spot> }
@@ -252,7 +254,9 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const stationName = useCallback((k: string) => floor?.settings.stations.find((s) => s.key === k)?.name ?? k, [floor]);
   // Dishes + the restaurant's service charge; the till's own tax (if any) goes on top, as at checkout.
   const billCents = check?.billCents ?? check?.subtotalCents ?? 0;
-  const taxCents = useMemo(() => Math.round((billCents * taxRate) / 100), [billCents, taxRate]);
+  // The till's tax is on the bill before the day's discount, as the server's checkout counts it.
+  const promoCents = check?.promo?.cents ?? 0;
+  const taxCents = useMemo(() => Math.round(((billCents + promoCents) * taxRate) / 100), [billCents, promoCents, taxRate]);
   const dueCents = billCents + taxCents;
   const canPay = floor?.canPay !== false;
 
@@ -872,8 +876,10 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
       {/* Phone: total + send + pay stick to the bottom (above the tab bar) while the order scrolls. */}
       <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', gap: 8,
         ...(phone ? { position: 'sticky', bottom: STICKY_BOTTOM, zIndex: 5, background: C.panel, borderRadius: '0 0 16px 16px', boxShadow: '0 -8px 24px rgba(0,0,0,.25)' } : {}) }}>
-        {(check.serviceCents ?? 0) > 0 && row(L('Tiền món', 'Dishes'), fmt(check.subtotalCents))}
+        {((check.serviceCents ?? 0) > 0 || check.surcharge || check.promo) && row(L('Tiền món', 'Dishes'), fmt(check.subtotalCents))}
         {(check.serviceCents ?? 0) > 0 && row(`${L('Phí phục vụ', 'Service charge')} ${check.serviceChargePercent ?? 0}%`, fmt(check.serviceCents ?? 0))}
+        {check.surcharge && row(`${check.surcharge.name} +${check.surcharge.percent}%`, fmt(check.surcharge.cents), { color: 'var(--ink-warn)' })}
+        {check.promo && row(`${check.promo.name} −${check.promo.percent}%`, `−${fmt(check.promo.cents)}`, { color: 'var(--ink-good)' })}
         {taxCents > 0 && row(`${L('Thuế', 'Tax')} ${taxRate}%`, fmt(taxCents))}
         {(check.vatCents ?? 0) > 0 && row(`${L('Đã gồm VAT', 'Incl. VAT')} ${check.vatPercent ?? 0}%`, fmt(check.vatCents ?? 0), { fontSize: 12.5 })}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><b style={{ fontSize: 16 }}>{L('Tổng', 'Total')}</b><b style={{ fontSize: 26, color: C.strong }}>{fmt(dueCents)}</b></div>
@@ -1291,6 +1297,66 @@ function PrintsModal({ vi, jobs, onClose, onRetry }: { vi: boolean; jobs: Failed
   );
 }
 
+/**
+ * Event / grand-opening discounts and holiday surcharges by date (10/11/2026,
+ * Nẩu Chill). Each is a % of the dishes, on the guest check and the receipt as
+ * its own line; when two of a kind overlap, the larger one applies.
+ */
+function PriceRulesEditor({ vi, rules, onChange, sel }: { vi: boolean; rules: PriceRule[]; onChange: (r: PriceRule[]) => void; sel: CSSProperties }) {
+  const L = (v: string, e: string) => (vi ? v : e);
+  const today = todayYmd();
+  const set = (i: number, p: Partial<PriceRule>) => onChange(rules.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  const add = (kind: PriceRule['kind']) => onChange([...rules, {
+    id: `r${Date.now().toString(36)}`, kind, on: true, from: today, to: today,
+    name: kind === 'discount' ? L('Khai trương', 'Grand opening') : L('Phụ thu ngày lễ', 'Holiday surcharge'),
+    percent: kind === 'discount' ? 10 : 10,
+  }]);
+  const STATE: Record<ReturnType<typeof ruleState>, { vi: string; en: string; color: string }> = {
+    on: { vi: 'Đang áp dụng', en: 'Running', color: 'var(--ink-good)' },
+    soon: { vi: 'Sắp tới', en: 'Coming', color: 'var(--ink-link)' },
+    over: { vi: 'Đã hết', en: 'Over', color: C.muted },
+    off: { vi: 'Đang tắt', en: 'Off', color: C.muted },
+  };
+  return (
+    <>
+      <b>{L('Giảm giá sự kiện & phụ thu ngày lễ', 'Event discounts & holiday surcharges')}</b>
+      <span style={{ fontSize: 12.5, color: C.muted }}>
+        {L('Tự áp dụng theo ngày, tính % trên tiền món, in thành dòng riêng trên tạm tính và hoá đơn. Trùng ngày thì lấy mức lớn nhất (không cộng dồn). Giảm thêm cho từng bill: nhập ở màn Thanh toán.',
+          'Applied by date as a % of the dishes, printed as its own line on the guest check and receipt. Overlapping rules of a kind do not stack — the larger applies. Extra discount for one bill: type it at payment.')}
+      </span>
+      {rules.map((r, i) => {
+        const st = STATE[ruleState(r, today)];
+        return (
+          <div key={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', padding: 10, borderRadius: 12, background: C.raised, borderLeft: `4px solid ${r.kind === 'discount' ? 'var(--ink-good)' : 'var(--ink-warn)'}` }}>
+            <select value={r.kind} onChange={(e) => set(i, { kind: e.target.value as PriceRule['kind'] })} style={sel} aria-label={L('Loại', 'Type')}>
+              <option value="discount">{L('Giảm giá', 'Discount')}</option>
+              <option value="surcharge">{L('Phụ thu', 'Surcharge')}</option>
+            </select>
+            <input value={r.name} maxLength={40} onChange={(e) => set(i, { name: e.target.value })} placeholder={L('Tên in trên bill', 'Name on the bill')} aria-label={L('Tên', 'Name')} style={{ ...sel, flex: '1 1 140px' }} />
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input type="number" min={0.5} max={r.kind === 'discount' ? 100 : 50} step={0.5} value={r.percent} onChange={(e) => set(i, { percent: Number(e.target.value) || 0 })} aria-label="%" style={{ ...sel, width: 70, textAlign: 'center' }} />%
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <input type="date" value={r.from} onChange={(e) => set(i, { from: e.target.value, ...(e.target.value > r.to ? { to: e.target.value } : {}) })} aria-label={L('Từ ngày', 'From')} style={sel} />
+              →
+              <input type="date" value={r.to} min={r.from} onChange={(e) => set(i, { to: e.target.value })} aria-label={L('Đến ngày', 'To')} style={sel} />
+            </span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+              <input type="checkbox" checked={r.on} onChange={(e) => set(i, { on: e.target.checked })} style={{ width: 20, height: 20 }} />{L('Bật', 'On')}
+            </label>
+            <span style={{ fontSize: 12, fontWeight: 700, color: st.color }}>{vi ? st.vi : st.en}</span>
+            <button type="button" onClick={() => onChange(rules.filter((_, j) => j !== i))} style={{ ...btn, width: 40, padding: 0, marginLeft: 'auto' }} aria-label={L('Xoá', 'Remove')}>×</button>
+          </div>
+        );
+      })}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => add('discount')} style={btn}>+ {L('Giảm giá khai trương / sự kiện', 'Opening / event discount')}</button>
+        <button type="button" onClick={() => add('surcharge')} style={btn}>+ {L('Phụ thu ngày lễ', 'Holiday surcharge')}</button>
+      </div>
+    </>
+  );
+}
+
 function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { vi: boolean; token: string | null; settings: Settings; categories: string[]; onClose: () => void; onSaved: () => void }) {
   const L = (v: string, e: string) => (vi ? v : e);
   const [s, setS] = useState<Settings>(settings);
@@ -1395,6 +1461,8 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
       {toggle('vatIncluded', L('Giá món đã gồm VAT', 'Menu prices include VAT'))}
       <span style={{ fontSize: 12.5, color: C.muted }}>{L('Giá đã gồm VAT: bill in dòng “Đã gồm VAT”. Giá chưa gồm VAT: thuế cộng thêm theo thuế suất ở Cài đặt › Thu ngân.', 'Prices include VAT: the bill prints “Incl. VAT”. Prices without VAT: tax is added at the rate set under Settings › Checkout.')}</span>
 
+      <PriceRulesEditor vi={vi} rules={s.priceRules ?? []} onChange={(priceRules) => setS({ ...s, priceRules })} sel={sel} />
+
       <b>{L('Tài khoản nhận chuyển khoản (VietQR)', 'Bank account for transfers (VietQR)')}</b>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 14, background: C.raised, flexWrap: 'wrap' }}>
         {bankQr && <img src={bankQr} alt="VietQR" style={{ width: 84, height: 84, background: '#fff', borderRadius: 10, padding: 4 }} />}
@@ -1491,12 +1559,18 @@ interface Part { method: PayMethod; amount: string }
 
 const EMPTY_INVOICE: InvoiceInfo = { company: '', taxCode: '', address: '', email: '' };
 
-function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods, payInfo, profile, bank, shiftRequired, onOpenShift, onRefresh, onClose, onPaid, onPrebill }: {
+function PayModal({ vi, token, check, dueCents: dueFull, taxCents, currency, fmt, methods, payInfo, profile, bank, shiftRequired, onOpenShift, onRefresh, onClose, onPaid, onPrebill }: {
   vi: boolean; token: string | null; check: CheckView; dueCents: number; taxCents: number; currency: string; fmt: (c: number) => string;
   methods: PayMethod[]; payInfo: Record<string, { instructions?: string; qrUrl?: string }>; profile: ReceiptProfile | null; bank: BankAccount | null;
   shiftRequired: boolean; onOpenShift: () => void; onRefresh: () => Promise<void> | void; onClose: () => void; onPaid: () => void; onPrebill?: () => void;
 }) {
   const L = (v: string, e: string) => (vi ? v : e);
+  // A discount the cashier gives right here (đ or %), on top of the day's
+  // discount already in the bill. The server checks the pos.discount right.
+  const [discRaw, setDiscRaw] = useState('');
+  const [discMode, setDiscMode] = useState<'amount' | 'percent'>('percent');
+  const manual = manualDiscountCents(discRaw, discMode, dueFull, (t) => parseMoney(t, currency));
+  const dueCents = Math.max(0, dueFull - manual);
   const first = methods[0] ?? 'CASH';
   const bankMethod: PayMethod | null = methods.includes('VIETQR') ? 'VIETQR' : methods.includes('TRANSFER') ? 'TRANSFER' : null;
   const [parts, setParts] = useState<Part[]>([{ method: first, amount: '' }]);
@@ -1551,7 +1625,7 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
       const tenders = parts.map((p, i) => ({ method: p.method, amountCents: amounts[i] })).filter((t) => t.amountCents > 0);
       const invoice = showInv && (inv.company.trim() || inv.taxCode.trim()) ? inv : undefined;
       const r = await apiFetch<{ order: { id: string; orderNumber?: number } }>(`/restaurant/checks/${check.id}/pay`, {
-        method: 'POST', token, body: { tenders, allowUnsent: true, ...(invoice ? { invoice } : {}) },
+        method: 'POST', token, body: { tenders, allowUnsent: true, ...(manual > 0 ? { manualDiscountCents: manual } : {}), ...(invoice ? { invoice } : {}) },
       });
       try { localStorage.setItem('lumio_rt_print', print ? '1' : '0'); } catch { /* private mode */ }
       if (print && profile) {
@@ -1563,8 +1637,11 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
           lines: [...live.map((l) => {
             const extra = [...(l.options ?? []), ...(l.note ? [l.note] : [])].join(', ');
             return { qty: l.quantity, name: extra ? `${l.name} (${extra})` : l.name, amountCents: l.quantity * l.unitPriceCents };
-          }), ...(service > 0 ? [{ qty: 1, name: `${L('Phí phục vụ', 'Service charge')} ${check.serviceChargePercent ?? 0}%`, amountCents: service }] : [])],
-          subtotal: check.subtotalCents + service, tax: taxCents || undefined, total: dueCents,
+          }), ...(service > 0 ? [{ qty: 1, name: `${L('Phí phục vụ', 'Service charge')} ${check.serviceChargePercent ?? 0}%`, amountCents: service }] : []),
+          ...(check.surcharge ? [{ qty: 1, name: `${check.surcharge.name} +${check.surcharge.percent}%`, amountCents: check.surcharge.cents }] : [])],
+          subtotal: check.subtotalCents + service + (check.surcharge?.cents ?? 0),
+          discount: (check.promo?.cents ?? 0) + manual || undefined,
+          tax: taxCents || undefined, total: dueCents,
           paid: tenders.map((t) => ({ method: t.method, cents: t.amountCents })), change: change || undefined,
         }, profile.shop, profile.design, fmt);
         const vat = (check.vatCents ?? 0) > 0 ? `\n${L('Đã gồm VAT', 'Incl. VAT')} ${check.vatPercent ?? 0}%: ${fmt(check.vatCents ?? 0)}` : '';
@@ -1599,6 +1676,34 @@ function PayModal({ vi, token, check, dueCents, taxCents, currency, fmt, methods
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <span style={{ color: C.muted, fontWeight: 700 }}>{L('Phải thu', 'Amount due')}</span>
         <b style={{ fontSize: 30, color: C.strong }}>{fmt(dueCents)}</b>
+      </div>
+      {(check.surcharge || check.promo) && (
+        <span style={{ fontSize: 12.5, color: C.muted }}>
+          {[check.surcharge ? `${check.surcharge.name} +${check.surcharge.percent}% ${fmt(check.surcharge.cents)}` : '', check.promo ? `${check.promo.name} −${check.promo.percent}% −${fmt(check.promo.cents)}` : ''].filter(Boolean).join(' · ')}
+        </span>
+      )}
+      {/* Discount typed at the till: an amount or a %, with quick picks. */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', padding: 10, borderRadius: 12, background: C.raised }}>
+        <b style={{ fontSize: 13.5, marginRight: 4 }}>{L('Giảm giá', 'Discount')}</b>
+        <input value={discRaw} inputMode="decimal" onChange={(e) => setDiscRaw(e.target.value)} placeholder={discMode === 'percent' ? '10' : (currency || '').toUpperCase() === 'VND' ? '50.000' : '5.00'}
+          aria-label={L('Số giảm', 'Discount amount')} style={{ ...field, width: 110, minHeight: 40 }} />
+        <div role="group" aria-label={L('Kiểu giảm', 'Discount type')} style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+          {(['percent', 'amount'] as const).map((m) => (
+            <button key={m} type="button" onClick={() => setDiscMode(m)} aria-pressed={discMode === m}
+              style={{ minHeight: 40, minWidth: 44, border: 'none', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', background: discMode === m ? C.strong : 'transparent', color: discMode === m ? C.panel : C.text }}>
+              {m === 'percent' ? '%' : (currency || '').toUpperCase() === 'VND' ? 'đ' : '$'}
+            </button>
+          ))}
+        </div>
+        {[5, 10, 15, 20].map((p) => (
+          <button key={p} type="button" onClick={() => { setDiscMode('percent'); setDiscRaw(String(p)); }} style={{ ...btn, minHeight: 40, padding: "0 10px" }}>{p}%</button>
+        ))}
+        {manual > 0 && (
+          <>
+            <span style={{ fontWeight: 800, color: 'var(--ink-good)' }}>−{fmt(manual)}</span>
+            <button type="button" onClick={() => setDiscRaw('')} style={{ ...btn, minHeight: 40, padding: "0 10px" }} aria-label={L('Bỏ giảm giá', 'Remove discount')}>×</button>
+          </>
+        )}
       </div>
       {((check.serviceCents ?? 0) > 0 || taxCents > 0 || (check.vatCents ?? 0) > 0) && (
         <span style={{ fontSize: 12.5, color: C.muted }}>

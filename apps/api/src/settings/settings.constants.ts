@@ -462,6 +462,12 @@ export interface NotificationSettings {
   emailAdminOnBooking: boolean;
   smsCustomerOnBooking: boolean;
   smsAdminOnBooking: boolean;
+  /**
+   * The "view / change / cancel" link in the customer's confirmation and
+   * reminder (email + SMS). OFF by default since 10/11/2026: salons saw a lot
+   * of one-tap cancellations; the customer calls the salon instead.
+   */
+  manageLink: boolean;
   // Message templates (support placeholders like {salon} {customer} {service}
   // {date} {time} {technician} {total} {duration} {addons}).
   emailSubjectCustomer: string;
@@ -526,6 +532,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   emailCustomerOnBooking: true,
   emailAdminOnBooking: true,
   smsCustomerOnBooking: false,
+  manageLink: false,
   smsAdminOnBooking: false,
   emailSubjectCustomer: 'Your booking is confirmed — {salon}',
   emailIntroCustomer: 'Hi {customer}, thank you for booking with {salon}! Here are your appointment details:',

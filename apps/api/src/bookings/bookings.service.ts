@@ -50,6 +50,7 @@ import {
   renderBookingEmailText,
   renderTemplatedEmailHtml,
 } from '../notifications/email-template';
+import { changeLine } from '../notifications/email-template';
 import { SettingsService } from '../settings/settings.service';
 import { ReminderSettings, ReviewSettings, RebookingSettings, DEFAULT_NOTIFICATION_SETTINGS, DEFAULT_NOTIFICATION_TEMPLATES, LEGACY_NOTIFICATION_DEFAULTS, LEGACY_TEMPLATE_DEFAULTS, VN_NOTIFICATION_TEXTS, VN_TEMPLATE_TEXTS } from '../settings/settings.constants';
 import { customerBookingSms, ownerBookingSms } from '../notifications/booking-sms';
@@ -1747,6 +1748,7 @@ export class BookingsService {
       addons: addonNames,
       accent: this.settings.brandingFrom(tenant?.branding).accentColor,
       contact: tenant?.contactEmail ?? tenant?.contactPhone ?? '',
+      salonPhone: (tenant?.contactPhone ?? '').trim(),
       // --- the rest of the booking, added so a confirmation is a confirmation ---
       addonsOnly: addonOnlyNames,
       lineup,
@@ -1782,9 +1784,13 @@ export class BookingsService {
     const custPhone = appointment.customer?.phone;
     const related = { relatedType: 'appointment', relatedId: appointment.id };
     // Self-service link so the customer can view / confirm / cancel without login.
-    const manageUrl = `${publicWebBase()}/appt/${this.apptToken(appointment.id)}`;
+    // Only when the salon turned it on (Settings › Notifications): since
+    // 10/11/2026 the default confirmation has NO view / change / cancel link —
+    // one-tap cancellations were costing salons; a change goes through a call.
+    const withLink = n.manageLink === true;
+    const manageUrl = withLink ? `${publicWebBase()}/appt/${this.apptToken(appointment.id)}` : '';
     // The same link at SMS size (/a/<33 chars>) — texts are billed per 153 characters.
-    const smsManageUrl = this.buildApptSmsUrl(appointment.id);
+    const smsManageUrl = withLink ? this.buildApptSmsUrl(appointment.id) : '';
 
     // Refer-a-friend invite in the confirmation email — only when the program is
     // ON. Best-effort: any failure here must never block the confirmation.
@@ -1894,7 +1900,9 @@ export class BookingsService {
     if (emailCustomer && custEmail) {
       if (tpl && !tplBodyBuiltIn) {
         const refHtml = referralBlock ? referralBlockHtml(referralBlock, d.accent) : '';
-        const manageHtml = `<p style="margin:16px 0 0"><a href="${manageUrl}" style="color:${d.accent};font-weight:600">Manage or cancel your appointment →</a></p>`;
+        const manageHtml = withLink
+          ? `<p style="margin:16px 0 0"><a href="${manageUrl}" style="color:${d.accent};font-weight:600">Manage or cancel your appointment →</a></p>`
+          : d.salonPhone ? `<p style="margin:16px 0 0;color:#374151">${changeLine(vi ? 'vi' : 'en', d.salonPhone)}</p>` : '';
         const bodyFilled = fillPct(tpl.body, pct) + manageHtml + refHtml; // HTML
         jobs.push(this.notifications.send({
           tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail,
@@ -1905,7 +1913,7 @@ export class BookingsService {
         }));
       } else {
         // Only the customer's own copy carries the self-service link.
-        const dc: BookingTemplateData = { ...d, manageUrl };
+        const dc: BookingTemplateData = { ...d, manageUrl: manageUrl || undefined };
         const intro = fill(n.emailIntroCustomer, dc);
         const footer = fill(n.emailFooter, dc);
         const heading = vi ? 'Lịch hẹn đã được xác nhận' : 'Booking confirmed';
@@ -1924,10 +1932,10 @@ export class BookingsService {
       // link is exactly the shape that gets a message silently dropped. So the
       // registered text goes out alone; the manage link still rides the email.
       const smsBase = custSmsBuiltIn
-        ? customerBookingSms({ salon: d.salon, dateShort: d.dateShort ?? d.date, timeStart: d.timeStart ?? d.time, people: smsPeople, tech: primaryTech || undefined, total: d.total, link: smsManageUrl, vi })
+        ? customerBookingSms({ salon: d.salon, dateShort: d.dateShort ?? d.date, timeStart: d.timeStart ?? d.time, people: smsPeople, tech: primaryTech || undefined, total: d.total, link: smsManageUrl || undefined, address: d.address || undefined, phone: d.salonPhone || undefined, vi })
         : tpl ? fillPct(tpl.smsBody, { ...pct, manage_url: smsManageUrl }) : fill(n.smsCustomer, d);
       // A template that already placed %manage_url% itself gets no second copy.
-      const smsText = (n.market ?? 'US').toUpperCase() === 'VN' || smsBase.includes(smsManageUrl)
+      const smsText = (n.market ?? 'US').toUpperCase() === 'VN' || !smsManageUrl || smsBase.includes(smsManageUrl)
         ? smsBase
         : `${smsBase}\nManage/cancel: ${smsManageUrl}`;
       jobs.push(this.notifications.send({
@@ -2056,18 +2064,29 @@ export class BookingsService {
     const when = `${fmtD(appt.startTime)} at ${fmtT(appt.startTime)}`;
     const contact = tenant?.contactPhone || tenant?.contactEmail || '';
     // One-tap self-service link (Confirm / Cancel) — no login needed.
+    // The Confirm / Cancel link only when the salon turned it on (default off since 10/11/2026).
+    const withLink = n.manageLink === true;
     const actionUrl = `${publicWebBase()}/appt/${this.apptToken(appt.id)}`;
     const smsActionUrl = this.buildApptSmsUrl(appt.id);
+    const address = ((await this.settings.getCompanyExtra(tenantId).catch(() => ({ address: '' } as { address?: string })))?.address ?? '').trim();
+    const phone = (tenant?.contactPhone ?? '').trim();
     const subject = `Reminder: your ${svc} at ${salon} — ${when}`;
-    const text = `Hi ${cust}, a friendly reminder of your ${svc} at ${salon} on ${when}. Confirm or cancel: ${actionUrl}` + (contact ? ` — or call ${contact}.` : '') + ' See you soon!';
+    const text = withLink
+      ? `Hi ${cust}, a friendly reminder of your ${svc} at ${salon} on ${when}. Confirm or cancel: ${actionUrl}` + (contact ? ` — or call ${contact}.` : '') + ' See you soon!'
+      : `Hi ${cust}, a friendly reminder of your ${svc} at ${salon} on ${when}.` + (address ? ` Address: ${address}.` : '') + (phone ? ` Need to change it? Please call ${phone}.` : '') + ' See you soon!';
     const html = `<p>Hi ${cust},</p><p>This is a friendly reminder of your <strong>${svc}</strong> at <strong>${salon}</strong>:</p><p style="font-size:16px"><strong>${when}</strong></p>`
-      + `<p style="margin:18px 0"><a href="${actionUrl}" style="background:#16a34a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;margin-right:8px">✓ Confirm</a> <a href="${actionUrl}" style="background:#fff;color:#dc2626;border:1px solid #dc2626;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Can't make it?</a></p>`
-      + (contact ? `<p style="color:#64748b;font-size:13px">Or call us at ${contact}.</p>` : '') + '<p>See you soon! 💅</p>';
+      + (withLink
+        ? `<p style="margin:18px 0"><a href="${actionUrl}" style="background:#16a34a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;margin-right:8px">✓ Confirm</a> <a href="${actionUrl}" style="background:#fff;color:#dc2626;border:1px solid #dc2626;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Can't make it?</a></p>`
+          + (contact ? `<p style="color:#64748b;font-size:13px">Or call us at ${contact}.</p>` : '')
+        : (address ? `<p>📍 ${address}</p>` : '') + (phone ? `<p style="color:#374151">Need to change it? Please call us at <strong>${phone}</strong>.</p>` : ''))
+      + '<p>See you soon! 💅</p>';
     // VN: the registered CSKH mau tin has no room for a per-booking link (the
     // carriers allowlist template AND urls), and STOP is a US convention.
     const smsText = (n.market ?? 'US').toUpperCase() === 'VN'
       ? `${salon}: Nhac ban lich hen ${svc} ngay ${when}. Hen gap ban!`
-      : `${salon}: reminder - ${svc} on ${when}. Confirm/cancel: ${smsActionUrl}\nReply STOP to opt out.`;
+      : withLink
+        ? `${salon}: reminder - ${svc} on ${when}. Confirm/cancel: ${smsActionUrl}\nReply STOP to opt out.`
+        : `${salon}: reminder - ${svc} on ${when}.${address ? ` ${address}.` : ''}${phone ? ` To change, call ${phone}.` : ''}\nReply STOP to opt out.`;
 
     const senderName = n.senderName || salon;
     const replyTo = n.replyTo || n.senderEmail || undefined;
@@ -3448,7 +3467,8 @@ export class BookingsService {
       booking_ref: appt.id.slice(-6).toUpperCase(),
       booking_notes: (appt.notes ?? '').trim().slice(0, 400),
       booking_source: '',
-      manage_url: kind === 'rescheduled' ? this.buildApptManageUrl(appt.id) : '',
+      // Gated like the confirmation: no view/change/cancel link unless the salon turned it on.
+      manage_url: kind === 'rescheduled' && n.manageLink === true ? this.buildApptManageUrl(appt.id) : '',
     };
     const custTpl = templates[kind === 'cancelled' ? 'customer_booking_cancelled' : 'customer_booking_rescheduled'];
     const staffTpl = templates['staff_booking_cancelled'];

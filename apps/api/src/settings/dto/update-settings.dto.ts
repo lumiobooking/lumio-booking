@@ -118,6 +118,8 @@ export class UpdateNotificationsDto {
   @IsOptional() @IsBoolean() emailAdminOnBooking?: boolean;
   @IsOptional() @IsBoolean() smsCustomerOnBooking?: boolean;
   @IsOptional() @IsBoolean() smsAdminOnBooking?: boolean;
+  /** The view / change / cancel link in confirmations and reminders (default off). */
+  @IsOptional() @IsBoolean() manageLink?: boolean;
   @IsOptional() @IsString() @MaxLength(200) emailSubjectCustomer?: string;
   @IsOptional() @IsString() @MaxLength(2000) emailIntroCustomer?: string;
   @IsOptional() @IsString() @MaxLength(200) emailSubjectAdmin?: string;

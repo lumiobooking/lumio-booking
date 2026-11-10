@@ -62,6 +62,8 @@ interface SettingsData {
     emailSubjectCustomer: string; emailIntroCustomer: string;
     emailSubjectAdmin: string; emailIntroAdmin: string; emailFooter: string;
     smsCustomer: string; smsAdmin: string;
+    /** View / change / cancel link in the customer's confirmation + reminder. Off by default since 10/11/2026. */
+    manageLink?: boolean;
     smtp: { host: string; port: number; user: string; fromEmail: string; secure: 'ssl' | 'tls' | 'none'; connected: boolean };
     brevo: { senderEmail: string; senderName: string; connected: boolean };
     gmail: { clientId: string; senderEmail: string; connected: boolean };
@@ -1291,6 +1293,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
     emailSubjectCustomer: n.emailSubjectCustomer, emailIntroCustomer: n.emailIntroCustomer,
     emailSubjectAdmin: n.emailSubjectAdmin, emailIntroAdmin: n.emailIntroAdmin, emailFooter: n.emailFooter,
     smsCustomer: n.smsCustomer, smsAdmin: n.smsAdmin,
+    manageLink: n.manageLink === true,
   });
   const [showTpl, setShowTpl] = useState(false);
   const [tw, setTw] = useState({ accountSid: n.twilio.accountSid, fromNumber: n.twilio.fromNumber, authToken: '' });
@@ -1378,6 +1381,15 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         <Toggle on={f.emailAdminOnBooking} onChange={(v) => setF({ ...f, emailAdminOnBooking: v })} label={t('se.no.emailAdmin')} />
         <Toggle on={f.smsCustomerOnBooking} onChange={(v) => setF({ ...f, smsCustomerOnBooking: v })} label={t('se.no.smsCustomer')} />
         <Toggle on={f.smsAdminOnBooking} onChange={(v) => setF({ ...f, smsAdminOnBooking: v })} label={t('se.no.smsAdmin')} />
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <Toggle on={f.manageLink} onChange={(v) => setF({ ...f, manageLink: v })}
+          label={lang === 'vi' ? 'Gửi link xem / đổi / huỷ lịch cho khách' : 'Send the customer a view / change / cancel link'} />
+        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>
+          {lang === 'vi'
+            ? 'Tắt (mặc định): email và SMS xác nhận, nhắc lịch chỉ báo đặt lịch thành công với tên tiệm, địa chỉ, dịch vụ, thợ, ngày giờ — khách muốn đổi thì gọi tiệm.'
+            : 'Off (default): the confirmation and reminder only say the booking is made, with salon, address, service, technician, date and time — to change it, the customer calls the salon.'}
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12 }}>

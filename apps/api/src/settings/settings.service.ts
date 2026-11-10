@@ -777,6 +777,7 @@ export class SettingsService implements OnApplicationBootstrap {
       emailAdminOnBooking: n.emailAdminOnBooking,
       smsCustomerOnBooking: n.smsCustomerOnBooking,
       smsAdminOnBooking: n.smsAdminOnBooking,
+      manageLink: n.manageLink === true,
       emailSubjectCustomer: n.emailSubjectCustomer,
       emailIntroCustomer: n.emailIntroCustomer,
       emailSubjectAdmin: n.emailSubjectAdmin,

@@ -31,8 +31,11 @@ export interface BookingSmsInput {
   people: Array<{ name?: string; services: string[] }>;
   tech?: string;
   total?: string;
-  /** Customer copy: the short manage link. */
+  /** Customer copy: the short manage link (only when the salon turned it on). */
   link?: string;
+  /** Customer copy without a link: where to come, and who to call to change it. */
+  address?: string;
+  phone?: string;
   /** Owner copy: who booked, and how to call them. */
   customer?: string;
   customerPhone?: string;
@@ -67,6 +70,22 @@ export function customerBookingSms(i: BookingSmsInput): string {
   const stop = i.vi ? '' : ' Reply STOP to opt out.';
   const svc = (max: number) => servicesSummary(i.people, max);
   const head = `${i.salon}: ${booked} ${when}${who}:`;
+  if (!i.link) {
+    // No self-service link (default since 10/11/2026): a success message with
+    // everything needed to turn up — and the salon's number to change it.
+    const ok = i.vi ? 'Dat lich thanh cong!' : "You're booked!";
+    const top = `${i.salon}: ${ok} ${when}${who} -`;
+    const addr = (n: number) => (i.address ? ` ${cut(i.address, n)}.` : '');
+    const call = i.phone ? (i.vi ? ` Doi lich goi ${i.phone}.` : ` Call ${i.phone} to change.`) : '';
+    return fitting([
+      `${top} ${svc(40)}${tech}.${addr(80)}${call}${stop}`,
+      `${top} ${svc(40)}${tech}.${addr(80)}${call}`,
+      `${top} ${svc(28)}${tech}.${addr(60)}${call}`,
+      `${top} ${svc(24)}.${addr(48)}${call}`,
+      `${top} ${svc(18)}.${addr(36)}`,
+      `${cut(i.salon, 24)}: ${ok} ${when}${who} - ${svc(16)}.`,
+    ]);
+  }
   return fitting([
     `${head} ${svc(40)}${tech}.${total}${link}${stop}`,
     `${head} ${svc(40)}${tech}.${total}${link}`,

@@ -43,8 +43,10 @@ export interface BookingTemplateData {
   customerEmail?: string;
   /** Where the booking came in from: online page, front desk, Messenger… */
   source?: string;
-  /** Self-service view / reschedule / cancel link. */
+  /** Self-service view / reschedule / cancel link (only when the salon turned it on). */
   manageUrl?: string;
+  /** The salon's phone: "Need to change? Call …" when there is no self-service link. */
+  salonPhone?: string;
   /**
    * Who is coming and what each person is having (Nov 2026). One entry for a
    * single visit, one per person for a party. When given, the email shows a
@@ -218,7 +220,10 @@ export function renderBookingEmailHtml(args: {
     .join('');
   const manage = d.manageUrl
     ? `<p style="margin:20px 0 0;text-align:center;"><a href="${esc(d.manageUrl)}" style="display:inline-block;background:${accent};color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 24px;border-radius:10px;">${esc(L.manage)} &rarr;</a></p>`
-    : '';
+    // No self-service link (the default since 10/11/2026): a change goes through the salon.
+    : audience === 'customer' && d.salonPhone
+      ? `<p style="margin:20px 0 0;color:#374151;font-size:14px;line-height:1.6;">${esc(changeLine(lang, d.salonPhone))}</p>`
+      : '';
   const size = d.people?.length ?? 0;
   // The hero: when, and how many — what anyone reading this needs first.
   const hero = d.dateShort && d.timeStart
@@ -438,6 +443,11 @@ export function renderTemplatedEmailHtml(args: {
 </html>`;
 }
 
+/** "Need to change your appointment? Please call us at …" */
+export function changeLine(lang: EmailLang, phone: string): string {
+  return lang === 'vi' ? `Cần đổi lịch? Vui lòng gọi tiệm: ${phone}` : `Need to change your appointment? Please call us at ${phone}.`;
+}
+
 /** Plain-text fallback (for clients that don't render HTML). */
 export function renderBookingEmailText(
   heading: string,
@@ -456,7 +466,7 @@ export function renderBookingEmailText(
     '',
     ...(hasPeopleBlock(d) ? [...(d.people ?? []).map((p) => `- ${personLine(p, L.tbd)}`), ''] : []),
     ...bookingRowValues(d, audience, lang).map(([label, value]) => `${label}: ${value}`),
-    d.manageUrl ? `${L.manage}: ${d.manageUrl}` : '',
+    d.manageUrl ? `${L.manage}: ${d.manageUrl}` : audience === 'customer' && d.salonPhone ? changeLine(lang, d.salonPhone) : '',
     '',
     footer,
     referral ? referralBlockText(referral) : '',

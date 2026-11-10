@@ -68,6 +68,8 @@ const S = {
   // Massage / spa paperwork: intake, consent and SOAP notes (massage & spa salons only).
   forms: { href: '/salon/forms', label: 'Client forms', icon: 'formSign' },
   giftCards: { href: '/salon/gift-cards', label: 'Gift cards', icon: 'gift', feature: 'pos' },
+  // Event / opening discounts and holiday surcharges by date (restaurant till, 10/11/2026).
+  promotions: { href: '/salon/promotions', label: 'Discounts & surcharges', icon: 'tag', biz: 'restaurant' },
   services: { href: '/salon/services', label: 'Services', icon: 'nailPolish' },
   products: { href: '/salon/products', label: 'Products', icon: 'bag', feature: 'pos' },
   inventory: { href: '/salon/inventory', label: 'Inventory', icon: 'box', feature: 'pos' },
@@ -133,6 +135,7 @@ export const GROUPS: NavGroup[] = [
     hub('navh.reviews', 'Reviews', [S.feedback, S.googleReviews, S.reviews]),
     S.forms,
     S.giftCards,
+    S.promotions,
     S.services,
     hub('navh.products', 'Products & stock', [S.products, S.inventory]),
     hub('navh.staff', 'Staff', [S.staff, S.stations]),
@@ -188,7 +191,7 @@ export const SECTIONS: Section[] = [
   { id: 'ops', vi: 'Vận hành', en: 'Operations', viDesc: 'Điều hành tiệm hằng ngày', enDesc: 'Run the floor day to day', icon: 'store',
     hrefs: ['/salon', '/salon/front-desk', '/salon/calendar', '/salon/walkins', '/salon/tables', '/salon/menu', '/salon/pos', '/salon/orders'] },
   { id: 'clients', vi: 'Khách hàng', en: 'Clients', viDesc: 'Khách, tin nhắn, đánh giá', enDesc: 'Clients, messages, reviews', icon: 'users',
-    hrefs: ['/salon/customers', '/salon/inbox', '/salon/feedback', '/salon/forms', '/salon/gift-cards'] },
+    hrefs: ['/salon/customers', '/salon/inbox', '/salon/feedback', '/salon/forms', '/salon/gift-cards', '/salon/promotions'] },
   { id: 'catalog', vi: 'Dịch vụ & Thợ', en: 'Services & team', viDesc: 'Menu, sản phẩm, đội thợ', enDesc: 'Menu, products, team', icon: 'nailPolish',
     hrefs: ['/salon/services', '/salon/products', '/salon/staff'] },
   { id: 'growth', vi: 'Marketing & AI', en: 'Marketing & AI', viDesc: 'Kéo khách mới, giữ khách cũ', enDesc: 'Win and keep clients', icon: 'megaphone',

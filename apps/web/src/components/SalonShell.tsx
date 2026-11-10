@@ -56,7 +56,7 @@ const HREF_CAP: Record<string, string> = {
   '/salon': 'dashboard', '/salon/pos': 'pos', '/salon/orders': 'orders',
   '/salon/calendar': 'calendar', '/salon/bookings': 'bookings', '/salon/walkins': 'walkins', '/salon/front-desk': 'walkins',
   '/salon/tables': 'bookings', '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/forms': 'customers', '/salon/services': 'services',
-  '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/staff': 'staff', '/salon/stations': 'staff', '/salon/payroll': 'payroll',
+  '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/promotions': 'pos', '/salon/staff': 'staff', '/salon/stations': 'staff', '/salon/payroll': 'payroll',
   '/salon/reviews': 'reviews', '/salon/feedback': 'reviews', '/salon/marketing': 'marketing', '/salon/content': 'marketing', '/salon/channels': 'marketing', '/salon/ai': 'marketing', '/salon/inventory': 'inventory',
   '/salon/pos/report': 'reports', '/salon/pos/shifts': 'reports', '/salon/reports': 'reports', '/salon/finance': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
   '/salon/trash': 'settings',

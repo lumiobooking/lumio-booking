@@ -1302,7 +1302,7 @@ function PrintsModal({ vi, jobs, onClose, onRetry }: { vi: boolean; jobs: Failed
  * Nẩu Chill). Each is a % of the dishes, on the guest check and the receipt as
  * its own line; when two of a kind overlap, the larger one applies.
  */
-function PriceRulesEditor({ vi, rules, onChange, sel }: { vi: boolean; rules: PriceRule[]; onChange: (r: PriceRule[]) => void; sel: CSSProperties }) {
+export function PriceRulesEditor({ vi, rules, onChange, sel }: { vi: boolean; rules: PriceRule[]; onChange: (r: PriceRule[]) => void; sel: CSSProperties }) {
   const L = (v: string, e: string) => (vi ? v : e);
   const today = todayYmd();
   const set = (i: number, p: Partial<PriceRule>) => onChange(rules.map((r, j) => (j === i ? { ...r, ...p } : r)));
@@ -1461,7 +1461,10 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
       {toggle('vatIncluded', L('Giá món đã gồm VAT', 'Menu prices include VAT'))}
       <span style={{ fontSize: 12.5, color: C.muted }}>{L('Giá đã gồm VAT: bill in dòng “Đã gồm VAT”. Giá chưa gồm VAT: thuế cộng thêm theo thuế suất ở Cài đặt › Thu ngân.', 'Prices include VAT: the bill prints “Incl. VAT”. Prices without VAT: tax is added at the rate set under Settings › Checkout.')}</span>
 
-      <PriceRulesEditor vi={vi} rules={s.priceRules ?? []} onChange={(priceRules) => setS({ ...s, priceRules })} sel={sel} />
+      <b>{L('Giảm giá sự kiện & phụ thu ngày lễ', 'Event discounts & holiday surcharges')}</b>
+      <span style={{ fontSize: 12.5, color: C.muted }}>
+        {L(`${(s.priceRules ?? []).length} mục đang cài.`, `${(s.priceRules ?? []).length} set up.`)} <a href="/salon/promotions">{L('Mở mục Giảm giá & phụ thu ›', 'Open Discounts & surcharges ›')}</a>
+      </span>
 
       <b>{L('Tài khoản nhận chuyển khoản (VietQR)', 'Bank account for transfers (VietQR)')}</b>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 14, background: C.raised, flexWrap: 'wrap' }}>

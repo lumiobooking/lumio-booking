@@ -73,6 +73,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'nav.services': { en: 'Services', vi: 'Dịch vụ' },
   'nav.products': { en: 'Products', vi: 'Sản phẩm' },
   'nav.giftCards': { en: 'Gift cards', vi: 'Thẻ quà tặng' },
+  'nav.promotions': { en: 'Discounts & surcharges', vi: 'Giảm giá & phụ thu' },
   // Shared list filter / pager / search (used on every list page)
   'lf.all': { en: 'All', vi: 'Tất cả' },
   'lf.month': { en: 'Month', vi: 'Tháng' },
@@ -1971,6 +1972,7 @@ export const NAV_KEY: Record<string, string> = {
   '/salon/services': 'nav.services',
   '/salon/products': 'nav.products',
   '/salon/gift-cards': 'nav.giftCards',
+  '/salon/promotions': 'nav.promotions',
   '/salon/staff': 'nav.staff',
   '/salon/tables': 'nav.tables',
   '/salon/menu': 'nav.menu',

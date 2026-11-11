@@ -14,7 +14,7 @@
 // do it, and only the times when they are actually free.
 // ===========================================================================
 
-import { buttonVars, buttonLook, socialLook, socialStyleOf, safeSocial, SOCIAL_META, type SocialLink } from '../../../lib/booking-buttons';
+import { buttonVars, type SocialLink } from '../../../lib/booking-buttons';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
@@ -463,7 +463,6 @@ export default function PublicBookingPage() {
   const accent = seasonalAccent(salon?.branding?.seasonalTheme, baseAccent);
   // The salon's own button colours (Settings → Branding); empty = the accent.
   const btnVars = buttonVars(salon?.branding, accent);
-  const follow = socialStyleOf(salon?.branding?.socialStyle) === 'off' ? [] : safeSocial(salon?.social);
   const service = services.find((s) => s.id === serviceId) ?? null;
   const employee = staff.find((s) => s.id === staffId) ?? null;
   // The "choose your tech" step only earns its place when there are at least two
@@ -1273,12 +1272,8 @@ export default function PublicBookingPage() {
             <button onClick={closeFull} aria-label={bt("Close")} style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 17, cursor: 'pointer', flexShrink: 0 }}>✕</button>
           )}
         </div>
-        {/* Only on the first step (11/11/2026): on the deposit / done screens a
-            tap on Facebook took the customer off the page while the deposit
-            hold ran out, and the booking was auto-cancelled. */}
-        {step === 1 && follow.length > 0 && (
-          <FollowRow links={follow} style={socialStyleOf(salon?.branding?.socialStyle)} branding={salon?.branding} accent={accent} label={bt('Follow us')} />
-        )}
+        {/* No "Follow us" social buttons on the booking page (owner, 11/11/2026):
+            nothing that takes the customer away while booking. */}
 
         {step === 5 ? (
           <AfterBooking
@@ -3586,29 +3581,6 @@ function BookingSkeleton() {
     </div>
   );
 }
-/**
- * Follow buttons: the channels the salon itself connected in Lumio (Social
- * channels). Opens in a new tab so the booking is never lost.
- */
-function FollowRow({ links, style, branding, accent, label }: { links: SocialLink[]; style: ReturnType<typeof socialStyleOf>; branding: Salon['branding']; accent: string; label: string }) {
-  const btn = buttonLook(branding, accent);
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 14px', background: '#fff', borderBottom: '1px solid #eef2f8' }}>
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: '#64748b' }}>{label}</span>
-      {links.map((l) => {
-        const look = socialLook(l.channel, style, btn);
-        const m = SOCIAL_META[l.channel];
-        return (
-          <a key={l.channel} href={l.url} target="_blank" rel="noopener noreferrer" aria-label={`${m.name}${l.handle ? ` ${l.handle}` : ''}`}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 34, padding: '0 13px', borderRadius: 999, background: look.bg, color: look.ink, border: `1.5px solid ${look.border}`, fontSize: 13, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>
-            <span aria-hidden>{m.icon}</span>{m.name}
-          </a>
-        );
-      })}
-    </div>
-  );
-}
-
 function Shell({ children, accent, fullscreen, vars }: { children: React.ReactNode; accent: string; fullscreen: boolean; vars?: Record<string, string> }) {
   const [embedded, setEmbedded] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);

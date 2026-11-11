@@ -81,7 +81,7 @@ export function ownerNoticeText(i: {
   const push = changePushText({ kind: i.kind, vi: i.vi, customer: i.customer, service: i.service, when: i.when, from: i.from, by: i.by, byName: i.byName });
   const lines = i.vi
     ? [
-      i.kind === 'cancelled' ? 'Một lịch hẹn vừa bị huỷ:' : 'Một lịch hẹn vừa được dời:',
+      i.kind === 'cancelled' ? (i.by === 'system' ? 'Khách chưa trả cọc trong thời gian giữ chỗ, giờ này đã được nhả (khách không bấm huỷ):' : 'Một lịch hẹn vừa bị huỷ:') : 'Một lịch hẹn vừa được dời:',
       '',
       `Khách: ${i.customer}${i.phone ? ` · ${i.phone}` : ''}`,
       `Dịch vụ: ${i.service}`,
@@ -93,7 +93,7 @@ export function ownerNoticeText(i: {
       i.salon,
     ]
     : [
-      i.kind === 'cancelled' ? 'An appointment was just cancelled:' : 'An appointment was just moved:',
+      i.kind === 'cancelled' ? (i.by === 'system' ? 'The deposit was not paid within the hold time, so this time was released (the customer did not cancel):' : 'An appointment was just cancelled:') : 'An appointment was just moved:',
       '',
       `Client: ${i.customer}${i.phone ? ` · ${i.phone}` : ''}`,
       `Service: ${i.service}`,
@@ -105,7 +105,7 @@ export function ownerNoticeText(i: {
       i.salon,
     ];
   return {
-    subject: `${push.title.replace(/ [✕↔]$/, '')} — ${i.customer} · ${i.when}`,
+    subject: `${push.title.replace(/ [✕↔⏱]$/u, '')} — ${i.customer} · ${i.when}`,
     body: lines.filter((l) => l !== null).join('\n'),
     sms: `${i.salon}: ${push.body}`,
   };
@@ -127,8 +127,13 @@ export function changePushText(i: {
     : i.by === 'ai' ? (i.vi ? `Huỷ qua ${i.byName || 'trợ lý AI'}` : `Cancelled via ${i.byName || 'AI assistant'}`)
     : i.by === 'staff' ? (i.vi ? `${i.byName || 'Nhân viên'} huỷ` : `Cancelled by ${i.byName || 'staff'}`)
     // Lumio itself (an unpaid deposit hold ran out): the reason is the name.
-    : i.by === 'system' ? (i.vi ? `Tự huỷ · ${i.byName || 'hệ thống'}` : `Auto-cancelled · ${i.byName || 'system'}`)
+    : i.by === 'system' ? (i.vi ? 'Chưa cọc · hết giờ giữ chỗ' : 'Deposit not paid · hold ran out')
     : (i.vi ? 'Đã huỷ' : 'Cancelled');
+  // An unpaid deposit hold is not a customer cancelling: its own title, so
+  // the salon does not read it as one (11/11/2026, Amy's).
+  if (i.kind === 'cancelled' && i.by === 'system') {
+    return { title: i.vi ? 'Chưa cọc — đã nhả giờ ⏱' : 'Deposit not paid — time released ⏱', body: `${i.customer} • ${i.service} • ${i.when} • ${who}` };
+  }
   if (i.kind === 'cancelled') {
     return { title: i.vi ? 'Lịch bị huỷ ✕' : 'Booking cancelled ✕', body: `${i.customer} • ${i.service} • ${i.when} • ${who}` };
   }

@@ -51,3 +51,23 @@ describe('who hears about a cancellation or a move', () => {
     expect(changePushText({ kind: 'rescheduled', vi: true, customer: 'Anna', service: 'Gel', when: '16:00', from: '14:00' }).body).toBe('Anna • Gel • 14:00 → 16:00');
   });
 });
+
+describe('an unpaid deposit hold is not a customer cancelling (11/11/2026)', () => {
+  const base = { kind: 'cancelled' as const, salon: 'Amy', customer: 'Jodi', phone: '', service: 'Refill 3 Weeks', staff: 'Amy', when: 'Sat 3:30 PM' };
+  it('owner push says "Chưa cọc", not "Lịch bị huỷ" / "Khách tự huỷ"', () => {
+    const p = changePushText({ ...base, vi: true, by: 'system', byName: 'Chưa đặt cọc · Deposit not paid' });
+    expect(p.title).toContain('Chưa cọc');
+    expect(p.title).not.toContain('huỷ');
+    expect(p.body).not.toContain('Khách tự huỷ');
+  });
+  it('owner email says the customer did not cancel', () => {
+    const t = ownerNoticeText({ ...base, vi: false, by: 'system' });
+    expect(t.subject).toMatch(/^Deposit not paid — time released — Jodi/);
+    expect(t.body).toContain('the customer did not cancel');
+  });
+  it('a real customer cancel still reads as one', () => {
+    const p = changePushText({ ...base, vi: true, by: 'customer' });
+    expect(p.title).toBe('Lịch bị huỷ ✕');
+    expect(p.body).toContain('Khách tự huỷ');
+  });
+});

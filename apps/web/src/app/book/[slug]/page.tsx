@@ -1273,7 +1273,10 @@ export default function PublicBookingPage() {
             <button onClick={closeFull} aria-label={bt("Close")} style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 17, cursor: 'pointer', flexShrink: 0 }}>✕</button>
           )}
         </div>
-        {(step === 1 || step === 5) && follow.length > 0 && (
+        {/* Only on the first step (11/11/2026): on the deposit / done screens a
+            tap on Facebook took the customer off the page while the deposit
+            hold ran out, and the booking was auto-cancelled. */}
+        {step === 1 && follow.length > 0 && (
           <FollowRow links={follow} style={socialStyleOf(salon?.branding?.socialStyle)} branding={salon?.branding} accent={accent} label={bt('Follow us')} />
         )}
 

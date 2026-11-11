@@ -137,3 +137,10 @@ export function useSoundOn(): [boolean, (on: boolean) => void] {
 export function openInbox(tab: InboxTab) {
   try { window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: tab })); } catch { /* old browsers */ }
 }
+
+/**
+ * Cancelled by Lumio itself = the customer never paid the deposit and the
+ * held time ran out (public/online-deposit.service). Not a customer who
+ * cancelled — shown as "Chưa cọc" so the salon does not count it as one.
+ */
+export const isUnpaidHold = (i: { cancelledBy?: string | null }): boolean => i.cancelledBy === 'system';

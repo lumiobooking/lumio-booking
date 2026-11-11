@@ -1035,7 +1035,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction, onReload }: {
           const who = b.cancelledBy === 'customer' ? (vi ? 'Khách tự huỷ' : 'Customer (self-service)')
             : b.cancelledBy === 'ai' ? (vi ? 'Trợ lý AI' : 'AI assistant')
             : b.cancelledBy === 'staff' ? `${vi ? 'Nhân viên' : 'Staff'}${b.cancelledByName ? ` · ${b.cancelledByName}` : ''}`
-            : b.cancelledBy === 'system' ? `${vi ? 'Tự động' : 'Automatic'}${b.cancelledByName ? ` · ${b.cancelledByName}` : ''}`
+            : b.cancelledBy === 'system' ? (vi ? 'Chưa cọc — hết giờ giữ chỗ, khách không huỷ' : 'Deposit not paid — hold ran out; the customer did not cancel')
             : (vi ? 'Không rõ (trước bản cập nhật)' : 'Unknown (pre-update)');
           return <DetailRow label={vi ? 'Huỷ bởi' : 'Cancelled by'} value={<span style={{ color: 'var(--cfca5a5)', fontWeight: 600 }}>{who}</span>} />;
         })()}

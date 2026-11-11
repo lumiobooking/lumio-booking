@@ -21,7 +21,7 @@ import { apiFetch } from '../lib/api';
 import { formatPrice } from '../lib/money';
 import { uiLocale } from '../lib/datetime';
 import { srcMetaOf } from '../lib/booking-sources';
-import { openInbox, removeFromInbox, TOAST_MS, useInbox, useSoundOn, type InboxItem, type InboxTab, type ToastItem } from '../lib/booking-inbox';
+import { openInbox, removeFromInbox, TOAST_MS, useInbox, useSoundOn, type InboxItem, type InboxTab, type ToastItem, isUnpaidHold } from '../lib/booking-inbox';
 
 const L = (vi: boolean, v: string, e: string) => (vi ? v : e);
 const AMBER = '#f59e0b';
@@ -177,7 +177,7 @@ export function InboxPanel({ token, vi, mobile, tab, setTab, onOpen, onClose, on
               <b>{i.customer}</b> <span style={{ color: 'var(--c94a3b8)' }}>· {i.service}{i.extra > 0 ? ` +${i.extra}` : ''}</span>
             </span>
             <span style={{ fontSize: big ? 13 : 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {line2}{cancelled ? L(vi, ' — giờ này đã trống', ' — that time is free now') : ''}
+              {line2}{cancelled ? (isUnpaidHold(i) ? L(vi, ' — chưa cọc, giờ đã nhả', ' — deposit not paid, time released') : L(vi, ' — giờ này đã trống', ' — that time is free now')) : ''}
             </span>
           </button>
           <SourceTag i={i} vi={vi} />
@@ -303,8 +303,8 @@ function Toast({ t, vi, mobile, token, onClose, onOpen, onChanged }: { t: ToastI
             <span style={{ flex: 1 }} />
             <button type="button" onClick={onClose} aria-label={L(vi, 'Đóng', 'Close')} style={{ background: 'transparent', border: 0, color: 'var(--c94a3b8)', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}>×</button>
           </div>
-          <span style={{ fontSize: 14.5 }}>{who} {t.tab === 'cancelled' ? L(vi, 'huỷ', 'cancelled') : L(vi, 'vừa đặt', 'just booked')} {svc}</span>
-          <span style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{line2}{t.tab === 'cancelled' ? L(vi, ' — giờ này đã trống', ' — that time is free now') : ''}</span>
+          <span style={{ fontSize: 14.5 }}>{who} {t.tab === 'cancelled' ? (isUnpaidHold(i) ? L(vi, 'chưa trả cọc', 'did not pay the deposit for') : L(vi, 'huỷ', 'cancelled')) : L(vi, 'vừa đặt', 'just booked')} {svc}</span>
+          <span style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{line2}{t.tab === 'cancelled' ? (isUnpaidHold(i) ? L(vi, ' — giờ đã nhả, không phải khách huỷ', ' — time released; the customer did not cancel') : L(vi, ' — giờ này đã trống', ' — that time is free now')) : ''}</span>
           {t.tab === 'needs' && (
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" disabled={!!busy} onClick={() => void run(i.id, 'confirm')}

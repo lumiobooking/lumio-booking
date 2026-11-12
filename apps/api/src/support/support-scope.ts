@@ -60,7 +60,7 @@ const MONEY: Capability[] = [
  * an agency. `calendar`/`bookings` are here for the same reason: an appointment
  * IS a named customer at a named time.
  */
-const CLIENT_DATA: Capability[] = ['customers', 'calendar', 'bookings', 'walkins', 'waitlist', 'bookings.delete', 'customers.delete'];
+const CLIENT_DATA: Capability[] = ['customers', 'calendar', 'bookings', 'walkins', 'waitlist', 'bookings.delete', 'customers.delete', 'forms'];
 
 const SETUP_CAPS: Capability[] = ALL_CAPS.filter(
   (c) => !MONEY.includes(c) && !CLIENT_DATA.includes(c),
@@ -172,6 +172,8 @@ export const CAP_CATALOG: { id: Capability; label: string; private: boolean }[] 
   { id: 'bookings.delete', label: 'Xoá hẳn lịch hẹn', private: true },
   { id: 'customers.delete', label: 'Xoá khách hàng', private: true },
   { id: 'kitchen', label: 'Màn hình bếp (nhà hàng)', private: false },
+  { id: 'forms', label: 'Form ký của khách (xem nội dung)', private: true },
+  { id: 'forms.edit', label: 'Sửa mẫu form ký', private: false },
 ];
 
 /**

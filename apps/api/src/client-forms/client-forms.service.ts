@@ -17,6 +17,7 @@ import {
   CUSTOM_LIMITS, customTemplate, isCustomKind, newCustomKind, sanitizeCustomForm, starterForm, starterList,
   type CustomForm,
 } from './custom-forms';
+import { hasCapability } from '../auth/capabilities';
 import {
   CLIENT_FORMS_KEY, consentKindsFor, defaultFormSettings, missingClientKinds, sanitizeFormSettings, visitNeeds,
   type ClientFormSettings, type EntryLite, type VisitService,
@@ -35,11 +36,20 @@ export type FormAccess = 'full' | 'tech' | 'desk';
 export function accessOf(user: AuthenticatedUser): FormAccess {
   if (user.role === UserRole.SALON_ADMIN || user.role === UserRole.SUPER_ADMIN) return 'full';
   if (user.role === UserRole.STAFF) {
-    if (user.staffRole === StaffRole.MANAGER) return 'full';
+    // The owner's per-person pick (Staff › access): a receptionist or any
+    // technician the owner names reads and handles every client's forms.
+    // A manager has it in the preset.
+    if (hasCapability(user.role, user.staffRole, 'forms', user.staffCaps)) return 'full';
     if (!user.staffRole || user.staffRole === StaffRole.TECHNICIAN) return 'tech';
     return 'desk';
   }
   return 'desk';
+}
+
+/** Who may change the salon's forms and when they are asked: the owner, or staff given 'forms.edit'. */
+export function canEditForms(user: AuthenticatedUser): boolean {
+  if (user.role === UserRole.SALON_ADMIN || user.role === UserRole.SUPER_ADMIN) return true;
+  return user.role === UserRole.STAFF && hasCapability(user.role, user.staffRole, 'forms.edit', user.staffCaps);
 }
 
 interface Visit {
@@ -137,11 +147,11 @@ export class ClientFormsService {
       this.db.service.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, categoryId: true }, orderBy: { name: 'asc' }, take: 500 }).catch(() => [] as Row[]),
       this.db.serviceCategory?.findMany?.({ where: { tenantId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }).catch(() => [] as Row[]) ?? [],
     ]);
-    return { settings, industry, access: accessOf(user), services, categories };
+    return { settings, industry, access: accessOf(user), canEdit: canEditForms(user), services, categories };
   }
 
   async updateSettings(user: AuthenticatedUser, dto: unknown) {
-    if (accessOf(user) !== 'full') throw new ForbiddenException('Only the owner or a manager can change the forms');
+    if (!canEditForms(user)) throw new ForbiddenException('Only the owner or a manager (or someone the owner allowed) can change the forms');
     const tenantId = this.tenantId(user);
     const current = await this.getSettings(tenantId);
     const next = sanitizeFormSettings(dto, current);
@@ -676,7 +686,7 @@ export class ClientFormsService {
   // ---------------------------------------------------------------- the salon's own forms
 
   private requireOwner(user: AuthenticatedUser) {
-    if (accessOf(user) !== 'full') throw new ForbiddenException('Only the owner or a manager can change the forms');
+    if (!canEditForms(user)) throw new ForbiddenException('Only the owner or a manager (or someone the owner allowed) can change the forms');
   }
 
   /** Write the salon's own forms back, leaving every other setting as stored. */
@@ -695,7 +705,7 @@ export class ClientFormsService {
   async customFormsView(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const [s, lang, industry] = await Promise.all([this.getSettings(tenantId), this.regionLang(tenantId), this.industryOf(tenantId)]);
-    return { forms: s.customForms, starters: starterList(lang, industry), lang, max: CUSTOM_LIMITS.forms, access: accessOf(user) };
+    return { forms: s.customForms, starters: starterList(lang, industry), lang, max: CUSTOM_LIMITS.forms, access: accessOf(user), canEdit: canEditForms(user) };
   }
 
   /** A new form of the salon's own, from a starter or blank, in the salon's language. */

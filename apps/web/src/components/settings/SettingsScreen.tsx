@@ -1,6 +1,6 @@
 'use client';
 
-import { buttonLook, socialLook, socialStyleOf, SOCIAL_META, type SocialChannel } from '../../lib/booking-buttons';
+import { buttonLook } from '../../lib/booking-buttons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
@@ -1757,8 +1757,8 @@ function BotPhotoField({ label, hint, value, token, lang, onChange }: { label: s
 }
 
 /**
- * The booking page's buttons in the salon's colours, and its follow buttons
- * (9 Nov 2026). Empty = as before (the accent colour, white text). A live
+ * The booking page's buttons in the salon's colours (9 Nov 2026). No social
+ * buttons on the booking page (owner, 11 Nov 2026). Empty = as before (the accent colour, white text). A live
  * sample shows exactly what customers will see.
  */
 function ButtonColors({ vi, accent, f, set }: {
@@ -1767,7 +1767,6 @@ function ButtonColors({ vi, accent, f, set }: {
   set: (patch: { buttonColor?: string; buttonTextColor?: string; socialStyle?: string }) => void;
 }) {
   const look = buttonLook(f, accent);
-  const style = socialStyleOf(f.socialStyle);
   const picker = (label: string, value: string | undefined, fallback: string, key: 'buttonColor' | 'buttonTextColor', autoLabel: string) => (
     <Field label={label}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1792,14 +1791,6 @@ function ButtonColors({ vi, accent, f, set }: {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 10, alignItems: 'end' }}>
         {picker(vi ? 'Màu nền nút' : 'Button colour', f.buttonColor, accent, 'buttonColor', vi ? 'Theo màu chủ đạo' : 'Accent colour')}
         {picker(vi ? 'Màu chữ trên nút' : 'Button text colour', f.buttonTextColor, look.ink, 'buttonTextColor', vi ? 'Tự động (dễ đọc)' : 'Automatic (readable)')}
-        <Field label={vi ? 'Nút mạng xã hội (Facebook, Instagram, Google Maps, TikTok)' : 'Social buttons (Facebook, Instagram, Google Maps, TikTok)'}>
-          <select style={ui.input} value={style} onChange={(e) => set({ socialStyle: e.target.value })}>
-            <option value="brand">{vi ? 'Màu riêng của từng nền tảng' : 'Each platform’s own colour'}</option>
-            <option value="salon">{vi ? 'Cùng màu nút của tiệm' : 'Same as my button colour'}</option>
-            <option value="outline">{vi ? 'Viền màu tiệm, nền trắng' : 'Outline in my colour'}</option>
-            <option value="off">{vi ? 'Ẩn — không hiện' : 'Hidden'}</option>
-          </select>
-        </Field>
       </div>
       {(bad(f.buttonColor) || bad(f.buttonTextColor)) && (
         <div style={{ color: 'var(--ink-bad)', fontSize: 12, marginTop: 6 }}>{vi ? 'Mã màu phải dạng #RRGGBB, ví dụ #be185d.' : 'Colours must look like #RRGGBB, e.g. #be185d.'}</div>
@@ -1813,22 +1804,6 @@ function ButtonColors({ vi, accent, f, set }: {
         <button type="button" style={{ alignSelf: 'stretch', maxWidth: 360, padding: '14px 18px', borderRadius: 999, border: 'none', fontWeight: 700, fontSize: 15, color: look.ink, background: `linear-gradient(120deg, ${look.bg}, ${look.dark})`, cursor: 'default' }}>
           {vi ? 'Đặt lịch ngay' : 'Book now'} →
         </button>
-        {style !== 'off' && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: '#64748b' }}>{vi ? 'Theo dõi tiệm' : 'Follow us'}</span>
-            {(['facebook', 'instagram', 'google', 'tiktok'] as SocialChannel[]).map((c) => {
-              const s = socialLook(c, style, look);
-              return (
-                <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 32, padding: '0 12px', borderRadius: 999, background: s.bg, color: s.ink, border: `1.5px solid ${s.border}`, fontSize: 12.5, fontWeight: 700 }}>
-                  <span aria-hidden>{SOCIAL_META[c].icon}</span>{SOCIAL_META[c].name}
-                </span>
-              );
-            })}
-          </div>
-        )}
-        <div style={{ fontSize: 11.5, color: '#64748b' }}>
-          {vi ? 'Trang đặt lịch chỉ hiện nút của những kênh tiệm đã kết nối ở mục Kết nối kênh social.' : 'The booking page only shows buttons for channels connected under Social channels.'}
-        </div>
       </div>
     </div>
   );

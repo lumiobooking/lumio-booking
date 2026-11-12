@@ -249,7 +249,10 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     if (!canSee(href, isSupport, hiddenHrefs)) return false;
     if (TEAM_ONLY.has(href) && !(isSupport || user?.role === 'SUPER_ADMIN')) return false;
     const c = HREF_CAP[href];
-    if (c && !caps.includes(c)) return false;
+    // Client forms open with either: the desk (customers) sees signed / missing,
+    // anyone the owner gave 'forms' reads them (12/11/2026).
+    if (href === '/salon/forms') { if (!caps.includes('customers') && !caps.includes('forms')) return false; }
+    else if (c && !caps.includes(c)) return false;
     // A third gate, and only for Lumio's own setup staff: HREF_CAP leaves
     // several screens uncapped on purpose — a receptionist has to be able to
     // open the inbox — and those are exactly the screens a content account

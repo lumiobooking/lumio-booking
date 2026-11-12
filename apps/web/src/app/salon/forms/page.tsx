@@ -25,7 +25,7 @@ interface Settings {
   autoSend: { enabled: boolean; hoursBefore: number };
   extraQuestions: { id: string; vi: string; en: string; flag: boolean }[];
 }
-interface View { settings: Settings; industry: string; access: 'full' | 'tech' | 'desk'; services: { id: string; name: string; categoryId: string | null }[] }
+interface View { settings: Settings; industry: string; access: 'full' | 'tech' | 'desk'; canEdit?: boolean; services: { id: string; name: string; categoryId: string | null }[] }
 interface Recent { id: string; kind: FormKind; title?: string | null; signedAt: string; signerRole: string; customerId: string | null; customerName: string | null; staffName: string | null }
 
 const KEYWORD: Record<Consent, RegExp> = { cupping: /cupp|gi[áa]c\s*h[ơo]i/i, hot_stone: /hot\s*-?\s*stones?|đá\s*nóng|da\s*nong/i };
@@ -64,7 +64,8 @@ export default function FormsPage() {
   }, [token]);
   useEffect(() => { load(); }, [load]);
 
-  const canEdit = view?.access === 'full';
+  // Editing follows the owner's 'forms.edit' pick (older APIs: owner/manager = full).
+  const canEdit = view?.canEdit ?? view?.access === 'full';
   const patch = (p: Partial<Settings>) => { setS((x) => (x ? { ...x, ...p } : x)); setSaved(false); };
   const patchRule = (k: Consent, p: Partial<Rule>) => s && patch({ consents: { ...s.consents, [k]: { ...s.consents[k], ...p } } });
 

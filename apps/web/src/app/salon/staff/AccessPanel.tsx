@@ -26,7 +26,7 @@ type Cap = string;
 
 /** Fallback when the catalogue cannot be read — mirrors api/src/auth/capabilities.ts. */
 const FALLBACK_PRESETS: Record<Role, Cap[]> = {
-  MANAGER: ['dashboard', 'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers', 'services', 'products', 'staff', 'payroll', 'reviews', 'marketing', 'inventory', 'reports', 'payments', 'notifications', 'pos.discount', 'pos.void', 'bookings.delete', 'customers.delete'],
+  MANAGER: ['dashboard', 'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers', 'services', 'products', 'staff', 'payroll', 'reviews', 'marketing', 'inventory', 'reports', 'payments', 'notifications', 'pos.discount', 'pos.void', 'bookings.delete', 'customers.delete', 'forms', 'forms.edit'],
   RECEPTIONIST: ['pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers', 'pos.discount'],
   TECHNICIAN: [],
   WAITER: ['pos'],
@@ -43,6 +43,8 @@ export const ACCESS_GROUPS: { id: string; vi: string; en: string; items: { cap: 
       { cap: 'walkins', vi: 'Walk-in & xoay tua', en: 'Walk-ins & turns', hintVi: 'Nhận khách, giao thợ', hintEn: 'Take walk-ins, hand to techs' },
       { cap: 'waitlist', vi: 'Danh sách chờ', en: 'Waitlist', hintVi: '', hintEn: '' },
       { cap: 'customers', vi: 'Khách hàng', en: 'Customers', hintVi: 'Hồ sơ, lịch sử, ghi chú', hintEn: 'Profiles, history, notes' },
+      { cap: 'forms', vi: 'Form ký của khách', en: 'Client forms', hintVi: 'Xem nội dung form đã ký của mọi khách, gửi link ký, in. Tắt: lễ tân chỉ thấy đã ký / chưa ký, thợ chỉ thấy khách của mình', hintEn: "Read every client's signed forms, send signing links, print. Off: the desk sees signed / missing only, a tech their own clients" },
+      { cap: 'forms.edit', vi: 'Sửa mẫu form ký', en: 'Edit the forms', hintVi: 'Thêm, sửa mẫu form và khi nào hỏi khách ký', hintEn: 'Add or change forms and when clients are asked' },
       { cap: 'pos', vi: 'Tính tiền & thẻ quà tặng', en: 'Checkout & gift cards', hintVi: 'Thu tiền, tip, thẻ quà', hintEn: 'Take payment, tips, gift cards' },
       { cap: 'orders', vi: 'Hoá đơn', en: 'Orders', hintVi: 'Xem, in lại hoá đơn', hintEn: 'View and reprint receipts' },
     ],

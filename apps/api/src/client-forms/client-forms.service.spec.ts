@@ -11,7 +11,7 @@ jest.mock('@prisma/client', () => {
     NotificationChannel: actual.NotificationChannel ?? { SMS: 'SMS', EMAIL: 'EMAIL' },
   };
 });
-import { ClientFormsService, accessOf } from './client-forms.service';
+import { ClientFormsService, accessOf, canEditForms } from './client-forms.service';
 import { TEMPLATES } from './form-templates';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -111,6 +111,16 @@ describe('who is who', () => {
     expect(accessOf(tech('x'))).toBe('tech');
     expect(accessOf(desk('ta'))).toBe('desk');
   });
+  it('the owner can hand "forms" (read) and "forms.edit" (change) to any staff member', () => {
+    expect(accessOf({ ...(desk('ta') as Row), staffCaps: ['customers', 'forms'] } as never)).toBe('full');
+    expect(accessOf({ ...(tech('x') as Row), staffCaps: ['forms'] } as never)).toBe('full');
+    expect(canEditForms(desk('ta'))).toBe(false);
+    expect(canEditForms({ ...(desk('ta') as Row), staffCaps: ['forms'] } as never)).toBe(false);
+    expect(canEditForms({ ...(desk('ta') as Row), staffCaps: ['forms', 'forms.edit'] } as never)).toBe(true);
+    expect(canEditForms(owner('ta'))).toBe(true);
+    // A manager who the owner trimmed down loses it like anyone else.
+    expect(accessOf({ ...(tech('x') as Row), staffRole: 'MANAGER', staffCaps: ['calendar'] } as never)).toBe('desk');
+  });
 });
 
 describe('a booked cupping visit', () => {
@@ -182,6 +192,16 @@ describe('signing through a link', () => {
     const e = await svc.entry(tech('u-tech-1'), r.id);
     expect(e.signatureData).toBe(SIG);
     expect(audits.some((a) => a.action === 'client_form.viewed' && a.resourceId === r.id)).toBe(true);
+  });
+
+  it('a receptionist or another tech the owner gave "forms" opens it — in their own salon only (12/11/2026)', async () => {
+    const { svc, r } = await signed();
+    const deskForms = { ...(desk('ta') as Row), staffCaps: ['customers', 'forms'] } as never;
+    const techForms = { ...(tech('u-tech-2') as Row), staffCaps: ['forms'] } as never;
+    expect((await svc.entry(deskForms, r.id)).signatureData).toBe(SIG);
+    expect((await svc.entry(techForms, r.id)).signatureData).toBe(SIG);
+    const otherSalon = { ...(desk('tb') as Row), staffCaps: ['forms'] } as never;
+    await expect(svc.entry(otherSalon, r.id)).rejects.toThrow(/not found/i);
   });
 
   it('a correction is added underneath, never written over the signed answers', async () => {

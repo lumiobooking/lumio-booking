@@ -33,13 +33,19 @@ export type Capability =
   | 'pos.discount'      // type a discount at checkout
   | 'pos.void'          // void or delete a paid ticket
   | 'bookings.delete'   // delete an appointment for good (cancel stays open)
-  | 'customers.delete'; // delete a client record
+  | 'customers.delete' // delete a client record
+  // Client forms (health & release, intake, consent, SOAP). Without 'forms' a
+  // receptionist sees only signed / missing and a technician their own
+  // clients; the owner can hand it to anyone (12/11/2026).
+  | 'forms'             // read every client's signed forms, send / print them
+  | 'forms.edit';       // change the salon's forms and when they are asked
 
 export const ALL_CAPS: Capability[] = [
   'dashboard', 'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist',
   'customers', 'services', 'products', 'staff', 'payroll', 'reviews', 'marketing',
   'inventory', 'reports', 'payments', 'notifications', 'integrations', 'billing', 'settings',
   'pos.discount', 'pos.void', 'bookings.delete', 'customers.delete', 'kitchen',
+  'forms', 'forms.edit',
 ];
 
 // Owner-only areas no staff account is ever handed, whatever its role or the

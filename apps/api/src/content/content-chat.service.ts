@@ -63,6 +63,23 @@ export class ContentChatService {
     }).catch(() => undefined);
   }
 
+  /**
+   * "The salon approved it", for the client's plan link (12/11/2026): the team
+   * sent a link instead of a sheet, so the yes has to come back to them by
+   * itself. One tag per salon — approving five posts in a row is one notice
+   * on the phone, not five.
+   */
+  async alertApproved(tenantId: string, postId: string, who: string): Promise<void> {
+    if (!this.push) return;
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }).catch(() => null);
+    await this.push.sendToTeam({
+      title: `${t?.name ?? 'Tiệm'} — đã duyệt bài`,
+      body: `${who} đã duyệt bài qua link plan.`,
+      url: agencyLink(tenantId, linkFor(`post:${postId}`)),
+      tag: `content-approved-${tenantId}`,
+    }).catch(() => undefined);
+  }
+
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
     if (!id) throw new BadRequestException('No tenant context');

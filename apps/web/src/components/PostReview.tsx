@@ -60,7 +60,7 @@ export interface ReviewApi {
   upload?: (file: File) => Promise<string>;
 }
 
-const NAME_KEY = 'lumio_review_name';
+export const NAME_KEY = 'lumio_review_name';
 
 const STATUS: Record<ReviewPost['clientStatus'], { dot: string; vi: string; en: string; bg: string; bd: string; fg: string }> = {
   wait: { dot: '🟡', vi: 'Chờ duyệt', en: 'Awaiting review', bg: '#33210b', bd: '#92400e', fg: '#fde68a' },

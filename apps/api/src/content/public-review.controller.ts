@@ -43,7 +43,7 @@ export class PublicReviewController {
   ) {
     const name = String(body?.name ?? '').trim();
     if (!name) throw new BadRequestException('Cho tiệm biết tên người duyệt nhé.');
-    return this.review.approve(await this.tenantOf(token), postId, name);
+    return this.review.approve(await this.tenantOf(token), postId, name, { notifyTeam: true });
   }
 
   @Get(':token/posts/:postId/comments')

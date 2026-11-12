@@ -14,7 +14,7 @@ function hostOf(u: string | null | undefined): string | null {
 /** Real app sections that never live on the partner host. A single path segment that is not one of these is a salon slug. */
 const APP_SECTIONS = new Set([
   'a', 'account-deletion', 'agency', 'api', 'appt', 'book', 'booking-policy', 'bootstrap', 'checkin', 'company', 'data-deletion', 'display',
-  'f', 'google-opt-out', 'healthz', 'invoice', 'kitchen', 'login', 'merchant-terms', 'oauth', 'pay', 'pos-display', 'privacy', 'queue-tv',
+  'f', 'google-opt-out', 'healthz', 'invoice', 'kitchen', 'login', 'merchant-terms', 'oauth', 'pay', 'plan', 'pos-display', 'privacy', 'queue-tv',
   'review', 'review-posts', 'salon', 'sign', 'signup', 'sms-optin', 'staff', 'super-admin', 'support', 't', 'terms', 'tiktok', 'turns-tv',
   'unsubscribe', 'welcome',
 ]);

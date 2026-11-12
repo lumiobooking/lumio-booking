@@ -13,6 +13,7 @@
  * back at them.
  */
 
+import { PlanLinkButton } from '../../../components/PlanLinkButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import dynamic from 'next/dynamic';
@@ -3644,25 +3645,10 @@ function Inner() {
                     </span>
                   )}
                   <span style={{ flex: 1 }} />
-                  {/* Team only: the link the client's group chat gets. One tap
-                      copies it; the server reuses a fresh link or mints one. */}
-                  {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
-                    <button
-                      onClick={async (e) => {
-                        const btn = e.currentTarget;
-                        try {
-                          const r = await apiFetch<{ url: string }>('/content/review-link', { method: 'POST', token });
-                          await navigator.clipboard.writeText(r.url);
-                          btn.textContent = '✓ ' + T('Đã sao chép link duyệt', 'Review link copied');
-                        } catch { btn.textContent = T('Không tạo được link', 'Could not make the link'); }
-                      }}
-                      style={{
-                        minHeight: 30, padding: '0 11px', borderRadius: 8, fontFamily: 'inherit',
-                        border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-                      }}
-                    >
-                      🔗 {T('Link duyệt bài cho khách', 'Client review link')}
-                    </button>
+                  {/* Team only: the client's plan link (month view, approve / ask for a change). */}
+                  {/* On the calendar it sits over the month itself (below). */}
+                  {view !== 'calendar' && (Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
+                    <PlanLinkButton token={token} vi={vi} />
                   )}
                   <button
                     onClick={() => setConnOpen(!(connOpen || !connHealthy))}
@@ -5542,8 +5528,9 @@ function Inner() {
                       {/* Published posts are a record, not a queue item — they
                           cannot be deleted, so the only way to keep a busy month
                           readable is to stop drawing them. */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
                       <label style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 7, marginBottom: 10,
+                        display: 'inline-flex', alignItems: 'center', gap: 7,
                         fontSize: 12.5, color: 'var(--c94a3b8)', cursor: 'pointer',
                       }}>
                         <input
@@ -5557,6 +5544,11 @@ function Inner() {
                           ({queue.posts.filter((p) => p.status === 'posted').length})
                         </span>
                       </label>
+                      {/* The month, as a link the client opens without an account. */}
+                      {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
+                        <span style={{ marginLeft: 'auto' }}><PlanLinkButton token={token} vi={vi} /></span>
+                      )}
+                      </div>
                       <MonthCalendar
                         posts={(showPosted && workFilter === 'all' ? workPosts() : workPosts().filter((p) => p.status !== 'posted'))}
                         month={month}

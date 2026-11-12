@@ -4,7 +4,7 @@ import { UserRole } from '@prisma/client';
 import { ContentChatService } from './content-chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { clientStatusOf, makeReviewToken, parseReviewToken, statsByPost, tokenFresh, type PostStats } from './post-review';
+import { REVIEW_LINK_TTL_DAYS, clientStatusOf, makeReviewToken, parseReviewToken, statsByPost, tokenFresh, type PostStats } from './post-review';
 
 const LINK_KEY = 'post_review_link';
 
@@ -142,9 +142,14 @@ export class PostReviewService {
     return this.feed(this.tenantOf(user));
   }
 
+  /** audit_logs row; never lets a logging hiccup fail the action it records. */
+  private async audit(data: Record<string, unknown>): Promise<void> {
+    try { await (this.prisma as unknown as { auditLog?: { create: (a: unknown) => Promise<unknown> } }).auditLog?.create({ data }); } catch { /* logged best-effort */ }
+  }
+
   // ---- approving -------------------------------------------------------------
 
-  async approve(tenantId: string, postId: string, name: string) {
+  async approve(tenantId: string, postId: string, name: string, opts: { notifyTeam?: boolean } = {}) {
     const who = String(name ?? '').trim().slice(0, 80) || 'Chủ tiệm';
     const r = await this.loose.scheduledPost?.updateMany({
       // Only a scheduled post takes a signature. Approving a held one is fine
@@ -154,6 +159,9 @@ export class PostReviewService {
       data: { approvedAt: new Date(), approvedByName: who, heldAt: null, reviewRequestedAt: null },
     }).catch(() => ({ count: 0 })) as { count: number };
     if (!r?.count) throw new NotFoundException('Bài không còn ở trạng thái chờ duyệt.');
+    // Through the link nobody on the team is watching the screen: tell them.
+    if (opts.notifyTeam) void this.chat?.alertApproved(tenantId, postId, who).catch(() => undefined);
+    await this.audit({ tenantId, userId: null, action: 'content.post_approved', resourceType: 'scheduled_post', resourceId: postId, metadata: { by: who, via: opts.notifyTeam ? 'plan_link' : 'salon_login' } });
     return { ok: true, approvedByName: who };
   }
 
@@ -182,13 +190,16 @@ export class PostReviewService {
     let row = await this.linkRow(tenantId);
     if (!row?.secret || !tokenFresh(row.createdAt)) {
       row = { secret: randomBytes(24).toString('hex'), createdAt: new Date().toISOString() };
+      await this.audit({ tenantId, userId: user.userId ?? null, action: 'content.plan_link_created', resourceType: 'setting', resourceId: LINK_KEY });
       const existing = await this.prisma.setting.findFirst({ where: { tenantId, key: LINK_KEY }, select: { id: true } }).catch(() => null);
       if (existing) await this.prisma.setting.update({ where: { id: existing.id }, data: { value: row as never } });
       else await this.prisma.setting.create({ data: { tenantId, key: LINK_KEY, value: row as never } });
     }
     const token = makeReviewToken(tenantId, row.secret!);
     const base = process.env.PUBLIC_WEB_URL || 'https://lumiobooking.com';
-    return { url: `${base}/review-posts/${token}`, expiresAt: new Date(Date.parse(row.createdAt!) + 30 * 86_400_000) };
+    // /plan/{token}: the month plan the client reads and approves. The older
+    // /review-posts/{token} address still opens the same page.
+    return { url: `${base}/plan/${token}`, expiresAt: new Date(Date.parse(row.createdAt!) + REVIEW_LINK_TTL_DAYS * 86_400_000) };
   }
 
   async revokeLink(user: AuthenticatedUser) {
@@ -198,6 +209,7 @@ export class PostReviewService {
     const tenantId = this.tenantOf(user);
     const existing = await this.prisma.setting.findFirst({ where: { tenantId, key: LINK_KEY }, select: { id: true } }).catch(() => null);
     if (existing) await this.prisma.setting.update({ where: { id: existing.id }, data: { value: {} as never } });
+    await this.audit({ tenantId, userId: user.userId ?? null, action: 'content.plan_link_revoked', resourceType: 'setting', resourceId: LINK_KEY });
     return { ok: true };
   }
 

@@ -43,6 +43,13 @@ export interface ClientPost {
  * from the request body. The public door can see exactly one salon's
  * scheduled and recently-posted posts, and nothing else in the system.
  */
+/** One day's idea as the plan link shows it (see ideasFor). */
+export interface LinkIdea {
+  day: string; topic: string; detail: string; air: string[];
+  pillar: { vi: string; en: string } | null; format: { vi: string; en: string } | null;
+  status: 'wait' | 'held' | 'making'; by: string | null; note: string | null;
+}
+
 @Injectable()
 export class PostReviewService {
   constructor(
@@ -133,7 +140,8 @@ export class PostReviewService {
     }
     // The plan's ideas are an addition to this feed, never a condition of it:
     // if the sheet cannot be read, the posts still arrive.
-    const ideas = await this.ideasFor(tenantId, tenant.timezone || 'UTC', new Set(posts.map((p) => p.id))).catch(() => []);
+    let ideas: LinkIdea[] = [];
+    try { ideas = await this.ideasFor(tenantId, tenant.timezone || 'UTC', new Set(posts.map((p) => p.id))); } catch { ideas = []; }
     return {
       salonName: tenant.name,
       timezone: tenant.timezone || 'UTC',
@@ -165,17 +173,14 @@ export class PostReviewService {
    * with no post the client can already see. This month and the next two.
    * Rebuilt field by field (entryForShop): no Drive link, no by-line.
    */
-  private async ideasFor(tenantId: string, tz: string, visiblePostIds: Set<string>) {
+  private async ideasFor(tenantId: string, tz: string, visiblePostIds: Set<string>): Promise<LinkIdea[]> {
     if (!this.prisma.setting) return [];
     const today = dayKeyTz(new Date(), tz);
     const month0 = today.slice(0, 7);
     const tagsRow = await this.prisma.setting.findFirst({ where: { tenantId, key: PLAN_TAGS_KEY }, select: { value: true } }).catch(() => null);
     const tags = readTags(tagsRow?.value);
     const label = (list: { id: string; vi: string; en: string }[], id: string) => { const t = list.find((x) => x.id === id); return t ? { vi: t.vi, en: t.en } : null; };
-    const out: {
-      day: string; topic: string; detail: string; air: string[]; pillar: { vi: string; en: string } | null; format: { vi: string; en: string } | null;
-      status: 'wait' | 'held' | 'making'; by: string | null; note: string | null;
-    }[] = [];
+    const out: LinkIdea[] = [];
     for (const m of [month0, shiftMonthKey(month0, 1), shiftMonthKey(month0, 2)]) {
       const { sheet } = await this.sheetRow(tenantId, m);
       for (const e of Object.values(sheet)) {

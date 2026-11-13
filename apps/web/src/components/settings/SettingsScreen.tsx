@@ -20,6 +20,7 @@ import { ind } from '../../lib/ui-industry';
 import { CartTemplatePicker } from '../CartTemplatePicker';
 import { VietQrSetup } from './VietQrSetup';
 import { bankLabel } from '../../lib/vietqr';
+import { isZeroDecimalCurrency } from '../../lib/money';
 
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
 interface Booking {
@@ -676,7 +677,18 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       {/* --- Core: currency + price display (always visible, compact) --- */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
         <Field label={t('se.pay.currency')}>
-          <select style={ui.input} value={currency} onChange={(e) => setCurrency(e.target.value)}>
+          <select style={ui.input} value={currency} onChange={(e) => {
+            // The symbol, its side and the decimals belong to the currency:
+            // picking VND and keeping "$" with 2 decimals shows a wrong price.
+            const next = e.target.value;
+            if (next !== currency) {
+              const zero = isZeroDecimalCurrency(next);
+              setSymbol('');
+              setDecimals(zero ? 0 : 2);
+              setPosition(next === 'VND' ? 'after' : 'before');
+            }
+            setCurrency(next);
+          }}>
             {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>

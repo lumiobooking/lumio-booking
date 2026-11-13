@@ -280,6 +280,14 @@ export class ServicesService {
       await this.assertStaffBelongToTenant(tenantId, dto.staffIds);
     }
 
+    // A service is always in the salon's own currency — the client's value is
+    // not trusted (an old screen sent 'USD' from an Australian salon).
+    let salonCurrency: string | undefined;
+    try {
+      const rulesRow = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'booking_rules' } }, select: { value: true } });
+      salonCurrency = currencyCode((rulesRow?.value as { currency?: string } | null)?.currency) ?? undefined;
+    } catch { salonCurrency = undefined; }
+
     const data: Prisma.ServiceUncheckedUpdateInput = {
       name: dto.name,
       // An emptied box clears the note (it used to be sent as "nothing changed").
@@ -287,7 +295,7 @@ export class ServicesService {
       durationMinutes: dto.durationMinutes,
       priceCents: dto.priceCents,
       discountPercent: dto.discountPercent,
-      currency: dto.currency,
+      currency: salonCurrency,
       isActive: dto.isActive,
       sortOrder: dto.sortOrder,
       isFeatured: dto.isFeatured,

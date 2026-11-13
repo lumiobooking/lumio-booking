@@ -107,10 +107,10 @@ export function localeForCountry(country?: string | null, timezone?: string | nu
  * every price in the salon's currency), but a booking copied the label, so an
  * Australian client's confirmation read "USD 75.00".
  *
- * A stale label is put right only when both currencies count in the same
- * minor units (USD → AUD, CAD, EUR…): then it is a relabel and no number
- * moves. USD → VND is NOT that — the stored amount may be off by 100 — and is
- * left for a person to look at.
+ * The label always follows the salon. No amount is converted: every admin
+ * screen (services, extras, products) reads and writes these amounts in the
+ * salon's own currency whatever the row's label says, so the label is the
+ * only thing that can be out of step.
  */
 export function sameMinorUnits(a?: string | null, b?: string | null): boolean {
   return minorUnitDigits(String(a || 'USD').toUpperCase()) === minorUnitDigits(String(b || 'USD').toUpperCase());
@@ -123,11 +123,40 @@ export function currencyCode(raw: unknown): string | null {
 }
 
 /**
- * The currency a salon's money is SHOWN and BOOKED in: the salon's own, when
- * swapping the label cannot change the amount; otherwise the row's.
+ * The currency a salon's money is SHOWN and BOOKED in: the salon's own. The
+ * row's label is used only when the salon's settings hold no usable code.
  */
 export function salonMoneyCurrency(rowCurrency: string | null | undefined, salonCurrency: unknown): string {
-  const row = currencyCode(rowCurrency) ?? 'USD';
-  const salon = currencyCode(salonCurrency);
-  return salon && sameMinorUnits(row, salon) ? salon : row;
+  return currencyCode(salonCurrency) ?? currencyCode(rowCurrency) ?? 'USD';
+}
+
+interface MoneyLook { currency: string; currencySymbol: string; symbolPosition: 'before' | 'after'; priceDecimals: number }
+
+/**
+ * What the price display becomes when the Payments form is saved.
+ *
+ * The symbol, its side and the decimals belong to the currency. When the
+ * currency changes and the form sends the OLD symbol / decimals along
+ * untouched, they are stale — "$" and 2 decimals on a đồng salon — so they
+ * fall back to the new currency's own: no custom symbol (screens then use the
+ * currency's), and its natural decimals. A value the owner really changed in
+ * the same save is kept.
+ */
+export function moneyLookOnChange(
+  current: Partial<MoneyLook>,
+  dto: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number },
+): MoneyLook {
+  const before = currencyCode(current.currency) ?? 'USD';
+  const currency = currencyCode(dto.currency) ?? before;
+  let currencySymbol = dto.currencySymbol ?? current.currencySymbol ?? '';
+  let symbolPosition = (dto.symbolPosition ?? current.symbolPosition ?? 'before') === 'after' ? 'after' as const : 'before' as const;
+  let priceDecimals = typeof dto.priceDecimals === 'number' ? dto.priceDecimals : (current.priceDecimals ?? 2);
+  if (currency !== before) {
+    if (currencySymbol === (current.currencySymbol ?? '')) currencySymbol = '';
+    if (!sameMinorUnits(before, currency)) {
+      if (priceDecimals === (current.priceDecimals ?? 2)) priceDecimals = minorUnitDigits(currency);
+      if (symbolPosition === (current.symbolPosition ?? 'before')) symbolPosition = currency === 'VND' ? 'after' : 'before';
+    }
+  }
+  return { currency, currencySymbol, symbolPosition, priceDecimals };
 }

@@ -1,4 +1,4 @@
-import { currencyCode, sameMinorUnits } from '../common/money';
+import { currencyCode, moneyLookOnChange } from '../common/money';
 import { dialCodeFor } from '../common/phone';
 import { PARTY_DEPOSIT_KEY, PartyDeposit, cleanPartyDeposit } from '../payments/party-deposit';
 import { CHAT_FOLLOWUP_KEY, followUpSettingsFrom, type FollowUpSettings } from '../messenger/followup';
@@ -678,25 +678,35 @@ export class SettingsService implements OnApplicationBootstrap {
   }
 
   /**
-   * Put one salon's stale currency labels right (common/money.ts): its
-   * services, its extras and its bookings from now on. Scoped to the tenant;
-   * touches only rows whose currency counts in the same minor units as the
-   * salon's, so no stored amount changes meaning. Past bookings keep what
-   * they were made in.
+   * Put one salon's currency labels in step with its setting (common/money.ts):
+   * services, extras, retail products, the bookings still ahead and the unpaid
+   * payment rows waiting on them. Scoped to the tenant. Only the label moves —
+   * a stored amount is never touched, because every admin screen already
+   * reads and writes these amounts in the salon's own currency. Past bookings
+   * and money already taken keep the currency they were made in.
    */
   async alignMoneyLabels(tenantId: string, salonCurrency: string, userId: string | null = null): Promise<number> {
     const to = currencyCode(salonCurrency);
     if (!to) return 0;
-    const db = this.prisma as unknown as Record<string, { findMany: (a: unknown) => Promise<{ currency: string }[]>; updateMany: (a: unknown) => Promise<{ count: number }> }>;
+    const now = new Date();
+    const db = this.prisma as unknown as Record<string, { updateMany: (a: unknown) => Promise<{ count: number }> } | undefined>;
+    const targets: [string, Record<string, unknown>][] = [
+      ['service', {}],
+      ['serviceAddon', {}],
+      ['product', {}],
+      ['appointment', { startTime: { gte: now } }],
+      ['payment', { status: 'PENDING', appointment: { startTime: { gte: now } } }],
+    ];
     let changed = 0;
-    for (const [model, extra] of [['service', {}], ['serviceAddon', {}], ['appointment', { startTime: { gte: new Date() } }]] as const) {
-      const stale = await db[model].findMany({ where: { tenantId, currency: { not: to }, ...extra }, select: { currency: true }, distinct: ['currency'] });
-      const from = stale.map((r) => r.currency).filter((c) => sameMinorUnits(c, to));
-      if (!from.length) continue;
-      changed += (await db[model].updateMany({ where: { tenantId, currency: { in: from }, ...extra }, data: { currency: to } })).count;
+    const per: Record<string, number> = {};
+    for (const [model, extra] of targets) {
+      try {
+        const n = (await db[model]!.updateMany({ where: { tenantId, currency: { not: to }, ...extra }, data: { currency: to } })).count;
+        if (n) { per[model] = n; changed += n; }
+      } catch { /* one table failing must not stop the others */ }
     }
     if (changed) {
-      await this.audit.log({ tenantId, userId, action: 'settings.currency_labels_aligned', resourceType: 'tenant', resourceId: tenantId, metadata: { currency: to, rows: changed } } as never).catch(() => undefined);
+      await this.audit.log({ tenantId, userId, action: 'settings.currency_labels_aligned', resourceType: 'tenant', resourceId: tenantId, metadata: { currency: to, rows: changed, ...per } } as never).catch(() => undefined);
     }
     return changed;
   }
@@ -1657,12 +1667,13 @@ export class SettingsService implements OnApplicationBootstrap {
     const onlineEnabled = await this.hasOnlineProvider(tenantId);
 
     const rules = await this.getBookingRules(tenantId);
+    const look = moneyLookOnChange(rules, dto);
     await this.writeKey(tenantId, BOOKING_RULES_KEY, {
       ...rules,
-      currency: dto.currency ?? rules.currency,
-      currencySymbol: dto.currencySymbol ?? rules.currencySymbol,
-      symbolPosition: dto.symbolPosition ?? rules.symbolPosition,
-      priceDecimals: typeof dto.priceDecimals === 'number' ? dto.priceDecimals : rules.priceDecimals,
+      currency: look.currency,
+      currencySymbol: look.currencySymbol,
+      symbolPosition: look.symbolPosition,
+      priceDecimals: look.priceDecimals,
       defaultPaymentMethod: dto.defaultPaymentMethod ?? rules.defaultPaymentMethod,
       payLaterEnabled: typeof dto.onSiteEnabled === 'boolean' ? dto.onSiteEnabled : rules.payLaterEnabled,
       onlinePaymentEnabled: onlineEnabled,
@@ -1671,7 +1682,7 @@ export class SettingsService implements OnApplicationBootstrap {
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.payments_updated', resourceType: 'tenant', resourceId: tenantId });
     // The menu follows the salon's currency: relabel services, extras and the
     // bookings still ahead (never a past one, never an amount).
-    const nowCurrency = currencyCode(dto.currency ?? rules.currency);
+    const nowCurrency = currencyCode(look.currency);
     if (nowCurrency) await this.alignMoneyLabels(tenantId, nowCurrency, user.userId).catch(() => undefined);
     return this.get(user);
   }
@@ -1710,6 +1721,9 @@ export class SettingsService implements OnApplicationBootstrap {
     } as BookingRules;
     await this.writeKey(tenantId, BOOKING_RULES_KEY, merged);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.booking_updated', resourceType: 'tenant', resourceId: tenantId });
+    // This form can carry the currency too — the menu follows it the same way.
+    const nowCurrency = currencyCode(merged.currency);
+    if (nowCurrency && nowCurrency !== currencyCode(current.currency)) await this.alignMoneyLabels(tenantId, nowCurrency, user.userId).catch(() => undefined);
     return this.get(user);
   }
 

@@ -23,6 +23,7 @@ import { GiftCardsService } from '../gift-cards/gift-cards.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { cleanStaffCaps, hasCapability } from '../auth/capabilities';
 import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
+import { currencyCode } from '../common/money';
 import { CreateOrderDto, CreateProductDto, RecordTipDto, UpdateProductDto } from './dto/pos.dto';
 
 const ORDER_INCLUDE = {
@@ -99,8 +100,14 @@ export class PosService {
     });
   }
 
+  /** The salon's own currency code, or null when its settings hold none. Never throws. */
+  private async salonCurrencyOf(tenantId: string): Promise<string | null> {
+    try { return currencyCode((await this.settings.getBookingRules(tenantId))?.currency); } catch { return null; }
+  }
+
   async createProduct(user: AuthenticatedUser, dto: CreateProductDto) {
     const tenantId = this.tenantId(user);
+    const salonCurrency = await this.salonCurrencyOf(tenantId);
     const product = await this.prisma.product.create({
       data: {
         tenantId,
@@ -109,7 +116,8 @@ export class PosService {
         barcode: dto.barcode?.trim() || null,
         priceCents: dto.priceCents,
         discountPercent: dto.discountPercent ?? 0,
-        currency: dto.currency ?? 'USD',
+        // The salon's own currency, never the client's guess.
+        currency: salonCurrency ?? currencyCode(dto.currency) ?? 'USD',
         taxable: dto.taxable ?? true,
         trackStock: dto.trackStock ?? false,
         stockQty: dto.stockQty ?? 0,
@@ -124,6 +132,7 @@ export class PosService {
     const tenantId = this.tenantId(user);
     const existing = await this.prisma.product.findFirst({ where: { id, tenantId } });
     if (!existing) throw new NotFoundException('Product not found');
+    const salonCurrency = await this.salonCurrencyOf(tenantId);
     await this.prisma.product.updateMany({
       where: { id, tenantId },
       data: {
@@ -132,7 +141,7 @@ export class PosService {
         barcode: dto.barcode === undefined ? undefined : (dto.barcode.trim() || null),
         priceCents: dto.priceCents,
         discountPercent: dto.discountPercent,
-        currency: dto.currency,
+        currency: salonCurrency ?? undefined,
         taxable: dto.taxable,
         trackStock: dto.trackStock,
         stockQty: dto.stockQty,

@@ -13,7 +13,7 @@ import { apiFetch } from '../lib/api';
 
 interface PlanLink { url: string; expiresAt: string }
 
-export function PlanLinkButton({ token, vi, salonName }: { token: string | null; vi: boolean; salonName?: string }) {
+export function PlanLinkButton({ token, vi, salonName, label }: { token: string | null; vi: boolean; salonName?: string; label?: string }) {
   const T = (v: string, e: string) => (vi ? v : e);
   const [open, setOpen] = useState(false);
   const [link, setLink] = useState<PlanLink | null>(null);
@@ -54,7 +54,7 @@ export function PlanLinkButton({ token, vi, salonName }: { token: string | null;
         onClick={() => { const next = !open; setOpen(next); if (next && !link) void make(); }}
         style={{ fontFamily: 'inherit', minHeight: 36, padding: '0 13px', borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
       >
-        🔗 {T('Gửi link cho khách xem', 'Send the client a link')}
+        🔗 {label ?? T('Gửi link cho khách xem', 'Send the client a link')}
       </button>
       {open && (
         <>
@@ -81,8 +81,8 @@ export function PlanLinkButton({ token, vi, salonName }: { token: string | null;
               {T('Khách mở là thấy lịch tháng của riêng tiệm này, không cần tài khoản.', "The client opens it and sees this salon's month only — no account needed.")}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ccbd5e1)' }}>
-              <span>✓ {T('Xem: lịch tháng, ảnh/video, nội dung, kênh đăng, giờ đăng.', 'Sees: the month, media, caption, networks, time.')}</span>
-              <span>✓ {T('Làm được: Duyệt, hoặc bấm Cần sửa và ghi góp ý.', 'Can: approve, or ask for a change with a note.')}</span>
+              <span>✓ {T('Xem: một lịch tháng gồm ý tưởng trong Plan và các bài đã lên lịch / đã đăng.', 'Sees: one month — the ideas in the Plan and the scheduled / posted posts.')}</span>
+              <span>✓ {T('Làm được: duyệt ý tưởng, duyệt bài, hoặc bấm Cần sửa và ghi góp ý.', 'Can: approve an idea, approve a post, or ask for a change with a note.')}</span>
               <span>✕ {T('Không sửa, không xoá, không dời bài, không thấy tiệm khác.', 'Cannot edit, delete or move a post, or see another salon.')}</span>
             </div>
             {link && (

@@ -4,7 +4,10 @@ import { UserRole } from '@prisma/client';
 import { ContentChatService } from './content-chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { REVIEW_LINK_TTL_DAYS, clientStatusOf, makeReviewToken, parseReviewToken, statsByPost, tokenFresh, type PostStats } from './post-review';
+import { PLAN_SHEET_KEY, cleanSheet, entryForShop, ideaReady, ideaStatusOf, isDayKey, setClientDecision, shiftMonthKey } from './plan-sheet';
+import { dayKeyTz } from '../common/salon-time';
+import { PLAN_TAGS_KEY, readTags } from './plan-tags';
+import { REVIEW_LINK_TTL_DAYS, SHORT_CODE_LEN, clientStatusOf, isShortCode, makeShortCode, parseReviewToken, statsByPost, tokenFresh, type PostStats } from './post-review';
 
 const LINK_KEY = 'post_review_link';
 
@@ -128,6 +131,9 @@ export class PostReviewService {
       const byPost = statsByPost(social ?? []);
       for (const p of posts) p.stats = byPost.get(p.id) ?? null;
     }
+    // The plan's ideas are an addition to this feed, never a condition of it:
+    // if the sheet cannot be read, the posts still arrive.
+    const ideas = await this.ideasFor(tenantId, tenant.timezone || 'UTC', new Set(posts.map((p) => p.id))).catch(() => []);
     return {
       salonName: tenant.name,
       timezone: tenant.timezone || 'UTC',
@@ -135,7 +141,77 @@ export class PostReviewService {
       igUsername: page?.igUsername ?? null,
       posts,
       waiting: posts.filter((p) => p.clientStatus === 'wait').length,
+      ideas,
+      ideasWaiting: ideas.filter((i) => i.status === 'wait').length,
     };
+  }
+
+  // ---- the plan's ideas ---------------------------------------------------------
+  //
+  // The month plan (plan-sheet) holds a day's IDEA before there is a post:
+  // topic, caption draft, format, networks. The salon answers for the idea
+  // first and for the finished post later — one calendar, two questions
+  // (13/11/2026). Everything here is additive: a stored day without `client`
+  // is simply a day nobody has answered, and nothing is blocked by it.
+
+  private async sheetRow(tenantId: string, month: string) {
+    const key = `${PLAN_SHEET_KEY}:${month}`;
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key }, select: { id: true, value: true } }).catch(() => null);
+    return { id: row?.id ?? null, sheet: cleanSheet(row?.value ?? null, month) };
+  }
+
+  /**
+   * The days from today on that are still ideas to the client: written, and
+   * with no post the client can already see. This month and the next two.
+   * Rebuilt field by field (entryForShop): no Drive link, no by-line.
+   */
+  private async ideasFor(tenantId: string, tz: string, visiblePostIds: Set<string>) {
+    if (!this.prisma.setting) return [];
+    const today = dayKeyTz(new Date(), tz);
+    const month0 = today.slice(0, 7);
+    const tagsRow = await this.prisma.setting.findFirst({ where: { tenantId, key: PLAN_TAGS_KEY }, select: { value: true } }).catch(() => null);
+    const tags = readTags(tagsRow?.value);
+    const label = (list: { id: string; vi: string; en: string }[], id: string) => { const t = list.find((x) => x.id === id); return t ? { vi: t.vi, en: t.en } : null; };
+    const out: {
+      day: string; topic: string; detail: string; air: string[]; pillar: { vi: string; en: string } | null; format: { vi: string; en: string } | null;
+      status: 'wait' | 'held' | 'making'; by: string | null; note: string | null;
+    }[] = [];
+    for (const m of [month0, shiftMonthKey(month0, 1), shiftMonthKey(month0, 2)]) {
+      const { sheet } = await this.sheetRow(tenantId, m);
+      for (const e of Object.values(sheet)) {
+        if (e.day < today || !ideaReady(e)) continue;
+        if (e.postId && visiblePostIds.has(e.postId)) continue; // the post speaks for this day now
+        const s = entryForShop(e);
+        out.push({
+          day: s.day, topic: s.topic, detail: s.detail, air: s.air,
+          pillar: label(tags.pillars, s.pillar), format: label(tags.formats, s.format),
+          status: ideaStatusOf(e), by: e.client?.by ?? null, note: e.client?.state === 'change' ? e.client.note : null,
+        });
+      }
+    }
+    return out.sort((a, b) => a.day.localeCompare(b.day));
+  }
+
+  /**
+   * The salon's answer for one day's idea. `tenantId` comes from the session
+   * or from the token — never from the request — so a link can only reach
+   * its own salon's sheet; the day is looked up inside that sheet or not at
+   * all. An approval does not publish or schedule anything.
+   */
+  async decideIdea(tenantId: string, day: string, state: 'approved' | 'change', name: string, note = '') {
+    if (!isDayKey(day)) throw new BadRequestException('day must be YYYY-MM-DD');
+    const who = String(name ?? '').trim().slice(0, 60) || 'Tiệm';
+    const text = String(note ?? '').trim();
+    if (state === 'change' && !text) throw new BadRequestException('Ghi giúp điều anh/chị muốn đổi nhé.');
+    const month = day.slice(0, 7);
+    const { id, sheet } = await this.sheetRow(tenantId, month);
+    const entry = sheet[day];
+    if (!id || !entry || !ideaReady(entry)) throw new NotFoundException('Ngày này chưa có kế hoạch để duyệt.');
+    sheet[day] = setClientDecision(entry, state, who, text, new Date());
+    await this.prisma.setting.update({ where: { id }, data: { value: sheet as never } });
+    await this.audit({ tenantId, userId: null, action: state === 'approved' ? 'content.plan_day_approved' : 'content.plan_day_change_asked', resourceType: 'plan_day', resourceId: day, metadata: { by: who } });
+    void this.chat?.alertPlanDay(tenantId, day, who, state, text).catch(() => undefined);
+    return { ok: true, day, status: ideaStatusOf(sheet[day]) };
   }
 
   async feedFor(user: AuthenticatedUser) {
@@ -173,12 +249,12 @@ export class PostReviewService {
 
   // ---- the link --------------------------------------------------------------
 
-  private async linkRow(tenantId: string): Promise<{ secret?: string; createdAt?: string } | null> {
+  private async linkRow(tenantId: string): Promise<{ secret?: string; createdAt?: string; code?: string } | null> {
     const row = await this.prisma.setting.findFirst({
       where: { tenantId, key: LINK_KEY },
       select: { value: true },
     }).catch(() => null);
-    return (row?.value as { secret?: string; createdAt?: string } | null) ?? null;
+    return (row?.value as { secret?: string; createdAt?: string; code?: string } | null) ?? null;
   }
 
   /** Team only: the share-into-the-group link. Reuses a fresh one, mints on demand. */
@@ -188,14 +264,22 @@ export class PostReviewService {
     }
     const tenantId = this.tenantOf(user);
     let row = await this.linkRow(tenantId);
-    if (!row?.secret || !tokenFresh(row.createdAt)) {
-      row = { secret: randomBytes(24).toString('hex'), createdAt: new Date().toISOString() };
-      await this.audit({ tenantId, userId: user.userId ?? null, action: 'content.plan_link_created', resourceType: 'setting', resourceId: LINK_KEY });
+    const fresh = Boolean(row?.secret) && tokenFresh(row?.createdAt);
+    if (!fresh || !row?.code) {
+      // A link made before the short code keeps its secret and its 30 days —
+      // the long address already in a group chat must not die because
+      // somebody pressed the button again. It only gains a code.
+      row = fresh
+        ? { ...row, code: makeShortCode(randomBytes(SHORT_CODE_LEN)) }
+        : { secret: randomBytes(24).toString('hex'), createdAt: new Date().toISOString(), code: makeShortCode(randomBytes(SHORT_CODE_LEN)) };
+      if (!fresh) {
+        await this.audit({ tenantId, userId: user.userId ?? null, action: 'content.plan_link_created', resourceType: 'setting', resourceId: LINK_KEY });
+      }
       const existing = await this.prisma.setting.findFirst({ where: { tenantId, key: LINK_KEY }, select: { id: true } }).catch(() => null);
       if (existing) await this.prisma.setting.update({ where: { id: existing.id }, data: { value: row as never } });
       else await this.prisma.setting.create({ data: { tenantId, key: LINK_KEY, value: row as never } });
     }
-    const token = makeReviewToken(tenantId, row.secret!);
+    const token = row.code!;
     const base = process.env.PUBLIC_WEB_URL || 'https://lumiobooking.com';
     // /plan/{token}: the month plan the client reads and approves. The older
     // /review-posts/{token} address still opens the same page.
@@ -215,6 +299,17 @@ export class PostReviewService {
 
   /** A token from the wild into a tenantId — or nothing. Never throws detail. */
   async resolveToken(token: string): Promise<string | null> {
+    if (isShortCode(token)) {
+      // The short link: the code is the whole credential, so it is looked up,
+      // not parsed. It belongs to one salon's row or to none.
+      const hit = await this.prisma.setting.findFirst({
+        where: { key: LINK_KEY, value: { path: ['code'], equals: token } },
+        select: { tenantId: true, value: true },
+      }).catch(() => null);
+      const v = (hit?.value ?? null) as { secret?: string; createdAt?: string; code?: string } | null;
+      if (!hit?.tenantId || !v?.secret || v.code !== token || !tokenFresh(v.createdAt)) return null;
+      return hit.tenantId;
+    }
     const parsed = parseReviewToken(token);
     if (!parsed) return null;
     const row = await this.linkRow(parsed.tenantId);

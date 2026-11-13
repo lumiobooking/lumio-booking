@@ -54,6 +54,8 @@ export function PlanLinkPage() {
       approve: (postId, name) => call(`${base}/posts/${postId}/approve`, { method: 'POST', body: JSON.stringify({ name }) }),
       comments: (postId) => call<{ messages: ReviewMsg[] }>(`${base}/posts/${postId}/comments`),
       comment: (postId, body, name) => call(`${base}/posts/${postId}/comments`, { method: 'POST', body: JSON.stringify({ name, body }) }),
+      approveIdea: (day, name) => call(`${base}/plan/${day}/approve`, { method: 'POST', body: JSON.stringify({ name }) }),
+      changeIdea: (day, body, name) => call(`${base}/plan/${day}/change`, { method: 'POST', body: JSON.stringify({ name, body }) }),
     };
   }, [token]);
 

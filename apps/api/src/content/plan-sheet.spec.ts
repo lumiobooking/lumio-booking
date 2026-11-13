@@ -1,4 +1,4 @@
-import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, shiftMonthKey, windowOf, monthGrid, ENTRY_LIMITS, swapEntries } from './plan-sheet';
+import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, shiftMonthKey, windowOf, monthGrid, ENTRY_LIMITS, swapEntries, ideaReady, ideaStatusOf, setClientDecision } from './plan-sheet';
 
 const NOW = new Date('2026-09-15T10:00:00Z');
 
@@ -85,7 +85,7 @@ describe('what the shop sees of a slot', () => {
   it('is the post-to-be and nothing about how it was made', () => {
     const e = mergeEntry(null, { topic: 't', detail: 'd', mediaUrl: 'https://drive.google.com/x', air: ['facebook'], pillar: 'promotion', format: 'poster' }, '2026-09-18', 'an@lumio', NOW);
     const s = entryForShop(e);
-    expect(Object.keys(s).sort()).toEqual(['air', 'day', 'detail', 'format', 'pillar', 'postId', 'topic', 'updatedAt']);
+    expect(Object.keys(s).sort()).toEqual(['air', 'client', 'day', 'detail', 'format', 'pillar', 'postId', 'topic', 'updatedAt']); // + the salon's own answer (13/11/2026)
     expect(JSON.stringify(s)).not.toContain('drive.google.com');
     expect(JSON.stringify(s)).not.toContain('an@lumio');
   });
@@ -140,5 +140,55 @@ describe('moving a slot to another day', () => {
   it('crosses a month and keeps the linked post', () => {
     const r = swapEntries({ ...slot('2026-09-30', 'A'), postId: 'p1' }, null, '2026-09-30', '2026-10-02', 'an', now);
     expect(r.to).toMatchObject({ day: '2026-10-02', postId: 'p1' });
+  });
+});
+
+describe("the client's answer on a day of the plan (13/11/2026)", () => {
+  const now = new Date('2026-11-13T02:00:00Z');
+  const base = mergeEntry(null, { topic: 'Black Friday gift card', detail: 'Buy $100, get $15', air: ['facebook'], pillar: 'promotion' }, '2026-11-27', 'team@lumio', now);
+
+  it('a day written before this feature has no answer and reads as waiting — nothing stored changes', () => {
+    const old = cleanEntry({ topic: 'Old day', detail: '', air: [], postId: null }, '2026-11-20');
+    expect(old.client).toBeUndefined();
+    expect(ideaStatusOf(old)).toBe('wait');
+    expect(JSON.stringify(cleanEntry(JSON.parse(JSON.stringify(old)), '2026-11-20'))).toBe(JSON.stringify(old));
+  });
+  it('an approval survives a save / read round trip and reads as "making"', () => {
+    const ok = setClientDecision(base, 'approved', 'Chị Hằng', 'ignored', now);
+    const back = cleanSheet({ '2026-11-27': JSON.parse(JSON.stringify(ok)) }, '2026-11')['2026-11-27'];
+    expect(back.client).toEqual({ state: 'approved', by: 'Chị Hằng', at: now.toISOString(), note: '' });
+    expect(ideaStatusOf(back)).toBe('making');
+    // The team did not edit: its by-line and time stay.
+    expect(back.updatedBy).toBe('team@lumio');
+  });
+  it('a change request keeps the note and reads as held', () => {
+    const c = setClientDecision(base, 'change', 'Chị Hằng', 'tiệm nghỉ thứ Sáu', now);
+    expect(c.client?.note).toBe('tiệm nghỉ thứ Sáu');
+    expect(ideaStatusOf(c)).toBe('held');
+  });
+  it('the team changing what the client read puts the day back to waiting', () => {
+    const ok = setClientDecision(base, 'approved', 'Chị Hằng', '', now);
+    expect(mergeEntry(ok, { topic: 'Black Friday: buy 1 get 1' }, '2026-11-27', 'team@lumio', now).client).toBeUndefined();
+    expect(mergeEntry(ok, { air: ['facebook', 'instagram'] }, '2026-11-27', 'team@lumio', now).client).toBeUndefined();
+  });
+  it('linking the post, pasting a media link or re-saving the same words keeps the approval', () => {
+    const ok = setClientDecision(base, 'approved', 'Chị Hằng', '', now);
+    expect(mergeEntry(ok, { postId: 'post-1' }, '2026-11-27', 'team@lumio', now).client?.state).toBe('approved');
+    expect(mergeEntry(ok, { mediaUrl: 'https://drive.example/x' }, '2026-11-27', 'team@lumio', now).client?.state).toBe('approved');
+    expect(mergeEntry(ok, { topic: 'Black Friday gift card' }, '2026-11-27', 'team@lumio', now).client?.state).toBe('approved');
+  });
+  it('the team cannot write an approval itself, and junk is dropped', () => {
+    expect(mergeEntry(base, { client: { state: 'approved', by: 'me', at: 'x', note: '' } }, '2026-11-27', 'team@lumio', now).client).toBeUndefined();
+    expect(cleanEntry({ topic: 'x', client: { state: 'yes' } }, '2026-11-27').client).toBeUndefined();
+  });
+  it('the shop view carries the answer but still no Drive link or by-line', () => {
+    const s = entryForShop(setClientDecision({ ...base, mediaUrl: 'https://drive.example/x' }, 'approved', 'Chị Hằng', '', now));
+    expect(s.client?.state).toBe('approved');
+    expect(JSON.stringify(s)).not.toContain('drive.example');
+    expect(s).not.toHaveProperty('updatedBy');
+  });
+  it('a day with only a colour chip is not put to the client', () => {
+    expect(ideaReady(cleanEntry({ pillar: 'promotion' }, '2026-11-27'))).toBe(false);
+    expect(ideaReady(base)).toBe(true);
   });
 });

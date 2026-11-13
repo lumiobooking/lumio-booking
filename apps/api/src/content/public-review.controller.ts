@@ -46,6 +46,24 @@ export class PublicReviewController {
     return this.review.approve(await this.tenantOf(token), postId, name, { notifyTeam: true });
   }
 
+  /** A day of the month plan: "yes to this idea". Nothing is scheduled by it. */
+  @Post(':token/plan/:day/approve')
+  @RateLimit(40, 60_000)
+  async approveIdea(@Param('token') token: string, @Param('day') day: string, @Body() body: { name?: string }) {
+    const name = String(body?.name ?? '').trim();
+    if (!name) throw new BadRequestException('Cho tiệm biết tên người duyệt nhé.');
+    return this.review.decideIdea(await this.tenantOf(token), day, 'approved', name);
+  }
+
+  /** A day of the month plan: "change this", with what to change. */
+  @Post(':token/plan/:day/change')
+  @RateLimit(20, 60_000)
+  async changeIdea(@Param('token') token: string, @Param('day') day: string, @Body() body: { name?: string; body?: string }) {
+    const name = String(body?.name ?? '').trim();
+    if (!name) throw new BadRequestException('Cho tiệm biết tên người góp ý nhé.');
+    return this.review.decideIdea(await this.tenantOf(token), day, 'change', name, String(body?.body ?? ''));
+  }
+
   @Get(':token/posts/:postId/comments')
   @RateLimit(60, 60_000)
   async comments(@Param('token') token: string, @Param('postId') postId: string) {

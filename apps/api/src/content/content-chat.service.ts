@@ -80,6 +80,20 @@ export class ContentChatService {
     }).catch(() => undefined);
   }
 
+  /** The salon answered for a day of the month plan through its link (13/11/2026). */
+  async alertPlanDay(tenantId: string, day: string, who: string, state: 'approved' | 'change', note: string): Promise<void> {
+    if (!this.push) return;
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }).catch(() => null);
+    const [, m, d] = day.split('-');
+    await this.push.sendToTeam({
+      title: `${t?.name ?? 'Tiệm'} — ${state === 'approved' ? 'đã duyệt plan' : 'góp ý plan'} ngày ${d}/${m}`,
+      body: state === 'approved' ? `${who} đã duyệt ý tưởng qua link plan.` : `${who}: ${note.slice(0, 140)}`,
+      url: agencyLink(tenantId, '/salon/content?tab=week'),
+      // Approving a whole month is one notice; each change request is its own.
+      tag: state === 'approved' ? `plan-approved-${tenantId}` : `plan-change-${tenantId}-${day}`,
+    }).catch(() => undefined);
+  }
+
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
     if (!id) throw new BadRequestException('No tenant context');

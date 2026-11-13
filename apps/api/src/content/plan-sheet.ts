@@ -58,6 +58,36 @@ export interface PlanEntry {
   postId: string | null;
   updatedAt: string | null;
   updatedBy: string | null;
+  /**
+   * What the salon said about this day's IDEA through its plan link
+   * (13/11/2026): approved, or "change this" with a note. Absent = nobody has
+   * answered yet. Written only by the link (setClientDecision); the team
+   * cannot set it, and it clears itself when the team changes what was
+   * approved — an approval is for the words the client read.
+   */
+  client?: ClientDecision | null;
+}
+
+export interface ClientDecision {
+  state: 'approved' | 'change';
+  /** The name the person typed on the link — a label, not an identity. */
+  by: string;
+  at: string;
+  /** What to change, in the client's words. Only with state 'change'. */
+  note: string;
+}
+
+export const CLIENT_NOTE_MAX = 1000;
+
+function cleanDecision(raw: unknown): ClientDecision | null {
+  const o = (raw && typeof raw === 'object' ? raw : null) as Record<string, unknown> | null;
+  if (!o || (o.state !== 'approved' && o.state !== 'change')) return null;
+  return {
+    state: o.state,
+    by: str(o.by, 60) || 'Tiệm',
+    at: typeof o.at === 'string' ? o.at : '',
+    note: o.state === 'change' ? str(o.note, CLIENT_NOTE_MAX) : '',
+  };
 }
 
 export type PlanSheet = Record<string, PlanEntry>;
@@ -98,6 +128,7 @@ export function cleanEntry(raw: unknown, day: string): PlanEntry {
     postId: typeof o.postId === 'string' && o.postId ? o.postId.slice(0, 64) : null,
     updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : null,
     updatedBy: typeof o.updatedBy === 'string' ? o.updatedBy : null,
+    ...(cleanDecision(o.client) ? { client: cleanDecision(o.client) } : {}),
   };
 }
 
@@ -120,7 +151,41 @@ export function mergeEntry(current: PlanEntry | null, patch: unknown, day: strin
   const p = (patch && typeof patch === 'object' ? patch : {}) as Record<string, unknown>;
   const next: Record<string, unknown> = { ...base };
   for (const k of PATCHABLE) if (k in p) next[k] = p[k];
-  return { ...cleanEntry(next, day), updatedAt: now.toISOString(), updatedBy: who };
+  const merged = cleanEntry(next, day);
+  // The client approved (or commented on) the idea AS THEY READ IT. If the
+  // team changes any of what they read, the answer no longer covers it and
+  // the day goes back to waiting. Linking a post or pasting a media link is
+  // not a change to the idea.
+  if (merged.client && IDEA_FIELDS.some((k) => JSON.stringify(merged[k]) !== JSON.stringify(base[k]))) delete merged.client;
+  return { ...merged, updatedAt: now.toISOString(), updatedBy: who };
+}
+
+/** The parts of a slot the client reads and answers for. */
+export const IDEA_FIELDS = ['pillar', 'topic', 'detail', 'air', 'format'] as const;
+
+/** A day is put to the client once it says what the post is about. */
+export function ideaReady(e: PlanEntry | null | undefined): boolean {
+  return Boolean(e && (e.topic || e.detail));
+}
+
+/**
+ * Where a day's idea stands, in the client's words:
+ *   wait     — written, nobody at the salon has answered
+ *   held     — the salon asked for a change; the team is on it
+ *   making   — approved (or already turned into a post that is not ready to
+ *              show yet): the team is producing it
+ * A day whose post the client can already see is not an idea any more; the
+ * caller leaves it to the post list.
+ */
+export function ideaStatusOf(e: PlanEntry): 'wait' | 'held' | 'making' {
+  if (e.client?.state === 'change') return 'held';
+  if (e.client?.state === 'approved' || e.postId) return 'making';
+  return 'wait';
+}
+
+/** The client's answer, stamped onto the day. Does not touch updatedAt/By — the team did not edit. */
+export function setClientDecision(e: PlanEntry, state: 'approved' | 'change', by: string, note: string, now: Date): PlanEntry {
+  return { ...e, client: { state, by: str(by, 60) || 'Tiệm', at: now.toISOString(), note: state === 'change' ? str(note, CLIENT_NOTE_MAX) : '' } };
 }
 
 /**
@@ -201,9 +266,9 @@ export function windowOf(sheet: PlanSheet, from: string, days: number): PlanShee
  * the media link (a folder in the agency's Drive) and not who typed it.
  */
 export function entryForShop(e: PlanEntry): {
-  day: string; pillar: string; topic: string; detail: string; air: Air[]; format: string; postId: string | null; updatedAt: string | null;
+  day: string; pillar: string; topic: string; detail: string; air: Air[]; format: string; postId: string | null; updatedAt: string | null; client: ClientDecision | null;
 } {
-  return { day: e.day, pillar: e.pillar, topic: e.topic, detail: e.detail, air: e.air, format: e.format, postId: e.postId, updatedAt: e.updatedAt };
+  return { day: e.day, pillar: e.pillar, topic: e.topic, detail: e.detail, air: e.air, format: e.format, postId: e.postId, updatedAt: e.updatedAt, client: e.client ?? null };
 }
 
 /** "YYYY-MM-DD" + n days in plain calendar arithmetic. */

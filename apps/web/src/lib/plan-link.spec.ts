@@ -1,4 +1,4 @@
-import { byDayOf, countsOf, dayKeyIn, monthCells, openingMonth, shiftYm } from './plan-link';
+import { byDayOf, countsOf, dayKeyAsDate, dayKeyIn, monthCells, openingMonth, openingMonthWithIdeas, shiftYm } from './plan-link';
 
 describe('the client plan link: month grid', () => {
   it('November 2026 starts on a Sunday: six leading blanks, 30 days, 5 or 6 full weeks', () => {
@@ -31,5 +31,19 @@ describe('the client plan link: month grid', () => {
       { id: 'a', scheduledAt: 'x', clientStatus: 'wait' }, { id: 'b', scheduledAt: 'x', clientStatus: 'wait' },
       { id: 'c', scheduledAt: 'x', clientStatus: 'held' }, { id: 'd', scheduledAt: 'x', clientStatus: 'posted' },
     ])).toEqual({ wait: 2, held: 1, approved: 0, posted: 1 });
+  });
+  it('with ideas on the link, opens on the earliest thing waiting — post or idea', () => {
+    const now = new Date('2026-11-13T12:00:00Z');
+    const post = [{ id: 'a', scheduledAt: '2026-12-03T15:00:00Z', clientStatus: 'wait' as const }];
+    expect(openingMonthWithIdeas(post, ['2026-11-27'], 'America/Chicago', now)).toBe('2026-11');
+    expect(openingMonthWithIdeas(post, [], 'America/Chicago', now)).toBe('2026-12');
+    expect(openingMonthWithIdeas([], [], 'America/Chicago', now)).toBe('2026-11');
+  });
+  it('an idea day prints as that day wherever the viewer is', () => {
+    for (const tz of ['Asia/Ho_Chi_Minh', 'America/Los_Angeles', 'Pacific/Kiritimati']) {
+      expect(dayKeyAsDate('2026-11-27').toLocaleDateString('en-CA', { timeZone: 'UTC' })).toBe('2026-11-27');
+      expect(dayKeyIn(dayKeyAsDate('2026-11-27'), 'UTC')).toBe('2026-11-27');
+      void tz;
+    }
   });
 });

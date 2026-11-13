@@ -46,6 +46,22 @@ export interface ReviewFeed {
   igUsername: string | null;
   posts: ReviewPost[];
   waiting: number;
+  /** Days of the month plan that are still ideas (no post to show yet) — the plan link, 13/11/2026. */
+  ideas?: PlanIdea[];
+}
+/** One day's idea, as the salon reads it: what the post will be about, before there is a post. */
+export interface PlanIdea {
+  /** "YYYY-MM-DD", the salon's own day. */
+  day: string;
+  topic: string;
+  detail: string;
+  air: string[];
+  pillar: { vi: string; en: string } | null;
+  format: { vi: string; en: string } | null;
+  /** wait = needs her yes · held = she asked for a change · making = approved, being produced */
+  status: 'wait' | 'held' | 'making';
+  by: string | null;
+  note: string | null;
 }
 export interface ReviewMsg { id: string; side: string; authorName: string; body: string; createdAt: string }
 
@@ -56,6 +72,9 @@ export interface ReviewApi {
   comment(postId: string, body: string, name?: string): Promise<unknown>;
   /** The public door has no account, so it asks who is approving — once. */
   needsName: boolean;
+  /** The plan link only: answer for a day's idea. */
+  approveIdea?: (day: string, name: string) => Promise<unknown>;
+  changeIdea?: (day: string, body: string, name: string) => Promise<unknown>;
   /** Logged-in door only: store a photo she attaches to a note, return its address. */
   upload?: (file: File) => Promise<string>;
 }

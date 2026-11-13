@@ -34,6 +34,28 @@ export function parseReviewToken(token: string): { tenantId: string; secret: str
   }
 }
 
+/**
+ * THE SHORT CODE (12/11/2026)
+ *
+ * The first token carried the tenant id and a 48-character secret, which made
+ * a link of well over a hundred characters — it wrapped across three lines in
+ * Zalo and looked like spam. A link now ends in 16 random letters and digits
+ * (about 95 bits), stored beside the secret and looked up; it says nothing
+ * about which salon it opens. Long tokens already shared keep working.
+ */
+export const SHORT_CODE_LEN = 16;
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; // no 0/O, 1/l/I
+
+export function makeShortCode(bytes: Uint8Array): string {
+  let out = '';
+  for (let i = 0; i < SHORT_CODE_LEN; i++) out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+  return out;
+}
+
+export function isShortCode(token: string): boolean {
+  return new RegExp(`^[A-Za-z0-9]{${SHORT_CODE_LEN}}$`).test(String(token ?? ''));
+}
+
 export function tokenFresh(createdAt: Date | string | null | undefined, now = new Date()): boolean {
   if (!createdAt) return false;
   const t = createdAt instanceof Date ? createdAt.getTime() : Date.parse(String(createdAt));

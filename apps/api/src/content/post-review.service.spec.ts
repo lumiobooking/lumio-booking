@@ -19,7 +19,9 @@ function world() {
   const prisma = {
     tenant: { findUnique: async ({ where }: { where: { id: string } }) => ({ name: where.id === 'tenant-aaaa-0001' ? 'Salon A' : 'Salon B', timezone: 'America/Chicago' }) },
     setting: {
-      findFirst: async ({ where }: { where: Row }) => settings.find((s) => match(s, where)) ?? null,
+      findFirst: async ({ where }: { where: Row }) => settings.find((s) => Object.entries(where).every(([k, v]) => (k === 'value'
+        ? (s.value as Row)?.[(v as { path: string[] }).path[0]] === (v as { equals: unknown }).equals
+        : match(s, { [k]: v })))) ?? null,
       create: async ({ data }: { data: Row }) => { const r = { id: `s${settings.length + 1}`, ...data }; settings.push(r); return r; },
       update: async ({ where, data }: { where: { id: string }; data: Row }) => { const r = settings.find((s) => s.id === where.id)!; Object.assign(r, data); return r; },
     },
@@ -31,9 +33,14 @@ function world() {
     auditLog: { create: async ({ data }: { data: Row }) => { audits.push(data); return data; } },
   };
   const told: Row[] = [];
-  const chat = { alertApproved: async (tenantId: string, postId: string, who: string) => { told.push({ tenantId, postId, who }); }, alertTeam: async () => undefined };
+  const plan: Row[] = [];
+  const chat = {
+    alertApproved: async (tenantId: string, postId: string, who: string) => { told.push({ tenantId, postId, who }); },
+    alertPlanDay: async (tenantId: string, day: string, who: string, state: string) => { plan.push({ tenantId, day, who, state }); },
+    alertTeam: async () => undefined,
+  };
   const svc = new PostReviewService(prisma as never, chat as never);
-  return { svc, posts, audits, told, settings };
+  return { svc, posts, audits, told, settings, plan };
 }
 const support = (tenantId: string) => ({ userId: 'u-team', role: 'SALON_ADMIN', tenantId, supportSession: true }) as never;
 const owner = (tenantId: string) => ({ userId: 'u-owner', role: 'SALON_ADMIN', tenantId }) as never;
@@ -44,7 +51,9 @@ describe('the client plan link', () => {
     const { svc, audits } = world();
     await expect(svc.ensureLink(owner('tenant-aaaa-0001'))).rejects.toBeInstanceOf(ForbiddenException);
     const link = await svc.ensureLink(support('tenant-aaaa-0001'));
-    expect(link.url).toMatch(/\/plan\/[A-Za-z0-9_-]+$/);
+    // Short enough to sit on one line of a chat: 16 letters and digits, nothing about the salon in it.
+    expect(link.url).toMatch(/\/plan\/[A-Za-z0-9]{16}$/);
+    expect(link.url).not.toContain('tenant');
     const days = (link.expiresAt.getTime() - Date.now()) / 86_400_000;
     expect(days).toBeGreaterThan(29.9); expect(days).toBeLessThanOrEqual(30);
     // Asking again hands back the same link, not a second door.
@@ -80,6 +89,81 @@ describe('the client plan link', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(told).toEqual([{ tenantId: 'tenant-aaaa-0001', postId: 'post-a-1', who: 'Chị Hằng' }]);
     expect(audits.some((a) => a.action === 'content.post_approved' && a.tenantId === 'tenant-aaaa-0001' && a.resourceId === 'post-a-1')).toBe(true);
+  });
+
+  it('a long link shared before the short code keeps working, and gains a short one', async () => {
+    const { svc, settings } = world();
+    const secret = 'ab12'.repeat(12);
+    settings.push({ id: 's-old', tenantId: 'tenant-aaaa-0001', key: 'post_review_link', value: { secret, createdAt: new Date(Date.now() - 5 * 86_400_000).toISOString() } });
+    const long = Buffer.from(`tenant-aaaa-0001:${secret}`, 'utf8').toString('base64url');
+    expect(await svc.resolveToken(long)).toBe('tenant-aaaa-0001');
+    const link = await svc.ensureLink(support('tenant-aaaa-0001'));
+    expect(await svc.resolveToken(tokenOf(link.url))).toBe('tenant-aaaa-0001');
+    expect(await svc.resolveToken(long)).toBe('tenant-aaaa-0001');
+    // The 30 days still count from when the first link was made.
+    expect((link.expiresAt.getTime() - Date.now()) / 86_400_000).toBeLessThan(25.1);
+  });
+
+  it('a guessed short code opens nothing', async () => {
+    const { svc } = world();
+    await svc.ensureLink(support('tenant-aaaa-0001'));
+    expect(await svc.resolveToken('AAAAAAAAAAAAAAAA')).toBeNull();
+  });
+
+  describe('the month plan through the link', () => {
+    const day = (n: number) => new Date(Date.now() + n * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const seed = (settings: Row[], tenantId: string, d: string, extra: Row = {}) => {
+      const key = `content_plan_sheet:${d.slice(0, 7)}`;
+      let row = settings.find((s) => s.tenantId === tenantId && s.key === key);
+      if (!row) { row = { id: `sheet-${tenantId}-${d.slice(0, 7)}`, tenantId, key, value: {} }; settings.push(row); }
+      (row.value as Row)[d] = { topic: `Idea ${tenantId.slice(7, 8)} ${d}`, detail: 'caption', mediaUrl: 'https://drive.example/secret', air: ['facebook'], updatedBy: 'team@lumio', ...extra };
+    };
+
+    it('shows the days still ahead as ideas, without the Drive link or who wrote them, and only its own salon', async () => {
+      const { svc, settings } = world();
+      seed(settings, 'tenant-aaaa-0001', day(3)); seed(settings, 'tenant-aaaa-0001', day(-2)); seed(settings, 'tenant-bbbb-0002', day(4));
+      const tenantId = (await svc.resolveToken(tokenOf((await svc.ensureLink(support('tenant-aaaa-0001'))).url)))!;
+      const feed = await svc.feed(tenantId);
+      expect(feed.ideas.map((i) => i.day)).toEqual([day(3)]);
+      expect(feed.ideas[0].status).toBe('wait');
+      expect(feed.ideasWaiting).toBe(1);
+      expect(JSON.stringify(feed)).not.toContain('drive.example');
+      expect(JSON.stringify(feed)).not.toContain('team@lumio');
+      expect(JSON.stringify(feed)).not.toContain('Idea b');
+    });
+
+    it('a day whose post the client can already see is left to the post', async () => {
+      const { svc, settings } = world();
+      seed(settings, 'tenant-aaaa-0001', day(1), { postId: 'post-a-1' });   // scheduled → visible
+      seed(settings, 'tenant-aaaa-0001', day(2), { postId: 'draft-xyz' });  // a draft the client cannot see yet
+      const feed = await svc.feed('tenant-aaaa-0001');
+      expect(feed.ideas.map((i) => [i.day, i.status])).toEqual([[day(2), 'making']]);
+    });
+
+    it('approving and asking for a change are stored, logged and told to the team; nothing is scheduled', async () => {
+      const { svc, settings, audits, plan, posts } = world();
+      seed(settings, 'tenant-aaaa-0001', day(3)); seed(settings, 'tenant-aaaa-0001', day(5));
+      const before = JSON.stringify(posts);
+      expect((await svc.decideIdea('tenant-aaaa-0001', day(3), 'approved', 'Chị Hằng')).status).toBe('making');
+      expect((await svc.decideIdea('tenant-aaaa-0001', day(5), 'change', 'Chị Hằng', 'đổi ngày giúp chị')).status).toBe('held');
+      await expect(svc.decideIdea('tenant-aaaa-0001', day(5), 'change', 'Chị Hằng', '  ')).rejects.toThrow(/muốn đổi/);
+      const feed = await svc.feed('tenant-aaaa-0001');
+      expect(feed.ideas.map((i) => [i.status, i.by, i.note])).toEqual([['making', 'Chị Hằng', null], ['held', 'Chị Hằng', 'đổi ngày giúp chị']]);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(plan.map((p) => p.state)).toEqual(['approved', 'change']);
+      expect(audits.filter((a) => String(a.action).startsWith('content.plan_day_')).map((a) => [a.tenantId, a.resourceId])).toEqual([['tenant-aaaa-0001', day(3)], ['tenant-aaaa-0001', day(5)]]);
+      expect(JSON.stringify(posts)).toBe(before);
+    });
+
+    it("salon A's link cannot answer for salon B's day", async () => {
+      const { svc, settings } = world();
+      seed(settings, 'tenant-bbbb-0002', day(4));
+      const tenantId = (await svc.resolveToken(tokenOf((await svc.ensureLink(support('tenant-aaaa-0001'))).url)))!;
+      await expect(svc.decideIdea(tenantId, day(4), 'approved', 'Hang')).rejects.toBeInstanceOf(NotFoundException);
+      const b = settings.find((s) => s.tenantId === 'tenant-bbbb-0002' && String(s.key).startsWith('content_plan_sheet'))!;
+      expect(((b.value as Row)[day(4)] as Row).client).toBeUndefined();
+      await expect(svc.decideIdea(tenantId, 'not-a-day', 'approved', 'Hang')).rejects.toThrow(/YYYY-MM-DD/);
+    });
   });
 
   it('a revoked link is dead at once, and a tampered one never worked', async () => {

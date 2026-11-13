@@ -247,6 +247,22 @@ export function PlanSheet({
                 <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>○ {T('đang soạn', 'drafting')}</span>
               )}
             </div>
+            {/* the salon's own answer for this day's idea, from its plan link */}
+            {e.client && (
+              <div
+                title={e.client.state === 'change' ? e.client.note : undefined}
+                style={{
+                  fontSize: 10.5, fontWeight: 700, lineHeight: 1.3, borderRadius: 6, padding: '2px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  ...(e.client.state === 'approved'
+                    ? { color: 'var(--ink-good)', background: 'rgba(34,197,94,.12)' }
+                    : { color: 'var(--ink-warn)', background: 'rgba(249,115,22,.14)' }),
+                }}
+              >
+                {e.client.state === 'approved'
+                  ? `✓ ${T('Khách duyệt', 'Client approved')} · ${e.client.by}`
+                  : `✎ ${T('Khách góp ý', 'Client asked')}: ${e.client.note}`}
+              </div>
+            )}
           </>
         ) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 20 : compact ? 40 : 56 }}>
@@ -493,6 +509,16 @@ function DayPanel({
     <>
       <div onClick={() => { flush(); onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 74, background: 'rgba(2,6,23,.55)', backdropFilter: 'blur(2px)' }} />
       <div style={{ ...panel, background: 'var(--c111827)', boxShadow: '-12px 0 40px rgba(0,0,0,.35)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {entry.client && (
+          <div style={{
+            padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5, borderBottom: '1px solid var(--line)',
+            ...(entry.client.state === 'approved' ? { background: 'rgba(34,197,94,.12)', color: 'var(--ink-good)' } : { background: 'rgba(249,115,22,.14)', color: 'var(--ink-warn)' }),
+          }}>
+            {entry.client.state === 'approved'
+              ? <><b>✓ {T('Khách đã duyệt ý tưởng này', 'The client approved this idea')}</b> · {entry.client.by}. {canEdit && T('Sửa chủ đề / nội dung / kênh sẽ đưa ngày này về "chờ khách duyệt".', 'Changing the topic, caption or networks sends it back for approval.')}</>
+              : <><b>✎ {T('Khách góp ý', 'The client asked for a change')}</b> ({entry.client.by}): {entry.client.note} {canEdit && T('— sửa xong, ngày này tự gửi lại cho khách duyệt.', '— once you edit it, the day goes back to the client.')}</>}
+          </div>
+        )}
         {/* header: the day, the arrows, the save state, the way out */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
           <button type="button" onClick={() => { flush(); onMove(-1); }} title={T('Ngày trước (←)', 'Previous day (←)')} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>‹</button>

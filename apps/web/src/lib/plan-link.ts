@@ -52,3 +52,21 @@ export function byDayOf<T extends PlanPostLite>(posts: T[], tz?: string): Map<st
   }
   return m;
 }
+
+/**
+ * The month the link opens on once the plan's ideas are on it too: the
+ * earliest thing still waiting for a yes — a finished post or an idea.
+ * `ideaDays` are salon day keys already, so they are compared as text.
+ */
+export function openingMonthWithIdeas(posts: PlanPostLite[], ideaDays: string[], tz: string | undefined, now: Date = new Date()): string {
+  const firstPost = posts.filter((p) => p.clientStatus === 'wait').map((p) => dayKeyIn(p.scheduledAt, tz)).sort()[0];
+  const firstIdea = [...ideaDays].sort()[0];
+  const first = [firstPost, firstIdea].filter(Boolean).sort()[0];
+  return (first ?? dayKeyIn(now, tz)).slice(0, 7);
+}
+
+/** "2026-11-27" as a date that formats to the same day in any viewer's zone. */
+export function dayKeyAsDate(day: string): Date {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12));
+}

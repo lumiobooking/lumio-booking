@@ -29,6 +29,20 @@ export interface PlanEntry {
   postId: string | null;
   updatedAt: string | null;
   updatedBy: string | null;
+  /** The salon's answer for this day's idea, given on its plan link (api plan-sheet ClientDecision). Read-only here. */
+  client?: { state: 'approved' | 'change'; by: string; at: string; note: string } | null;
+}
+
+/** How many days the salon has to answer for (from today on, with something to read), and how many it approved. */
+export function clientProgress(entries: Record<string, PlanEntry>, today: string): { asked: number; approved: number; change: number } {
+  let asked = 0, approved = 0, change = 0;
+  for (const e of Object.values(entries)) {
+    if (!e || e.day < today || !(e.topic || e.detail)) continue;
+    asked++;
+    if (e.client?.state === 'approved') approved++;
+    if (e.client?.state === 'change') change++;
+  }
+  return { asked, approved, change };
 }
 
 export type PlanPatch = Partial<Pick<PlanEntry, 'pillar' | 'topic' | 'detail' | 'mediaUrl' | 'air' | 'format' | 'postId'>>;

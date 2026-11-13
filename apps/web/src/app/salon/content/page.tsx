@@ -13,6 +13,7 @@
  * back at them.
  */
 
+import { clientProgress } from '../../../components/plan-sheet';
 import { PlanLinkButton } from '../../../components/PlanLinkButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
@@ -2938,6 +2939,22 @@ function Inner() {
                     <div style={{ fontSize: 12, color: 'var(--c64748b)' }}>
                       {T('Kế hoạch tháng và Plan bên dưới đổi cùng nhau.', 'The month plan and the calendar below turn together.')}
                     </div>
+                    {/* The month as a link the salon opens without an account: it
+                        approves each day's idea there, and each finished post. */}
+                    {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
+                      <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        {sheet && (() => {
+                          const c = clientProgress(sheet.entries, sheet.today);
+                          return c.asked > 0 ? (
+                            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+                              {T('Khách đã duyệt', 'Client approved')} <b style={{ color: 'var(--ce2e8f0)' }}>{c.approved}/{c.asked}</b> {T('ngày', 'days')}
+                              {c.change > 0 && <span style={{ color: 'var(--ink-warn)', fontWeight: 700 }}> · {c.change} {T('góp ý', 'change requests')}</span>}
+                            </span>
+                          ) : null;
+                        })()}
+                        <PlanLinkButton token={token} vi={vi} label={T('Gửi link cho khách duyệt plan', 'Send the client the plan link')} />
+                      </span>
+                    )}
                   </div>
 
                   {/* The 1st of the month is a cliff: nothing carries over, so a

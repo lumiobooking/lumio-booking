@@ -19,6 +19,9 @@ interface Status {
   rootFolderUrl: string | null;
   clientReady: boolean;
   redirectUri: string;
+  /** Whether Drive answered just now — a stored sign-in can be dead. */
+  working?: boolean;
+  problem?: string | null;
 }
 
 export function GoogleDriveCard({ token, onSaveClient }: {
@@ -95,9 +98,9 @@ export function GoogleDriveCard({ token, onSaveClient }: {
             fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20,
             background: st.connected ? 'rgba(34,197,94,.14)' : 'var(--c0f172a)',
             border: `1px solid ${st.connected ? '#22c55e' : 'var(--c475569)'}`,
-            color: st.connected ? 'var(--ink-good)' : 'var(--c94a3b8)',
+            color: !st.connected ? 'var(--c94a3b8)' : st.working === false ? 'var(--cf87171)' : 'var(--ink-good)',
           }}>
-            {st.connected ? `Đã kết nối${st.email ? ` — ${st.email}` : ''}` : 'Chưa kết nối'}
+            {!st.connected ? 'Chưa kết nối' : st.working === false ? `Mất kết nối${st.email ? ` — ${st.email}` : ''}` : `Đã kết nối${st.email ? ` — ${st.email}` : ''}`}
           </span>
         )}
       </div>
@@ -115,8 +118,18 @@ export function GoogleDriveCard({ token, onSaveClient }: {
         }}>{msg.text}</div>
       )}
 
+      {st?.connected && st.problem && (
+        <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, fontSize: 13, lineHeight: 1.6, background: 'rgba(239,68,68,0.12)', color: 'var(--cfca5a5)' }}>
+          <b>{st.working === false ? 'Drive đang không lưu được file.' : 'Lưu ý.'}</b> {st.problem}
+          {st.working === false && ' Sau khi kết nối lại, các bài đăng bị thiếu thư mục Drive (3 tuần gần đây) sẽ tự được lưu bù trong vòng 30 phút.'}
+        </div>
+      )}
+
       {st?.connected ? (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {st.working === false && (
+            <button onClick={connect} disabled={busy} style={{ ...ghost, borderColor: '#6366f1', color: 'var(--ca5b4fc)', fontWeight: 700 }}>Kết nối lại</button>
+          )}
           {st.rootFolderUrl && (
             <a href={st.rootFolderUrl} target="_blank" rel="noopener noreferrer" style={{ ...ghost, borderColor: '#6366f1', color: 'var(--ca5b4fc)' }}>
               Mở folder "Lumio Booking" →

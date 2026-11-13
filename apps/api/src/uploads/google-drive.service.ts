@@ -69,6 +69,16 @@ const ROOT_NAME = 'Lumio Booking';
 /** What a salon's stored Drive pointer looks like. */
 interface TenantDrive { folderId: string; folderUrl: string; name: string }
 
+/** Why Drive is not answering, for a person. Pure. */
+export function driveProblem(raw: string): string {
+  const m = String(raw || '');
+  if (/invalid_grant/i.test(m)) return 'Google đã thu hồi phiên đăng nhập của tài khoản Drive (đổi mật khẩu, gỡ quyền, hoặc phiên hết hạn). Bấm "Kết nối lại" và đăng nhập đúng tài khoản lưu trữ.';
+  if (/invalid_client|unauthorized_client/i.test(m)) return 'Client ID / Secret của Google không còn đúng. Kiểm tra lại trong Google Cloud rồi kết nối lại.';
+  if (/storageQuotaExceeded|quota/i.test(m)) return 'Drive đã đầy. Dọn bớt hoặc mua thêm dung lượng.';
+  if (/Drive 40[13]/.test(m)) return 'Google từ chối quyền vào Drive. Bấm "Kết nối lại".';
+  return `Google Drive không trả lời (${m.slice(0, 120)}).`;
+}
+
 @Injectable()
 export class GoogleDriveService {
   private readonly log = new Logger(GoogleDriveService.name);
@@ -106,7 +116,26 @@ export class GoogleDriveService {
     return Boolean(await this.platform.get('gdrive_refresh_token'));
   }
 
-  async status(): Promise<{ connected: boolean; email: string | null; rootFolderUrl: string | null; clientReady: boolean; redirectUri: string }> {
+  /**
+   * Does Drive actually answer? A stored token says nothing: Google can drop
+   * it (password change, access removed, consent expired) and every copy then
+   * fails quietly — posts simply stop getting their Drive folder (11/2026).
+   * One cheap call tells; the reason is in plain words for the status card.
+   */
+  async check(): Promise<{ working: boolean; problem: string | null; full: boolean }> {
+    if (!(await this.configured())) return { working: false, problem: null, full: false };
+    try {
+      const about = await this.api<{ storageQuota?: { limit?: string; usage?: string } }>('/about?fields=storageQuota');
+      const limit = Number(about.storageQuota?.limit ?? 0), usage = Number(about.storageQuota?.usage ?? 0);
+      const full = limit > 0 && usage >= limit * 0.98;
+      return { working: true, problem: full ? 'Drive gần đầy — file mới sẽ không lưu được. Dọn bớt hoặc mua thêm dung lượng.' : null, full };
+    } catch (e) {
+      return { working: false, problem: driveProblem(e instanceof Error ? e.message : String(e)), full: false };
+    }
+  }
+
+  async status(): Promise<{ connected: boolean; email: string | null; rootFolderUrl: string | null; clientReady: boolean; redirectUri: string; working: boolean; problem: string | null }> {
+    const live = await this.check().catch(() => ({ working: false, problem: 'Không kiểm tra được Google Drive.', full: false }));
     const [token, email, root, id, secret] = await Promise.all([
       this.platform.get('gdrive_refresh_token'),
       this.platform.get('gdrive_email'),
@@ -120,6 +149,8 @@ export class GoogleDriveService {
       rootFolderUrl: root ? `https://drive.google.com/drive/folders/${root}` : null,
       clientReady: Boolean(id && secret),
       redirectUri: this.redirectUri(),
+      working: live.working,
+      problem: live.problem,
     };
   }
 

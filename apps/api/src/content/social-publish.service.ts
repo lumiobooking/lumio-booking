@@ -1100,6 +1100,44 @@ export class SocialPublishService {
   }
 
   /**
+   * Catch up the Drive archive: posts of the last three weeks (and those still
+   * ahead) whose pictures never reached Drive — because Drive was not
+   * answering when they were saved. Runs on a timer, so reconnecting Drive is
+   * all a person has to do. Stops at the first sign Drive is still down.
+   */
+  async archiveMissing(limit = 30): Promise<{ posts: number; copied: number }> {
+    if (!this.drive || !(await this.drive.configured().catch(() => false))) return { posts: 0, copied: 0 };
+    const live = await this.drive.check().catch(() => ({ working: false, full: false }));
+    if (!live.working || live.full) return { posts: 0, copied: 0 };
+    const since = new Date(Date.now() - 21 * 86_400_000);
+    const rows = (await this.posts?.findMany({
+      where: { driveFolderUrl: null, scheduledAt: { gte: since } },
+      orderBy: { scheduledAt: 'desc' }, take: 300,
+    }).catch(() => [])) as PostRow[] | undefined;
+    const todo = (rows ?? []).filter((r) => unarchived(this.mediaOf(r)).length > 0).slice(0, limit);
+    let posts = 0, copied = 0;
+    for (const r of todo) {
+      try {
+        const out = await this.archiveToDrive(r.id);
+        if (out.copied) { posts += 1; copied += out.copied; }
+      } catch (e) {
+        this.log.warn(`drive catch-up stopped at ${r.id}: ${e instanceof Error ? e.message : e}`);
+        break;
+      }
+    }
+    if (posts) this.log.log(`Drive catch-up: ${copied} file(s) of ${posts} post(s) archived.`);
+    return { posts, copied };
+  }
+
+  onApplicationBootstrap() {
+    const on = (process.env.HOUSEKEEPING_ENABLED ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false')) === 'true';
+    if (!on) return;
+    const run = () => { void this.archiveMissing().catch(() => undefined); };
+    setTimeout(run, 150 * 1000).unref?.();
+    setInterval(run, 30 * 60 * 1000).unref?.();
+  }
+
+  /**
    * Move one post to a new time — the drag on the month calendar.
    *
    * Its own endpoint rather than a full save, because dragging a card must not

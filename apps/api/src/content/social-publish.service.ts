@@ -1102,8 +1102,8 @@ export class SocialPublishService {
   /**
    * Catch up the Drive archive: posts of the last three weeks (and those still
    * ahead) whose pictures never reached Drive — because Drive was not
-   * answering when they were saved. Runs on a timer, so reconnecting Drive is
-   * all a person has to do. Stops at the first sign Drive is still down.
+   * answering when they were saved. Not called automatically (see below).
+   * Stops at the first sign Drive is still down.
    */
   async archiveMissing(limit = 30): Promise<{ posts: number; copied: number }> {
     if (!this.drive || !(await this.drive.configured().catch(() => false))) return { posts: 0, copied: 0 };
@@ -1129,13 +1129,9 @@ export class SocialPublishService {
     return { posts, copied };
   }
 
-  onApplicationBootstrap() {
-    const on = (process.env.HOUSEKEEPING_ENABLED ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false')) === 'true';
-    if (!on) return;
-    const run = () => { void this.archiveMissing().catch(() => undefined); };
-    setTimeout(run, 150 * 1000).unref?.();
-    setInterval(run, 30 * 60 * 1000).unref?.();
-  }
+  // 13/11/2026: archiveMissing is NOT run on a timer. Run automatically after
+  // Drive was reconnected, it pulled whole clips into memory one post after
+  // another and took the API down in a restart loop. Nothing calls it now.
 
   /**
    * Move one post to a new time — the drag on the month calendar.

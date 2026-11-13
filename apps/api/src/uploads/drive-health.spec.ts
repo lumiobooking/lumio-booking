@@ -1,4 +1,4 @@
-import { driveProblem, GoogleDriveService } from './google-drive.service';
+import { driveProblem, GoogleDriveService, mirrorCapBytes, readCapped } from './google-drive.service';
 import { SocialPublishService } from '../content/social-publish.service';
 
 /**
@@ -82,5 +82,37 @@ describe('catching up posts that missed their Drive folder', () => {
     const { svc, calls } = world(false);
     expect(await svc.archiveMissing()).toEqual({ posts: 0, copied: 0 });
     expect(calls).toEqual([]);
+  });
+});
+
+describe('a background copy never pulls a heavy file into memory', () => {
+  const stream = (chunks: number[]) => new ReadableStream<Uint8Array>({
+    start(c) { for (const n of chunks) c.enqueue(new Uint8Array(n)); c.close(); },
+  });
+  it('caps at 40 MB unless told otherwise, and never above 200', () => {
+    delete process.env.DRIVE_MIRROR_MAX_MB;
+    expect(mirrorCapBytes()).toBe(40 * 1048576);
+    process.env.DRIVE_MIRROR_MAX_MB = '9999';
+    expect(mirrorCapBytes()).toBe(200 * 1048576);
+    delete process.env.DRIVE_MIRROR_MAX_MB;
+  });
+  it('reads a small body whole', async () => {
+    expect((await readCapped({ body: stream([10, 20]), arrayBuffer: async () => new ArrayBuffer(0) }, 100)).length).toBe(30);
+  });
+  it('gives up as soon as the body passes the cap', async () => {
+    await expect(readCapped({ body: stream([60, 60, 60]), arrayBuffer: async () => new ArrayBuffer(0) }, 100)).rejects.toThrow(/too heavy/);
+  });
+  it('refuses on the declared size without reading a byte', async () => {
+    const svc = new GoogleDriveService({} as never, { get: async () => 'tok' } as never);
+    let read = false;
+    const real = global.fetch;
+    global.fetch = (async () => ({
+      ok: true, headers: { get: (k: string) => (k === 'content-length' ? String(300 * 1048576) : 'video/mp4') },
+      body: { cancel: async () => undefined }, arrayBuffer: async () => { read = true; return new ArrayBuffer(0); },
+    })) as never;
+    try {
+      await expect(svc.mirrorFromUrl('A', 'https://m/x.mp4', 'x.mp4', 'video')).rejects.toThrow(/too heavy.*300 MB/);
+      expect(read).toBe(false);
+    } finally { global.fetch = real; }
   });
 });

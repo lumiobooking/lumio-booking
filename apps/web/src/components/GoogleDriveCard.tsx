@@ -121,7 +121,6 @@ export function GoogleDriveCard({ token, onSaveClient }: {
       {st?.connected && st.problem && (
         <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, fontSize: 13, lineHeight: 1.6, background: 'rgba(239,68,68,0.12)', color: 'var(--cfca5a5)' }}>
           <b>{st.working === false ? 'Drive đang không lưu được file.' : 'Lưu ý.'}</b> {st.problem}
-          {st.working === false && ' Sau khi kết nối lại, các bài đăng bị thiếu thư mục Drive (3 tuần gần đây) sẽ tự được lưu bù trong vòng 30 phút.'}
         </div>
       )}
 

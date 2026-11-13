@@ -69,6 +69,35 @@ const ROOT_NAME = 'Lumio Booking';
 /** What a salon's stored Drive pointer looks like. */
 interface TenantDrive { folderId: string; folderUrl: string; name: string }
 
+/** The most a background copy may hold in memory. DRIVE_MIRROR_MAX_MB, default 40. */
+export function mirrorCapBytes(): number {
+  const mb = Number(process.env.DRIVE_MIRROR_MAX_MB);
+  return (Number.isFinite(mb) && mb > 0 ? Math.min(mb, 200) : 40) * 1048576;
+}
+
+/** Read a response body, giving up the moment it passes the cap (no content-length to trust). */
+export async function readCapped(res: { body?: ReadableStream<Uint8Array> | null; arrayBuffer: () => Promise<ArrayBuffer> }, cap: number): Promise<Buffer> {
+  if (!res.body) {
+    const all = Buffer.from(await res.arrayBuffer());
+    if (all.length > cap) throw new Error('too heavy to copy in the background');
+    return all;
+  }
+  const reader = res.body.getReader();
+  const parts: Buffer[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > cap) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error('too heavy to copy in the background');
+    }
+    parts.push(Buffer.from(value));
+  }
+  return Buffer.concat(parts);
+}
+
 /** Why Drive is not answering, for a person. Pure. */
 export function driveProblem(raw: string): string {
   const m = String(raw || '');
@@ -488,7 +517,16 @@ export class GoogleDriveService {
     if (!res.ok) throw new Error(`fetch ${res.status} for ${url}`);
     const mime = resolveMime({ declared: res.headers.get('content-type'), name: url, kind: kind ?? null })
       || (kind === 'video' ? 'video/mp4' : 'image/jpeg');
-    const bytes = Buffer.from(await res.arrayBuffer());
+    // The whole file is held in memory for the copy, on a server with 512 MB.
+    // A heavy clip copied in the background took the API down (13/11/2026):
+    // anything over the cap is left where it is — never pulled into memory.
+    const cap = mirrorCapBytes();
+    const declared = Number(res.headers.get('content-length') || 0);
+    if (declared > cap) {
+      await res.body?.cancel().catch(() => undefined);
+      throw new Error(`too heavy to copy in the background (${Math.round(declared / 1048576)} MB)`);
+    }
+    const bytes = await readCapped(res, cap);
     if (!bytes.length) throw new Error('empty body');
     return this.store(tenantId, name, mime, bytes, intoFolderId);
   }

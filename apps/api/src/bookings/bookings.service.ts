@@ -15,7 +15,7 @@ import { pastStartProblem } from './past-start';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { signingSecret } from '../common/secret.util';
 import { publicWebBase } from '../common/public-url.util';
-import { formatMoney, localeForCountry } from '../common/money';
+import { formatMoney, localeForCountry, salonMoneyCurrency } from '../common/money';
 import { toE164, dialCodeFor } from '../common/phone';
 import { fitsBusinessHours, describeWindows, windowsForDay } from '../settings/business-hours';
 import { NO_SHOW_BLOCK_MESSAGE, NO_SHOW_POLICY_KEY, NoShowPolicy, cleanNoShowPolicy, noShowVerdict, windowStart } from './no-show-policy';
@@ -968,7 +968,9 @@ export class BookingsService {
           startTime: start,
           endTime: end,
           priceCents: totalPrice,
-          currency: service.currency,
+          // The salon's currency, not the service row's label (which may
+          // still say USD from before the salon chose AUD — common/money.ts).
+          currency: salonMoneyCurrency(service.currency, await this.salonCurrencyOf(tenantId)),
           addons: lineItems as unknown as Prisma.InputJsonValue,
           // Dishes ordered ahead and the address are also written into the notes, which every screen already shows.
           notes: ([dto.notes, location ? `Address: ${location}` : null, preOrder.length ? `Pre-order: ${preOrderText(preOrder)}` : null].filter(Boolean).join(' · ').slice(0, 2000)) || null,
@@ -1730,7 +1732,9 @@ export class BookingsService {
     // is supposed to confirm what they will pay.
     const vi = loc.toLowerCase().startsWith('vi');
     // 0 = priced at the salon (never "$0.00", which reads as free).
-    const total = totalText(appointment.priceCents, (c) => formatMoney(c, appointment.currency, loc), vi);
+    // Shown in the salon's currency even for a booking stored with a stale label.
+    const cur = salonMoneyCurrency(appointment.currency, await this.salonCurrencyOf(tenantId));
+    const total = totalText(appointment.priceCents, (c) => formatMoney(c, cur, loc), vi);
     // Where the salon is. Optional — a salon that has not filled it in simply
     // gets no address row, exactly as before.
     const extra = await this.settings.getCompanyExtra(tenantId).catch(() => ({ address: '' } as { address?: string }));
@@ -1771,7 +1775,7 @@ export class BookingsService {
       const gs = groupSummary(opts.group, vi);
       d.service = gs.service;
       d.lineup = gs.lineup;
-      d.total = totalText(gs.totalCents, (c) => formatMoney(c, appointment.currency, loc), vi);
+      d.total = totalText(gs.totalCents, (c) => formatMoney(c, cur, loc), vi);
       d.addons = '';
       d.addonsOnly = '';
       // Everyone starts together; each person's length differs, so the party's
@@ -2530,7 +2534,8 @@ export class BookingsService {
     const addonNames = lineItems.map((a) => a.name).filter(Boolean).join(', ');
     const serviceLines = lineItems.filter((l) => l.kind === 'service');
     const addonOnlyNames = lineItems.filter((l) => l.kind !== 'service').map((a) => a.name).filter(Boolean).join(', ');
-    const total = totalText(appt.priceCents, (c) => formatMoney(c, appt.currency, loc), loc.toLowerCase().startsWith('vi'));
+    const cur = salonMoneyCurrency(appt.currency, await this.salonCurrencyOf(tenantId));
+    const total = totalText(appt.priceCents, (c) => formatMoney(c, cur, loc), loc.toLowerCase().startsWith('vi'));
     const salon = tenant?.name ?? 'Our salon';
     const accent = this.settings.brandingFrom(tenant?.branding).accentColor;
     const contact = tenant?.contactEmail ?? tenant?.contactPhone ?? '';
@@ -3457,7 +3462,7 @@ export class BookingsService {
       old_date: ctx.from ? fmtD(ctx.from) : '',
       old_time: ctx.from ? fmtT(ctx.from) : '',
       duration: `${Math.round((appt.endTime.getTime() - appt.startTime.getTime()) / 60_000)} ${vi ? 'phút' : 'min'}`,
-      total_price: formatMoney(appt.priceCents, appt.currency, loc),
+      total_price: formatMoney(appt.priceCents, salonMoneyCurrency(appt.currency, await this.salonCurrencyOf(tenantId)), loc),
       add_ons: lineItems.map((a) => a.name).filter(Boolean).join(', '),
       add_ons_only: lineItems.filter((l) => l.kind !== 'service').map((a) => a.name).filter(Boolean).join(', '),
       service_lineup: '',
@@ -3568,6 +3573,11 @@ export class BookingsService {
     } catch {
       return 'en-US';
     }
+  }
+
+  /** The salon's own currency setting, or null — never throws (a notice must still go out). */
+  private async salonCurrencyOf(tenantId: string): Promise<string | null> {
+    try { return ((await this.settings.getBookingRules(tenantId)) as { currency?: string } | null)?.currency ?? null; } catch { return null; }
   }
 
   private apptToken(appointmentId: string): string {

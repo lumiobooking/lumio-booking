@@ -1,3 +1,4 @@
+import { currencyCode, sameMinorUnits } from '../common/money';
 import { dialCodeFor } from '../common/phone';
 import { PARTY_DEPOSIT_KEY, PartyDeposit, cleanPartyDeposit } from '../payments/party-deposit';
 import { CHAT_FOLLOWUP_KEY, followUpSettingsFrom, type FollowUpSettings } from '../messenger/followup';
@@ -669,6 +670,47 @@ export class SettingsService implements OnApplicationBootstrap {
         .then((n) => { if (n) new Logger('Settings').log(`Card-brand settings: removed stored keys from ${n} salon(s).`); })
         .catch((e) => new Logger('Settings').warn(`Card-brand key wipe failed: ${(e as Error).message}`));
     }, 75 * 1000);
+    setTimeout(() => {
+      this.alignAllMoneyLabels()
+        .then((n) => { if (n) new Logger('Settings').log(`Currency labels: aligned the menu of ${n} salon(s) with their own currency.`); })
+        .catch((e) => new Logger('Settings').warn(`Currency label alignment failed: ${(e as Error).message}`));
+    }, 95 * 1000);
+  }
+
+  /**
+   * Put one salon's stale currency labels right (common/money.ts): its
+   * services, its extras and its bookings from now on. Scoped to the tenant;
+   * touches only rows whose currency counts in the same minor units as the
+   * salon's, so no stored amount changes meaning. Past bookings keep what
+   * they were made in.
+   */
+  async alignMoneyLabels(tenantId: string, salonCurrency: string, userId: string | null = null): Promise<number> {
+    const to = currencyCode(salonCurrency);
+    if (!to) return 0;
+    const db = this.prisma as unknown as Record<string, { findMany: (a: unknown) => Promise<{ currency: string }[]>; updateMany: (a: unknown) => Promise<{ count: number }> }>;
+    let changed = 0;
+    for (const [model, extra] of [['service', {}], ['serviceAddon', {}], ['appointment', { startTime: { gte: new Date() } }]] as const) {
+      const stale = await db[model].findMany({ where: { tenantId, currency: { not: to }, ...extra }, select: { currency: true }, distinct: ['currency'] });
+      const from = stale.map((r) => r.currency).filter((c) => sameMinorUnits(c, to));
+      if (!from.length) continue;
+      changed += (await db[model].updateMany({ where: { tenantId, currency: { in: from }, ...extra }, data: { currency: to } })).count;
+    }
+    if (changed) {
+      await this.audit.log({ tenantId, userId, action: 'settings.currency_labels_aligned', resourceType: 'tenant', resourceId: tenantId, metadata: { currency: to, rows: changed } } as never).catch(() => undefined);
+    }
+    return changed;
+  }
+
+  /** Once per start: every salon whose settings name a currency its menu does not carry yet. */
+  async alignAllMoneyLabels(): Promise<number> {
+    const rows = await this.prisma.setting.findMany({ where: { key: BOOKING_RULES_KEY }, select: { tenantId: true, value: true } });
+    let salons = 0;
+    for (const r of rows) {
+      const to = currencyCode((r.value as { currency?: string } | null)?.currency);
+      if (!to) continue;
+      if (await this.alignMoneyLabels(r.tenantId, to).catch(() => 0)) salons++;
+    }
+    return salons;
   }
 
   async wipeLegacyGatewayKeys(): Promise<number> {
@@ -1627,6 +1669,10 @@ export class SettingsService implements OnApplicationBootstrap {
     });
 
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.payments_updated', resourceType: 'tenant', resourceId: tenantId });
+    // The menu follows the salon's currency: relabel services, extras and the
+    // bookings still ahead (never a past one, never an amount).
+    const nowCurrency = currencyCode(dto.currency ?? rules.currency);
+    if (nowCurrency) await this.alignMoneyLabels(tenantId, nowCurrency, user.userId).catch(() => undefined);
     return this.get(user);
   }
 

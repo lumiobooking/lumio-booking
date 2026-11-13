@@ -1,3 +1,4 @@
+import { currencyCode } from '../common/money';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -224,6 +225,10 @@ export class ServicesService {
     const staffIds = dto.staffIds ?? [];
     await this.assertStaffBelongToTenant(tenantId, staffIds);
     const categoryId = await this.validCategoryId(tenantId, dto.categoryId);
+    const rulesRow = await this.prisma.setting
+      .findUnique({ where: { tenantId_key: { tenantId, key: 'booking_rules' } }, select: { value: true } })
+      .catch(() => null);
+    const salonCurrency = currencyCode((rulesRow?.value as { currency?: string } | null)?.currency) ?? currencyCode(dto.currency) ?? 'USD';
     const service = await this.prisma.$transaction(async (tx) => {
       const created = await tx.service.create({
         data: {
@@ -235,7 +240,9 @@ export class ServicesService {
           durationMinutes: dto.durationMinutes ?? 30,
           priceCents: dto.priceCents,
           discountPercent: dto.discountPercent ?? 0,
-          currency: dto.currency ?? 'USD',
+          // The salon's currency. A hard 'USD' here is how an Australian
+          // salon's menu ended up labelled in US dollars (common/money.ts).
+          currency: salonCurrency,
           isActive: dto.isActive ?? true,
           categoryId,
           sortOrder: dto.sortOrder ?? 0,

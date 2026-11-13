@@ -96,3 +96,38 @@ export function localeForCountry(country?: string | null, timezone?: string | nu
   if (tz.startsWith('Australia/')) return 'en-AU';
   return tz === 'Asia/Ho_Chi_Minh' || tz === 'Asia/Saigon' ? 'vi-VN' : 'en-US';
 }
+
+
+/**
+ * ONE CURRENCY PER SALON (13/11/2026, Fremantle Nail Spa)
+ *
+ * A salon counts in one currency: the one in its Payments settings. Each
+ * service row also carries a `currency` label, and that label used to stay
+ * 'USD' when the salon was switched to AUD — the menu page hid it (it shows
+ * every price in the salon's currency), but a booking copied the label, so an
+ * Australian client's confirmation read "USD 75.00".
+ *
+ * A stale label is put right only when both currencies count in the same
+ * minor units (USD → AUD, CAD, EUR…): then it is a relabel and no number
+ * moves. USD → VND is NOT that — the stored amount may be off by 100 — and is
+ * left for a person to look at.
+ */
+export function sameMinorUnits(a?: string | null, b?: string | null): boolean {
+  return minorUnitDigits(String(a || 'USD').toUpperCase()) === minorUnitDigits(String(b || 'USD').toUpperCase());
+}
+
+/** The 3-letter code to use, or null when the setting holds nothing usable. */
+export function currencyCode(raw: unknown): string | null {
+  const c = String(raw ?? '').trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(c) ? c : null;
+}
+
+/**
+ * The currency a salon's money is SHOWN and BOOKED in: the salon's own, when
+ * swapping the label cannot change the amount; otherwise the row's.
+ */
+export function salonMoneyCurrency(rowCurrency: string | null | undefined, salonCurrency: unknown): string {
+  const row = currencyCode(rowCurrency) ?? 'USD';
+  const salon = currencyCode(salonCurrency);
+  return salon && sameMinorUnits(row, salon) ? salon : row;
+}

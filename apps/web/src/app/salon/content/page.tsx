@@ -664,6 +664,10 @@ function BriefStepRow({ step: st, index: i, T }: {
 }
 
 
+
+/** A clip over this goes through Google Drive instead of the direct upload (see bigVideo). */
+const DRIVE_FIRST_BYTES = 15 * 1024 * 1024;
+
 export default function ContentTodayPage() {
   return <SalonShell><Inner /></SalonShell>;
 }
@@ -850,6 +854,14 @@ function Inner() {
   const [driveJob, setDriveJob] = useState<{ pct: number | null; loadedMb: number; sizeMb: number | null } | null>(null);
   /** What the fitter did to the last upload — crop, padding, or nothing. */
   const [fitNote, setFitNote] = useState<string | null>(null);
+  /**
+   * A heavy clip held back from the direct upload. The road from Vietnam to
+   * the API server measured 130–280 KB/s (14/11/2026): a 50 MB clip sat at
+   * 98% for minutes. Google Drive takes it fast from here, and the server
+   * pulls it from Drive in seconds — so a big clip goes that way.
+   */
+  const [bigVideo, setBigVideo] = useState<{ file: File; mb: number } | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement | null>(null);
   // Wrong-salon check on each uploaded file, by its url. `ok` = the person
   // looked and confirmed it IS this salon's (audited on the server).
   const [mediaGuards, setMediaGuards] = useState<Record<string, { g: MediaGuardView; ok: boolean }>>({});
@@ -1390,9 +1402,16 @@ function Inner() {
    * progress bar. Facebook posts it as a video, Instagram as a Reel, TikTok
    * as the post itself — one MP4 serves all three.
    */
-  async function uploadVideo(file: File) {
+  async function uploadVideo(file: File, direct = false) {
     if (!postDraft || videoPct !== null) return;
     if (postDraft.media.length >= 10) { setPostErr(T('Bài đã đủ 10 ảnh/video.', 'The post already holds 10 items.')); return; }
+    if (!direct && file.size > DRIVE_FIRST_BYTES) {
+      setBigVideo({ file, mb: Math.round(file.size / 1048576) });
+      setPostErr(null);
+      setTimeout(() => mediaInputRef.current?.focus(), 0);
+      return;
+    }
+    setBigVideo(null);
     const MAX = 120 * 1024 * 1024;
     if (file.size > MAX) {
       setPostErr(T(`Video nặng ${(file.size / 1048576).toFixed(0)} MB — tối đa 120 MB. Xuất lại 1080p (H.264) hoặc cắt ngắn.`, `Video is ${(file.size / 1048576).toFixed(0)} MB — 120 MB max. Export at 1080p (H.264) or trim it.`));
@@ -1438,7 +1457,7 @@ function Inner() {
    */
   async function importDrive(url: string) {
     if (!postDraft || !token || driveJob) return;
-    setDriveJob({ pct: null, loadedMb: 0, sizeMb: null }); setPostErr(null);
+    setDriveJob({ pct: null, loadedMb: 0, sizeMb: null }); setPostErr(null); setBigVideo(null);
     try {
       const { jobId } = await apiFetch<{ jobId: string }>('/uploads/import-drive', { method: 'POST', token, body: { url } });
       for (;;) {
@@ -4231,6 +4250,7 @@ function Inner() {
 
                     <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: postDraft.media.length ? 4 : 0 }}>
                       <input
+                        ref={mediaInputRef}
                         value={mediaInput}
                         onChange={(e) => setMediaInput(e.target.value)}
                         onKeyDown={(e) => {
@@ -4302,6 +4322,34 @@ function Inner() {
                         />
                       </label>
                     </div>
+                    {bigVideo && (
+                      <div style={{
+                        marginTop: 7, padding: '10px 12px', borderRadius: 8,
+                        background: 'var(--c1e293b)', border: '1px solid #6366f1',
+                        fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.6,
+                      }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                          {T(`Video "${bigVideo.file.name}" nặng ${bigVideo.mb} MB — dùng Google Drive cho nhanh.`, `"${bigVideo.file.name}" is ${bigVideo.mb} MB — use Google Drive, it is much faster.`)}
+                        </div>
+                        <div>{T('1. Mở drive.google.com và tải video này lên.', '1. Open drive.google.com and upload this video.')}</div>
+                        <div>{T('2. Bấm chuột phải vào video → Chia sẻ → chọn "Bất kỳ ai có đường liên kết" → Sao chép đường liên kết.', '2. Right-click it → Share → set "Anyone with the link" → Copy link.')}</div>
+                        <div>{T('3. Dán link vào ô https://… phía trên rồi bấm "Thêm link".', '3. Paste the link in the https://… box above and press "Add link".')}</div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                          <button
+                            onClick={() => { const f = bigVideo.file; setBigVideo(null); void uploadVideo(f, true); }}
+                            style={{ minHeight: 36, padding: '0 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)' }}
+                          >
+                            {T('Vẫn tải trực tiếp (chậm)', 'Upload directly anyway (slow)')}
+                          </button>
+                          <button
+                            onClick={() => setBigVideo(null)}
+                            style={{ minHeight: 36, padding: '0 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)' }}
+                          >
+                            {T('Đóng', 'Close')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {fitNote && (
                       <div style={{
                         marginTop: 7, padding: '8px 11px', borderRadius: 8,
@@ -4318,7 +4366,7 @@ function Inner() {
                           ? T('Video — Instagram đăng dạng Reels, Facebook đăng video thường.', 'Video — published as a Reel on Instagram, a video post on Facebook.')
                           : (
                             <>
-                              {T('Ảnh đầu là ảnh bìa · kéo thả để đổi thứ tự · video .mp4/.mov tới 120 MB, nặng hơn thì dán link Google Drive.', 'First photo is the cover · drag to reorder · video .mp4/.mov up to 120 MB, bigger clips by Google Drive link.')}{' '}
+                              {T('Ảnh đầu là ảnh bìa · kéo thả để đổi thứ tự · video .mp4/.mov dưới 15 MB tải thẳng, nặng hơn thì dán link Google Drive cho nhanh.', 'First photo is the cover · drag to reorder · video .mp4/.mov up to 120 MB, bigger clips by Google Drive link.')}{' '}
                               <details style={{ display: 'inline' }}>
                                 <summary style={{ display: 'inline', cursor: 'pointer', color: 'var(--ca5b4fc)', fontWeight: 600 }}>{T('Hướng dẫn ›', 'How-to ›')}</summary>
                                 <div style={{ marginTop: 4 }}>{T('Ảnh: bấm "Tải ảnh lên" — chọn được nhiều ảnh một lần (giữ Ctrl/Shift), thứ tự chọn là thứ tự trong bài. Video: bấm "Tải video lên" (MP4/MOV, tối đa 120 MB) — Facebook đăng video, Instagram đăng Reels, TikTok đăng bài. Video nặng hơn (tới 1 GB): tải lên Google Drive, chia sẻ "Bất kỳ ai có đường liên kết", dán link vào ô trên rồi bấm "Thêm link" — hệ thống tự kéo file về máy chủ.',

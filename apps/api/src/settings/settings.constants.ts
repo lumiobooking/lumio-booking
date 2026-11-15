@@ -170,6 +170,12 @@ export interface DepositSettings {
   // Which connected online provider takes deposits when the salon has several
   // (payment hub). null = the first one connected.
   provider: string | null;
+  // The client may pay the whole visit online instead of the deposit
+  // (bookings/pay-in-full.ts). Off unless the salon turns it on.
+  allowPayInFull?: boolean;
+  // A client who paid in full and cancels late / does not come: the salon
+  // keeps only the deposit part ('deposit', the default) or all of it ('all').
+  fullLateKeep?: 'deposit' | 'all';
 }
 
 export const DEFAULT_DEPOSIT_SETTINGS: DepositSettings = {
@@ -182,6 +188,8 @@ export const DEFAULT_DEPOSIT_SETTINGS: DepositSettings = {
   refundHours: 24,
   holdMinutes: 30,
   provider: null,
+  allowPayInFull: false,
+  fullLateKeep: 'deposit',
 };
 
 // Automated appointment reminders (no-show reduction). OFF by default so a salon

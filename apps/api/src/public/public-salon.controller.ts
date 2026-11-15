@@ -2,6 +2,7 @@ import { socialLinks } from '../common/social-links';
 import { venmoOption } from './venmo-option';
 import { OnlineDepositService } from './online-deposit.service';
 import { HOLD_REF } from '../payments/deposit-hold';
+import { holdAmount } from '../bookings/pay-in-full';
 import { BadRequestException, Body, Controller, Get, Header, Headers, NotFoundException, Param, Post, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { TenantStatus } from '@prisma/client';
@@ -482,12 +483,15 @@ export class PublicSalonController {
 
     let payment = null;
     let payNowCents = 0;
+    // The client may pay the whole visit instead (bookings/pay-in-full.ts).
+    const hold = holdAmount({ depositCents, priceCents: booking.priceCents, allow: deposit.allowPayInFull === true, asked: dto.payInFull === true });
+    const fullCents = hold.full ? hold.cents : 0;
     if (depositCents > 0) {
       // Taken in the provider's own page right after this (online-checkout).
       // The slot is held meanwhile: one PENDING online row marked as the hold
       // (payments/deposit-hold.ts) — paid fills it, not paid in time frees the slot.
       payment = await this.prisma.payment.create({
-        data: { tenantId, appointmentId: booking.id, amountCents: depositCents, currency: booking.currency, type: 'PAY_ONLINE', status: 'PENDING', provider: onlineProvider as string, providerReference: HOLD_REF },
+        data: { tenantId, appointmentId: booking.id, amountCents: hold.cents, currency: booking.currency, type: 'PAY_ONLINE', status: 'PENDING', provider: onlineProvider as string, providerReference: HOLD_REF },
       });
     } else if (dto.paymentType === 'PAY_ONLINE' && onlineProvider && booking.priceCents > 0) {
       // "Pay now" for the whole visit: same hosted page, the price instead of a deposit.
@@ -501,7 +505,7 @@ export class PublicSalonController {
     // The page needs the booking, not the customer record it matched by phone
     // (that could be someone else's name and email).
     const { customer: _c, ...publicBooking } = booking as typeof booking & { customer?: unknown };
-    return { booking: publicBooking, payment, depositCents, payNowCents, onlineProvider, ...(guests.length ? { guests: guestResults } : {}) };
+    return { booking: publicBooking, payment, depositCents, payNowCents, fullCents, onlineProvider, ...(guests.length ? { guests: guestResults } : {}) };
   }
 
   /**

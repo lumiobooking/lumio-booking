@@ -76,7 +76,7 @@ interface SettingsData {
   pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; requireShift?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>; bankAccount?: { bin: string; accountNo: string; accountName: string } | null; printPayQr?: boolean };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
-  deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; holdMinutes?: number; provider?: string | null };
+  deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; holdMinutes?: number; provider?: string | null; allowPayInFull?: boolean; fullLateKeep?: 'deposit' | 'all' };
   gmailRedirectUri?: string;
   /** Settings → Hoá đơn in (footer included — it lives with the till settings). */
   receipt?: Partial<ReceiptDesign>;
@@ -1110,6 +1110,7 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
       fixedCents: Math.max(0, Math.round((parseFloat(f.fixed) || 0) * 100)),
       scope: f.scope, noShowThreshold: Math.max(1, parseInt(f.thr, 10) || 2),
       refundHours: f.hours, holdMinutes: f.hold, provider: f.prov || null,
+      allowPayInFull: f.allowPayInFull === true, fullLateKeep: f.fullLateKeep === 'all' ? 'all' : 'deposit',
     }, 'Deposits');
   }
   return (
@@ -1153,6 +1154,23 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
               {online.map((p) => <option key={p} value={p}>{PNAME[p] ?? p}</option>)}
             </select>
           </Field>
+        )}
+      </div>
+      {/* The client may pay the whole visit instead (api bookings/pay-in-full.ts). */}
+      <div style={{ marginTop: 14, opacity: f.enabled ? 1 : 0.5 }}>
+        <Toggle on={f.allowPayInFull === true} onChange={(v) => setF({ ...f, allowPayInFull: v })} label={t('se.dep.payFull')} />
+        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.55 }}>{t('se.dep.payFullDesc')}</div>
+        {f.allowPayInFull === true && (
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{t('se.dep.fullLate')}</div>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+              <input type="radio" name="fullLateKeep" checked={f.fullLateKeep !== 'all'} onChange={() => setF({ ...f, fullLateKeep: 'deposit' })} /> {t('se.dep.fullLateDeposit')}
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+              <input type="radio" name="fullLateKeep" checked={f.fullLateKeep === 'all'} onChange={() => setF({ ...f, fullLateKeep: 'all' })} /> {t('se.dep.fullLateAll')}
+            </label>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{t('se.dep.fullLateNote')}</div>
+          </div>
         )}
       </div>
       <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 8, lineHeight: 1.55 }}>

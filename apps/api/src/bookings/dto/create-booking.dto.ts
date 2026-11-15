@@ -235,6 +235,13 @@ export class CreateBookingDto {
   @IsEnum(PaymentType)
   paymentType?: PaymentType;
 
+  // Public booking page: pay the whole visit online instead of the deposit.
+  // Honoured only when the salon allows it (bookings/pay-in-full.ts); the
+  // amount is always the server's.
+  @IsOptional()
+  @IsBoolean()
+  payInFull?: boolean;
+
   // --- Anti-spam (both optional; invisible to real customers) ---
   // Honeypot: a hidden field real browsers leave empty. Bots that auto-fill
   // every input set it → the booking is silently dropped server-side.

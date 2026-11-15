@@ -1,3 +1,4 @@
+import { keptOnLate } from './pay-in-full';
 import { GROUP_NOTICE_DELAY_MS, groupLead, groupSummary, visitPeople, type GroupMember } from './group-notice';
 import { shouldConfirmOnCreate } from './auto-confirm';
 import { totalText } from '../common/price-label';
@@ -3396,7 +3397,7 @@ export class BookingsService {
     const depositCents = dep.enabled
       ? await this.payments.depositFor(tenantId, { customerId: appt.customerId, priceCents: appt.priceCents, partySize: appt.partySize ?? null }, dep, await this.settings.getPartyDeposit(tenantId))
       : 0;
-    const plan = cancelMoney({ startMs: appt.startTime.getTime(), nowMs: Date.now(), refundHours: dep.refundHours ?? DEFAULT_REFUND_HOURS, paidCents, depositCents, override });
+    const plan = cancelMoney({ startMs: appt.startTime.getTime(), nowMs: Date.now(), refundHours: dep.refundHours ?? DEFAULT_REFUND_HOURS, paidCents, depositCents: keptOnLate({ depositCents, paidCents, priceCents: appt.priceCents, fullLateKeep: dep.fullLateKeep }), override });
     const res = plan.refundCents > 0 ? await this.payments.refundPaid(tenantId, id, plan.refundCents) : { refundedCents: 0, failed: [] };
     if (plan.keepCents > 0) {
       await this.audit.log({ tenantId, userId: null, action: 'payment.deposit_kept', resourceType: 'appointment', resourceId: id, metadata: { keptCents: plan.keepCents, reason: plan.reason } });

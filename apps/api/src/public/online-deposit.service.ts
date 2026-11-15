@@ -5,6 +5,7 @@ import { BookingsService } from '../bookings/bookings.service';
 import { PaymentsService } from '../payments/payments.service';
 import { SettingsService } from '../settings/settings.service';
 import { PaymentOrchestrator } from '../payments-hub/payment-orchestrator.service';
+import { dueFromHold } from '../bookings/pay-in-full';
 import { amountCovers, HOLD_CANCELLABLE, HOLD_REF, holdExpired, holdMinutesOf, RECONCILE_HOURS } from '../payments/deposit-hold';
 
 type Appt = { id: string; priceCents: number; currency: string; customerId: string | null; partySize?: number | null; status?: string };
@@ -62,7 +63,14 @@ export class OnlineDepositService implements OnModuleInit, OnModuleDestroy {
   async onlineDue(tenantId: string, appt: Appt): Promise<{ base: number; kind: 'deposit' | 'full' }> {
     const deposit = await this.settings.getDepositSettings(tenantId);
     const dep = await this.payments.depositFor(tenantId, appt, deposit, await this.settings.getPartyDeposit(tenantId));
-    if (dep > 0) return { base: dep, kind: 'deposit' };
+    if (dep > 0) {
+      // Paid in full instead (bookings/pay-in-full.ts): the held row says so.
+      const hold = await this.prisma.payment.findFirst({
+        where: { tenantId, appointmentId: appt.id, type: 'PAY_ONLINE', providerReference: HOLD_REF, status: { in: ['PENDING', 'FAILED'] } },
+        orderBy: { createdAt: 'desc' }, select: { amountCents: true },
+      }).catch(() => null);
+      return dueFromHold({ depositCents: dep, priceCents: appt.priceCents, holdCents: hold?.amountCents });
+    }
     const pending = await this.prisma.payment.findFirst({ where: { tenantId, appointmentId: appt.id, type: 'PAY_ONLINE', status: 'PENDING' }, select: { id: true } });
     return pending ? { base: appt.priceCents, kind: 'full' } : { base: 0, kind: 'deposit' };
   }

@@ -187,7 +187,7 @@ export class SettingsController {
   @Patch('deposit')
   updateDeposit(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; type?: string; percent?: number; fixedCents?: number; scope?: string; noShowThreshold?: number; refundHours?: number; holdMinutes?: number; provider?: string | null },
+    @Body() dto: { enabled?: boolean; type?: string; percent?: number; fixedCents?: number; scope?: string; noShowThreshold?: number; refundHours?: number; holdMinutes?: number; provider?: string | null; allowPayInFull?: boolean; fullLateKeep?: string },
   ) {
     return this.settings.updateDepositSettings(user, dto as never);
   }

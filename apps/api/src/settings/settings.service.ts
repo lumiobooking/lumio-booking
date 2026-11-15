@@ -1525,6 +1525,8 @@ export class SettingsService implements OnApplicationBootstrap {
       holdMinutes: dto.holdMinutes === undefined ? holdMinutesOf(cur) : holdMinutesOf({ holdMinutes: dto.holdMinutes }),
       provider: dto.provider === null || dto.provider === '' ? null
         : isOnlineProvider(dto.provider) ? dto.provider : (cur.provider ?? null),
+      allowPayInFull: typeof dto.allowPayInFull === 'boolean' ? dto.allowPayInFull : cur.allowPayInFull === true,
+      fullLateKeep: dto.fullLateKeep === 'all' || dto.fullLateKeep === 'deposit' ? dto.fullLateKeep : (cur.fullLateKeep === 'all' ? 'all' : 'deposit'),
     };
     await this.writeKey(tenantId, DEPOSIT_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.deposit_updated', resourceType: 'tenant', resourceId: tenantId });

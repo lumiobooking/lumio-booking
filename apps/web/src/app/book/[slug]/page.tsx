@@ -130,7 +130,7 @@ interface PromoWindow { startDate?: string | null; endDate?: string | null }
 interface WeekdayDiscounts extends PromoWindow { enabled: boolean; message: string; rules: WdRule[] }
 interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
 interface DateDiscounts { enabled: boolean; rules: DateRule[] }
-interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; holdMinutes?: number }
+interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; holdMinutes?: number; allowPayInFull?: boolean; fullLateKeep?: 'deposit' | 'all' }
 interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
   branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string; cartArt?: string; cartTitle?: string; cartHint?: string; buttonColor?: string; buttonTextColor?: string; socialStyle?: string }; booking?: BookingRules;
@@ -409,6 +409,8 @@ export default function PublicBookingPage() {
   const [address, setAddress] = useState('');
   const askAddress = salon?.industry === 'SERVICE';
   const [paymentType, setPaymentType] = useState<'PAY_ONLINE' | 'PAY_LATER'>('PAY_LATER');
+  // Pay the whole visit instead of the deposit — only where the salon allows it.
+  const [payFull, setPayFull] = useState(false);
   const [smsConsent, setSmsConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -584,7 +586,12 @@ export default function PublicBookingPage() {
   const depositCents = Math.max(salonDepCents, pd?.enabled && partyCount >= pd.fromParty ? partyCount * pd.perPersonCents : 0);
   // What the card is charged today: the deposit plus the salon's card fee
   // (the server adds the same surcharge when it starts the checkout).
-  const depositDueCents = depositCents + (depositCents > 0 && salon?.cardFee?.enabled ? Math.round((depositCents * salon.cardFee.percent) / 100) : 0);
+  const depositOnlyDueCents = depositCents + (depositCents > 0 && salon?.cardFee?.enabled ? Math.round((depositCents * salon.cardFee.percent) / 100) : 0);
+  // The salon lets the client pay everything now instead (one person, one
+  // visit, every price known — the server checks the same and charges its own figure).
+  const canPayFull = Boolean(dep?.allowPayInFull) && depositCents > 0 && !isGroup && visitCart.length === 0 && unpricedN === 0 && totalCents > depositCents;
+  const fullDueCents = totalCents + (salon?.cardFee?.enabled ? Math.round((totalCents * salon.cardFee.percent) / 100) : 0);
+  const depositDueCents = canPayFull && payFull ? fullDueCents : depositOnlyDueCents;
 
   const removeLine = (id: string) => {
     if (addonIds.includes(id)) { setAddonIds((p) => p.filter((x) => x !== id)); return; }
@@ -863,6 +870,7 @@ export default function PublicBookingPage() {
             };
           })(),
           paymentType: (visitCart.length > 0 || isGroup) ? 'PAY_LATER' : paymentType,
+          ...(canPayFull && payFull ? { payInFull: true } : {}),
         }),
       });
       const body = await res.json().catch(() => null);
@@ -908,15 +916,16 @@ export default function PublicBookingPage() {
       // Salon has a real online provider + a deposit (or the whole visit, "pay
       // now") is due -> collect it now, in the provider's own page.
       if (body?.onlineProvider && ((body?.depositCents ?? 0) > 0 || (body?.payNowCents ?? 0) > 0) && body?.booking?.id) {
-        const dep = (body?.depositCents ?? 0) > 0;
+        const full = (body?.fullCents ?? 0) > 0;
+        const dep = !full && (body?.depositCents ?? 0) > 0;
         const price = typeof body?.booking?.priceCents === 'number' ? body.booking.priceCents : totalCents;
-        const holdMin = dep ? (salon?.deposit?.holdMinutes ?? 30) : 0;
+        const holdMin = dep || full ? (salon?.deposit?.holdMinutes ?? 30) : 0;
         // PayPal salons: the customer CHOOSES — Venmo, or PayPal / card — on
         // our page first. (Opening PayPal's tab on its own after a network
         // call is also what popup blockers stop.) Others open as before.
         const viaPaypal = String(body.onlineProvider) === 'paypal';
         setOnlineDue({
-          bookingId: String(body.booking.id), cents: dep ? body.depositCents : body.payNowCents, kind: dep ? 'deposit' : 'full',
+          bookingId: String(body.booking.id), cents: full ? body.fullCents : dep ? body.depositCents : body.payNowCents, kind: dep ? 'deposit' : 'full',
           restCents: dep ? Math.max(0, price - body.depositCents) : 0,
           heldUntil: holdMin > 0 ? Date.now() + holdMin * 60_000 : null,
           phase: viaPaypal ? 'ready' : 'starting',
@@ -1453,6 +1462,7 @@ export default function PublicBookingPage() {
                 <ConfirmStep
                   unpriced={party ? party.reduce((n, g) => n + g.lines.filter((x) => x.noPrice).length, 0) : unpricedN} salon={salon} slot={slot} employee={employee} lines={allLines} fmt={fmt} totalCents={grand ? grand.cents : totalCents} party={party}
                   depositCents={depositCents} cardFee={salon?.cardFee} rules={rules} paymentType={paymentType} setPaymentType={setPaymentType}
+                  canPayFull={canPayFull} payFull={payFull} setPayFull={setPayFull}
                   form={form} setForm={setForm} smsConsent={smsConsent} setSmsConsent={setSmsConsent}
                   accent={accent} error={error} infoOk={infoOk} isMobile={isMobile}
                   address={askAddress ? address : undefined} setAddress={setAddress}
@@ -2620,10 +2630,11 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, dealOn, staffId, 
 // ---------------------------------------------------------------------------
 // Step 4 · Confirm — appointment card, services, your details, payment.
 // ---------------------------------------------------------------------------
-function ConfirmStep({ unpriced, salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile, party, address, setAddress }: {
+function ConfirmStep({ unpriced, salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, canPayFull, payFull, setPayFull, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile, party, address, setAddress }: {
   salon: Salon | null; slot: Slot; employee: Staff | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; party?: Party | null;
   unpriced?: number;
   depositCents: number; cardFee?: { enabled: boolean; percent: number }; rules: BookingRules; paymentType: 'PAY_ONLINE' | 'PAY_LATER'; setPaymentType: (v: 'PAY_ONLINE' | 'PAY_LATER') => void;
+  canPayFull?: boolean; payFull?: boolean; setPayFull?: (v: boolean) => void;
   form: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string };
   // Updated with the previous value (setForm((f) => …)), never a copy taken at
   // render time: the browser's autofill writes name, phone and email in one
@@ -2733,9 +2744,25 @@ function ConfirmStep({ unpriced, salon, slot, employee, lines, fmt, totalCents, 
         const pctLabel = dep?.type === 'percent' && Math.round((totalCents * dep.percent) / 100) === depositCents
           ? btf('Deposit · {percent}% of {total}', { percent: dep.percent, total: fmt(totalCents) })
           : bt('Deposit');
-        const rest = Math.max(0, totalCents - depositCents);
+        const full = Boolean(canPayFull && payFull);
+        const fullFee = feePct > 0 ? Math.round((totalCents * feePct) / 100) : 0;
+        const rest = full ? 0 : Math.max(0, totalCents - depositCents);
         const hold = dep?.holdMinutes ?? 30;
         const refund = dep?.refundHours ?? 24;
+        const choice = (on: boolean, title: string, desc: string, amount: string, pick: () => void) => (
+          <button type="button" onClick={pick} aria-pressed={on}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 60, padding: '10px 12px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', font: 'inherit',
+              border: on ? `2px solid ${accent}` : '1px solid #d5dae8', background: on ? tint(accent, 0.07) : '#fff',
+            }}>
+            <span aria-hidden="true" style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0, boxSizing: 'border-box', border: on ? `6px solid ${accent}` : '2px solid #94a3b8', background: '#fff' }} />
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1, minWidth: 0 }}>
+              <b style={{ fontSize: 14.5, color: INK }}>{title}</b>
+              <span style={{ fontSize: 12.5, color: '#64748b' }}>{desc}</span>
+            </span>
+            <b style={{ fontSize: 17, color: INK, whiteSpace: 'nowrap' }}>{amount}</b>
+          </button>
+        );
         return (
           <section aria-label={bt('Deposit')} style={{ border: `2px solid ${accent}`, borderRadius: 18, padding: '14px 16px', marginBottom: 14, background: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -2743,23 +2770,40 @@ function ConfirmStep({ unpriced, salon, slot, employee, lines, fmt, totalCents, 
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z" /><path d="M9 12l2 2 4-4" /></svg>
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                <b style={{ fontSize: 15, color: INK }}>{bt('A deposit secures your time')}</b>
+                <b style={{ fontSize: 15, color: INK }}>{canPayFull ? bt('How would you like to pay?') : bt('A deposit secures your time')}</b>
                 <span style={{ fontSize: 12.5, color: '#64748b' }}>{bt('Required by the salon for online bookings')}</span>
               </div>
             </div>
+            {canPayFull && setPayFull && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {choice(!full,
+                  dep?.type === 'percent' ? btf('Pay a {percent}% deposit', { percent: dep.percent }) : bt('Pay a deposit'),
+                  btf('The rest ({amount}) is paid at the salon after your visit', { amount: fmt(Math.max(0, totalCents - depositCents)) }),
+                  fmt(depositCents + fee), () => setPayFull(false))}
+                {choice(full, bt('Pay in full now'), bt('Nothing left to pay at the salon'), fmt(totalCents + fullFee), () => setPayFull(true))}
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, background: tint(accent, 0.07), borderRadius: 12, padding: '10px 12px' }}>
               <span style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{bt('Due today')}</span>
-              <b style={{ fontSize: 26, letterSpacing: '-0.02em', color: INK }}>{fmt(depositCents + fee)}</b>
+              <b style={{ fontSize: 26, letterSpacing: '-0.02em', color: INK }}>{fmt(full ? totalCents + fullFee : depositCents + fee)}</b>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 13.5 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span style={{ color: '#475569' }}>{pctLabel}</span><b style={{ color: INK }}>{fmt(depositCents)}</b></div>
-              {fee > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span style={{ color: '#475569' }}>{btf('Card fee · {percent}%', { percent: feePct })}</span><b style={{ color: INK }}>{fmt(fee)}</b></div>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span style={{ color: '#475569' }}>{full ? bt('Services') : pctLabel}</span><b style={{ color: INK }}>{fmt(full ? totalCents : depositCents)}</b></div>
+              {(full ? fullFee : fee) > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span style={{ color: '#475569' }}>{btf('Card fee · {percent}%', { percent: feePct })}</span><b style={{ color: INK }}>{fmt(full ? fullFee : fee)}</b></div>}
               {rest > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, paddingTop: 7, borderTop: '1px dashed #dbe2ee' }}><span style={{ color: '#475569' }}>{bt('Pay at the salon after your visit')}</span><b style={{ color: INK }}>{fmt(rest)}</b></div>}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12.5, lineHeight: 1.5, color: '#475569' }}>
               <span style={{ display: 'flex', gap: 8 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}><path d="M5 12l5 5 9-10" /></svg>
-                <span>{refund > 0
+                <span>{full
+                  ? (refund > 0
+                    ? (dep?.fullLateKeep === 'all'
+                      ? btf('Cancel {hours}+ hours before and the full amount goes back to your card. Later, or if you don’t come, it is not refunded.', { hours: refund })
+                      : btf('Cancel {hours}+ hours before and the full amount goes back to your card. Later, or if you don’t come, the deposit part ({amount}) is kept and the rest is refunded.', { hours: refund, amount: fmt(depositCents) }))
+                    : (dep?.fullLateKeep === 'all'
+                      ? bt('Cancel any time before your appointment and the full amount goes back to your card. If you don’t come, it is not refunded.')
+                      : btf('Cancel any time before your appointment and the full amount goes back to your card. If you don’t come, the deposit part ({amount}) is kept and the rest is refunded.', { amount: fmt(depositCents) })))
+                  : refund > 0
                   ? btf('Cancel {hours}+ hours before and the deposit goes back to your card. Later, or if you don’t come, it is not refunded.', { hours: refund })
                   : bt('Cancel any time before your appointment and the deposit goes back to your card. If you don’t come, it is not refunded.')}</span>
               </span>

@@ -19,7 +19,7 @@ import { publicWebBase } from '../common/public-url.util';
 import { formatMoney, localeForCountry, salonMoneyCurrency } from '../common/money';
 import { toE164, dialCodeFor } from '../common/phone';
 import { fitsBusinessHours, describeWindows, windowsForDay } from '../settings/business-hours';
-import { NO_SHOW_BLOCK_MESSAGE, NO_SHOW_POLICY_KEY, NoShowPolicy, cleanNoShowPolicy, noShowVerdict, windowStart } from './no-show-policy';
+import { NO_SHOW_BLOCK_MESSAGE, NO_SHOW_POLICY_KEY, NoShowPolicy, cleanNoShowPolicy, noShowVerdict, windowStart, UNMARK_DAYS } from './no-show-policy';
 import { rebookCopy, recallDue, recallMonthsOf } from './recall';
 import { buildPreOrder, preOrderText } from './pre-order';
 import { skilledFor } from '../assignment/assignment.util';
@@ -3238,13 +3238,47 @@ export class BookingsService {
 
   async updateNoShowPolicy(user: AuthenticatedUser, dto: Partial<NoShowPolicy>) {
     const tenantId = this.tenantId(user);
-    const next = cleanNoShowPolicy(dto, await this.noShowPolicyFor(tenantId));
+    const before = await this.noShowPolicyFor(tenantId);
+    const next = cleanNoShowPolicy(dto, before);
     await this.prisma.setting.upsert({
       where: { tenantId_key: { tenantId, key: NO_SHOW_POLICY_KEY } },
       update: { value: next as never }, create: { tenantId, key: NO_SHOW_POLICY_KEY, value: next as never },
     });
-    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.no_show_policy_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { ...next } });
-    return next;
+    // Turned off: the sweeper's own recent no-shows go back to how they were.
+    const restored = before.autoMark !== false && next.autoMark === false
+      ? await this.unmarkAutoNoShows(tenantId, user.userId).catch(() => 0) : 0;
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.no_show_policy_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { ...next, restored } });
+    return { ...next, restored };
+  }
+
+  /**
+   * The bookings the sweeper itself marked NO_SHOW in the last UNMARK_DAYS
+   * days (audit 'booking.no_show_auto'), back to CONFIRMED — never one the
+   * desk marked, never one changed since. One salon only.
+   */
+  async unmarkAutoNoShows(tenantId: string, userId: string | null, now = new Date()): Promise<number> {
+    const since = new Date(now.getTime() - UNMARK_DAYS * 86_400_000);
+    const marks = await this.prisma.auditLog.findMany({
+      where: { tenantId, action: 'booking.no_show_auto', createdAt: { gte: since } },
+      select: { resourceId: true },
+    });
+    const ids = [...new Set(marks.map((m) => m.resourceId).filter((x): x is string => !!x))];
+    if (!ids.length) return 0;
+    const desk = await this.prisma.auditLog.findMany({
+      where: { tenantId, resourceId: { in: ids }, action: { in: ['booking.no_show'] }, createdAt: { gte: since } },
+      select: { resourceId: true },
+    });
+    const keep = new Set(desk.map((d) => d.resourceId));
+    const back = ids.filter((id) => !keep.has(id));
+    if (!back.length) return 0;
+    const res = await this.prisma.appointment.updateMany({
+      where: { tenantId, id: { in: back }, status: AppointmentStatus.NO_SHOW },
+      data: { status: AppointmentStatus.CONFIRMED },
+    });
+    if (res.count) {
+      await this.audit.log({ tenantId, userId, action: 'booking.no_show_auto_undone', resourceType: 'tenant', resourceId: tenantId, metadata: { count: res.count } }).catch(() => undefined);
+    }
+    return res.count;
   }
 
   /** This salon's customers with this number, however it was typed (last 9 digits). */
@@ -4868,6 +4902,8 @@ export class BookingsService {
   }
 
   private async closeMissed(tenantId: string, now: Date): Promise<number> {
+    // The salon turned the automatic no-show off (bookings/no-show-policy.ts).
+    if ((await this.noShowPolicyFor(tenantId)).autoMark === false) return 0;
     const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
     const tz = t?.timezone || 'UTC';
     const today = startOfDayTz(dayKeyTz(now, tz), tz); // the salon's own midnight

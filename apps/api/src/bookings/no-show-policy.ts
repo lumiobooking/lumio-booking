@@ -9,13 +9,18 @@
  *                    for that number are refused politely ("please call the
  *                    salon") and the desk decides (default null = never);
  *   months         — only no-shows in this window count (default 12).
+ *   autoMark       — the sweeper marks yesterday's untouched bookings
+ *                    NO_SHOW after the salon's midnight (default true). A
+ *                    salon that does not check clients in or out in Lumio
+ *                    turns it off: its served clients were all being marked
+ *                    no-show (Amy's, 9–13/11/2026).
  * No fee is charged by Lumio: a deposit is the salon's own payment setting.
  * Pure.
  */
-export interface NoShowPolicy { warnAt: number; blockOnlineAt: number | null; months: number }
+export interface NoShowPolicy { warnAt: number; blockOnlineAt: number | null; months: number; autoMark: boolean }
 
 export const NO_SHOW_POLICY_KEY = 'no_show_policy';
-export const DEFAULT_NO_SHOW_POLICY: NoShowPolicy = { warnAt: 2, blockOnlineAt: null, months: 12 };
+export const DEFAULT_NO_SHOW_POLICY: NoShowPolicy = { warnAt: 2, blockOnlineAt: null, months: 12, autoMark: true };
 
 const int = (v: unknown, lo: number, hi: number): number | null => {
   const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
@@ -32,7 +37,8 @@ export function cleanNoShowPolicy(input: unknown, base: NoShowPolicy = DEFAULT_N
     blockOnlineAt = b;
   }
   const months = 'months' in o ? int(o.months, 1, 36) ?? base.months : base.months;
-  return { warnAt, blockOnlineAt, months };
+  const autoMark = typeof o.autoMark === 'boolean' ? o.autoMark : base.autoMark !== false;
+  return { warnAt, blockOnlineAt, months, autoMark };
 }
 
 export function windowStart(policy: NoShowPolicy, now = new Date()): Date {
@@ -50,3 +56,6 @@ export function noShowVerdict(count: number, policy: NoShowPolicy): { warn: bool
 
 /** What the customer (or the chat bot / phone assistant on their behalf) is told. Never says why. */
 export const NO_SHOW_BLOCK_MESSAGE = 'Online booking is not available for this phone number. Please call the salon to book.';
+
+/** How far back turning the automatic marking off gives the sweeper's no-shows back. */
+export const UNMARK_DAYS = 14;

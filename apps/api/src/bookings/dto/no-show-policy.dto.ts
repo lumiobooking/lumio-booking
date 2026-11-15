@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, Max, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, Max, Min, ValidateIf } from 'class-validator';
 
 export class NoShowPolicyDto {
   @IsOptional() @IsInt() @Min(0) @Max(20)
@@ -10,4 +10,8 @@ export class NoShowPolicyDto {
 
   @IsOptional() @IsInt() @Min(1) @Max(36)
   months?: number;
+
+  // false = the sweeper never marks this salon's bookings no-show by itself.
+  @IsOptional() @IsBoolean()
+  autoMark?: boolean;
 }

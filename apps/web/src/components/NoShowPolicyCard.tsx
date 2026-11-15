@@ -12,7 +12,7 @@ import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
 import { ui } from '../lib/ui';
 
-interface Policy { warnAt: number; blockOnlineAt: number | null; months: number }
+interface Policy { warnAt: number; blockOnlineAt: number | null; months: number; autoMark?: boolean; restored?: number }
 
 export function NoShowPolicyCard() {
   const { token } = useAuth();
@@ -31,8 +31,12 @@ export function NoShowPolicyCard() {
     if (!p || busy) return;
     setBusy(true); setMsg(null);
     try {
-      setP(await apiFetch<Policy>('/bookings/no-show-policy', { method: 'PATCH', token, body: p }));
-      setMsg(vi ? 'Đã lưu' : 'Saved');
+      const { restored: _r, ...body } = p;
+      const out = await apiFetch<Policy>('/bookings/no-show-policy', { method: 'PATCH', token, body });
+      setP(out);
+      setMsg(out.restored
+        ? (vi ? `Đã lưu · ${out.restored} lịch hệ thống tự đánh dấu "Không đến" đã trở lại "Đã xác nhận"` : `Saved · ${out.restored} bookings the system had marked no-show are back to confirmed`)
+        : (vi ? 'Đã lưu' : 'Saved'));
     } catch (e) { setMsg(e instanceof Error ? e.message : 'Failed'); }
     finally { setBusy(false); }
   }
@@ -46,6 +50,16 @@ export function NoShowPolicyCard() {
         {vi ? 'Lịch quá giờ mà khách không đến được tự đánh dấu "Không đến". Chọn cách tiệm xử lý khách hay bỏ hẹn.'
           : 'Bookings nobody showed up for are marked "No-show" automatically. Choose what happens with repeat no-shows.'}
       </p>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 12, fontSize: 14, cursor: 'pointer' }}>
+        <input type="checkbox" style={{ marginTop: 3 }} checked={p.autoMark !== false} onChange={(e) => setP({ ...p, autoMark: e.target.checked })} />
+        <span>
+          <b>{vi ? 'Tự đánh dấu "Không đến" sau nửa đêm' : 'Mark no-shows automatically after midnight'}</b>
+          <span style={{ display: 'block', color: 'var(--c94a3b8)', fontSize: 12.5, marginTop: 2, lineHeight: 1.5 }}>
+            {vi ? 'Lịch của hôm trước chưa bấm "Đã đến" hay tính tiền sẽ thành "Không đến". Tiệm không check-in / tính tiền trên Lumio nên tắt — khi tắt, các lịch hệ thống đã tự đánh dấu trong 14 ngày gần đây trở lại "Đã xác nhận".'
+              : 'Yesterday\'s bookings never checked in or paid become "No-show". A salon that does not check clients in or out in Lumio should turn this off — turning it off puts the system\'s own no-shows from the last 14 days back to confirmed.'}
+          </span>
+        </span>
+      </label>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
         <label><span style={ui.label}>{vi ? 'Cảnh báo lễ tân từ (lần)' : 'Warn the desk from (times)'}</span>
           <input style={ui.input} type="number" min={0} max={20} value={p.warnAt} onChange={(e) => setP({ ...p, warnAt: Math.max(0, parseInt(e.target.value, 10) || 0) })} /></label>

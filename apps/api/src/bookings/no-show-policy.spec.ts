@@ -9,20 +9,22 @@ import { BookingsService } from './bookings.service';
 describe('no-show policy — rules', () => {
   it('defaults: warn from 2, never refuse online, 12 months', () => {
     expect(cleanNoShowPolicy(null)).toEqual(DEFAULT_NO_SHOW_POLICY);
-    expect(DEFAULT_NO_SHOW_POLICY).toEqual({ warnAt: 2, blockOnlineAt: null, months: 12 });
+    expect(DEFAULT_NO_SHOW_POLICY).toEqual({ warnAt: 2, blockOnlineAt: null, months: 12, autoMark: true });
   });
   it('cleans input and keeps the rest', () => {
-    expect(cleanNoShowPolicy({ warnAt: '3', blockOnlineAt: 99, months: 0 })).toEqual({ warnAt: 3, blockOnlineAt: 20, months: 1 });
-    expect(cleanNoShowPolicy({ blockOnlineAt: null }, { warnAt: 4, blockOnlineAt: 3, months: 6 })).toEqual({ warnAt: 4, blockOnlineAt: null, months: 6 });
-    expect(cleanNoShowPolicy({ warnAt: 'x' }, { warnAt: 4, blockOnlineAt: 3, months: 6 }).warnAt).toBe(4);
+    expect(cleanNoShowPolicy({ warnAt: '3', blockOnlineAt: 99, months: 0 })).toEqual({ warnAt: 3, blockOnlineAt: 20, months: 1, autoMark: true });
+    expect(cleanNoShowPolicy({ blockOnlineAt: null }, { warnAt: 4, blockOnlineAt: 3, months: 6, autoMark: false })).toEqual({ warnAt: 4, blockOnlineAt: null, months: 6, autoMark: false });
+    expect(cleanNoShowPolicy({ autoMark: false }).autoMark).toBe(false);
+    expect(cleanNoShowPolicy({ autoMark: 'no' }).autoMark).toBe(true);
+    expect(cleanNoShowPolicy({ warnAt: 'x' }, { warnAt: 4, blockOnlineAt: 3, months: 6, autoMark: true }).warnAt).toBe(4);
   });
   it('verdicts', () => {
     expect(noShowVerdict(1, DEFAULT_NO_SHOW_POLICY)).toEqual({ warn: false, blockOnline: false });
     expect(noShowVerdict(2, DEFAULT_NO_SHOW_POLICY)).toEqual({ warn: true, blockOnline: false });
-    expect(noShowVerdict(9, { warnAt: 0, blockOnlineAt: 3, months: 12 })).toEqual({ warn: false, blockOnline: true });
+    expect(noShowVerdict(9, { warnAt: 0, blockOnlineAt: 3, months: 12, autoMark: true })).toEqual({ warn: false, blockOnline: true });
   });
   it('window', () => {
-    expect(windowStart({ warnAt: 2, blockOnlineAt: null, months: 6 }, new Date('2026-10-07T00:00:00Z')).toISOString()).toBe('2026-04-07T00:00:00.000Z');
+    expect(windowStart({ warnAt: 2, blockOnlineAt: null, months: 6, autoMark: true }, new Date('2026-10-07T00:00:00Z')).toISOString()).toBe('2026-04-07T00:00:00.000Z');
   });
 });
 
@@ -39,7 +41,18 @@ describe('no-show policy — service, one salon at a time', () => {
         findMany: jest.fn(async ({ where }: Row) => { calls.push(where); return where.tenantId === 't1' ? [{ id: 'c1', phone: '+1 (512) 886-8189' }, { id: 'c9', phone: '9998868189' }] : []; }),
         findFirst: jest.fn(async ({ where }: Row) => { calls.push(where); return where.tenantId === 't1' && where.id === 'c1' ? { id: 'c1' } : null; }),
       },
-      appointment: { count: jest.fn(async ({ where }: Row) => { calls.push(where); return where.tenantId === 't1' ? noShows : 0; }) },
+      appointment: {
+        count: jest.fn(async ({ where }: Row) => { calls.push(where); return where.tenantId === 't1' ? noShows : 0; }),
+        updateMany: jest.fn(async ({ where }: Row) => { calls.push(where); return { count: where.id.in.length }; }),
+      },
+      auditLog: {
+        findMany: jest.fn(async ({ where }: Row) => {
+          calls.push(where);
+          if (where.tenantId !== 't1') return [];
+          if (where.action === 'booking.no_show_auto') return [{ resourceId: 'a1' }, { resourceId: 'a2' }, { resourceId: 'a3' }];
+          return [{ resourceId: 'a3' }]; // the desk marked a3 itself
+        }),
+      },
     };
     const audit = { log: jest.fn(async () => undefined) };
     const svc = Object.create(BookingsService.prototype) as BookingsService & Row;
@@ -75,8 +88,26 @@ describe('no-show policy — service, one salon at a time', () => {
   it('saving is scoped and audited', async () => {
     const { svc, prisma, audit } = make({ warnAt: 4 }, 0);
     const out = await svc.updateNoShowPolicy(owner('t1'), { blockOnlineAt: 3 });
-    expect(out).toEqual({ warnAt: 4, blockOnlineAt: 3, months: 12 });
+    expect(out).toEqual({ warnAt: 4, blockOnlineAt: 3, months: 12, autoMark: true, restored: 0 });
     expect(prisma.setting.upsert.mock.calls[0][0].where.tenantId_key).toEqual({ tenantId: 't1', key: 'no_show_policy' });
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', action: 'settings.no_show_policy_updated' }));
+  });
+
+  it("turning the automatic no-show off gives back only the sweeper's own marks, in this salon only", async () => {
+    const { svc, prisma, calls } = make({ warnAt: 2 }, 0);
+    const out = await svc.updateNoShowPolicy(owner('t1'), { autoMark: false });
+    expect(out).toMatchObject({ autoMark: false, restored: 2 });
+    const upd = prisma.appointment.updateMany.mock.calls[0][0];
+    expect(upd.where).toMatchObject({ tenantId: 't1', status: 'NO_SHOW' });
+    expect(upd.where.id.in).toEqual(['a1', 'a2']);
+    expect(upd.data).toEqual({ status: 'CONFIRMED' });
+    expect(calls.every((w) => !w.tenantId || w.tenantId === 't1')).toBe(true);
+  });
+
+  it('saving again while already off gives nothing back', async () => {
+    const { svc, prisma } = make({ warnAt: 2, autoMark: false }, 0);
+    const out = await svc.updateNoShowPolicy(owner('t1'), { warnAt: 3 });
+    expect(out).toMatchObject({ autoMark: false, restored: 0 });
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
   });
 });

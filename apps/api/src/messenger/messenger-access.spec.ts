@@ -57,7 +57,7 @@ const STAFF_MUST_NOT = [
   'deleteLabel',
   // What the bot could not answer. Answering one writes a bot fact — what the
   // bot will tell EVERY customer from then on — so it is the owner's call.
-  'knowledgeGaps', 'answerGap', 'dismissGap', 'botReport',
+  'knowledgeGaps', 'answerGap', 'draftGap', 'dismissGap', 'botReport',
   // Switching the after-booking survey on changes what every customer is sent.
   'chatSurvey', 'setChatSurvey',
 ];

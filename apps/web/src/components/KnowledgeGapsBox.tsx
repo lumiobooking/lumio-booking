@@ -35,6 +35,9 @@ export function KnowledgeGapsBox({ token, vi, onTaught }: {
   const [answered, setAnswered] = useState<Gap[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  // "AI soạn giúp": asked for per question; the draft lands in the box for the owner to read and edit — nothing is saved by it.
+  const [drafting, setDrafting] = useState<string | null>(null);
+  const [draftNote, setDraftNote] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
   // One question open at a time; the list shows a page at a time.
@@ -66,6 +69,23 @@ export function KnowledgeGapsBox({ token, vi, onTaught }: {
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
     finally { setBusy(null); }
+  }
+
+  async function aiDraft(g: Gap) {
+    if (!token || drafting) return;
+    setDrafting(g.id); setError(null);
+    try {
+      const r = await apiFetch<{ answer: string | null; from: 'staff' | 'sources' | null }>(`/messenger/knowledge-gaps/${g.id}/draft?lang=${vi ? 'vi' : 'en'}`, { method: 'POST', token });
+      if (r?.answer) {
+        setDrafts((d) => ({ ...d, [g.id]: r.answer!.slice(0, 1000) }));
+        setDraftNote((n) => ({ ...n, [g.id]: r.from === 'staff'
+          ? L('AI soạn từ câu nhân viên đã trả lời. Đọc lại, sửa nếu cần rồi bấm lưu.', 'Drafted from the staff reply. Read it, edit if needed, then save.')
+          : L('AI soạn từ ghi chú / tài liệu của tiệm. Đọc lại, sửa nếu cần rồi bấm lưu.', "Drafted from the salon's notes / documents. Read it, edit if needed, then save.") }));
+      } else {
+        setDraftNote((n) => ({ ...n, [g.id]: L('AI chưa có thông tin để soạn câu này (câu nhân viên trả lời không dùng chung được, ghi chú và tài liệu cũng không có). Bạn gõ câu trả lời nhé.', 'The AI has nothing to draft this from (the staff reply does not apply to every customer, and the notes and documents do not cover it). Please type the answer.') }));
+      }
+    } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
+    finally { setDrafting(null); }
   }
 
   async function dismiss(g: Gap) {
@@ -134,7 +154,12 @@ export function KnowledgeGapsBox({ token, vi, onTaught }: {
                       rows={2}
                       style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }}
                     />
+                    {draftNote[g.id] && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6, lineHeight: 1.45 }}>{draftNote[g.id]}</div>}
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button type="button" onClick={() => void aiDraft(g)} disabled={drafting !== null || busy === g.id}
+                        style={{ marginRight: 'auto', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ink-link)', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {drafting === g.id ? L('AI đang soạn…', 'Drafting…') : L('AI soạn giúp', 'Draft with AI')}
+                      </button>
                       <button type="button" onClick={() => void dismiss(g)} disabled={busy === g.id}
                         style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, cursor: 'pointer' }}>
                         {L('Bỏ qua', 'Dismiss')}

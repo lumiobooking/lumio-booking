@@ -57,6 +57,12 @@ export class MessengerController {
     return this.gaps.answer(user, id, String(dto?.answer ?? ''));
   }
 
+  /** "AI soạn giúp": a draft answer for the owner to approve (staff reply + this salon's notes and documents). Saves nothing. */
+  @Post('knowledge-gaps/:id/draft')
+  draftGap(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query('lang') lang?: string) {
+    return this.gaps.draft(user, id, lang);
+  }
+
   @Post('knowledge-gaps/:id/dismiss')
   dismissGap(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.gaps.dismiss(user, id);

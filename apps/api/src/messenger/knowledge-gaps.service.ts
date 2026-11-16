@@ -3,7 +3,9 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { requestBotCatchUp } from './bot-refresh';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { factLabel, gapKey, redact, type GapSource } from './knowledge-gaps';
+import { factLabel, gapDraftPrompt, gapKey, parseGapDraft, redact, similarGap, type GapDraft, type GapSource } from './knowledge-gaps';
+import { chat as llmChat } from '../common/llm';
+import { SOURCES_KEY, docsBlock, sourcesFrom } from '../ai-brain/knowledge-sources';
 import { AiInstructionsService } from '../ai-brain/instructions.service';
 
 /** Open questions kept per salon. Past this, new ones wait until some are answered. */
@@ -68,7 +70,19 @@ export class KnowledgeGapsService {
         });
         return;
       }
-      if ((await this.gaps.count({ where: { tenantId: o.tenantId, status: 'open' } })) >= MAX_OPEN_GAPS) return;
+      // The same question in other words ("có làm mi không" / "tiệm có làm mi ko ạ") is counted
+      // into the one already waiting — THIS salon's open questions only.
+      const openRows = await this.gaps.findMany({ where: { tenantId: o.tenantId, status: 'open' }, orderBy: { lastAt: 'desc' }, take: 150 });
+      const same = similarGap(question, openRows.map((g) => g.question));
+      if (same >= 0) {
+        const g = openRows[same];
+        await this.gaps.update({
+          where: { id: g.id },
+          data: { count: { increment: 1 }, lastAt: new Date(), threadId: o.threadId ?? g.threadId, ...(o.source === 'staff' && suggested ? { source: 'staff', suggestedAnswer: suggested } : {}) },
+        });
+        return;
+      }
+      if (openRows.length >= MAX_OPEN_GAPS || (await this.gaps.count({ where: { tenantId: o.tenantId, status: 'open' } })) >= MAX_OPEN_GAPS) return;
       await this.gaps.create({
         data: { tenantId: o.tenantId, key, question, threadId: o.threadId ?? null, source: o.source, suggestedAnswer: suggested },
       });
@@ -129,6 +143,41 @@ export class KnowledgeGapsService {
     // The customer who asked is still waiting: the bot re-reads that conversation and answers now.
     requestBotCatchUp(tenantId, 'messenger.knowledge_gap_answered');
     return { ok: true, label };
+  }
+
+  private readonly drafts = new Map<string, { at: number; draft: GapDraft }>();
+
+  /**
+   * "AI soạn giúp": a draft answer for the owner to read, edit and approve —
+   * from what a staff member replied in that chat (when it really answers the
+   * question) and from THIS salon's own notes and linked documents. Nothing is
+   * saved by this; no source means no draft.
+   */
+  async draft(user: AuthenticatedUser, id: string, lang?: string): Promise<GapDraft> {
+    const tenantId = this.tenantOf(user);
+    const gap = await this.gaps.findFirst({ where: { id, tenantId } });
+    if (!gap) throw new NotFoundException('Question not found.');
+    if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY) throw new BadRequestException('AI is not configured on the server.');
+    const vi = (lang || 'vi') !== 'en';
+    const key = `${tenantId}:${gap.id}:${gap.suggestedAnswer ?? ''}:${vi ? 'vi' : 'en'}`;
+    const hit = this.drafts.get(key);
+    if (hit && Date.now() - hit.at < 30 * 60_000) return hit.draft;
+    const [tenant, conn, src] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+      this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: SOURCES_KEY } } }).catch(() => null),
+    ]);
+    const notes = ((Array.isArray(conn?.botFacts) ? conn!.botFacts : []) as { label?: string; value?: string; on?: boolean }[])
+      .filter((f) => f && f.on && f.value).map((f) => `${f.label}: ${f.value}`).join('\n');
+    const docs = docsBlock(sourcesFrom(src?.value));
+    const p = gapDraftPrompt({ business: tenant?.name ?? '', question: gap.question, staffReply: gap.suggestedAnswer, notes, docs, vi });
+    const out = await llmChat({ system: p.system, messages: [{ role: 'user', content: p.user }], max_tokens: 300, timeoutMs: 15_000 }).catch(() => null);
+    const text = out && out.ok ? out.reply.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' ') : '';
+    if (!out || !out.ok) throw new BadRequestException(vi ? 'AI đang bận — thử lại sau ít phút.' : 'The AI is busy — try again in a few minutes.');
+    const draft = parseGapDraft(text);
+    if (this.drafts.size > 500) this.drafts.clear();
+    this.drafts.set(key, { at: Date.now(), draft });
+    return draft;
   }
 
   async dismiss(user: AuthenticatedUser, id: string): Promise<{ ok: true }> {

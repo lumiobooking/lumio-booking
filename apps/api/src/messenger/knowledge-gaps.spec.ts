@@ -1,3 +1,4 @@
+import { gapDraftPrompt, parseGapDraft, similarGap, topicWords } from './knowledge-gaps';
 /**
  * "Bot tự học hỏi thêm" — phase 1: what the bot did not know is kept, per
  * salon, for the owner to answer ONCE; the answer becomes a bot fact.
@@ -205,3 +206,35 @@ describe('where questions come from', () => {
     expect(record).toHaveBeenCalledWith({ tenantId: 't1', threadId: 'th1', question: 'do you do lash lifts?', source: 'bot' });
   });
 });
+
+describe('the same question in other words, and the draft the owner approves', () => {
+  it('counts a reworded question into the one already waiting', () => {
+    const open = ['giá gel chân bao nhiêu', 'Tiệm có làm mi không?', 'do you take walk-ins on sunday'];
+    expect(similarGap('tiệm có làm mi ko ạ', open)).toBe(1);
+    expect(similarGap('Are walk-ins ok on Sunday?', open)).toBe(2);
+  });
+
+  it('keeps different questions apart, and never matches on one word', () => {
+    expect(similarGap('giá gel tay bao nhiêu', ['giá gel chân bao nhiêu'])).toBe(-1);
+    expect(similarGap('có làm mi không', ['mi'])).toBe(-1);
+    expect(similarGap('lash lift price?', ['Tiệm có làm mi không?'])).toBe(-1);
+    expect(topicWords('Tiệm có làm mi không ạ?')).toEqual(['lam', 'mi']);
+  });
+
+  it('the draft may use only the staff reply and the salon’s own sources', () => {
+    const p = gapDraftPrompt({ business: 'Lumio Nails', question: 'Có làm mi không? gọi 512-555-1234', staffReply: 'Dạ có chị, lash lift 45$ nha', notes: 'Giờ mở cửa: 9:30–19:00', vi: true });
+    expect(p.system).toContain('Use ONLY facts');
+    expect(p.system).toContain('small talk');
+    expect(p.user).toContain('STAFF REPLY: Dạ có chị, lash lift 45$ nha');
+    expect(p.user).not.toContain('512-555-1234');
+    expect(gapDraftPrompt({ business: 'X', question: 'q?', vi: false }).user).toContain('SOURCES: (none)');
+  });
+
+  it('no source, no draft — null, "null" and broken output all mean the owner types it', () => {
+    expect(parseGapDraft('{"answer":null,"from":null}')).toEqual({ answer: null, from: null });
+    expect(parseGapDraft('{"answer":"null"}')).toEqual({ answer: null, from: null });
+    expect(parseGapDraft('sorry')).toEqual({ answer: null, from: null });
+    expect(parseGapDraft('```json\n{"answer":"Tiệm có làm **lash lift**, giá 45$.","from":"staff"}\n```')).toEqual({ answer: 'Tiệm có làm lash lift, giá 45$.', from: 'staff' });
+  });
+});
+

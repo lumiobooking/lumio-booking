@@ -137,12 +137,23 @@ export function blockText(raw: string, vi: boolean): string {
   if (off) return vi ? `${off[1]} nghỉ ${when(off[2])} — không đặt được. Chọn thợ khác hoặc giờ khác.` : s.replace(/^TIME_OFF:\s*/, '');
   const blk = /^BLOCKED:\s*the salon has blocked (.+?)\. /.exec(s);
   if (blk) return vi ? `Tiệm đã khoá ${when(blk[1])} — không đặt được. Chọn giờ khác (hoặc gỡ khoá trên Lịch).` : s.replace(/^BLOCKED:\s*/, '');
+  const busy = /^STAFF_BUSY:\s*(.+?) already has a client on (\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2})-(\d{2}):(\d{2})(?: \(the salon keeps (\d+) minutes between appointments\))?\./.exec(s);
+  if (busy) {
+    const [, who, d, h1, m1, h2, m2, gap] = busy;
+    const ampm = (h: string, m: string) => { const n = Number(h); return `${n % 12 || 12}:${m} ${n < 12 ? 'AM' : 'PM'}`; };
+    if (vi) {
+      const g = gap ? ` (tiệm chừa ${gap} phút giữa 2 khách)` : '';
+      return `${who === 'This technician' ? 'Thợ này' : who} đã có khách ${h1}:${m1}–${h2}:${m2} ngày ${day(d)}${g}. Đổi giờ trước rồi chọn lại thợ, hoặc chọn thợ khác.`;
+    }
+    const g = gap ? ` (the salon keeps ${gap} minutes between appointments)` : '';
+    return `${who} already has a client ${ampm(h1, m1)}–${ampm(h2, m2)} on ${d}${g}. Change the time first, or pick another technician.`;
+  }
   return s;
 }
 
-/** True for the server's time-off / block refusal. */
+/** True for the server's time-off / block / technician-busy refusal. */
 export function isBlocked(raw: string): boolean {
-  return /^(TIME_OFF|BLOCKED):/.test(raw || '');
+  return /^(TIME_OFF|BLOCKED|STAFF_BUSY):/.test(raw || '');
 }
 
 /**

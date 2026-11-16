@@ -156,3 +156,17 @@ describe('moving a booking outside opening hours', () => {
     expect(read('app', 'salon', 'front-desk', 'page.tsx')).toMatch(/walkinsPage && \{ href: '\/salon\/walkins\?new=1'/);
   });
 });
+
+describe('a busy technician is named, with the clashing time (Amy\'s Lash 16/11)', () => {
+  const raw = 'STAFF_BUSY: Amy already has a client on 2026-11-16 10:00-10:30. Change the time first, or pick another technician.';
+  it('Vietnamese', () => {
+    expect(blockText(raw, true)).toBe('Amy đã có khách 10:00–10:30 ngày 16/11. Đổi giờ trước rồi chọn lại thợ, hoặc chọn thợ khác.');
+  });
+  it('English, 12-hour clock', () => {
+    expect(blockText(raw, false)).toBe('Amy already has a client 10:00 AM–10:30 AM on 2026-11-16. Change the time first, or pick another technician.');
+  });
+  it('with the salon\'s rest gap', () => {
+    expect(blockText('STAFF_BUSY: Jun already has a client on 2026-11-16 13:30-15:00 (the salon keeps 10 minutes between appointments). Change the time first, or pick another technician.', true))
+      .toBe('Jun đã có khách 13:30–15:00 ngày 16/11 (tiệm chừa 10 phút giữa 2 khách). Đổi giờ trước rồi chọn lại thợ, hoặc chọn thợ khác.');
+  });
+});

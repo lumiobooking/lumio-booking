@@ -1,4 +1,5 @@
 import { keptOnLate } from './pay-in-full';
+import { staffBusyMessage } from './busy-message';
 import { GROUP_NOTICE_DELAY_MS, groupLead, groupSummary, visitPeople, type GroupMember } from './group-notice';
 import { shouldConfirmOnCreate } from './auto-confirm';
 import { totalText } from '../common/price-label';
@@ -251,12 +252,12 @@ export class BookingsService {
         endTime: { gt: new Date(start.getTime() - pad) },
         ...(ignoreAppointmentId ? { id: { not: ignoreAppointmentId } } : {}),
       },
-      select: { id: true },
+      select: { id: true, startTime: true, endTime: true, assignedStaff: { select: { firstName: true } } },
     });
     if (conflict) {
-      throw new ConflictException(bufferMin > 0
-        ? `Staff member is already booked for this time slot (the salon keeps ${bufferMin} minutes between appointments)`
-        : 'Staff member is already booked for this time slot');
+      let tz = 'UTC';
+      try { tz = (await tx.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone || 'UTC'; } catch { /* keep UTC */ }
+      throw new ConflictException(staffBusyMessage({ staffName: conflict.assignedStaff?.firstName ?? null, start: conflict.startTime, end: conflict.endTime, tz, bufferMin }));
     }
     await this.assertNotOff(tx, tenantId, staffId, start, end);
   }
@@ -1200,7 +1201,7 @@ export class BookingsService {
       });
     } catch (e) {
       const msg = String((e as Error).message || e);
-      const say = /TIME_OFF|BLOCKED/.test(msg) ? `${st.firstName} is off at that time.` : /already booked/i.test(msg) ? `${st.firstName} already has a booking at that time.` : 'That change could not be made.';
+      const say = /TIME_OFF|BLOCKED/.test(msg) ? `${st.firstName} is off at that time.` : /already booked|STAFF_BUSY/i.test(msg) ? `${st.firstName} already has a booking at that time.` : 'That change could not be made.';
       return { ok: false, code: 'busy', say };
     }
     await this.audit.log({ tenantId, userId: null as never, action: 'booking.tech_changed_by_customer', resourceType: 'appointment', resourceId: appt.id, metadata: { staffId: st.id, from: appt.assignedStaffId, by } });
@@ -1379,7 +1380,7 @@ export class BookingsService {
       return { ok: true, code: 'ok', say: '', appointment: updated, startTime: newStart };
     } catch (e) {
       const msg = String((e as Error).message || e);
-      if (/already booked/i.test(msg)) {
+      if (/already booked|STAFF_BUSY/i.test(msg)) {
         return { ok: false, code: 'taken', say: 'Khung giờ đó thợ đã có khách rồi ạ. Anh/chị chọn giúp em một giờ khác nhé?' };
       }
       this.logger.warn(`self-reschedule failed (${by}) ${appointmentId}: ${msg.slice(0, 160)}`);

@@ -909,7 +909,7 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
     for (let loop = 0; loop < 6; loop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify(forModel({ model: agentModel(), max_tokens: 420, system, tools, messages })),
+        body: JSON.stringify(forModel({ model: agentModel(), max_tokens: 1400, system, tools, messages })),
         signal: AbortSignal.timeout(20_000),
       });
       if (!res.ok) throw new BadRequestException(`AI answered ${res.status}`);
@@ -944,6 +944,12 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
         continue;
       }
       const text = blocksOut.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      // Never an empty bubble: a reply that said nothing (and sent no card) is asked for once more.
+      if (!text && !cards.length && loop < 5) {
+        messages.push({ role: 'assistant', content: [{ type: 'text', text: '…' }] });
+        messages.push({ role: 'user', content: 'SYSTEM: your reply was empty. Write your reply to the customer now (warm, full sentences, one question).' });
+        continue;
+      }
       // The owner's instructions, checked exactly as on a live conversation:
       // a broken one goes back once for a rewrite, then the judge's (or the
       // owner's own) words go out instead.

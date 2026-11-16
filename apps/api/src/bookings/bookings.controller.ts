@@ -62,6 +62,28 @@ class AskDeskDto {
 export class BookingsController {
   constructor(private readonly bookings: BookingsService) {}
 
+  // Gia hạn (./extension-price): the salon's policy, and the price of N more minutes on one visit.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Get('extension-pricing')
+  getExtensionPolicy(@CurrentUser() user: AuthenticatedUser) {
+    return this.bookings.getExtensionPolicy(user);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('extension-pricing')
+  @HttpCode(200)
+  setExtensionPolicy(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) {
+    return this.bookings.setExtensionPolicy(user, dto);
+  }
+
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Get(':id/extension-quote')
+  extensionQuote(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query('minutes') minutes?: string) {
+    return this.bookings.extensionQuote(user, id, Number(minutes));
+  }
+
   // ---- Staff: their own work queue + accept/reject -----------------------
 
   // GET /api/bookings/my -> bookings assigned to the signed-in staff member.

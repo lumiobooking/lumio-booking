@@ -311,8 +311,12 @@ function Invoke-GdiPrint($rows, [string]$printer, [int]$maxWidth, [string]$fontN
     if ($W -lt 50) { $W = [single]$e.PageBounds.Width }
     $vis = [single]$g.VisibleClipBounds.Width
     if ($vis -gt 50 -and $vis -lt $W) { $W = $vis }
-    $H = [single]$area.Height
+    # Some drivers (Xprinter XP-80C, 16/11) report a printable area one line
+    # tall on a custom paper: every line then became its own page and the
+    # cutter cut after each one. The page itself is the real limit.
+    $H = [single][Math]::Max([double]$area.Height, [double]$e.PageBounds.Height)
     if ($H -lt 50) { $H = [single]$e.PageBounds.Height }
+    if ($script:PsIndex -eq 0) { Write-Log ('page ' + $W + 'x' + $H + ' area ' + $area.Width + 'x' + $area.Height + ' bounds ' + $e.PageBounds.Width + 'x' + $e.PageBounds.Height) }
     $r = Layout-Ticket $g (Ticket-Width $W) $H $true
     $e.HasMorePages = [bool]$r.more
   })
@@ -365,6 +369,90 @@ public static class LumioRaw {
 '@
 $script:RawReady = $false
 try { Add-Type -TypeDefinition $RawSrc -Language CSharp; $script:RawReady = $true } catch { Write-Log ('raw printing unavailable: ' + $_) }
+
+# Thermal receipt printers (Xprinter, Epson TM, POS-58/80...): the whole ticket
+# is drawn as ONE picture and sent straight to the printer (ESC/POS raster),
+# then one cut. The driver's page size cannot split it, and accents stay
+# because Windows draws the letters. Any failure falls back to normal printing.
+$RasterSrc = @'
+using System;
+using System.IO;
+using System.Drawing;
+public static class LumioRaster {
+  public static byte[] Build(Bitmap bmp, int height) {
+    int w = bmp.Width;
+    int bw = (w + 7) / 8;
+    MemoryStream ms = new MemoryStream();
+    ms.Write(new byte[] { 0x1B, 0x40 }, 0, 2);
+    for (int y0 = 0; y0 < height; y0 += 128) {
+      int h = Math.Min(128, height - y0);
+      ms.Write(new byte[] { 0x1D, 0x76, 0x30, 0x00, (byte)(bw & 0xFF), (byte)(bw >> 8), (byte)(h & 0xFF), (byte)(h >> 8) }, 0, 8);
+      for (int y = y0; y < y0 + h; y++) {
+        for (int bx = 0; bx < bw; bx++) {
+          int b = 0;
+          for (int k = 0; k < 8; k++) {
+            int x = bx * 8 + k;
+            if (x < w) {
+              Color c = bmp.GetPixel(x, y);
+              if (c.A > 0 && (c.R + c.G + c.B) / 3 < 140) b |= (0x80 >> k);
+            }
+          }
+          ms.WriteByte((byte)b);
+        }
+      }
+    }
+    ms.Write(new byte[] { 0x1B, 0x64, 0x04, 0x1D, 0x56, 0x42, 0x00 }, 0, 7);
+    return ms.ToArray();
+  }
+}
+'@
+$script:RasterReady = $false
+try { Add-Type -TypeDefinition $RasterSrc -Language CSharp -ReferencedAssemblies System.Drawing; $script:RasterReady = $true } catch { Write-Log ('raster printing unavailable: ' + $_) }
+
+# A receipt printer by its name: these speak ESC/POS.
+function Is-ThermalPrinter([string]$name) {
+  if (-not $name) { $name = (New-Object System.Drawing.Printing.PrinterSettings).PrinterName }
+  return ($name -match '(?i)(^XP-|xprinter|POS-?5|POS-?8|POS80|POS58|80C|58C|^TM-|TM-T|EPSON TM|RP-?80|RP-?58|thermal|receipt|GP-|Gprinter|BIXOLON|SRP-|Rongta|HPRT|Sewoo|XP80|XP58)')
+}
+
+function Invoke-RasterPrint($rows, [string]$printer, [int]$maxWidth, [string]$fontName, [double]$baseSize) {
+  if (-not $script:RawReady -or -not $script:RasterReady) { throw 'raster not available' }
+  $name = $printer
+  if (-not $name) { $name = (New-Object System.Drawing.Printing.PrinterSettings).PrinterName }
+  # 80 mm paper = 576 dots, 58 mm = 384 (203 dpi). The paper width comes as 1/100 inch.
+  $dots = 576
+  if ($maxWidth -gt 50 -and $maxWidth -lt 260) { $dots = 384 }
+  $script:PsRows = @($rows)
+  $script:PsFamily = Pick-Font $fontName
+  $script:PsSize = $baseSize
+  if ($script:PsSize -lt 6) { $script:PsSize = 10 }
+  $W = [single]($dots - 16)
+  # Measure on a small picture, then draw on one exactly as tall as the ticket.
+  $probe = New-Object System.Drawing.Bitmap(8, 8)
+  $probe.SetResolution(203, 203)
+  $pg = [System.Drawing.Graphics]::FromImage($probe)
+  $pg.PageUnit = [System.Drawing.GraphicsUnit]::Pixel
+  $script:PsIndex = 0
+  try { $m = Layout-Ticket $pg $W ([single]1000000) $false } finally { $pg.Dispose(); $probe.Dispose() }
+  $hgt = [int][Math]::Ceiling([double]$m.y) + 24
+  if ($hgt -lt 40) { $hgt = 40 }
+  if ($hgt -gt 30000) { $hgt = 30000 }
+  $bmp = New-Object System.Drawing.Bitmap($dots, $hgt)
+  try {
+    $bmp.SetResolution(203, 203)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    try {
+      $g.PageUnit = [System.Drawing.GraphicsUnit]::Pixel
+      $g.Clear([System.Drawing.Color]::White)
+      $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::SingleBitPerPixelGridFit
+      $g.TranslateTransform([single]8, [single]8)
+      $script:PsIndex = 0
+      [void](Layout-Ticket $g $W ([single]1000000) $true)
+    } finally { $g.Dispose() }
+    $bytes = [LumioRaster]::Build($bmp, $hgt)
+  } finally { $bmp.Dispose() }
+  [LumioRaw]::Send($name, $bytes)
+}
 
 function Send-Kick([string]$printer) {
   if (-not $script:RawReady) { throw 'Khong mo duoc ket tien (thieu RAW)' }
@@ -443,8 +531,15 @@ while ($true) {
           for ($k = 0; $k -lt $n; $k++) {
             if ($j.raw) { Send-Raw ([string]$j.host) ([int]$j.port) ([string]$j.raw) }
             else {
-              try { Invoke-GdiPrint $j.rows ([string]$j.printer) ([int]$j.maxWidth) ([string]$j.font) ([double]$j.size) }
-              catch { Write-Log ('gdi: ' + $_); Invoke-TextPrint ([string]$j.text) ([string]$j.printer) }
+              $done = $false
+              if ((Is-ThermalPrinter ([string]$j.printer)) -and $script:RasterReady) {
+                try { Invoke-RasterPrint $j.rows ([string]$j.printer) ([int]$j.maxWidth) ([string]$j.font) ([double]$j.size); $done = $true }
+                catch { Write-Log ('raster: ' + $_) }
+              }
+              if (-not $done) {
+                try { Invoke-GdiPrint $j.rows ([string]$j.printer) ([int]$j.maxWidth) ([string]$j.font) ([double]$j.size) }
+                catch { Write-Log ('gdi: ' + $_); Invoke-TextPrint ([string]$j.text) ([string]$j.printer) }
+              }
             }
           }
         }

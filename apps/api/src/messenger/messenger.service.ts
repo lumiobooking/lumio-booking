@@ -4881,7 +4881,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           type: 'object',
           properties: {
             packages: {
-              type: 'array', minItems: 1, maxItems: 10,
+              type: 'array', minItems: 1, maxItems: 6,
               items: {
                 type: 'object',
                 properties: {
@@ -4971,7 +4971,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         system: system as TextBlock[],
         messages: messages as ChatMessage[],
         tools: tools as ToolDef[],
-        max_tokens: 500,
+        // A card call for several packages is long; 500 cut it off mid-way and nothing was sent.
+        max_tokens: 1400,
         timeoutMs: 30_000,
       });
       // Counted whether it worked or not: a failing call still burns a

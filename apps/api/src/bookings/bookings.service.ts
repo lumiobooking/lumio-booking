@@ -1,4 +1,5 @@
 import { keptOnLate } from './pay-in-full';
+import { EXTENSION_KEY, extensionCharge, extensionName, policyFrom, shrinkExtensions, type ExtensionPolicy, type ExtLine } from './extension-price';
 import { staffBusyMessage } from './busy-message';
 import { GROUP_NOTICE_DELAY_MS, groupLead, groupSummary, visitPeople, type GroupMember } from './group-notice';
 import { shouldConfirmOnCreate } from './auto-confirm';
@@ -3913,7 +3914,7 @@ export class BookingsService {
   async editLines(
     user: AuthenticatedUser,
     id: string,
-    dto: { addServiceIds?: string[]; removeIndexes?: number[]; extraMinutes?: number; replaceMainServiceId?: string; lang?: string },
+    dto: { addServiceIds?: string[]; removeIndexes?: number[]; extraMinutes?: number; replaceMainServiceId?: string; lang?: string; chargeExtra?: boolean },
   ) {
     const tenantId = this.tenantId(user);
     const b = await this.prisma.appointment.findFirst({ where: { id, tenantId } });
@@ -3927,7 +3928,7 @@ export class BookingsService {
 
     // 1) Drop the lines the salon removed (by position in the stored list).
     const drop = new Set((dto.removeIndexes ?? []).filter((n) => Number.isInteger(n) && n >= 0));
-    const kept = current.filter((_, i) => !drop.has(i));
+    let kept = current.filter((_, i) => !drop.has(i));
     const removed = current.filter((_, i) => drop.has(i));
     let removedPrice = removed.reduce((sum, x) => sum + (x.priceCents ?? 0), 0);
     let removedMinutes = removed.reduce((sum, x) => sum + (x.durationMinutes ?? 0), 0);
@@ -3966,12 +3967,33 @@ export class BookingsService {
         });
       }
     }
+    // 3) Manual time on top (the "customer wants longer" case).
+    let extra = Math.max(-600, Math.min(600, Math.round(dto.extraMinutes ?? 0)));
+
+    // 3b) Gia hạn with money (./extension-price): longer = a priced line on the
+    // visit; shorter = the newest priced extension gives its money back.
+    const lang0: 'vi' | 'en' = dto.lang === 'en' ? 'en' : 'vi';
+    let charged = 0;
+    if (extra !== 0 && dto.chargeExtra) {
+      if (extra > 0) {
+        const q = await this.extensionPrice(tenantId, b, current, extra);
+        if (q.priceCents > 0) {
+          added.push({ kind: 'extension', name: extensionName(extra, lang0), durationMinutes: extra, priceCents: q.priceCents });
+          charged = q.priceCents;
+          extra = 0; // the line carries the minutes
+        }
+      } else {
+        const back = shrinkExtensions(kept, -extra, lang0);
+        kept = back.lines;
+        removedPrice += back.refundCents;
+        removedMinutes += -extra - back.left;
+        charged = -back.refundCents;
+        extra = -back.left;
+      }
+    }
+
     const addedPrice = added.reduce((sum, x) => sum + (x.priceCents ?? 0), 0) + (mainSwap?.priceCents ?? 0);
     const addedMinutes = added.reduce((sum, x) => sum + (x.durationMinutes ?? 0), 0) + (mainSwap?.minutes ?? 0);
-
-    // 3) Manual time on top (the "customer wants longer" case).
-    const extra = Math.max(-600, Math.min(600, Math.round(dto.extraMinutes ?? 0)));
-
     const curMinutes = Math.round((b.endTime.getTime() - b.startTime.getTime()) / 60000);
     const newMinutes = Math.max(5, curMinutes + addedMinutes - removedMinutes + extra);
     const newPrice = Math.max(0, b.priceCents + addedPrice - removedPrice);
@@ -4022,11 +4044,70 @@ export class BookingsService {
         added: added.map((x) => x.name ?? '').filter(Boolean),
         removed: removed.map((x) => x.name ?? '').filter(Boolean),
         ...(mainSwap ? { mainFrom: mainSwap.from ?? '', mainTo: mainSwap.name } : {}),
-        extraMinutes: extra,
+        extraMinutes: Math.round(dto.extraMinutes ?? 0),
+        extensionCents: charged,
         priceCents: newPrice,
       },
     });
     return updated && stretchWarning ? { ...updated, stretchWarning } : updated;
+  }
+
+  // ------------------------------------------------------------ gia hạn (./extension-price)
+
+  /** This salon's extension policy (one setting row; default: prorate). */
+  private async extensionPolicyOf(tenantId: string): Promise<ExtensionPolicy> {
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: EXTENSION_KEY }, select: { value: true } }).catch(() => null);
+    return policyFrom(row?.value);
+  }
+
+  /** The price of `minutes` more on this visit, by the salon's policy and the main service's own rate. */
+  private async extensionPrice(
+    tenantId: string,
+    b: { serviceId: string | null; priceCents: number; currency: string; startTime: Date; endTime: Date },
+    lines: { priceCents?: number; durationMinutes?: number }[],
+    minutes: number,
+  ): Promise<{ mode: ExtensionPolicy['mode']; priceCents: number; currency: string }> {
+    const policy = await this.extensionPolicyOf(tenantId);
+    const sv = b.serviceId ? await this.prisma.service.findFirst({ where: { id: b.serviceId, tenantId }, select: { durationMinutes: true, priceCents: true } }) : null;
+    const linesPrice = lines.reduce((s0, x) => s0 + (x.priceCents ?? 0), 0);
+    const linesMin = lines.reduce((s0, x) => s0 + (x.durationMinutes ?? 0), 0);
+    const visitMin = Math.round((b.endTime.getTime() - b.startTime.getTime()) / 60000);
+    // The main service's share of the booked price, over its own length.
+    const mainPrice = Math.max(0, b.priceCents - linesPrice) || sv?.priceCents || 0;
+    const mainMin = sv?.durationMinutes || Math.max(0, visitMin - linesMin);
+    return { mode: policy.mode, priceCents: extensionCharge(policy, { minutes, mainPriceCents: mainPrice, mainMinutes: mainMin, currency: b.currency }), currency: b.currency };
+  }
+
+  /** "+30 phút · +$50?" — the price the desk is about to add, before it says yes. This salon's booking only. */
+  async extensionQuote(user: AuthenticatedUser, id: string, minutes: number) {
+    const tenantId = this.tenantId(user);
+    const b = await this.prisma.appointment.findFirst({ where: { id, tenantId } });
+    if (!b) throw new NotFoundException('Booking not found');
+    const lines = (Array.isArray(b.addons) ? b.addons : []) as unknown as ExtLine[];
+    const m = Math.max(-600, Math.min(600, Math.round(Number(minutes) || 0)));
+    if (m < 0) {
+      const back = shrinkExtensions(lines, -m, 'vi');
+      const policy = await this.extensionPolicyOf(tenantId);
+      return { mode: policy.mode, priceCents: -back.refundCents, currency: b.currency };
+    }
+    return this.extensionPrice(tenantId, b, lines, m);
+  }
+
+  async getExtensionPolicy(user: AuthenticatedUser): Promise<ExtensionPolicy> {
+    return this.extensionPolicyOf(this.tenantId(user));
+  }
+
+  /** The owner's choice: prorate / a price per 15 minutes / free. */
+  async setExtensionPolicy(user: AuthenticatedUser, dto: unknown): Promise<ExtensionPolicy> {
+    const tenantId = this.tenantId(user);
+    const next = policyFrom(dto);
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: EXTENSION_KEY } },
+      update: { value: next as never },
+      create: { tenantId, key: EXTENSION_KEY, value: next as never },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'booking.extension_policy', resourceType: 'setting', resourceId: EXTENSION_KEY, metadata: next as never });
+    return next;
   }
 
   /** The note on a booking ("allergic to acetone", "bring her daughter"), written or cleared by the desk. */

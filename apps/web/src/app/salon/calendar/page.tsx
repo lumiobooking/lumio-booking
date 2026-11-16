@@ -1248,11 +1248,32 @@ function NoteEditor({ b, onAction, label }: { b: Booking; onAction: (id: string,
  */
 function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void }) {
   const { lang } = useLang();
+  const { token, user } = useAuth();
   const t = (k: string) => tr(k, lang);
   const [minutes, setMinutes] = useState(0);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setMinutes(0); }, [b.id]);
+  // Gia hạn: what the extra time costs by the salon's policy ("+30 phút · +$50?").
+  const [quote, setQuote] = useState<{ minutes: number; priceCents: number; mode: string } | null>(null);
+  const [showPolicy, setShowPolicy] = useState(false);
+  useEffect(() => { setMinutes(0); setQuote(null); }, [b.id]);
+  useEffect(() => {
+    if (!minutes || !token) { setQuote(null); return; }
+    let live = true;
+    const tm = setTimeout(() => {
+      apiFetch<{ priceCents: number; mode: string }>(`/bookings/${b.id}/extension-quote?minutes=${minutes}`, { token })
+        .then((q) => { if (live) setQuote({ minutes, priceCents: q.priceCents, mode: q.mode }); })
+        .catch(() => { if (live) setQuote(null); });
+    }, 200);
+    return () => { live = false; clearTimeout(tm); };
+  }, [minutes, b.id, token]);
+  const isOwner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
   const vi = lang === 'vi';
+  const priced = quote && quote.minutes === minutes && quote.mode !== 'free' && quote.priceCents !== 0 ? quote.priceCents : 0;
+  const save = async (charge: boolean) => {
+    setBusy(true);
+    try { await onAction(b.id, 'lines', { extraMinutes: minutes, chargeExtra: charge, lang: vi ? 'vi' : 'en' }); }
+    finally { setBusy(false); setMinutes(0); setQuote(null); }
+  };
   // The visit as booked now, and how far it may shrink (the API keeps at least 5 minutes).
   const curMin = Math.max(5, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
   const minDelta = -(curMin - 5);
@@ -1276,17 +1297,83 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
       {b.stretchWarning && (
         <div role="status" style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink-warn)', background: 'var(--wash-amber-3)', borderRadius: 8, padding: '7px 9px' }}>⚠ {b.stretchWarning}</div>
       )}
-      {minutes !== 0 && (
+      {minutes !== 0 && priced !== 0 && (
+        <>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+            {priced > 0
+              ? (vi ? `Thêm ${minutes} phút · +${formatPrice(priced, b.currency)}?` : `${minutes} more min · +${formatPrice(priced, b.currency)}?`)
+              : (vi ? `Bớt ${-minutes} phút · trừ lại ${formatPrice(-priced, b.currency)}?` : `${-minutes} min less · give back ${formatPrice(-priced, b.currency)}?`)}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button type="button" disabled={busy} onClick={() => void save(true)}
+              style={{ ...ui.primaryBtn, flex: '1 1 140px', padding: '9px', fontSize: 13, opacity: busy ? 0.5 : 1 }}>
+              {busy ? t('cal.savingVisit') : priced > 0 ? (vi ? `Tính thêm ${formatPrice(priced, b.currency)}` : `Charge ${formatPrice(priced, b.currency)}`) : (vi ? `Trừ lại ${formatPrice(-priced, b.currency)}` : `Give back ${formatPrice(-priced, b.currency)}`)}
+            </button>
+            <button type="button" disabled={busy} onClick={() => void save(false)}
+              style={{ ...chipBtn, flex: '1 1 120px', padding: '9px', fontSize: 13 }}>
+              {priced > 0 ? (vi ? 'Không tính tiền' : 'No charge') : (vi ? 'Giữ nguyên giá' : 'Keep the price')}
+            </button>
+          </div>
+        </>
+      )}
+      {minutes !== 0 && priced === 0 && (
         <button
           disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try { await onAction(b.id, 'lines', { extraMinutes: minutes, lang: vi ? 'vi' : 'en' }); }
-            finally { setBusy(false); setMinutes(0); }
-          }}
+          onClick={() => void save(false)}
           style={{ ...ui.primaryBtn, padding: '9px', fontSize: 13, opacity: busy ? 0.5 : 1, cursor: busy ? 'default' : 'pointer' }}
         >{busy ? t('cal.savingVisit') : t('cal.saveVisit')}</button>
       )}
+      {isOwner && (
+        <button type="button" onClick={() => setShowPolicy((v) => !v)} style={{ ...chipBtn, alignSelf: 'flex-start', fontSize: 11.5, padding: '3px 8px' }}>
+          ⚙ {vi ? 'Cách tính tiền gia hạn' : 'How extra time is charged'}
+        </button>
+      )}
+      {isOwner && showPolicy && <ExtensionPolicyBox vi={vi} currency={b.currency} onSaved={() => { setShowPolicy(false); setQuote(null); }} />}
+    </div>
+  );
+}
+
+/**
+ * The owner's choice for gia hạn (./bookings/extension-price on the API):
+ * by the service's own rate (default), a fixed price for every 15 minutes, or free.
+ */
+function ExtensionPolicyBox({ vi, currency, onSaved }: { vi: boolean; currency: string; onSaved: () => void }) {
+  const { token } = useAuth();
+  const [mode, setMode] = useState<'prorate' | 'per15' | 'free'>('prorate');
+  const [per15, setPer15] = useState('');
+  const [msg, setMsg] = useState('');
+  const zeroDecimals = ['VND', 'JPY', 'KRW'].includes(String(currency).toUpperCase());
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ mode: 'prorate' | 'per15' | 'free'; per15Cents: number }>('/bookings/extension-pricing', { token })
+      .then((p) => { setMode(p.mode); setPer15(p.per15Cents ? String(zeroDecimals ? p.per15Cents : p.per15Cents / 100) : ''); })
+      .catch(() => undefined);
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  const save = async () => {
+    const n = Number(per15.replace(',', '.'));
+    if (mode === 'per15' && !(n > 0)) { setMsg(vi ? 'Nhập giá cho mỗi 15 phút.' : 'Enter the price per 15 minutes.'); return; }
+    try {
+      await apiFetch('/bookings/extension-pricing', { method: 'POST', token, body: { mode, per15Cents: mode === 'per15' ? Math.round(zeroDecimals ? n : n * 100) : 0 } });
+      onSaved();
+    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+  };
+  const opt = (k: 'prorate' | 'per15' | 'free', label: string, hint: string) => (
+    <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
+      <input type="radio" name="ext-mode" checked={mode === k} onChange={() => setMode(k)} style={{ marginTop: 3 }} />
+      <span><b>{label}</b><br /><span style={{ color: 'var(--c94a3b8)' }}>{hint}</span></span>
+    </label>
+  );
+  return (
+    <div style={{ border: '1px solid var(--c334155)', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {opt('prorate', vi ? 'Theo giá dịch vụ (khuyên dùng)' : 'By the service’s own rate (recommended)', vi ? 'VD: $100 cho 60 phút → thêm 30 phút = $50. Không cần cài gì.' : 'E.g. $100 for 60 min → 30 more min = $50. Nothing to set up.')}
+      {opt('per15', vi ? 'Giá cố định mỗi 15 phút' : 'A fixed price per 15 minutes', vi ? 'Mọi dịch vụ cùng một giá cho mỗi 15 phút thêm.' : 'Every service, the same price per 15 extra minutes.')}
+      {mode === 'per15' && (
+        <input inputMode="decimal" value={per15} onChange={(e) => setPer15(e.target.value)} placeholder={zeroDecimals ? '50000' : '20'}
+          aria-label={vi ? 'Giá mỗi 15 phút' : 'Price per 15 minutes'} style={{ ...ui.input, maxWidth: 160 }} />
+      )}
+      {opt('free', vi ? 'Không tính tiền' : 'Free', vi ? 'Chỉ kéo dài giờ trên lịch, như trước đây.' : 'Only the time on the calendar, as before.')}
+      {msg && <span style={{ fontSize: 12, color: 'var(--ink-bad)' }}>{msg}</span>}
+      <button type="button" onClick={() => void save()} style={{ ...ui.primaryBtn, padding: '7px', fontSize: 12.5 }}>{vi ? 'Lưu cách tính' : 'Save'}</button>
     </div>
   );
 }

@@ -23,6 +23,7 @@ import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, 
 import { agentModel, forModel } from '../common/ai-model';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, cleanChoices, choicesAsText, cleanCards, cardText, type PackageCard } from '../messenger/reply-style';
 import { ungroundedMoney } from '../messenger/price-grounding';
+import { SIM_KEY, pickScenarios, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
 import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
 import { browserHeaders } from '../common/browser-headers';
@@ -255,6 +256,90 @@ export class AiBrainService {
   async lastTest(user: AuthenticatedUser): Promise<KnowledgeTest | null> {
     const row = await this.db.setting.findUnique({ where: { tenantId_key: { tenantId: this.tenantId(user), key: TEST_KEY } } }).catch(() => null);
     return (row?.value as KnowledgeTest | undefined) ?? null;
+  }
+
+  // ---- Mô phỏng khách (./simulations): fixed customers, the real assistant, graded on conduct.
+  async lastSimulation(user: AuthenticatedUser): Promise<SimRun | null> {
+    const row = await this.db.setting.findUnique({ where: { tenantId_key: { tenantId: this.tenantId(user), key: SIM_KEY } } }).catch(() => null);
+    return simRunFrom(row?.value);
+  }
+
+  /**
+   * Run the scripted customers against THIS salon's assistant (sandbox:
+   * nothing written, nothing sent), grade each last reply against the salon's
+   * own menu, notes and documents, and keep the result — with what passed
+   * last time and fails now.
+   */
+  async runSimulations(user: AuthenticatedUser, uiLang?: string): Promise<SimRun> {
+    if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can test the AI');
+    const tenantId = this.tenantId(user);
+    const t0 = Date.now();
+    const brain = await this.getBrain(tenantId);
+    const conn: Row | null = await Promise.resolve().then(() => this.db.messengerConnection.findUnique({ where: { tenantId }, select: { botMode: true } as never })).catch(() => null);
+    const mode = conn?.botMode === 'sales' ? 'sales' as const : 'booking' as const;
+    const allowed = (brain.languages.allowed as string[]).filter((l): l is SimLang => l === 'vi' || l === 'en');
+    const primary = brain.languages.primary === 'vi' || brain.languages.primary === 'en' ? brain.languages.primary as SimLang : null;
+    const langs: SimLang[] = [...(primary ? [primary] : []), ...allowed.filter((l) => l !== primary)];
+    const picked = pickScenarios(mode, langs);
+
+    const answers: SimAnswer[] = new Array(picked.length);
+    let next = 0;
+    // Six at a time: twenty customers in about a minute, inside one request.
+    await Promise.all(Array.from({ length: 6 }, async () => {
+      while (next < picked.length) {
+        const i = next++;
+        const { scenario, lang } = picked[i];
+        const turns = scenario.turns[lang];
+        const messages: { role: 'user' | 'assistant'; content: string }[] = [];
+        let reply = ''; const tools = new Set<string>();
+        for (const t of turns) {
+          messages.push({ role: 'user', content: t });
+          const r = await this.sandbox(user, { messages, channel: 'chat' }).catch((e) => ({ reply: `(lỗi: ${String((e as Error)?.message ?? e).slice(0, 80)})`, trace: [] as string[] }));
+          reply = String((r as { reply?: string }).reply ?? '');
+          for (const name of toolsFromTrace((r as { trace?: unknown }).trace)) tools.add(name);
+          messages.push({ role: 'assistant', content: reply || '…' });
+        }
+        answers[i] = { customer: turns, reply, tools: [...tools], rubric: scenario.rubric, lang };
+      }
+    }));
+
+    const [docs, notes, menu] = await Promise.all([
+      this.docsFor(tenantId).catch(() => ''),
+      this.oldNotes(tenantId).catch(() => ''),
+      this.menuLines(tenantId).catch(() => ''),
+    ]);
+    const { blocks } = await this.promptBlocks(tenantId, 'chat', 'en');
+    const sources = [menu ? `MENU:\n${menu}` : '', blocks.facts ? `NOTES:\n${blocks.facts}` : '', notes ? `OLDER NOTES:\n${notes}` : '', blocks.rules ? `OWNER RULES:\n${blocks.rules}` : '', docs].filter(Boolean).join('\n\n');
+    const ui: SimLang = uiLang === 'en' ? 'en' : 'vi';
+    const jp = simJudgePrompt(answers, sources, ui);
+    const grades = jsonArray<{ i: number; pass: boolean; why: string }>(await this.ask(jp.system, jp.user, 4000, 90_000));
+    const items: SimItem[] = picked.map(({ scenario, lang }, i) => {
+      const g = grades.find((x) => Number(x?.i) === i);
+      const failed = answers[i].reply.startsWith('(lỗi:');
+      return {
+        id: scenario.id, lang, title: scenario.title[ui], customer: answers[i].customer, reply: answers[i].reply,
+        pass: !failed && g?.pass === true, why: failed ? (ui === 'vi' ? 'AI không trả lời được lượt này' : 'The AI could not answer this turn') : String(g?.why ?? (ui === 'vi' ? 'Chưa chấm được' : 'Not graded')),
+      };
+    });
+    const prev = await this.lastSimulation(user).catch(() => null);
+    const run: SimRun = { at: new Date().toISOString(), ms: Date.now() - t0, total: items.length, passed: items.filter((x) => x.pass).length, mode, items, regressions: regressionsOf(prev, items) };
+    await this.db.setting.upsert({
+      where: { tenantId_key: { tenantId, key: SIM_KEY } },
+      update: { value: run as never },
+      create: { tenantId, key: SIM_KEY, value: run as never },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'ai_brain.simulations_run', resourceType: 'setting', resourceId: SIM_KEY, metadata: { passed: run.passed, total: run.total, regressions: run.regressions.length } }).catch(() => undefined);
+    return run;
+  }
+
+  /** The salon's active menu as plain lines, for a grader (never for a customer). */
+  private async menuLines(tenantId: string): Promise<string> {
+    const [tenant, services] = await Promise.all([
+      this.db.tenant.findUnique({ where: { id: tenantId }, select: { market: true } }).catch(() => null) as Promise<Row | null>,
+      this.db.service.findMany({ where: { tenantId, isActive: true }, select: { name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true, ...({ isFree: true } as object) }, orderBy: { name: 'asc' }, take: 300 }).catch(() => []) as Promise<Row[]>,
+    ]);
+    const locale = String(tenant?.market ?? '').toUpperCase() === 'VN' ? 'vi-VN' : 'en-US';
+    return services.map((x) => `- ${x.name} — ${aiPriceText(x as never, (c) => formatMoneyShort(c, x.currency ?? 'USD', locale))}${x.durationMinutes ? `, ${x.durationMinutes} min` : ''}`).join('\n');
   }
 
   /**

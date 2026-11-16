@@ -242,6 +242,34 @@ describe('Kiểm tra AI — the knowledge test belongs to one salon', () => {
     expect(await svc.lastTest(owner('tb'))).toBeNull();
     expect(db.setting.rows.filter((x: Row) => x.key === 'ai_brain_test').map((x: Row) => x.tenantId)).toEqual(['ta']);
   });
+  it('runs the scripted customers for ONE salon: graded, kept for it alone, regressions named on the next run', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test';
+    const realFetch = global.fetch;
+    let grade = (n: number) => JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, pass: true, why: 'Tốt' })));
+    global.fetch = (async (_url: string, init?: { body?: string }) => {
+      const body = String(init?.body ?? '');
+      const say = (text: string) => new Response(JSON.stringify({ stop_reason: 'end_turn', content: [{ type: 'text', text }] }), { status: 200 });
+      if (body.includes('You grade a business')) return say(grade((body.match(/CASE \d+/g) ?? []).length));
+      return say('Dạ em chào anh/chị ạ, em giúp gì được ạ?');
+    }) as never;
+    try {
+      const { svc, db } = build();
+      const first = await svc.runSimulations(owner('ta'), 'vi');
+      expect(first.total).toBeGreaterThanOrEqual(12);
+      expect(first.passed).toBe(first.total);
+      expect(first.regressions).toEqual([]);
+      expect(first.items[0].customer.length).toBeGreaterThan(0);
+      // Next run: the first script now fails — it is named as a regression.
+      grade = (n: number) => JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, pass: i !== 0, why: i ? 'Tốt' : 'Bịa giá' })));
+      const second = await svc.runSimulations(owner('ta'), 'vi');
+      expect(second.passed).toBe(second.total - 1);
+      expect(second.regressions).toEqual([`${second.items[0].id}:${second.items[0].lang}`]);
+      // Kept for this salon alone.
+      expect((await svc.lastSimulation(owner('ta')))?.passed).toBe(second.passed);
+      expect(await svc.lastSimulation(owner('tb'))).toBeNull();
+      expect(db.setting.rows.filter((x: Row) => x.key === 'ai_brain_sim').map((x: Row) => x.tenantId)).toEqual(['ta']);
+    } finally { global.fetch = realFetch; }
+  });
   it('refuses when there is nothing to test', async () => {
     process.env.ANTHROPIC_API_KEY = 'test';
     const { svc } = build();

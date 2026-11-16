@@ -182,6 +182,16 @@ export class AiBrainController {
   @Post('knowledge-test/turn-off-conflicts')
   turnOffConflicts(@CurrentUser() user: AuthenticatedUser) { return this.brain.turnOffConflicts(user); }
 
+  // ---- Mô phỏng khách (./simulations): scripted customers, the sandbox, graded on conduct.
+  @Get('simulations')
+  lastSimulation(@CurrentUser() user: AuthenticatedUser) { return this.brain.lastSimulation(user); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature(...TEACH_KEYS)
+  @RateLimit(6, 60 * 60_000)
+  @Post('simulations')
+  runSimulations(@CurrentUser() user: AuthenticatedUser, @Query('lang') lang?: string) { return this.brain.runSimulations(user, lang); }
+
   @Post('callbacks')
   addCallback(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.brain.ownerCallback(user, dto); }
 }

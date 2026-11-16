@@ -31,20 +31,29 @@ import { FollowUpBox } from '../../../components/FollowUpBox';
 import { AiInstructionsTab } from '../../../components/AiInstructionsTab';
 import { TeachAiPanel, canTeachAi, type InsChannel } from '../../../components/TeachAiPanel';
 import { usePaged } from '../../../components/ListFilter';
-import { Empty, PageBar, Search, SubTabs, Switch, ghostBtn as kitGhost, primaryBtn as kitPrimary } from '../../../components/ai/aiKit';
+import { BotReportBox } from '../../../components/BotReportBox';
+import { KnowledgeGapsBox } from '../../../components/KnowledgeGapsBox';
+import { Empty, PageBar, Search, SubTabs, Switch, type SubTab, ghostBtn as kitGhost, primaryBtn as kitPrimary } from '../../../components/ai/aiKit';
 
 type Lang = 'en' | 'vi' | 'es' | 'zh' | 'ko' | 'fr' | 'ja';
-type Tab = 'overview' | 'teach' | 'persona' | 'knowledge' | 'booking' | 'chat' | 'voice' | 'memory' | 'sandbox';
-const TABS: Tab[] = ['persona', 'knowledge', 'teach', 'booking', 'memory', 'chat', 'voice', 'overview', 'sandbox'];
-/** The sections in the order the owner reads them, by who uses them. */
-const GROUPS: { id: 'shared' | 'chat' | 'voice' | 'check'; vi: string; en: string; color: string; tabs: Tab[] }[] = [
-  { id: 'shared', vi: 'CHUNG CHO MỌI KÊNH', en: 'SHARED BY EVERY CHANNEL', color: 'var(--ca5b4fc)', tabs: ['persona', 'knowledge', 'teach', 'booking', 'memory'] },
-  { id: 'chat', vi: 'CHỈ MESSENGER & CHAT', en: 'MESSAGES ONLY', color: 'var(--c38bdf8)', tabs: ['chat'] },
-  { id: 'voice', vi: 'CHỈ HOTLINE', en: 'HOTLINE ONLY', color: 'var(--cfbbf24)', tabs: ['voice'] },
-  { id: 'check', vi: 'KIỂM TRA', en: 'CHECKING', color: 'var(--c94a3b8)', tabs: ['overview', 'sandbox'] },
+type Tab = 'home' | 'learn' | 'sim' | 'overview' | 'teach' | 'persona' | 'knowledge' | 'booking' | 'chat' | 'voice' | 'memory' | 'sandbox';
+const TABS: Tab[] = ['home', 'learn', 'sim', 'persona', 'knowledge', 'teach', 'booking', 'memory', 'chat', 'voice', 'overview', 'sandbox'];
+/**
+ * Five tabs, in the order an owner needs them (mockup "Trang AI 5 thẻ", 16/11/2026):
+ * how the AI is doing → what it needs to be taught → what it knows → trying it → settings.
+ * A tab with several sections shows them as a row of pills under the tab bar.
+ */
+type Group = 'home' | 'learn' | 'knowledge' | 'check' | 'settings';
+const GROUPS: { id: Group; vi: string; en: string; tabs: Tab[] }[] = [
+  { id: 'home', vi: 'Tổng quan', en: 'Overview', tabs: ['home'] },
+  { id: 'learn', vi: 'Cần dạy', en: 'To teach', tabs: ['learn'] },
+  { id: 'knowledge', vi: 'Kiến thức', en: 'Knowledge', tabs: ['knowledge', 'teach', 'memory'] },
+  { id: 'check', vi: 'Thử & kiểm tra', en: 'Try & check', tabs: ['sandbox', 'sim', 'overview'] },
+  { id: 'settings', vi: 'Cài đặt', en: 'Settings', tabs: ['persona', 'booking', 'chat', 'voice'] },
 ];
+const groupOf = (t: Tab): Group => GROUPS.find((g) => g.tabs.includes(t))?.id ?? 'home';
 /** One small picture per section, so the list reads at a glance. */
-const TAB_ICON: Record<Tab, string> = { persona: '🙂', knowledge: '📚', teach: '✍️', booking: '📅', memory: '🗂️', chat: '💬', voice: '📞', overview: '🩺', sandbox: '🧪' };
+const TAB_ICON: Record<Tab, string> = { home: '📊', learn: '🎓', sim: '🎭', persona: '🙂', knowledge: '📚', teach: '✍️', booking: '📅', memory: '🗂️', chat: '💬', voice: '📞', overview: '🩺', sandbox: '🧪' };
 /** Old links (?tab=channels) land on the messages section. */
 const ALIAS: Record<string, Tab> = { channels: 'chat' };
 const LANGS: { id: Lang; label: string }[] = [
@@ -90,11 +99,15 @@ function Inner() {
   const phone = useIsMobile(720);
   const asked = params.get('tab') ?? '';
   const chosen: Tab | null = (TABS as string[]).includes(asked) ? (asked as Tab) : ALIAS[asked] ?? null;
-  // A phone opens on the list of sections (mockup board 4); a wider screen on the first one.
-  const tab: Tab = chosen ?? 'persona';
-  const listOnly = phone && !chosen;
+  // Every screen opens on Tổng quan: how the AI is doing and what to do next.
+  const tab: Tab = chosen ?? 'home';
   const setTab = (t: Tab) => router.replace(`${pathname}?tab=${t}`);
-  const toList = () => router.replace(pathname);
+  // How many questions wait to be taught — the number on the "Cần dạy" tab (owner / manager only; anyone else sees none).
+  const [toTeach, setToTeach] = useState<number | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ open: unknown[] }>('/messenger/knowledge-gaps', { token }).then((r) => setToTeach(r?.open?.length ?? 0)).catch(() => setToTeach(null));
+  }, [token, tab]);
 
   const [view, setView] = useState<View | null>(null);
   const [brain, setBrain] = useState<Brain | null>(null);
@@ -131,6 +144,9 @@ function Inner() {
   const canEdit = view.canEdit;
 
   const tabLabel: Record<Tab, string> = {
+    home: L(vi, 'Tổng quan', 'Overview'),
+    learn: L(vi, 'Cần dạy', 'To teach'),
+    sim: L(vi, 'Mô phỏng khách', 'Customer simulations'),
     persona: L(vi, 'Nhân cách & ngôn ngữ', 'Persona & languages'),
     knowledge: L(vi, 'Kiến thức tiệm', 'The salon’s knowledge'),
     teach: L(vi, 'Lời dặn của chủ tiệm', 'Owner’s instructions'),
@@ -148,37 +164,12 @@ function Inner() {
     chat: brain.channels.chat.greeting ? L(vi, 'Có lời chào', 'Greeting set') : L(vi, 'Chưa có lời chào', 'No greeting'),
     voice: brain.handoff.transferNumber ? L(vi, `Chuyển ${brain.handoff.transferNumber}`, `Transfers to ${brain.handoff.transferNumber}`) : L(vi, 'Chưa có số chuyển máy', 'No transfer number'),
   };
-  const nav = (
-    <nav aria-label={L(vi, 'Các phần cài đặt AI', 'AI settings sections')} style={{ flex: phone ? '1 1 100%' : '0 0 250px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {GROUPS.map((g) => (
-        <div key={g.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '.06em', color: g.color, padding: '0 10px 6px' }}>{vi ? g.vi : g.en}</span>
-          {g.tabs.map((t) => {
-            const on = !listOnly && tab === t;
-            return (
-              <button key={t} type="button" aria-current={on ? 'page' : undefined} onClick={() => setTab(t)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: phone ? 56 : 42, padding: '6px 10px', borderRadius: 10, border: phone ? '1px solid var(--line)' : 'none', marginBottom: phone ? 6 : 0,
-                  boxShadow: on ? 'inset 3px 0 0 #4f46e5' : 'none',
-                  background: on ? 'var(--wash-blue)' : phone ? 'var(--c111827)' : 'transparent', color: on ? 'var(--ink-link)' : 'var(--ccbd5e1)', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
-                <span aria-hidden style={{ width: 22, textAlign: 'center', fontSize: 16, lineHeight: 1 }}>{TAB_ICON[t]}</span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 14, fontWeight: on || phone ? 700 : 600 }}>{tabLabel[t]}</span>
-                  {phone && tabSub[t] && <span style={{ display: 'block', fontSize: 12.5, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tabSub[t]}</span>}
-                </span>
-                {phone && <span aria-hidden style={{ color: 'var(--c94a3b8)' }}>›</span>}
-              </button>
-            );
-          })}
-        </div>
-      ))}
-      {!phone && (
-        <p style={{ margin: 0, padding: 10, border: '1px dashed var(--line-strong)', borderRadius: 10, fontSize: 12.5, lineHeight: 1.5, color: 'var(--c94a3b8)' }}>
-          {L(vi, 'Nối Page, Instagram, Zalo, số hotline: ở trang ', 'Connecting the Page, Instagram, Zalo and the hotline number: on the ')}
-          <Link href="/salon/messenger" style={{ color: 'var(--ink-link)' }}>Messenger</Link>{L(vi, ' và ', ' and ')}<Link href="/salon/voice" style={{ color: 'var(--ink-link)' }}>Hotline</Link>{L(vi, '. Trang này chỉ dạy AI.', ' pages. This page only teaches the AI.')}
-        </p>
-      )}
-    </nav>
-  );
+  const group = GROUPS.find((g) => g.id === groupOf(tab)) ?? GROUPS[0];
+  const groupTabs: SubTab<Group>[] = GROUPS.map((g) => ({
+    id: g.id, label: vi ? g.vi : g.en,
+    ...(g.id === 'learn' && toTeach != null ? { count: toTeach, tone: 'warn' as const } : {}),
+  }));
+  void tabSub; void phone;
 
   return (
     <div style={{ padding: '20px 16px 80px', maxWidth: 1100, margin: '0 auto' }}>
@@ -204,20 +195,35 @@ function Inner() {
 
       {canEdit && view.oldNotes && <OldNotes token={token} vi={vi} info={view.oldNotes} onDone={load} />}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start', marginTop: 16 }}>
-        {(!phone || listOnly) && nav}
-        {!listOnly && (
-          <div style={{ flex: '999 1 560px', minWidth: 0 }}>
-            {phone && (
-              <button type="button" onClick={toList} style={{ ...ghost, marginBottom: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>‹ {L(vi, 'Tất cả mục', 'All sections')}</button>
-            )}
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--ce2e8f0)', margin: '0 0 4px' }}>{tabLabel[tab]}</h2>
+      <div style={{ marginTop: 16 }}>
+        <SubTabs tabs={groupTabs} value={group.id} onChange={(g) => setTab((GROUPS.find((x) => x.id === g) ?? GROUPS[0]).tabs[0])} label={L(vi, 'Các phần của trang AI', 'Sections of the AI page')} />
+        {group.tabs.length > 1 && (
+          <div role="tablist" aria-label={vi ? group.vi : group.en} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+            {group.tabs.map((t) => {
+              const on = tab === t;
+              return (
+                <button key={t} type="button" role="tab" aria-selected={on} onClick={() => setTab(t)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 40, padding: '0 14px', borderRadius: 999, border: `1px solid ${on ? '#6366f1' : 'var(--line-strong)'}`, background: on ? 'var(--wash-blue)' : 'transparent', color: on ? 'var(--ink-link)' : 'var(--ccbd5e1)', fontSize: 13.5, fontWeight: on ? 700 : 600, fontFamily: 'inherit', cursor: 'pointer' }}>
+                  <span aria-hidden>{TAB_ICON[t]}</span>{tabLabel[t]}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {(
+          <div style={{ minWidth: 0, marginTop: 16 }}>
+            {group.tabs.length > 1 && <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--ce2e8f0)', margin: '0 0 4px' }}>{tabLabel[tab]}</h2>}
+            {tab !== 'home' && tab !== 'learn' && (
             <p style={{ fontSize: 12.5, fontWeight: 700, margin: '0 0 14px', color: tab === 'chat' ? 'var(--c38bdf8)' : tab === 'voice' ? 'var(--cfbbf24)' : 'var(--ca5b4fc)' }}>
               {tab === 'chat' ? L(vi, 'Dùng cho: Messenger · Instagram · Zalo · chat web', 'Used by: Messenger · Instagram · Zalo · web chat')
                 : tab === 'voice' ? L(vi, 'Dùng cho: Hotline', 'Used by: the hotline')
-                  : tab === 'overview' || tab === 'sandbox' ? L(vi, 'Kiểm tra AI đang làm gì', 'Check what the AI is doing')
+                  : tab === 'overview' || tab === 'sandbox' || tab === 'sim' ? L(vi, 'Kiểm tra AI đang làm gì', 'Check what the AI is doing')
                     : L(vi, 'Dùng cho: mọi kênh', 'Used by: every channel')}
             </p>
+            )}
+            {tab === 'home' && <Home token={token} vi={vi} view={view} toTeach={toTeach} onGo={setTab} />}
+            {tab === 'sim' && <Simulations token={token} vi={vi} canEdit={canEdit} />}
+            {tab === 'learn' && <Learn token={token} vi={vi} onChanged={() => setToTeach((n) => (n == null ? n : Math.max(0, n - 1)))} />}
             {tab === 'overview' && <Overview token={token} vi={vi} view={view} onGo={setTab} />}
             {tab === 'teach' && <AiInstructionsTab token={token} vi={vi} />}
             {tab === 'persona' && <Persona brain={brain} patch={patch} vi={vi} canEdit={canEdit} />}
@@ -273,6 +279,136 @@ const fmtDay = (day: string, vi: boolean) => { const [y, m, d] = day.split('-').
 const fmtWhen = (iso: string | null | undefined, vi: boolean) => (iso ? new Date(iso).toLocaleString(vi ? 'vi-VN' : undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
 // ---------------------------------------------------------------- 1 · overview
+
+/** Tổng quan: what to do next, then how the AI is doing (the same report as the Messenger page — one set of numbers). */
+function Home({ token, vi, view, toTeach, onGo }: { token: string | null; vi: boolean; view: View; toTeach: number | null; onGo: (t: Tab) => void }) {
+  const connected = view.channels.messenger.connected || (view.channels.voice.provisioned && view.channels.voice.enabled);
+  const steps: { title: string; sub: string; action: string; primary?: boolean; go?: Tab; href?: string }[] = [];
+  if (!connected) steps.push({ title: L(vi, 'AI chưa nối với kênh nào', 'The AI is not connected to any channel'), sub: L(vi, 'Nối Facebook Page, Instagram, Zalo hoặc hotline để AI bắt đầu trả lời khách.', 'Connect the Facebook Page, Instagram, Zalo or the hotline so the AI can start answering.'), action: L(vi, 'Nối kênh', 'Connect'), primary: true, href: '/salon/messenger' });
+  if ((toTeach ?? 0) > 0) steps.push({ title: L(vi, `${toTeach} câu khách hỏi mà AI chưa biết`, `${toTeach} questions the AI could not answer`), sub: L(vi, 'Trả lời một lần, AI tự trả lời cho mọi khách sau. Có nút “AI soạn giúp”.', 'Answer once and the AI answers every customer after. “Draft with AI” is there to help.'), action: L(vi, 'Dạy AI', 'Teach the AI'), primary: true, go: 'learn' });
+  steps.push({ title: L(vi, 'Xem lại câu AI trả lời “Chưa thấy nguồn”', 'Review replies marked “No source found”'), sub: L(vi, 'Trong Hộp thư, câu AI nói một con số mà không có nguồn sẽ có nút màu cam. Sai thì bấm “Sửa”.', 'In the Inbox, a reply that states a number with nothing behind it carries an amber chip. Press “Fix” if it is wrong.'), action: L(vi, 'Mở Hộp thư', 'Open the Inbox'), href: '/salon/inbox' });
+  steps.push({ title: L(vi, 'Thử AI như một khách hàng', 'Try the AI as a customer would'), sub: L(vi, 'Hỏi thử giá, giờ mở cửa, đặt lịch — xem AI trả lời thế nào trước khi khách hỏi.', 'Ask about prices, hours, a booking — see how it answers before a customer does.'), action: L(vi, 'Thử AI', 'Try it'), go: 'sandbox' });
+  return (
+    <div>
+      <Card title={L(vi, 'Việc nên làm tiếp', 'What to do next')}>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {steps.map((st) => (
+            <div key={st.title} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', border: '1px solid var(--line)', borderRadius: 12, padding: '10px 12px' }}>
+              <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{st.title}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.45, marginTop: 2 }}>{st.sub}</div>
+              </div>
+              {st.href
+                ? <Link href={st.href} style={{ ...(st.primary ? ui.primaryBtn : ghost), textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>{st.action}</Link>
+                : <button type="button" onClick={() => st.go && onGo(st.go)} style={{ ...(st.primary ? ui.primaryBtn : ghost), minHeight: 44 }}>{st.action}</button>}
+            </div>
+          ))}
+        </div>
+      </Card>
+      <BotReportBox token={token} vi={vi} />
+    </div>
+  );
+}
+
+interface SimItem { id: string; lang: 'vi' | 'en'; title: string; customer: string[]; reply: string; pass: boolean; why: string }
+interface SimRun { at: string; ms: number; total: number; passed: number; mode: string; items: SimItem[]; regressions: string[] }
+
+/**
+ * Mô phỏng khách: twenty scripted customers put to the real assistant (nothing
+ * is written or sent) and graded on conduct — invented facts, the customer's
+ * language, pushing, "booked" without a booking. Run after changing notes,
+ * documents or instructions; what passed last time and fails now is on top.
+ */
+function Simulations({ token, vi, canEdit }: { token: string | null; vi: boolean; canEdit: boolean }) {
+  const [run, setRun] = useState<SimRun | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<SimRun | null>('/ai-brain/simulations', { token }).then((r) => setRun(r && Array.isArray(r.items) ? r : null)).catch(() => setRun(null)).finally(() => setLoaded(true));
+  }, [token]);
+  const go = async () => {
+    setBusy(true); setErr(null);
+    try { setRun(await apiFetch<SimRun>(`/ai-brain/simulations?lang=${vi ? 'vi' : 'en'}`, { method: 'POST', token })); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Error'); }
+    finally { setBusy(false); }
+  };
+  const key = (x: SimItem) => `${x.id}:${x.lang}`;
+  const items = run ? [...run.items].sort((a, b) => Number(a.pass) - Number(b.pass) || Number(run.regressions.includes(key(b))) - Number(run.regressions.includes(key(a)))) : [];
+  return (
+    <div>
+      <Card title={L(vi, 'Mô phỏng khách', 'Customer simulations')}
+        hint={L(vi, '20 khách ảo nhắn cho AI thật của tiệm (không ghi lịch, không gửi gì cho ai) rồi chấm cách AI cư xử: có bịa thông tin không, có đúng ngôn ngữ của khách không, có ép khách không, có báo “đã đặt” khi chưa đặt không. Nên chạy lại sau khi sửa ghi chú, tài liệu hoặc lời dặn. Mỗi lần chạy mất khoảng 1–2 phút.',
+          'Twenty scripted customers message the salon’s real AI (nothing is booked or sent) and its conduct is graded: invented facts, the customer’s language, pushing, saying “booked” without a booking. Run it again after changing notes, documents or instructions. A run takes about 1–2 minutes.')}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          {canEdit && <button type="button" onClick={go} disabled={busy} style={{ ...ui.primaryBtn, minHeight: 44, opacity: busy ? 0.6 : 1 }}>{busy ? L(vi, 'Đang chạy 20 khách ảo…', 'Running 20 customers…') : run ? L(vi, 'Chạy lại', 'Run again') : L(vi, 'Chạy mô phỏng', 'Run the simulations')}</button>}
+          {run && (
+            <span style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>
+              <b style={{ fontSize: 20, color: run.passed === run.total ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{run.passed}/{run.total}</b> {L(vi, 'đạt', 'passed')}
+              <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5 }}> · {fmtWhen(run.at, vi)}</span>
+            </span>
+          )}
+          {loaded && !run && !busy && <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L(vi, 'Chưa chạy lần nào.', 'Never run yet.')}</span>}
+        </div>
+        {err && <div role="alert" style={{ marginTop: 10, fontSize: 13, color: 'var(--ink-bad)' }}>{err}</div>}
+        {run && run.regressions.length > 0 && (
+          <div style={{ ...ui.banner, marginTop: 12 }}>
+            {L(vi, `${run.regressions.length} kịch bản lần trước đạt, lần này trượt — xem lại thay đổi gần đây (ghi chú, tài liệu, lời dặn).`, `${run.regressions.length} scripts passed last time and fail now — look at what was changed recently (notes, documents, instructions).`)}
+          </div>
+        )}
+      </Card>
+      {items.length > 0 && (
+        <div style={{ border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden' }}>
+          {items.map((x, i) => {
+            const k = key(x); const isOpen = open === k; const back = run!.regressions.includes(k);
+            return (
+              <div key={k} style={{ borderTop: i ? '1px solid var(--line)' : 'none', background: isOpen ? 'var(--c0f172a)' : 'transparent' }}>
+                <button type="button" onClick={() => setOpen(isOpen ? null : k)} aria-expanded={isOpen}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, minHeight: 48, padding: '8px 12px', border: 0, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, minWidth: 54, color: x.pass ? 'var(--ink-good)' : 'var(--ink-bad)' }}>{x.pass ? L(vi, 'ĐẠT', 'PASS') : L(vi, 'TRƯỢT', 'FAIL')}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{x.title} <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--c94a3b8)' }}>· {x.lang === 'vi' ? 'Tiếng Việt' : 'English'}</span></span>
+                    {!x.pass && <span style={{ display: 'block', fontSize: 12.5, color: 'var(--ccbd5e1)', marginTop: 2, lineHeight: 1.45 }}>{x.why}</span>}
+                  </span>
+                  {back && <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--ink-warn)', color: 'var(--ink-warn)', whiteSpace: 'nowrap' }}>{L(vi, 'Lần trước đạt', 'Passed before')}</span>}
+                  <span aria-hidden style={{ color: 'var(--c94a3b8)' }}>{isOpen ? '▾' : '▸'}</span>
+                </button>
+                {isOpen && (
+                  <div style={{ padding: '0 12px 12px', display: 'grid', gap: 8 }}>
+                    {x.customer.map((c, ci) => (
+                      <div key={ci} style={{ justifySelf: 'start', maxWidth: '85%', padding: '8px 12px', borderRadius: '14px 14px 14px 4px', background: 'var(--raised)', border: '1px solid var(--line)', fontSize: 13.5, color: 'var(--ce2e8f0)', overflowWrap: 'anywhere' }}>{c}</div>
+                    ))}
+                    {x.customer.length > 1 && <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{L(vi, 'Câu AI trả lời tin cuối:', 'The AI’s reply to the last message:')}</div>}
+                    <div style={{ justifySelf: 'end', maxWidth: '85%', padding: '8px 12px', borderRadius: '14px 14px 4px 14px', background: 'var(--c1e1b4b)', border: '1px solid var(--c3730a3)', fontSize: 13.5, color: 'var(--ce2e8f0)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{x.reply || '—'}</div>
+                    <div style={{ fontSize: 12.5, color: x.pass ? 'var(--ink-good)' : 'var(--ink-warn)', lineHeight: 1.45 }}>{x.why}</div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Cần dạy: the questions waiting for an answer — the AI drafts, the owner approves. */
+function Learn({ token, vi, onChanged }: { token: string | null; vi: boolean; onChanged: () => void }) {
+  return (
+    <div>
+      <p style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', margin: '0 0 12px', lineHeight: 1.5 }}>
+        {L(vi, 'Mở một câu, bấm “AI soạn giúp” để AI soạn từ câu nhân viên đã trả lời hoặc từ ghi chú, tài liệu của tiệm. Đọc lại rồi bấm “Lưu cho bot”: AI biết ngay từ tin nhắn kế tiếp.',
+          'Open a question and press “Draft with AI”: it drafts from the staff reply or the salon’s own notes and documents. Read it, then press “Teach the bot” — the AI knows it from the next message.')}
+      </p>
+      <KnowledgeGapsBox token={token} vi={vi} onTaught={onChanged} />
+      <p style={{ fontSize: 12.5, color: 'var(--c94a3b8)', margin: 0, lineHeight: 1.5 }}>
+        {L(vi, 'Mỗi tiệm chỉ học từ cuộc trò chuyện của chính tiệm mình. Câu đã dạy xem và sửa ở thẻ Kiến thức › Lời dặn của chủ tiệm.', 'Each salon learns only from its own conversations. What was taught is listed under Knowledge › Owner’s instructions.')}
+      </p>
+    </div>
+  );
+}
 
 function Overview({ token, vi, view, onGo }: { token: string | null; vi: boolean; view: View; onGo: (t: Tab) => void }) {
   const [h, setH] = useState<Health | null>(null);

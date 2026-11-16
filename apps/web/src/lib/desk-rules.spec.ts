@@ -170,3 +170,11 @@ describe('a busy technician is named, with the clashing time (Amy\'s Lash 16/11)
       .toBe('Jun đã có khách 13:30–15:00 ngày 16/11 (tiệm chừa 10 phút giữa 2 khách). Đổi giờ trước rồi chọn lại thợ, hoặc chọn thợ khác.');
   });
 });
+
+describe('change day AND technician in one step (Jun off Thu, Amy busy Mon)', () => {
+  it('the drawer\'s Move sends the new tech with the new time through /move', () => {
+    const src = readFileSync(join(__dirname, '..', 'app', 'salon', 'calendar', 'page.tsx'), 'utf8');
+    expect(src).toMatch(/other \? 'move' : 'reschedule'/);
+    expect(src).toMatch(/startTime: wallToInstantISO\(when\), staffId: other/);
+  });
+});

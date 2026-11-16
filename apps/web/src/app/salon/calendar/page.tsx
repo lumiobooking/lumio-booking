@@ -467,7 +467,7 @@ function Inner() {
           : `Cancelled, but the refund FAILED (${failed.map((f) => `${f.provider}: ${f.error}`).join('; ')}). Refund it by hand in the salon's payment account.`);
       }
       // Every edit keeps the drawer open on the booking, so the desk can change the next thing too.
-      const keepOpen = ['status', 'lines', 'line-staff', 'assign', 'notes', 'reschedule'].includes(path);
+      const keepOpen = ['status', 'lines', 'line-staff', 'assign', 'notes', 'reschedule'].includes(path) || (path === 'move' && selected?.id === id);
       if (keepOpen && updated && typeof updated === 'object' && 'id' in updated && 'startTime' in updated) setSelected(updated);
       else setSelected(null);
       await load();
@@ -1301,19 +1301,39 @@ const chipBtn: React.CSSProperties = {
 // different technician — one click each, no extra screens.
 function QuickEdit({ b, onAction }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void }) {
   const { lang } = useLang();
+  const { token } = useAuth();
+  const vi = lang === 'vi';
   // The picker speaks SALON wall time, both reading the instant out and
   // writing the edit back — otherwise rescheduling from another timezone
   // silently moves the appointment.
   const [when, setWhen] = useState(() => instantToWall(b.startTime));
-  // The staff picker that used to sit here moved into ServiceLines below:
-  // one place answers "who does what", for one service or five.
+  // Day AND technician in one step (Amy's Lash 16/11: the client wanted Thu
+  // with Amy, but Jun is off Thu and Amy was busy Mon — moving first or
+  // changing tech first were both refused). Sent together through /move, which
+  // checks the new tech at the new time in one go.
+  const [tech, setTech] = useState('');
+  const [staff, setStaff] = useState<{ id: string; firstName: string; lastName: string | null; isActive: boolean; takesAppointments?: boolean; staffRole?: string | null }[]>([]);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<typeof staff>('/staff', { token }).then((list) => setStaff(list.filter((x) => x.isActive))).catch(() => undefined);
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  const other = tech && tech !== b.assignedStaff?.id ? tech : '';
   return (
     <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 10, padding: 10, margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', fontWeight: 600 }}>{lang === 'vi' ? 'Đổi ngày & giờ' : 'Change date & time'}</div>
+      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', fontWeight: 600 }}>{vi ? 'Đổi ngày & giờ' : 'Change date & time'}</div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <DateTimeField value={when} onChange={setWhen} style={{ padding: '6px 8px' }} />
-        <button onClick={() => onAction(b.id, 'reschedule', { startTime: wallToInstantISO(when) })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.move', lang)}</button>
+        <button onClick={() => onAction(b.id, other ? 'move' : 'reschedule', other ? { startTime: wallToInstantISO(when), staffId: other } : { startTime: wallToInstantISO(when) })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.move', lang)}</button>
       </div>
+      {staff.length > 1 && (
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+          <span style={{ whiteSpace: 'nowrap' }}>{vi ? 'Với thợ' : 'With'}</span>
+          <select value={tech} onChange={(e) => setTech(e.target.value)} aria-label={vi ? 'Thợ cho ngày giờ mới' : 'Technician for the new time'} style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, flex: 1, minWidth: 0 }}>
+            <option value="">{vi ? `Giữ ${b.assignedStaff?.firstName ?? 'thợ hiện tại'}` : `Keep ${b.assignedStaff?.firstName ?? 'the same tech'}`}</option>
+            {pickerStaff(staff, [b.assignedStaff?.id]).filter((x) => x.id !== b.assignedStaff?.id).map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
+          </select>
+        </label>
+      )}
     </div>
   );
 }

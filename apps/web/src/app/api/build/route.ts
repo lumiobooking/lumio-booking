@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
 
-// Never cached: the browser asks this route "which build is live right now?"
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 /**
- * Build identity of the running deployment. The client bundle carries the SAME
- * value baked in at build time (NEXT_PUBLIC_BUILD_ID), so a mismatch means the
- * tab is running code from an older deploy and should reload. Without this a
- * long-open admin tab keeps serving yesterday's JavaScript and every fix looks
- * like it "didn't deploy".
+ * KEPT ONLY TO KEEP OLD TABS QUIET. Tabs opened before 16/11/2026 run code
+ * that asks this route for the live build id and shows "Đã có bản cập nhật"
+ * whenever it differs from their own. The owner deploys several times a day
+ * and customers must not be told each time, so this route no longer names a
+ * build: the old code reads "no buildId" as "nothing to do". Those tabs pick
+ * the new build up on their next full load (and a missing chunk reloads them
+ * by itself — lib/stale-build). Current code asks /api/version instead.
  */
 export function GET() {
   return NextResponse.json(
-    { buildId: process.env.NEXT_PUBLIC_BUILD_ID ?? 'dev', at: new Date().toISOString() },
+    { at: new Date().toISOString() },
     { headers: { 'Cache-Control': 'no-store, max-age=0' } },
   );
 }

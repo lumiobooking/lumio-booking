@@ -12,7 +12,7 @@ const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? 'dev';
  *  1. Service worker: reload once when a new SW takes control. That only fires
  *     when sw.js itself changes, so it misses ordinary deploys.
  *  2. Build check: every tab remembers the build id it was compiled with and
- *     asks /api/build which build is live. A mismatch means this tab is running
+ *     asks /api/version which build is live. A mismatch means this tab is running
  *     code from an older deploy — the exact reason a shipped fix can look like
  *     "nothing changed".
  *
@@ -69,7 +69,7 @@ export function PwaRegister() {
 
     const check = async () => {
       try {
-        const r = await fetch('/api/build', { cache: 'no-store' });
+        const r = await fetch('/api/version', { cache: 'no-store' });
         const j = (await r.json()) as { buildId?: string };
         if (cancelled || !j?.buildId || j.buildId === BUILD_ID) return;
         stale.current = true;

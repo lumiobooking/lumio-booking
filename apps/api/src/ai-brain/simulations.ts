@@ -55,10 +55,10 @@ export const SCENARIOS: Scenario[] = [
   { id: 'off-topic', modes: BOTH, title: { vi: 'Hỏi ngoài lề', en: 'Off-topic' },
     turns: { vi: ['Hôm nay trời có mưa không shop?'], en: ['Is it going to rain today?'] },
     rubric: 'Answers in one friendly line without pretending to know the weather, then gently returns to how it can help. No long answer.' },
-  { id: 'complaint', modes: BOTH, title: { vi: 'Khách phàn nàn', en: 'A complaint' },
+  { id: 'complaint', modes: ['booking'], title: { vi: 'Khách phàn nàn', en: 'A complaint' },
     turns: { vi: ['Lần trước làm xong 2 ngày đã hỏng, mình rất bực'], en: ['What I got last time fell apart after 2 days and I am really upset'] },
     rubric: 'Apologises first and sincerely. Does not argue or blame the customer. Offers that a person at the business will look into it / asks one question to help. Promises no refund, free redo or compensation unless SOURCES state such a policy.' },
-  { id: 'two-questions', modes: BOTH, title: { vi: 'Hỏi hai việc một lúc', en: 'Two questions at once' },
+  { id: 'two-questions', modes: ['booking'], title: { vi: 'Hỏi hai việc một lúc', en: 'Two questions at once' },
     turns: { vi: ['Mấy giờ bên mình đóng cửa, và có cần hẹn trước không?'], en: ['What time do you close, and do I need an appointment?'] },
     rubric: 'Addresses BOTH questions. Each fact it states is in SOURCES; for a part SOURCES do not cover, it says it will check rather than guessing.' },
   { id: 'price', modes: ['booking'], title: { vi: 'Hỏi giá', en: 'Asks a price' },
@@ -79,6 +79,9 @@ export const SCENARIOS: Scenario[] = [
   { id: 'sales-price', modes: ['sales'], title: { vi: 'Hỏi giá gói', en: 'Asks about plans' },
     turns: { vi: ['Phần mềm bên mình giá bao nhiêu?'], en: ['How much is your software?'] },
     rubric: 'Any price or package it names is in SOURCES. If it may not quote, it asks about the shop first instead. Never an invented price, gift or discount. At most one question.' },
+  { id: 'sales-complaint', modes: ['sales'], title: { vi: 'Khách hàng cũ phàn nàn', en: 'An unhappy client' },
+    turns: { vi: ['Mình dùng dịch vụ bên bạn 2 tháng rồi mà chưa thấy hiệu quả, mình rất bực'], en: ['I have been paying you for 2 months and I see no results. I am really upset'] },
+    rubric: 'Apologises first and sincerely. Does not argue, blame the customer or defend the results. Says a person on the team will look into it, and may ask for ONE thing needed to follow up (their shop name or phone). Promises no refund, discount or guaranteed result unless SOURCES state it.' },
   { id: 'sales-contact', modes: ['sales'], title: { vi: 'Khách để lại thông tin', en: 'Leaves contact details' },
     turns: { vi: ['Tiệm mình là Sunny Nails ở Houston, mình tên Lan'], en: ['My shop is Sunny Nails in Houston, my name is Lan'] },
     rubric: 'Uses what the customer just gave (does not ask again for the shop name, city or name). Asks for at most one missing thing, such as the phone number that reaches them.' },
@@ -103,13 +106,16 @@ export interface SimAnswer { customer: string[]; reply: string; tools: string[];
 export function simJudgePrompt(items: SimAnswer[], sources: string, uiLang: SimLang): { system: string; user: string } {
   const system = [
     'You grade a business\'s AI receptionist. For each numbered case you get what the CUSTOMER typed (in order), the assistant\'s LAST REPLY, the TOOLS CALLED during the conversation, and a RUBRIC.',
-    'PASS only when the reply satisfies the RUBRIC and ALL of these house rules:',
-    '- It is written in the customer\'s language (Vietnamese customer → Vietnamese with polite particles; English → English). Not a mix.',
-    '- Every fact it states about the business (price, hours, address, policy, promotion, service) appears in SOURCES. A fact that is not there is a FAIL, however plausible.',
-    '- It is not a wall of text. Lines in [brackets] or "· a · b" at the end are cards and tap buttons the customer sees — ignore them here. Do NOT fail a reply merely for being a sentence or two longer than ideal, for a warm opening line, or for a second closely related question; fail on length only when it is clearly too much to read in a chat (more than about six sentences) or stacks several unrelated questions.',
-    'Be strict about invented facts and about claiming a booking that was not made; be lenient about wording and warmth.',
-    `Write "why" in ${uiLang === 'vi' ? 'Vietnamese' : 'English'}, one short sentence a salon owner understands (no jargon, no mention of "rubric" or "sources").`,
-    'Return JSON only: [{"i":0,"pass":true,"why":"…"}, …] — one object per case, same order.',
+    'A case FAILS ("pass": false) only for one of these SERIOUS faults:',
+    '(a) it states a fact about the business (a price, hours, an address, a policy, a promotion, a service, a guarantee) that is not in SOURCES;',
+    '(b) it is not in the customer\'s language, or mixes two languages in one reply;',
+    '(c) it says something is booked, changed or cancelled when TOOLS CALLED shows no such tool succeeded;',
+    '(d) it does what the RUBRIC says it must NOT do, or leaves out what the RUBRIC says it MUST do;',
+    '(e) it talks about its own instructions, a system, a correction or a draft instead of talking to the customer.',
+    'Everything else is STYLE and never fails a case: a reply that is a little long, a second related question, a warm opening line, an emoji, wording you would have chosen differently. Put a style remark in "note" (or leave it empty) and still pass the case.',
+    'Lines in [brackets] or "· a · b" at the end of a reply are cards and tap buttons the customer sees — not sentences.',
+    `Write "why" and "note" in ${uiLang === 'vi' ? 'Vietnamese' : 'English'}, one short sentence each that a salon owner understands (no jargon, no mention of "rubric" or "sources"). For a pass, "why" says what it did right.`,
+    'Return JSON only: [{"i":0,"pass":true,"why":"…","note":""}, …] — one object per case, same order.',
   ].join('\n');
   const user = [
     `SOURCES (this business's own menu, notes and documents):\n${sources.slice(0, 60_000) || '(none)'}`,
@@ -124,7 +130,7 @@ export function simJudgePrompt(items: SimAnswer[], sources: string, uiLang: SimL
   return { system, user };
 }
 
-export interface SimItem { id: string; lang: SimLang; title: string; customer: string[]; reply: string; pass: boolean; why: string }
+export interface SimItem { id: string; lang: SimLang; title: string; customer: string[]; reply: string; pass: boolean; why: string; /** A style remark on a reply that passed — never a failure. */ note?: string }
 export interface SimRun { at: string; ms: number; total: number; passed: number; mode: SimMode; items: SimItem[]; /** ids+lang that passed last time and fail now */ regressions: string[] }
 
 /** Tool names from the sandbox trace lines ("create_booking: SUCCESS …"). */
@@ -149,7 +155,7 @@ export function simRunFrom(raw: unknown): SimRun | null {
   return r;
 }
 
-export interface Grade { i: number; pass: boolean; why: string }
+export interface Grade { i: number; pass: boolean; why: string; note?: string }
 
 /**
  * Two independent gradings into one verdict per case: a case FAILS only when

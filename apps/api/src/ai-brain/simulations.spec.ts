@@ -5,6 +5,7 @@ describe('customer simulations — fixed scripts, graded on conduct', () => {
     const run = pickScenarios('booking', ['vi', 'en']);
     expect(run).toHaveLength(20);
     const booking = SCENARIOS.filter((s) => s.modes.includes('booking')).length;
+    expect(booking).toBe(12);
     expect(run.slice(0, booking).every((x) => x.lang === 'vi')).toBe(true);
     expect(run[booking].lang).toBe('en');
     expect(new Set(run.map((x) => `${x.scenario.id}:${x.lang}`)).size).toBe(20);
@@ -15,6 +16,9 @@ describe('customer simulations — fixed scripts, graded on conduct', () => {
     const sales = pickScenarios('sales', ['vi']);
     expect(sales.some((x) => x.scenario.id === 'book-start')).toBe(false);
     expect(sales.some((x) => x.scenario.id === 'sales-price')).toBe(true);
+    // A marketing agency is not asked a salon's opening hours or about chipped nails.
+    expect(sales.some((x) => x.scenario.id === 'two-questions' || x.scenario.id === 'complaint')).toBe(false);
+    expect(sales.some((x) => x.scenario.id === 'sales-complaint')).toBe(true);
     expect(pickScenarios('booking', []).every((x) => x.lang === 'en')).toBe(true);
   });
 
@@ -32,7 +36,7 @@ describe('customer simulations — fixed scripts, graded on conduct', () => {
     const p = simJudgePrompt([{ customer: ['Đặt cho mình 3 giờ chiều mai nha'], reply: 'Dạ em đã đặt lịch 3 giờ chiều mai cho chị rồi ạ', tools: [], rubric: 'R1', lang: 'vi' }], 'Gel tay: $35', 'vi');
     expect(p.user).toContain('Gel tay: $35');
     expect(p.user).toContain('TOOLS CALLED: (none)');
-    expect(p.system).toContain('appears in SOURCES');
+    expect(p.system).toContain('that is not in SOURCES');
     expect(p.system).toContain('Vietnamese, one short sentence');
   });
 
@@ -66,7 +70,8 @@ describe('customer simulations — fixed scripts, graded on conduct', () => {
 
   it('the judge no longer fails a reply for one sentence too many', () => {
     const p = simJudgePrompt([{ customer: ['hi'], reply: 'Hello', tools: [], rubric: 'R', lang: 'en' }], '', 'en');
-    expect(p.system).toContain('Do NOT fail a reply merely for being a sentence or two longer');
+    expect(p.system).toContain('never fails a case');
+    expect(p.system).toContain('only for one of these SERIOUS faults');
   });
 });
 

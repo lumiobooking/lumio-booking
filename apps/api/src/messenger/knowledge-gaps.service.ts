@@ -7,6 +7,7 @@ import { factLabel, gapDraftPrompt, gapKey, parseGapDraft, redact, similarGap, t
 import { chat as llmChat } from '../common/llm';
 import { SOURCES_KEY, docsBlock, sourcesFrom } from '../ai-brain/knowledge-sources';
 import { AiInstructionsService } from '../ai-brain/instructions.service';
+import { AiUsageService } from '../common/ai-usage.service';
 
 /** Open questions kept per salon. Past this, new ones wait until some are answered. */
 export const MAX_OPEN_GAPS = 300;
@@ -31,6 +32,8 @@ export class KnowledgeGapsService {
     // The owner's answer also becomes an instruction of the salon's AI brain, which every
     // channel obeys — bot facts alone stopped reaching the AI once the brain was saved.
     @Optional() private readonly instructions?: AiInstructionsService,
+    // What "AI soạn giúp" costs is counted on the salon's AI usage like every other call.
+    @Optional() private readonly usage?: AiUsageService,
   ) {}
 
   /** The generated client on a dev machine may predate the table — typed loosely on purpose. */
@@ -172,6 +175,13 @@ export class KnowledgeGapsService {
     const docs = docsBlock(sourcesFrom(src?.value));
     const p = gapDraftPrompt({ business: tenant?.name ?? '', question: gap.question, staffReply: gap.suggestedAnswer, notes, docs, vi });
     const out = await llmChat({ system: p.system, messages: [{ role: 'user', content: p.user }], max_tokens: 300, timeoutMs: 15_000 }).catch(() => null);
+    if (out) {
+      this.usage?.record({
+        feature: 'messenger', tenantId, model: out.ok ? out.reply.usage?.model ?? 'unknown' : 'unknown',
+        input: out.ok ? out.reply.usage?.input ?? 0 : 0, output: out.ok ? out.reply.usage?.output ?? 0 : 0,
+        cacheRead: out.ok ? out.reply.usage?.cacheRead ?? 0 : 0, cacheWrite: out.ok ? out.reply.usage?.cacheWrite ?? 0 : 0, failed: !out.ok,
+      });
+    }
     const text = out && out.ok ? out.reply.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' ') : '';
     if (!out || !out.ok) throw new BadRequestException(vi ? 'AI đang bận — thử lại sau ít phút.' : 'The AI is busy — try again in a few minutes.');
     const draft = parseGapDraft(text);

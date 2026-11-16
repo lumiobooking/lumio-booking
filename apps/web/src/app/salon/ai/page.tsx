@@ -321,7 +321,7 @@ function Home({ token, vi, view, toTeach, onGo }: { token: string | null; vi: bo
   );
 }
 
-interface SimItem { id: string; lang: 'vi' | 'en'; title: string; customer: string[]; reply: string; pass: boolean; why: string }
+interface SimItem { id: string; lang: 'vi' | 'en'; title: string; customer: string[]; reply: string; pass: boolean; why: string; note?: string }
 interface SimRun { at: string; ms: number; total: number; passed: number; mode: string; items: SimItem[]; regressions: string[] }
 
 /**
@@ -394,6 +394,7 @@ function Simulations({ token, vi, canEdit }: { token: string | null; vi: boolean
                     {x.customer.length > 1 && <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{L(vi, 'Câu AI trả lời tin cuối:', 'The AI’s reply to the last message:')}</div>}
                     <div style={{ justifySelf: 'end', maxWidth: '85%', padding: '8px 12px', borderRadius: '14px 14px 4px 14px', background: 'var(--c1e1b4b)', border: '1px solid var(--c3730a3)', fontSize: 13.5, color: 'var(--ce2e8f0)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{x.reply || '—'}</div>
                     <div style={{ fontSize: 12.5, color: x.pass ? 'var(--ink-good)' : 'var(--ink-warn)', lineHeight: 1.45 }}>{x.why}</div>
+                    {x.pass && x.note && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>{L(vi, 'Gợi ý: ', 'Suggestion: ')}{x.note}</div>}
                   </div>
                 )}
               </div>

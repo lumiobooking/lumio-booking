@@ -323,7 +323,7 @@ export class AiBrainService {
       const failed = answers[i].reply.startsWith('(lỗi:');
       return {
         id: scenario.id, lang, title: scenario.title[ui], customer: answers[i].customer, reply: answers[i].reply,
-        pass: !failed && g?.pass === true, why: failed ? (ui === 'vi' ? 'AI không trả lời được lượt này' : 'The AI could not answer this turn') : String(g?.why ?? (ui === 'vi' ? 'Chưa chấm được' : 'Not graded')),
+        pass: !failed && g?.pass === true, ...(g?.pass === true && typeof g.note === 'string' && g.note.trim() ? { note: g.note.trim().slice(0, 240) } : {}), why: failed ? (ui === 'vi' ? 'AI không trả lời được lượt này' : 'The AI could not answer this turn') : String(g?.why ?? (ui === 'vi' ? 'Chưa chấm được' : 'Not graded')),
       };
     });
     const prev = await this.lastSimulation(user).catch(() => null);

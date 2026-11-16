@@ -17,6 +17,7 @@
  * other. Every call is tenant-scoped on the server; this screen only renders.
  */
 
+import { cleanQty, QTY_MAX } from '../lib/qty';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch, ApiError } from '../lib/api';
@@ -164,6 +165,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const [optionsFor, setOptionsFor] = useState<Dish | null>(null);
   const [voidLine, setVoidLine] = useState<CheckLine | null>(null);
   const [noteLine, setNoteLine] = useState<CheckLine | null>(null);
+  const [padLine, setPadLine] = useState<CheckLine | null>(null);
   const [showMove, setShowMove] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
   const [showSplit, setShowSplit] = useState(false);
@@ -845,7 +847,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                   {l.quantity > 1 && <span style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap' }}>{fmt(l.unitPriceCents)}</span>}
                   <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 10, border: `1px solid ${C.border}`, background: C.panel }}>
                     <button type="button" aria-label={L('Bớt', 'Less')} disabled={busy} onClick={() => void setQty(l, l.quantity - 1)} style={{ width: 38, height: 36, border: 0, background: 'none', color: C.text, fontSize: 18, fontWeight: 800, cursor: 'pointer' }}>−</button>
-                    <b style={{ minWidth: 20, textAlign: 'center' }}>{l.quantity}</b>
+                    <QtyField line={l} busy={busy} vi={vi} onPad={() => setPadLine(l)} onSet={(n) => void setQty(l, n)} />
                     <button type="button" aria-label={L('Thêm', 'More')} disabled={busy} onClick={() => void setQty(l, l.quantity + 1)} style={{ width: 38, height: 36, border: 0, background: 'none', color: C.text, fontSize: 18, fontWeight: 800, cursor: 'pointer' }}>+</button>
                   </span>
                 </div>
@@ -961,6 +963,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
 
       {optionsFor && <OptionsModal vi={vi} dish={optionsFor} fmt={fmt} busy={busy} onClose={() => setOptionsFor(null)}
         onAdd={async (opts) => { const d = optionsFor; setOptionsFor(null); await addDish(d, opts); }} />}
+      {padLine && <QtyPad vi={vi} line={padLine} onClose={() => setPadLine(null)} onSave={(n) => { const l = padLine; setPadLine(null); if (n !== l.quantity) void setQty(l, n); }} />}
       {noteLine && <NoteModal vi={vi} line={noteLine} onClose={() => setNoteLine(null)} onSave={(n) => void saveNote(noteLine, n)} />}
       {voidLine && <VoidModal vi={vi} line={voidLine} needPin={!!floor?.settings.voidNeedsApproval && !canVoid} busy={busy} fmt={fmt}
         onClose={() => setVoidLine(null)}
@@ -1203,6 +1206,73 @@ function SplitModal({ vi, check, fmt, busy, onClose, onSplit }: { vi: boolean; c
       <button type="button" disabled={busy || picks.length === 0 || leaves === 0} onClick={() => onSplit(picks)} style={{ ...primary, minHeight: 52, opacity: picks.length && leaves ? 1 : 0.5 }}>{L('Tách sang bill mới', 'Move to a new bill')}</button>
       {leaves === 0 && <span style={{ color: 'var(--ink-bad)', fontSize: 13 }}>{L('Phải để lại ít nhất một món trên bill này.', 'Leave at least one dish on this bill.')}</span>}
       <span style={{ fontSize: 12, color: C.muted }}>{L('Muốn chia đều tiền? Dùng “Chia đều” khi thanh toán.', 'Splitting the money evenly? Use “Split evenly” when paying.')}</span>
+    </Modal>
+  );
+}
+
+/** Touch screens (POS tablets) get the big number pad; a mouse + keyboard types straight in. */
+function coarse(): boolean {
+  try { return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches; } catch { return false; }
+}
+
+/**
+ * The number between − and + on a not-yet-sent dish: type a new amount and press
+ * Enter (or click away) to save it; Esc puts it back. On a touch screen a tap
+ * opens the number pad instead of the phone keyboard.
+ */
+function QtyField({ line, busy, vi, onPad, onSet }: { line: CheckLine; busy: boolean; vi: boolean; onPad: () => void; onSet: (n: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const touch = coarse();
+  const commit = () => {
+    if (draft === null) return;
+    const n = cleanQty(draft);
+    setDraft(null);
+    if (n !== null && n !== line.quantity) onSet(n);
+  };
+  return (
+    <input
+      value={draft ?? String(line.quantity)}
+      inputMode="numeric"
+      readOnly={touch}
+      disabled={busy}
+      aria-label={vi ? `Số lượng ${line.name}` : `Quantity of ${line.name}`}
+      onClick={touch ? onPad : undefined}
+      onFocus={(e) => { if (!touch) { setDraft(String(line.quantity)); e.currentTarget.select(); } }}
+      onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+        else if (e.key === 'Escape') { setDraft(null); e.currentTarget.blur(); }
+      }}
+      onBlur={commit}
+      style={{ width: 40, height: 36, border: 0, borderLeft: `1px solid ${C.border}`, borderRight: `1px solid ${C.border}`, background: 'none', color: C.strong, textAlign: 'center', fontWeight: 800, fontSize: 16, fontFamily: 'inherit', padding: 0, cursor: touch ? 'pointer' : 'text' }}
+    />
+  );
+}
+
+/** Big on-screen number pad for the quantity, with quick +6 / +12 / +24 for crates of drinks. */
+function QtyPad({ vi, line, onClose, onSave }: { vi: boolean; line: CheckLine; onClose: () => void; onSave: (n: number) => void }) {
+  const L = (v: string, e: string) => (vi ? v : e);
+  // The first key replaces the shown amount; later keys add digits.
+  const [txt, setTxt] = useState(String(line.quantity));
+  const [fresh, setFresh] = useState(true);
+  const n = cleanQty(txt) ?? 0;
+  const key = (d: string) => { setTxt((t) => (fresh ? d : (t + d).replace(/^0+(?=\d)/, '')).slice(0, 2)); setFresh(false); };
+  const add = (k: number) => { setTxt(String(Math.min(QTY_MAX, n + k))); setFresh(false); };
+  const big: CSSProperties = { ...btn, minHeight: 58, fontSize: 22, fontWeight: 800 };
+  return (
+    <Modal vi={vi} title={`${L('Số lượng', 'Quantity')} · ${line.name}`} onClose={onClose} width={340}>
+      <div style={{ textAlign: 'center', fontSize: 40, fontWeight: 800, color: C.strong, lineHeight: 1.1 }}>{n}</div>
+      {n === 0 && <div style={{ textAlign: 'center', fontSize: 12.5, color: 'var(--ink-bad)' }}>{L('0 = bỏ món này khỏi bill', '0 = remove this dish')}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map((d) => <button key={d} type="button" onClick={() => key(d)} style={big}>{d}</button>)}
+        <button type="button" aria-label={L('Xoá số', 'Backspace')} onClick={() => { setTxt((t) => t.slice(0, -1) || '0'); setFresh(false); }} style={big}>⌫</button>
+        <button type="button" onClick={() => key('0')} style={big}>0</button>
+        <button type="button" onClick={() => onSave(n)} style={{ ...big, border: 'none', background: '#4f46e5', color: '#fff' }}>OK</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        {[6, 12, 24].map((k) => <button key={k} type="button" onClick={() => add(k)} style={{ ...btn, minHeight: 46 }}>+{k}</button>)}
+      </div>
+      <div style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>{L(`Tối đa ${QTY_MAX} cho một dòng — nhiều hơn thì bấm món thêm lần nữa.`, `Up to ${QTY_MAX} per line — tap the dish again for more.`)}</div>
     </Modal>
   );
 }

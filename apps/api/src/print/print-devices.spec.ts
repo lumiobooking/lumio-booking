@@ -485,3 +485,18 @@ describe('one-touch printing — how a ticket printed is kept for support', () =
     expect(a).toContain('note = $info');
   });
 });
+
+describe('one-touch printing — PowerShell names ignore case', () => {
+  it('no function of the agent uses two variables that differ only by case (the page limit $H was a line height $h)', () => {
+    const code = agentScript().replace(/@'[\s\S]*?'@/g, '').replace(/#.*$/gm, '');
+    for (const fn of code.split(/\nfunction /)) {
+      const names = new Map<string, Set<string>>();
+      for (const m of fn.matchAll(/\$(?:script:)?([A-Za-z_][A-Za-z0-9_]*)/g)) {
+        const k = m[1].toLowerCase();
+        names.set(k, (names.get(k) ?? new Set()).add(m[1]));
+      }
+      const clash = [...names.values()].filter((v) => v.size > 1).map((v) => [...v].join('/'));
+      expect(clash).toEqual([]);
+    }
+  });
+});

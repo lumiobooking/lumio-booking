@@ -170,7 +170,11 @@ function Pick-Font([string]$name) {
 # to a very long page (e.g. 80 x 3276 mm), and the printer then feeds the
 # whole page - a metre of blank paper after a short bill (Nau Chill, 10/11).
 # So the ticket is measured first and the page made exactly that long.
-function Layout-Ticket($g, [single]$W, [single]$H, [bool]$draw) {
+# NOTE: PowerShell variable names ignore case. The page limit used to be $H,
+# the same variable as a line's height $h: after the first line the "page" was
+# one line tall, so every line became its own page (one cut per line) and the
+# receipt-picture print stopped after the first line. It is $Limit now.
+function Layout-Ticket($g, [single]$W, [single]$Limit, [bool]$draw) {
   $fam = $script:PsFamily
   $sz = [single]$script:PsSize
   $fN = New-Object System.Drawing.Font($fam, $sz)
@@ -199,7 +203,7 @@ function Layout-Ticket($g, [single]$W, [single]$H, [bool]$draw) {
         $cell = [single]($side / $qn)
         $x0 = [single](($W - $side) / 2)
         $h = [single]($side + $gap * 4)
-        if ($y -gt 0 -and ($y + $h) -gt $H) { return @{ y = $y; more = $true } }
+        if ($y -gt 0 -and ($y + $h) -gt $Limit) { return @{ y = $y; more = $true } }
         $top = [single]($y + $gap * 2)
         if ($draw) {
           for ($qy = 0; $qy -lt $qn; $qy++) {
@@ -221,7 +225,7 @@ function Layout-Ticket($g, [single]$W, [single]$H, [bool]$draw) {
     }
     if ($role -ceq 's') {
       $h = [single]($fN.GetHeight($g) * 0.8)
-      if ($y -gt 0 -and ($y + $h) -gt $H) { return @{ y = $y; more = $true } }
+      if ($y -gt 0 -and ($y + $h) -gt $Limit) { return @{ y = $y; more = $true } }
       $mid = [single]($y + $h / 2)
       if ($draw) { $g.DrawLine($pen, [single]0, $mid, $W, $mid) }
       $y = [single]($y + $h)
@@ -246,7 +250,7 @@ function Layout-Ticket($g, [single]$W, [single]$H, [bool]$draw) {
     if ($measure.Length -eq 0) { $measure = ' ' }
     $box = New-Object System.Drawing.SizeF($leftW, [single]100000)
     $h = [single]([Math]::Max($g.MeasureString($measure, $font, $box, $sf).Height, $font.GetHeight($g)) + $gap)
-    if ($y -gt 0 -and ($y + $h) -gt $H) { return @{ y = $y; more = $true } }
+    if ($y -gt 0 -and ($y + $h) -gt $Limit) { return @{ y = $y; more = $true } }
     if ($draw) {
       $g.DrawString($text, $font, $ink, (New-Object System.Drawing.RectangleF([single]0, $y, $leftW, $h)), $sf)
       if ($right) {

@@ -26,7 +26,7 @@ interface State {
   next: { name: string | null; party: number; at: string; preOrder?: string | null } | null;
 }
 interface Waiting { id: string; name: string | null; party: number; at: string; until: string; preOrder?: string | null }
-interface Floor { at: string; tables: Table[]; layout: Record<string, Spot>; states: State[]; waiting?: Waiting[] }
+interface Floor { at: string; tables: Table[]; layout: Record<string, Spot>; states: State[]; waiting?: Waiting[]; /** Tables with no saved spot yet (added later). */ unplaced?: string[] }
 
 const INK: Record<State['state'], string> = { seated: 'var(--ink-bad)', soon: 'var(--ink-warn)', free: 'var(--ink-good)' };
 const SIZE: Record<Shape, { w: number; h: number; r: string }> = {
@@ -46,7 +46,12 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
   const [saving, setSaving] = useState(false);
   const [seat, setSeat] = useState<string | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
-  const drag = useRef<{ id: string; dx: number; dy: number; moved: boolean } | null>(null);
+  const drag = useRef<{ id: string; dx: number; dy: number; moved: boolean; from: Spot } | null>(null);
+  // Undo: the layouts before each change while arranging.
+  const [history, setHistory] = useState<Record<string, Spot>[]>([]);
+  const [perRow, setPerRow] = useState(8);
+  const [arranging, setArranging] = useState(false);
+  const remember = () => setHistory((h) => [...h.slice(-30), draft]);
   const dirtyRef = useRef(false);
   useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
   const tz = salonTz();
@@ -75,7 +80,7 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
     if (!arrange || !box.current) return;
     const r = box.current.getBoundingClientRect();
     const s = draft[id]; if (!s) return;
-    drag.current = { id, dx: e.clientX - (r.left + (s.x / 100) * r.width), dy: e.clientY - (r.top + (s.y / 100) * r.height), moved: false };
+    drag.current = { id, dx: e.clientX - (r.left + (s.x / 100) * r.width), dy: e.clientY - (r.top + (s.y / 100) * r.height), moved: false, from: s };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
   function onMove(e: React.PointerEvent<HTMLDivElement>) {
@@ -83,6 +88,7 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
     const r = box.current.getBoundingClientRect();
     const x = Math.min(96, Math.max(0, ((e.clientX - d.dx - r.left) / r.width) * 100));
     const y = Math.min(92, Math.max(0, ((e.clientY - d.dy - r.top) / r.height) * 100));
+    if (!d.moved) remember();
     d.moved = true;
     setDraft((m) => ({ ...m, [d.id]: { ...m[d.id], x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 } }));
     setDirty(true);
@@ -90,14 +96,38 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
   function onUp(id: string) {
     if (!arrange) return;
     const d = drag.current; drag.current = null;
-    if (!d || !d.moved) setPicked((p) => (p === id ? null : id));
+    if (!d || !d.moved) { setPicked((p) => (p === id ? null : id)); return; }
+    // Dropped on another table: the two swap places — tables never sit on top of each other.
+    setDraft((m) => {
+      const me = m[id]; if (!me) return m;
+      const hit = Object.entries(m).find(([oid, sp]) => oid !== id && Math.abs(sp.x - me.x) < 6 && Math.abs(sp.y - me.y) < 8);
+      if (!hit) return m;
+      const [oid, other] = hit;
+      return { ...m, [id]: { ...me, x: other.x, y: other.y }, [oid]: { ...other, x: d.from.x, y: d.from.y } };
+    });
+  }
+
+  /** "Tự xếp theo số bàn": a draft from the server, in number order; nothing saved until "Lưu sơ đồ". */
+  async function autoArrange() {
+    setArranging(true); setErr(null);
+    try {
+      const out = await apiFetch<{ layout: Record<string, Spot> }>('/tables/layout/arrange', { method: 'POST', token, body: { perRow } });
+      remember();
+      setDraft(out.layout); setDirty(true);
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    finally { setArranging(false); }
+  }
+  function undo() {
+    if (!history.length) return;
+    setDraft(history[history.length - 1]); setDirty(true);
+    setHistory(history.slice(0, -1));
   }
 
   async function save() {
     setSaving(true); setErr(null);
     try {
       const out = await apiFetch<{ layout: Record<string, Spot> }>('/tables/layout', { method: 'PATCH', token, body: { layout: draft } });
-      setDraft(out.layout); setDirty(false); setArrange(false);
+      setDraft(out.layout); setDirty(false); setArrange(false); setHistory([]);
       await load();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
@@ -112,8 +142,9 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
   }
-  function cancel() { setDirty(false); setArrange(false); if (floor) setDraft(floor.layout); }
-  function setShape(id: string, shape: Shape) { setDraft((m) => ({ ...m, [id]: { ...m[id], shape } })); setDirty(true); }
+  function cancel() { setDirty(false); setArrange(false); setHistory([]); if (floor) setDraft(floor.layout); }
+  function setShape(id: string, shape: Shape) { remember(); setDraft((m) => ({ ...m, [id]: { ...m[id], shape } })); setDirty(true); }
+  const unplaced = new Set(floor?.unplaced ?? []);
 
   const states = new Map((floor?.states ?? []).map((s) => [s.id, s]));
   const tables = (floor?.tables ?? []).filter((t) => t.isActive);
@@ -141,6 +172,16 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
         <span style={{ flex: 1 }} />
         {canArrange && !arrange && <button type="button" style={btn()} onClick={() => { setArrange(true); setPicked(null); setSeat(null); }}>{vi ? 'Sắp xếp bàn' : 'Arrange tables'}</button>}
         {arrange && <>
+          <button type="button" style={{ ...btn(true), borderColor: 'var(--ink-link)', color: 'var(--ink-link)', fontWeight: 700 }} onClick={() => void autoArrange()} disabled={arranging}>
+            {arranging ? '…' : vi ? 'Tự xếp theo số bàn' : 'Arrange by number'}
+          </button>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+            {vi ? 'Mỗi hàng' : 'Per row'}
+            <select value={perRow} onChange={(e) => setPerRow(Number(e.target.value))} style={{ ...btn(), padding: '5px 6px' }} aria-label={vi ? 'Số bàn mỗi hàng' : 'Tables per row'}>
+              {[4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>{n} {vi ? 'bàn' : 'tables'}</option>)}
+            </select>
+          </label>
+          <button type="button" style={{ ...btn(), opacity: history.length ? 1 : 0.5 }} onClick={undo} disabled={!history.length}>{vi ? 'Hoàn tác' : 'Undo'}</button>
           <button type="button" style={btn()} onClick={cancel} disabled={saving}>{vi ? 'Huỷ' : 'Cancel'}</button>
           <button type="button" style={{ ...btn(true), borderColor: 'var(--ink-good)', color: 'var(--ink-good)' }} onClick={save} disabled={saving || !dirty}>{saving ? '…' : vi ? 'Lưu sơ đồ' : 'Save layout'}</button>
         </>}
@@ -152,7 +193,8 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
             <span style={{ width: 10, height: 10, borderRadius: 3, background: INK[k] }} />{label[k]} · {count[k]}
           </span>
         ))}
-        {arrange && <span>{vi ? 'Kéo bàn tới đúng vị trí trong quán, bấm vào bàn để đổi hình.' : 'Drag tables to where they stand; tap one to change its shape.'}</span>}
+        {arrange && <span>{vi ? 'Kéo bàn tới đúng vị trí trong quán (thả lên bàn khác thì hai bàn đổi chỗ), bấm vào bàn để đổi hình.' : 'Drag tables to where they stand (drop on another table to swap them); tap one to change its shape.'}</span>}
+        {arrange && unplaced.size > 0 && <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{vi ? `${unplaced.size} bàn mới chưa xếp chỗ (viền cam, chữ "Mới") — đã đặt tạm ở hàng dưới cùng.` : `${unplaced.size} new tables not placed yet (orange, "New") — parked on the bottom row.`}</span>}
       </div>
 
       {err && <div style={{ color: 'var(--ink-bad)', fontSize: 13, marginBottom: 8 }}>{err}</div>}
@@ -176,7 +218,7 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
         </div>
       )}
 
-      <div ref={box} style={{ position: 'relative', width: '100%', height: 520, borderRadius: 12, border: '1px solid var(--c334155)', overflow: 'hidden', touchAction: arrange ? 'none' : 'auto',
+      <div ref={box} style={{ position: 'relative', width: '100%', height: arrange ? 720 : 520, borderRadius: 12, border: '1px solid var(--c334155)', overflow: 'hidden', touchAction: arrange ? 'none' : 'auto',
         backgroundImage: arrange ? 'linear-gradient(var(--c1e293b) 1px, transparent 1px), linear-gradient(90deg, var(--c1e293b) 1px, transparent 1px)' : undefined, backgroundSize: '5% 5%' }}>
         {floor && tables.length === 0 && <p style={{ padding: 16, color: 'var(--c64748b)', fontSize: 14 }}>{vi ? 'Chưa có bàn — thêm bàn ở tab Danh sách.' : 'No tables yet — add them in the List tab.'}</p>}
         {tables.map((t) => {
@@ -192,7 +234,9 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
               style={{ position: 'absolute', left: `${spot.x}%`, top: `${spot.y}%`, width: z.w, height: z.h, borderRadius: z.r,
                 border: `2px solid ${ink}`, background: `color-mix(in srgb, ${ink} 16%, transparent)`, color: 'var(--ccbd5e1)',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.15,
-                cursor: arrange ? 'grab' : seating && !fits(t) ? 'not-allowed' : 'pointer', userSelect: 'none', opacity: fits(t) ? 1 : 0.35, outline: picked === t.id ? '2px solid var(--ccbd5e1)' : 'none', outlineOffset: 2 }}>
+                cursor: arrange ? 'grab' : seating && !fits(t) ? 'not-allowed' : 'pointer', userSelect: 'none', opacity: fits(t) ? 1 : 0.35,
+                outline: picked === t.id ? '2px solid var(--ccbd5e1)' : arrange && unplaced.has(t.id) ? '2px dashed var(--ink-warn)' : 'none', outlineOffset: 2 }}>
+              {arrange && unplaced.has(t.id) && <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--ink-warn)' }}>{vi ? 'MỚI' : 'NEW'}</span>}
               <strong style={{ fontSize: 13 }}>{t.name}</strong>
               <span style={{ fontSize: 10, color: 'var(--c94a3b8)' }}>{t.seats} {vi ? 'chỗ' : 'seats'}</span>
               {sub && <span style={{ fontSize: 10, color: ink }}>{sub}</span>}

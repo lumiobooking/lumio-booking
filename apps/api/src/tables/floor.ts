@@ -43,18 +43,67 @@ export function cleanLayout(input: unknown, tableIds: string[]): Layout {
   return out;
 }
 
-/** Tables never placed: laid out area by area in rows, so the first map is already readable. */
+/** "Bàn 2" before "Bàn 10": names compared as people read them. */
+export function byTableName(a: { name: string; sortOrder?: number }, b: { name: string; sortOrder?: number }): number {
+  return (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name, 'vi', { numeric: true, sensitivity: 'base' });
+}
+
+const COL_W = 12; // 8 tables a row
+const ROW_H = 15;
+const shapeFor = (seats: number): Shape => (seats >= 6 ? 'long' : seats <= 2 ? 'round' : 'square');
+
+/**
+ * Tables never placed get a place of their own. A table added later used to
+ * be laid out from the TOP row, on top of tables already arranged (Nẫu Chill
+ * Đêm: Bàn 33/34/35 sat on Bàn 1/2/4, and the till read 1, 33, 2, 34…). Now
+ * they go into the rows BELOW everything placed, in number order; only when
+ * the room is full do they fill free gaps. Never on top of another table.
+ */
 export function withDefaults(tables: TableLike[], layout: Layout): Layout {
   const out: Layout = { ...layout };
   const missing = tables.filter((t) => t.isActive && !out[t.id]);
   if (!missing.length) return out;
-  const areas = [...new Set(missing.map((t) => t.area || ''))];
+  const placed = Object.values(out);
+  const order: TableLike[] = [];
+  for (const a of [...new Set(missing.map((t) => t.area || ''))]) order.push(...missing.filter((t) => (t.area || '') === a).sort(byTableName));
+  const free = (x: number, y: number) => Object.values(out).every((p) => Math.abs(p.x - x) >= COL_W - 2 || Math.abs(p.y - y) >= ROW_H - 3);
+  let y = placed.length ? Math.max(...placed.map((p) => p.y)) + ROW_H : 4;
+  let col = 0;
+  let area: string | null = null;
+  for (const t of order) {
+    // A new area starts on a new row.
+    if (area !== null && (t.area || '') !== area && col > 0) { col = 0; y += ROW_H; }
+    area = t.area || '';
+    let spot: { x: number; y: number } | null = null;
+    while (y <= 90 && !spot) {
+      const x = 2 + col * COL_W;
+      if (free(x, y)) spot = { x, y };
+      col++;
+      if (col >= 8) { col = 0; y += ROW_H; }
+    }
+    if (!spot) {
+      // The room is full below: the first free gap anywhere, reading order.
+      for (let gy = 4; gy <= 90 && !spot; gy += ROW_H) for (let c = 0; c < 8 && !spot; c++) if (free(2 + c * COL_W, gy)) spot = { x: 2 + c * COL_W, y: gy };
+    }
+    out[t.id] = { ...(spot ?? { x: 2, y: 90 }), shape: shapeFor(t.seats) };
+  }
+  return out;
+}
+
+/** "Tự xếp theo số bàn": every table in number order, `perRow` a row, area by area. */
+export function arrangeByNumber(tables: TableLike[], perRow = 8, keep: Layout = {}): Layout {
+  const n = Math.max(3, Math.min(12, Math.round(perRow)));
+  const colW = 96 / n;
+  const active = tables.filter((t) => t.isActive);
+  const rows = Math.ceil(active.length / n) + new Set(active.map((t) => t.area || '')).size;
+  const rowH = Math.max(10, Math.min(ROW_H, 88 / Math.max(1, rows)));
+  const out: Layout = {};
   let row = 0;
-  for (const a of areas) {
-    const inArea = missing.filter((t) => (t.area || '') === a).sort((p, q) => p.sortOrder - q.sortOrder || p.name.localeCompare(q.name));
+  for (const a of [...new Set(active.sort(byTableName).map((t) => t.area || ''))]) {
+    const inArea = active.filter((t) => (t.area || '') === a).sort(byTableName);
     inArea.forEach((t, i) => {
-      const col = i % 6; if (i && col === 0) row++;
-      out[t.id] = { x: 4 + col * 15, y: Math.min(90, 6 + row * 18), shape: t.seats >= 6 ? 'long' : t.seats <= 2 ? 'round' : 'square' };
+      if (i && i % n === 0) row++;
+      out[t.id] = { x: Math.round((2 + (i % n) * colW) * 10) / 10, y: Math.min(92, Math.round((4 + row * rowH) * 10) / 10), shape: keep[t.id]?.shape ?? shapeFor(t.seats) };
     });
     row++;
   }

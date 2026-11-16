@@ -4,7 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableDto } from './dto/update-table.dto';
-import { cleanLayout, tableStates, waitingForTable, withDefaults, type Layout } from './floor';
+import { arrangeByNumber, cleanLayout, tableStates, waitingForTable, withDefaults, type Layout } from './floor';
 import { planTableImport, type TableImportRow } from './table-import';
 
 /** Per restaurant: where each table stands on the floor map (tables/floor.ts). */
@@ -45,14 +45,32 @@ export class TablesService {
         select: { id: true, tableId: true, startTime: true, endTime: true, status: true, partySize: true, notes: true, customer: { select: { firstName: true } } },
       }),
     ]);
-    const layout = withDefaults(tables, cleanLayout(row?.value ?? {}, tables.map((t) => t.id)));
+    const stored = cleanLayout(row?.value ?? {}, tables.map((t) => t.id));
+    const layout = withDefaults(tables, stored);
+    // Tables with no saved spot yet (added later): the arrange screen marks them "Mới".
+    const unplaced = tables.filter((t) => t.isActive && !stored[t.id]).map((t) => t.id);
     const rows = res.map((r) => ({
       id: r.id, tableId: r.tableId, startTime: r.startTime, endTime: r.endTime, status: String(r.status), partySize: r.partySize ?? 1, customerName: r.customer?.firstName ?? null, notes: r.notes,
     }));
     const states = tableStates(tables, rows, at);
     // Only a restaurant with tables seats anyone; a salon's bookings never show here.
     const waiting = tables.length ? waitingForTable(rows, at) : [];
-    return { at: at.toISOString(), tables, layout, states, waiting };
+    return { at: at.toISOString(), tables, layout, states, waiting, unplaced };
+  }
+
+  /**
+   * "Tự xếp theo số bàn": every table in number order, `perRow` a row, area by
+   * area, shapes kept. Returned as a draft — nothing is saved until the owner
+   * presses "Lưu sơ đồ". This restaurant's tables only.
+   */
+  async arrange(user: AuthenticatedUser, perRow: unknown) {
+    const tenantId = this.tenantId(user);
+    const [tables, row] = await Promise.all([
+      this.prisma.restaurantTable.findMany({ where: { tenantId }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: LAYOUT_KEY } } }),
+    ]);
+    const keep = cleanLayout(row?.value ?? {}, tables.map((t) => t.id));
+    return { layout: arrangeByNumber(tables, Number(perRow) || 8, keep) };
   }
 
   /** Save where the tables stand. Owner only (class @Roles). Unknown ids are dropped. */

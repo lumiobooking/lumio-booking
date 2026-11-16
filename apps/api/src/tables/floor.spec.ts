@@ -1,5 +1,5 @@
 import { UserRole } from '@prisma/client';
-import { cleanLayout, preOrderOf, tableStates, waitingForTable, withDefaults, TableLike, ResLike } from './floor';
+import { arrangeByNumber, cleanLayout, preOrderOf, tableStates, waitingForTable, withDefaults, TableLike, ResLike } from './floor';
 import { TablesService } from './tables.service';
 
 const T = (id: string, seats = 4, area: string | null = 'Main', sortOrder = 0, isActive = true): TableLike => ({ id, name: id.toUpperCase(), seats, area, isActive, sortOrder });
@@ -100,6 +100,23 @@ describe('TablesService floor — tenant isolation', () => {
     expect(out.waiting).toEqual([]);
   });
 
+  it('"Tự xếp theo số bàn" reads only the caller\'s tables and saves nothing', async () => {
+    const { prisma, svc } = make();
+    const out = await svc.arrange(owner('t3'), 8);
+    expect(prisma.restaurantTable.findMany.mock.calls[0][0].where).toEqual({ tenantId: 't3' });
+    expect(prisma.setting.findUnique.mock.calls[0][0].where.tenantId_key.tenantId).toBe('t3');
+    expect(Object.keys(out.layout)).toEqual(['a']);
+    expect(out.layout.a.shape).toBe('round'); // the saved shape is kept
+    expect(prisma.setting.upsert).not.toHaveBeenCalled();
+  });
+
+  it('marks tables with no saved spot as unplaced', async () => {
+    const { prisma, svc } = make();
+    prisma.restaurantTable.findMany.mockResolvedValue([T('a'), T('z')]);
+    const out = await svc.floor(owner('t1'), AT.toISOString());
+    expect(out.unplaced).toEqual(['z']);
+  });
+
   it('saves the layout under the caller\'s tenant, drops other restaurants\' table ids, audits', async () => {
     const { prisma, audit, svc } = make();
     const out = await svc.saveLayout(owner('t2'), { a: { x: 5, y: 5 }, 'table-of-t1': { x: 9, y: 9 } });
@@ -114,5 +131,30 @@ describe('TablesService floor — tenant isolation', () => {
   it('refuses a user with no restaurant', async () => {
     const { svc } = make();
     await expect(svc.floor({ userId: 'x', role: UserRole.SALON_ADMIN, tenantId: null } as never)).rejects.toThrow();
+  });
+});
+
+describe('floor map — a table added later never sits on another (Nẫu Chill Đêm, Bàn 33–35)', () => {
+  const named = (n: number, seats = 4): TableLike => ({ id: `t${n}`, name: `Bàn ${n}`, seats, area: null, isActive: true, sortOrder: 0 });
+  it('goes below the arranged tables, in number order, never overlapping', () => {
+    const tables = Array.from({ length: 35 }, (_, i) => named(i + 1));
+    const saved = arrangeByNumber(tables.slice(0, 32), 8);
+    const out = withDefaults(tables, saved);
+    const maxSaved = Math.max(...Object.values(saved).map((p) => p.y));
+    for (const n of [33, 34, 35]) expect(out[`t${n}`].y).toBeGreaterThan(maxSaved);
+    expect(out.t33.x).toBeLessThan(out.t34.x);
+    const spots = Object.values(out);
+    for (let i = 0; i < spots.length; i++) for (let j = i + 1; j < spots.length; j++) {
+      expect(Math.abs(spots[i].x - spots[j].x) >= 10 || Math.abs(spots[i].y - spots[j].y) >= 10).toBe(true);
+    }
+  });
+  it('"Tự xếp theo số bàn": 1, 2 … 10 in reading order (not 1, 10, 2), 8 a row, shapes kept', () => {
+    const tables = [named(10, 10), named(2), named(1), named(33, 2), ...Array.from({ length: 8 }, (_, i) => named(i + 3))];
+    const out = arrangeByNumber(tables, 8, { t10: { x: 0, y: 0, shape: 'long' } });
+    const reading = Object.entries(out).sort((a, b) => a[1].y - b[1].y || a[1].x - b[1].x).map(([id]) => id);
+    expect(reading.slice(0, 10)).toEqual(['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 't10']);
+    expect(reading[10]).toBe('t33');
+    expect(out.t10.shape).toBe('long');
+    expect(out.t9.y).toBeGreaterThan(out.t8.y);
   });
 });

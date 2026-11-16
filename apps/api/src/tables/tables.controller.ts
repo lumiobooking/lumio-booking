@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { HttpCode, Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { TablesService } from './tables.service';
 import { CreateTableDto } from './dto/create-table.dto';
@@ -33,6 +33,13 @@ export class TablesController {
   @Patch('layout')
   saveLayout(@CurrentUser() user: AuthenticatedUser, @Body() dto: SaveLayoutDto) {
     return this.tables.saveLayout(user, dto.layout);
+  }
+
+  // "Tự xếp theo số bàn": a draft layout in number order (nothing saved). Owner only (class @Roles).
+  @Post('layout/arrange')
+  @HttpCode(200)
+  arrange(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) {
+    return this.tables.arrange(user, dto?.perRow);
   }
 
   /** Tables and floor plan from the sheet template: created or updated by name. Owner only. */

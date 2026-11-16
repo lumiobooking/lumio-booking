@@ -292,6 +292,7 @@ const WHY_TOOL: Record<string, [string, string]> = {
 };
 const WHY_GUARD: Record<string, [string, string]> = {
   price: ['Bản nháp có giá không nằm trong nguồn — AI đã phải viết lại', 'The draft had a price not found in the sources — the AI rewrote it'],
+  meta: ['AI nói về ghi chú kiểm tra thay vì trả lời khách — câu đó đã bị giữ lại', 'The AI talked about a review note instead of answering — that reply was held'],
   instruction: ['Bản nháp trái lệnh của chủ tiệm — AI đã phải viết lại', "The draft broke an owner instruction — the AI rewrote it"],
 };
 const WHY_KIND: Record<WhyRef['kind'], [string, string]> = { rule: ['Lệnh của chủ tiệm', 'Owner instruction'], fact: ['Ghi chú đã lưu', 'Saved note'], doc: ['Tài liệu / link', 'Document / link'], tool: ['AI đã tra / làm', 'Looked up / did'], guard: ['Đã chặn và sửa', 'Stopped and fixed'] };

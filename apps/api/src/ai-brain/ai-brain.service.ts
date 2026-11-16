@@ -23,6 +23,7 @@ import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, 
 import { agentModel, forModel } from '../common/ai-model';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, cleanChoices, choicesAsText, cleanCards, cardText, type PackageCard } from '../messenger/reply-style';
 import { ungroundedMoney } from '../messenger/price-grounding';
+import { CORRECTION_RULE, leaksCorrection } from '../messenger/correction-guard';
 import { SIM_KEY, pickScenarios, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
 import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
@@ -1000,7 +1001,7 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
     for (let loop = 0; loop < 6; loop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify(forModel({ model: agentModel(), max_tokens: 1400, system, tools, messages })),
+        body: JSON.stringify(forModel({ model: agentModel(), max_tokens: 1400, system: `${system}\n${CORRECTION_RULE}`, tools, messages })),
         signal: AbortSignal.timeout(20_000),
       });
       if (!res.ok) throw new BadRequestException(`AI answered ${res.status}`);
@@ -1040,6 +1041,13 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
         messages.push({ role: 'assistant', content: [{ type: 'text', text: '…' }] });
         messages.push({ role: 'user', content: 'SYSTEM: your reply was empty. Write your reply to the customer now (warm, full sentences, one question).' });
         continue;
+      }
+      // Live, a reply that talks about the review instead of to the customer is held
+      // for a person (messenger/correction-guard). Here it is shown as what it is.
+      if (text && leaksCorrection(text)) {
+        trace.push(`held: the reply talked about a correction — live, it is not sent and the staff are told: ${text.slice(0, 160)}`);
+        const heldLine = lang === 'vi' ? '(Câu này bị giữ lại, không gửi cho khách: AI nói về ghi chú kiểm tra thay vì trả lời khách. Trên kênh thật, nhân viên sẽ được báo để trả lời.)' : '(Held, not sent to the customer: the AI talked about a review note instead of answering. Live, the staff are told to reply.)';
+        return { reply: heldLine, text: heldLine, choices: [], cards: [], lang, trace, ms: Date.now() - t0, check: null };
       }
       // The owner's instructions, checked exactly as on a live conversation:
       // a broken one goes back once for a rewrite, then the judge's (or the

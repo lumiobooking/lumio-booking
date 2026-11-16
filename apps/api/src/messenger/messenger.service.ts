@@ -11,6 +11,7 @@ import { ungroundedMoney, priceCorrection, priceHoldLine } from './price-groundi
 import { briefPrompt, briefTranscript, canBrief, parseBrief, type BriefTurn, type HandoffBrief } from './handoff-brief';
 import { SURVEY_KEY, shouldAskSurvey, surveyAnswer, surveyAsk, surveyBadPush, surveyPending, surveySettingFrom, surveyThanks, type SurveyRating, type SurveyTurn } from './chat-survey';
 import { HardBudget, hardTurnReason, modelForTurn } from '../common/hard-turn';
+import { CORRECTION_RULE, leaksCorrection } from './correction-guard';
 import { buildTrace, traceFrom, type ReplyTrace, type TraceCandidate } from './reply-trace';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
@@ -4982,7 +4983,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
      * the API's prefix, so the one breakpoint below covers them as well.
      */
     const brainStatic = brainOut ? `\n${[brainOut.blocks.persona, brainOut.blocks.booking, brainOut.blocks.handoffNote].filter(Boolean).join('\n')}` : '';
-    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + brainStatic + personaRule + readingRule + voiceRule + formatRule + channelRule + closingRule + (owner?.block ? `\n${owner.block}` : '');
+    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + brainStatic + personaRule + readingRule + voiceRule + formatRule + channelRule + closingRule + `\n${CORRECTION_RULE}` + (owner?.block ? `\n${owner.block}` : '');
     const clockLine = ctx.mode === 'sales'
       ? `\nThe current time is ${nowLocal} (timezone ${tz}).`
       : `\nThe salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.`;
@@ -5370,6 +5371,13 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // with the instruction quoted; a second break sends the judge's
       // corrected reply (or, for one broken answer, the owner's own words).
       // A check that cannot run never holds a reply back.
+      // A reply that talks about the review instead of to the customer never
+      // goes out (./correction-guard): it is held for a person, who is told.
+      if (text && leaksCorrection(text)) {
+        ctx.traceGuards?.push('meta');
+        this.logger.warn(`Reply held (it talks about a correction, not to the customer): ${text.slice(0, 160)}`);
+        return HELD;
+      }
       if (owner && this.instructions && text) {
         const insLang = brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en');
         const chk = await this.instructions.check(tenantId, { turn: owner, channel: insCh, customer: userText, draft: text, lang: insLang, timeoutMs: 6000 }).catch(() => null);

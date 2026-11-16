@@ -289,6 +289,7 @@ DRAFT REPLY:
 Decide:
 - "applies": labels of the instructions that apply to this message. An ANSWER applies only when the customer is asking about that topic now. A NEVER or ALWAYS applies when its situation is present in this exchange.
 - Judge by what the owner MEANS (their words are often short, misspelt or without accents; the meaning, when given, spells it out).
+- An instruction about WORDING in one language — which pronoun to use, a particle, a word to say or avoid ("xưng em", "không dùng mình/bạn", "always say dạ") — does not apply to a draft written in another language. It is neither applying nor violated there: an English reply cannot break a rule about Vietnamese pronouns.
 - "violations": labels the draft breaks. An applying ANSWER is broken when the draft contradicts it, leaves out its key fact, or (word-for-word ones) changes its wording. A NEVER is broken when the draft does or says what it forbids. An ALWAYS is broken when it applies right now and the draft skips it. Do not flag an instruction that does not apply.
 - "rewrite": when there is a violation, the corrected reply in ${o.langName}${o.voice ? ', short enough to be read aloud (under 40 words, no lists, no emoji)' : ', 1–3 short sentences'}: the draft with the smallest change that obeys every instruction — keep everything else it did right (times, names, the next question). Otherwise "".
 Return exactly: {"applies":[],"violations":[],"rewrite":""}`;

@@ -18,6 +18,7 @@
  */
 
 import { cleanQty, QTY_MAX } from '../lib/qty';
+import { shortTables, tableTitle } from '../lib/table-label';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch, ApiError } from '../lib/api';
@@ -497,7 +498,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
           {sheet && <span aria-hidden style={{ alignSelf: 'center', width: 44, height: 5, borderRadius: 3, background: C.border, marginBottom: 8 }} />}
           <div style={{ padding: sheet ? '0 0 12px' : '16px 16px 12px', borderBottom: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', gap: 7 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <b style={{ fontSize: 22, color: C.strong, flex: 1 }}>{L('Bàn', 'Table')} {cs.length === 1 && c0.tableIds.length > 1 ? c0.tables : t.name}</b>
+              <b style={{ fontSize: 22, color: C.strong, flex: 1 }}>{tableTitle(cs.length === 1 && c0.tableIds.length > 1 ? c0.tables : t.name, vi)}</b>
               {c0 && <span style={{ fontSize: 12.5, fontWeight: 800, borderRadius: 999, padding: '3px 9px', ...(tone === 'late' ? { background: '#dc2626', color: '#fff' } : tone === 'warn' ? { background: '#fef3c7', color: '#92400e' } : { background: C.raised, color: C.muted }) }}>{mins}′</span>}
               <button type="button" aria-label={L('Đóng', 'Close')} onClick={() => setSelId(null)} style={{ ...btn, width: 40, minHeight: 40, padding: 0, fontSize: 18 }}>×</button>
             </div>
@@ -569,7 +570,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
         {todo.map(({ c, state }) => (
           <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 14, border: `1px solid ${C.line}` }}>
             <button type="button" onClick={() => openBill(c)} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: 0, border: 'none', background: 'transparent', color: C.text, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
-              <span style={{ ...TILE[state], minWidth: 42, height: 42, padding: '0 6px', boxSizing: 'border-box', borderRadius: 12, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 14, flexShrink: 0 }}>{c.takeaway ? L('MV', 'TG') : c.tables}</span>
+              <span title={c.tables} style={{ ...TILE[state], minWidth: 42, maxWidth: 110, height: 42, padding: '0 8px', boxSizing: 'border-box', borderRadius: 12, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 14, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.takeaway ? L('MV', 'TG') : shortTables(c.tables)}</span>
               <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <b style={{ fontSize: 14 }}>{stateText(state, [c])}</b>
                 <span style={{ fontSize: 12.5, color: C.muted }}>{fmt(c.subtotalCents)}{c.callAt || c.payRequestedAt ? ` · ${minutesOpen(c.callAt ?? c.payRequestedAt ?? c.openedAt, now)}′` : ''}</span>
@@ -594,7 +595,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
             {calls.map((c) => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <b style={{ flex: '1 1 220px', minWidth: 0, color: C.strong }}>
-                  {c.takeaway ? c.tables : `${L('Bàn', 'Table')} ${c.tables}`} · {(c.pendingCount ?? 0) > 0 ? L(`${c.pendingCount} món khách gọi qua QR, chờ xác nhận`, `${c.pendingCount} dishes ordered by QR, waiting`) : callText(c.callReason, vi)}
+                  {c.takeaway ? c.tables : tableTitle(c.tables, vi)} · {(c.pendingCount ?? 0) > 0 ? L(`${c.pendingCount} món khách gọi qua QR, chờ xác nhận`, `${c.pendingCount} dishes ordered by QR, waiting`) : callText(c.callReason, vi)}
                   {c.callAt ? <span style={{ color: C.muted, fontWeight: 600 }}> · {minutesOpen(c.callAt, now)}′</span> : null}
                 </b>
                 {c.callReason && <button type="button" disabled={busy} onClick={() => void clearCall(c.id)} style={btn}>{L('Đã xem', 'Seen')}</button>}
@@ -676,7 +677,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                   const unsent = cs.reduce((n, c) => n + c.unsentCount, 0);
                   return {
                     state: st,
-                    label: cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name,
+                    label: cs.length === 1 && cs[0].tableIds.length > 1 ? shortTables(cs[0].tables) : t.name,
                     sub: !cs.length ? L(`${t.seats} ghế`, `${t.seats} seats`) : st === 'unsent' ? L(`${unsent} món · ${mins}′`, `${unsent} new · ${mins}′`) : `${mins}′`,
                     dim: !inFilter(st, floorFilter) || (!!area && (t.area || '') !== area),
                     picked: joinIds.includes(t.id),
@@ -691,7 +692,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${phone ? 150 : 172}px, 1fr))`, gap: 10 }}>
                   {shownTables.filter((t) => (t.area || '') === g).map((t) => {
                     const cs = checksByTable.get(t.id) ?? [];
-                    const label = cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name;
+                    const label = cs.length === 1 && cs[0].tableIds.length > 1 ? `${L('Bàn', 'T')} ${shortTables(cs[0].tables)}` : t.name;
                     const picked = joinIds.includes(t.id);
                     const drag = !joinMode && cs.length === 1;
                     return (
@@ -1004,7 +1005,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
       <div style={{ ...card, padding: phone ? '8px 10px' : '10px 12px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
         <button type="button" onClick={backToFloor} aria-label={L('Về sơ đồ bàn', 'Back to tables')} style={phone ? { ...btn, width: 44, padding: 0, fontSize: 20 } : btn}>‹{phone ? '' : ` ${L('Sơ đồ bàn', 'Tables')}`}</button>
         <div style={{ flex: phone ? '1 1 0' : '1 1 160px', minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 18, color: C.strong }}>{check.takeaway ? check.tables : `${L('Bàn', 'Table')} ${check.tables}`}</div>
+          <div style={{ fontWeight: 800, fontSize: 18, color: C.strong }}>{check.takeaway ? check.tables : tableTitle(check.tables, vi)}</div>
           <div style={{ fontSize: 12.5, color: C.muted }}>{L('Mở', 'Opened')} {new Date(check.openedAt).toLocaleTimeString(vi ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })} · {minutesOpen(check.openedAt, now)}′{check.serverName ? ` · ${check.serverName}` : ''}</div>
         </div>
         {/* On a phone the five table actions fold behind one button — they

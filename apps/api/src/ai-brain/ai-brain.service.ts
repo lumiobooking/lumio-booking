@@ -25,7 +25,7 @@ import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, 
 import { agentModel, forModel } from '../common/ai-model';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, cleanChoices, choicesAsText, cleanCards, cardText, type PackageCard, SALES_NOT_READY_RULE } from '../messenger/reply-style';
 import { ungroundedMoney } from '../messenger/price-grounding';
-import { CORRECTION_RULE, leaksCorrection, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from '../messenger/correction-guard';
+import { CORRECTION_RULE, leaksCorrection, stripLeak, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from '../messenger/correction-guard';
 import { SIM_KEY, SIM_OTHER_LANGS, scenarioTurns, type SimTrade, mergeGrades, parseSimTranslation, pickScenarios, simFingerprint, simTranslatePrompt, type Scenario, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
 import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
@@ -1113,7 +1113,9 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
         messages.push({ role: 'user', content: results });
         continue;
       }
-      const text = blocksOut.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      let text = blocksOut.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      // As live: a sentence of thinking aloud is removed, the answer stays.
+      if (text && leaksCorrection(text)) { const cleaned = stripLeak(text); if (cleaned) { trace.push(`trimmed: a sentence about the instructions was removed — ${text.slice(0, 100)}`); text = cleaned; } }
       if (isNoReply(text)) {
         trace.push('silent: the assistant chose not to reply');
         return { ...quiet(owner?.all?.length ? 'rule' : 'none'), lang, trace, ms: Date.now() - t0, check: null };

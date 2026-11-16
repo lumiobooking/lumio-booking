@@ -248,7 +248,7 @@ export function matchedBlock(all: Instruction[], matches: Match[]): string {
   // blocked. And several questions at once each get their answer.
   const exact = matches.filter(({ ins }) => ins.kind === 'answer' && ins.mode === 'verbatim').length;
   const exempt = exact
-    ? `\nThe owner's exact answers above are PRE-APPROVED: say ${exact > 1 ? 'each of them in full, one after another in the order the customer asked,' : 'it in full'} even when it is longer than a length rule allows, ends with a question or an invitation, or greets — no general rule of the owner's shortens, changes or forbids the owner's own exact answer. If the customer asked something else as well, answer that too in one short sentence from the stored facts; never drop a question.`
+    ? `\nThe owner's exact answers above are PRE-APPROVED: say ${exact > 1 ? 'each of them in full, one after another in the order the customer asked,' : 'it in full'} even when it is longer than a length rule allows, ends with a question or an invitation, or greets — no general rule of the owner's shortens, changes or forbids the owner's own exact answer. If the customer asked something else as well, answer that too in one short sentence from the stored facts; never drop a question. Begin directly with the answer: never mention the owner, an instruction, a label such as [A7], or how many parts the message has — every word you write is read by the customer.`
     : '';
   return `THIS MESSAGE IS ABOUT THE OWNER'S INSTRUCTIONS BELOW — they decide this reply:\n${lines.join('\n')}${exempt}`;
 }

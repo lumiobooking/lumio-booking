@@ -44,6 +44,14 @@ const META = [
   /\b(corrected|revised|rewritten) (reply|response)\b/i,
   /\bI('ll| will| need to| should| must) (reply|respond|answer) in (english|vietnamese)\b/i,
   /đây là (câu trả lời|tin nhắn) (đã sửa|đã chỉnh|mới)|khách (đang )?(nhắn|viết) bằng tiếng (anh|việt),? (nên|vì vậy) em/i,
+  // After rt160 (16/11/2026, Amy's Lash sandbox): "The owner's exact answer [A7] applies here, since the customer is describing…",
+  // "This is a three-part message, so I'll answer each in turn. The owner's exact answers apply to the first and third points."
+  /\[[ANR]\d{1,3}\]/,
+  /\bowner['’]?s (own |exact |pinned )*(answers?|instructions?|rules?|words)\b/i,
+  /\bexact answers?\b/i,
+  /\bpre-?approved\b/i,
+  /\b(two|three|four|five|multi)[- ]part (message|question)\b/i,
+  /\bI('ll| will) answer each\b/i,
   /tin nhắn hệ thống|chỉ dẫn hệ thống|ghi chú hệ thống|bản nháp (trước|bị chặn)|câu trả lời trước (của em )?(đã )?bị chặn|em (đã )?viết lại câu trả lời/i,
 ];
 
@@ -51,6 +59,26 @@ const META = [
 export function leaksCorrection(text: string | null | undefined): boolean {
   const t = String(text ?? '');
   return t.trim().length > 0 && META.some((re) => re.test(t));
+}
+
+/**
+ * A good reply with one sentence of the assistant thinking aloud in front of
+ * it ("The owner's exact answer [A7] applies here…"): that sentence goes and
+ * the rest is sent — the customer still gets the answer. Null when nothing
+ * worth sending is left, or what is left still leaks (then it is held).
+ */
+export function stripLeak(text: string | null | undefined): string | null {
+  const paras = String(text ?? '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const kept: string[] = [];
+  for (const p of paras) {
+    if (!leaksCorrection(p)) { kept.push(p); continue; }
+    const sentences = p.match(/[^.!?…\n]+[.!?…]*["”’)]*\s*|\n+/g) ?? [p];
+    const ok = sentences.filter((x) => x.trim() && !leaksCorrection(x)).join('').trim();
+    if (ok) kept.push(ok);
+  }
+  const out = kept.join('\n\n').trim();
+  if (out.length < 20 || leaksCorrection(out) || out === String(text ?? '').trim()) return null;
+  return out;
 }
 
 export interface LeakedTurn { at: string | null; snippet: string; failed: boolean }

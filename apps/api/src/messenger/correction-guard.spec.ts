@@ -83,3 +83,22 @@ describe('the second reader — only for a reply written after a correction', ()
   });
 });
 
+
+import { stripLeak as strip, leaksCorrection as leaks } from './correction-guard';
+describe('thinking aloud in front of a good answer (Amy\'s Lash sandbox, 16/11/2026)', () => {
+  const answer = 'I understand how it feels to draw your brows on every day. Your brows will last 1 to 5 years. Which day works for you? 😊';
+  it('is recognised', () => {
+    expect(leaks(`The owner's exact answer [A7] applies here, since the customer is describing daily brow drawing.\n\n${answer}`)).toBe(true);
+    expect(leaks("This is a three-part message, so I'll answer each in turn.")).toBe(true);
+    expect(leaks(answer)).toBe(false);
+    expect(leaks('We have two locations: 1205 Elizabeth St Ste C, Punta Gorda, FL 33950 and 734 Shamrock Blvd.')).toBe(false);
+  });
+  it('the sentence goes, the answer is sent', () => {
+    expect(strip(`The owner's exact answer [A7] applies here, since the customer is describing daily brow drawing.\n\n${answer}`)).toBe(answer);
+    expect(strip(`This is a three-part message, so I'll answer each in turn. The owner's exact answers apply to the first and third points.\n\n${answer}\n\nWe have two locations.`)).toBe(`${answer}\n\nWe have two locations.`);
+  });
+  it('nothing left, or nothing to remove: null (the caller holds or sends as is)', () => {
+    expect(strip("The owner's exact answer [A7] applies here.")).toBeNull();
+    expect(strip(answer)).toBeNull();
+  });
+});

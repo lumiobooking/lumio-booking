@@ -11,7 +11,7 @@ import { ungroundedMoney, priceCorrection, priceHoldLine } from './price-groundi
 import { briefPrompt, briefTranscript, canBrief, parseBrief, type BriefTurn, type HandoffBrief } from './handoff-brief';
 import { SURVEY_KEY, shouldAskSurvey, surveyAnswer, surveyAsk, surveyBadPush, surveyPending, surveySettingFrom, surveyThanks, type SurveyRating, type SurveyTurn } from './chat-survey';
 import { HardBudget, hardTurnReason, modelForTurn } from '../common/hard-turn';
-import { CORRECTION_RULE, leaksCorrection, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from './correction-guard';
+import { CORRECTION_RULE, leaksCorrection, stripLeak, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from './correction-guard';
 import { buildTrace, traceFrom, type ReplyTrace, type TraceCandidate } from './reply-trace';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX, SALES_NOT_READY_RULE } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
@@ -72,7 +72,7 @@ import { mayAnswerMirrored, rescueVerdict } from './rescue-stuck';
 import { isMetaAdGreeting, isMetaSystemLine, isMetaAiLine } from './meta-system-lines';
 import { AD_HOLD_RETRY_MS, FRESH_RETRY_AFTER_MIN, describeRefusal, freshWindowRefusal, readSendRefusal, retryableRefusal, retryNote, type GraphError } from './send-errors';
 import { nextRetry, resendVerdict } from './late-resend';
-import { echoKind, lastStampOf, maxOf, ownEcho } from './automation-echo';
+import { echoKind, lastStampOf, maxOf, ownEcho, automationAfterCustomer, automationAnsweredPrompt, automationAnswered } from './automation-echo';
 import { publishGrantFrom } from './publish-grant';
 import { classifyPageError, pageHealthText, shouldAlert as shouldAlertPage, type PageHealth } from './page-health';
 import { AiUsageService } from '../common/ai-usage.service';
@@ -1774,6 +1774,20 @@ export class MessengerService implements OnModuleInit {
     });
     if (!out.ok) return false;
     return secondReaderSaysLeak(out.reply.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' '));
+  }
+
+  /** Did the Page's automatic line answer the customer? One small call; when it cannot run, the AI answers as before. */
+  private async automationAnswers(tenantId: string, customer: string, automation: string[]): Promise<boolean> {
+    const p = automationAnsweredPrompt(customer, automation);
+    const out = await Promise.resolve().then(() => llmChat({ system: p.system, messages: [{ role: 'user', content: p.user }], max_tokens: 5, timeoutMs: 5000 })).catch(() => null);
+    if (!out) return false;
+    this.usage?.record({
+      feature: 'messenger', tenantId, model: out.ok ? out.reply.usage?.model ?? 'unknown' : 'unknown',
+      input: out.ok ? out.reply.usage?.input ?? 0 : 0, output: out.ok ? out.reply.usage?.output ?? 0 : 0,
+      cacheRead: out.ok ? out.reply.usage?.cacheRead ?? 0 : 0, cacheWrite: out.ok ? out.reply.usage?.cacheWrite ?? 0 : 0, failed: !out.ok,
+    });
+    if (!out.ok) return false;
+    return automationAnswered(out.reply.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' '));
   }
 
   /** The stronger model's daily allowance, per salon (common/hard-turn). */
@@ -4087,13 +4101,30 @@ export class MessengerService implements OnModuleInit {
     // A human may have taken over WHILE we were generating (their echo flips
     // handoff on this thread). Sending now would talk over them — drop the
     // reply, keep only the customer's turn so context survives.
-    const guard = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { handoff: true } }).catch(() => null);
+    const guard = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { handoff: true, history: true } }).catch(() => null);
     if (guard?.handoff) {
       if (!userAlready) {
         const inAtDrop = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
         await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtDrop, ...imgTurn }]);
       }
       return;
+    }
+    // THE PAGE'S OWN AUTOMATION ALREADY ANSWERED (./automation-echo): Meta's
+    // instant reply or FAQ answer landed after this message while we were
+    // writing. If it answers what the customer asked, nothing more is sent —
+    // the AI continues at the customer's next message. Never drops a reply
+    // that did something (a booking made must be confirmed).
+    if (process.env.AUTOMATION_YIELD !== 'off' && userAlready && !isSilent(reply) && mayDropReply((agentCtx as { toolsRun?: string[] } | null)?.toolsRun ?? [])) {
+      const nowHist = (Array.isArray((guard as { history?: unknown } | null)?.history) ? (guard as { history: unknown[] }).history : []) as Turn[];
+      const auto = automationAfterCustomer(nowHist, (t) => isMetaAdGreeting(t) || isMetaSystemLine(t) || isMetaAiLine(t));
+      if (auto.length && await this.automationAnswers(conn.tenantId, text, auto)) {
+        this.logger.log(`the Page's automation already answered on thread ${threadId}: the AI waits for the customer's next message`);
+        if (!userAlready) {
+          const inAtAuto = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+          await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtAuto, ...imgTurn }]);
+        }
+        return;
+      }
     }
     // The customer wrote again while this was being written: drop it, the
     // burst loop answers everything at once. Only a turn not yet on record
@@ -5211,7 +5242,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         messages.push({ role: 'user', content: results });
         continue;
       }
-      const text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      let text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
       // The model chose not to answer (the customer declined, said goodbye,
       // nothing is left to say) — see the NO_REPLY line in the system prompt.
       if (isNoReply(text)) return SILENT;
@@ -5421,6 +5452,16 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // A check that cannot run never holds a reply back.
       // A reply that talks about the review instead of to the customer never
       // goes out (./correction-guard): it is held for a person, who is told.
+      if (text && leaksCorrection(text)) {
+        // One sentence of thinking aloud in front of a good answer: that
+        // sentence goes, the answer is sent (and still checked below).
+        const cleaned = stripLeak(text);
+        if (cleaned) {
+          ctx.traceGuards?.push('meta');
+          this.logger.warn(`Reply trimmed (it talked about its instructions): ${text.slice(0, 160)}`);
+          text = cleaned;
+        }
+      }
       if (text && leaksCorrection(text)) {
         ctx.traceGuards?.push('meta');
         this.logger.warn(`Reply held (it talks about a correction, not to the customer): ${text.slice(0, 160)}`);

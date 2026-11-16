@@ -161,3 +161,21 @@ export function docRules(sources: KnowledgeSource[]): string[] {
   }
   return [...new Set(out)];
 }
+
+/** The hotline's share of the documents: enough for prices and policies, short enough for a phone call's first word. */
+export const VOICE_DOCS_MAX = 20_000;
+
+/**
+ * The documents section, cut for the phone. A call cannot wait on an 80k
+ * prompt, so the hotline reads the first part of the same section the chat
+ * reads (owners put the price list first), cut at a line end and told so —
+ * past the cut it says "I'll have the team confirm", never a guess.
+ */
+export function docsForVoice(block: string, max = VOICE_DOCS_MAX): string {
+  const text = String(block ?? '');
+  if (text.length <= max) return text;
+  const head = text.slice(0, max);
+  const at = head.lastIndexOf('\n');
+  return `${(at > max * 0.6 ? head.slice(0, at) : head).trimEnd()}\n[The documents continue beyond this point. For anything not shown here, say the team will confirm — never guess.]`;
+}
+

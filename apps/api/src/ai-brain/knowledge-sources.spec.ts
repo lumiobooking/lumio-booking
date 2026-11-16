@@ -1,3 +1,4 @@
+import { docsForVoice, VOICE_DOCS_MAX } from './knowledge-sources';
 import { cleanSourceUrl, docText, docsBlock, flattenJson, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 
 describe('Học từ link — the AI reads the business own documents', () => {
@@ -57,3 +58,19 @@ Không bao gồm:
     expect(docRules([{ ...src(DOC), on: false }])).toEqual([]);
   });
 });
+
+describe('the hotline reads the same documents, cut for a phone call', () => {
+  it('a short section passes whole', () => {
+    expect(docsForVoice('Gel tay: $35\nGel chân: $45')).toBe('Gel tay: $35\nGel chân: $45');
+    expect(docsForVoice('')).toBe('');
+  });
+  it('a long one is cut at a line end and says so — never mid-price', () => {
+    const lines = Array.from({ length: 3000 }, (_, i) => `Dịch vụ ${i}: $${i + 10}`).join('\n');
+    const out = docsForVoice(lines);
+    expect(out.length).toBeLessThan(VOICE_DOCS_MAX + 200);
+    const body = out.split('\n[The documents continue')[0];
+    expect(body.split('\n').every((l) => /^Dịch vụ \d+: \$\d+$/.test(l))).toBe(true);
+    expect(out).toContain('never guess');
+  });
+});
+

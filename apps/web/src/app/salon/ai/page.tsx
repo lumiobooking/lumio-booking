@@ -223,7 +223,7 @@ function Inner() {
             )}
             {tab === 'home' && <Home token={token} vi={vi} view={view} toTeach={toTeach} onGo={setTab} />}
             {tab === 'sim' && <Simulations token={token} vi={vi} canEdit={canEdit} />}
-            {tab === 'learn' && <Learn token={token} vi={vi} onChanged={() => setToTeach((n) => (n == null ? n : Math.max(0, n - 1)))} />}
+            {tab === 'learn' && <Learn token={token} vi={vi} canEdit={canEdit} onChanged={() => setToTeach((n) => (n == null ? n : Math.max(0, n - 1)))} />}
             {tab === 'overview' && <Overview token={token} vi={vi} view={view} onGo={setTab} />}
             {tab === 'teach' && <AiInstructionsTab token={token} vi={vi} />}
             {tab === 'persona' && <Persona brain={brain} patch={patch} vi={vi} canEdit={canEdit} />}
@@ -283,10 +283,21 @@ const fmtWhen = (iso: string | null | undefined, vi: boolean) => (iso ? new Date
 /** Tổng quan: what to do next, then how the AI is doing (the same report as the Messenger page — one set of numbers). */
 function Home({ token, vi, view, toTeach, onGo }: { token: string | null; vi: boolean; view: View; toTeach: number | null; onGo: (t: Tab) => void }) {
   const connected = view.channels.messenger.connected || (view.channels.voice.provisioned && view.channels.voice.enabled);
+  // The last customer simulation: never run, or run before the brain was last saved → worth running again.
+  const [sim, setSim] = useState<{ at: string; passed: number; total: number } | null | undefined>(undefined);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ at: string; passed: number; total: number } | null>('/ai-brain/simulations', { token }).then((r) => setSim(r && r.at ? r : null)).catch(() => setSim(undefined));
+  }, [token]);
+  const simStale = sim === null || (!!sim && !!view.brain.updatedAt && Date.parse(sim.at) < Date.parse(view.brain.updatedAt));
   const steps: { title: string; sub: string; action: string; primary?: boolean; go?: Tab; href?: string }[] = [];
   if (!connected) steps.push({ title: L(vi, 'AI chưa nối với kênh nào', 'The AI is not connected to any channel'), sub: L(vi, 'Nối Facebook Page, Instagram, Zalo hoặc hotline để AI bắt đầu trả lời khách.', 'Connect the Facebook Page, Instagram, Zalo or the hotline so the AI can start answering.'), action: L(vi, 'Nối kênh', 'Connect'), primary: true, href: '/salon/messenger' });
   if ((toTeach ?? 0) > 0) steps.push({ title: L(vi, `${toTeach} câu khách hỏi mà AI chưa biết`, `${toTeach} questions the AI could not answer`), sub: L(vi, 'Trả lời một lần, AI tự trả lời cho mọi khách sau. Có nút “AI soạn giúp”.', 'Answer once and the AI answers every customer after. “Draft with AI” is there to help.'), action: L(vi, 'Dạy AI', 'Teach the AI'), primary: true, go: 'learn' });
   steps.push({ title: L(vi, 'Xem lại câu AI trả lời “Chưa thấy nguồn”', 'Review replies marked “No source found”'), sub: L(vi, 'Trong Hộp thư, câu AI nói một con số mà không có nguồn sẽ có nút màu cam. Sai thì bấm “Sửa”.', 'In the Inbox, a reply that states a number with nothing behind it carries an amber chip. Press “Fix” if it is wrong.'), action: L(vi, 'Mở Hộp thư', 'Open the Inbox'), href: '/salon/inbox' });
+  if (connected && simStale) steps.push({
+    title: sim ? L(vi, 'Cài đặt AI đã đổi từ lần mô phỏng trước', 'The AI settings changed since the last simulation') : L(vi, 'Chưa chạy mô phỏng khách lần nào', 'The customer simulations have never run'),
+    sub: sim ? L(vi, `Lần trước đạt ${sim.passed}/${sim.total}. Chạy lại để chắc thay đổi mới không làm hỏng cách AI trả lời.`, `Last run passed ${sim.passed}/${sim.total}. Run it again to make sure the change broke nothing.`) : L(vi, '20 khách ảo thử AI của tiệm trong 1–2 phút: có bịa thông tin không, có ép khách không, có báo “đã đặt” khi chưa đặt không.', 'Twenty scripted customers try the salon’s AI in 1–2 minutes: invented facts, pushing, “booked” without a booking.'),
+    action: L(vi, 'Chạy mô phỏng', 'Run it'), go: 'sim' });
   steps.push({ title: L(vi, 'Thử AI như một khách hàng', 'Try the AI as a customer would'), sub: L(vi, 'Hỏi thử giá, giờ mở cửa, đặt lịch — xem AI trả lời thế nào trước khi khách hỏi.', 'Ask about prices, hours, a booking — see how it answers before a customer does.'), action: L(vi, 'Thử AI', 'Try it'), go: 'sandbox' });
   return (
     <div>
@@ -395,9 +406,54 @@ function Simulations({ token, vi, canEdit }: { token: string | null; vi: boolean
 }
 
 /** Cần dạy: the questions waiting for an answer — the AI drafts, the owner approves. */
-function Learn({ token, vi, onChanged }: { token: string | null; vi: boolean; onChanged: () => void }) {
+function Learn({ token, vi, canEdit, onChanged }: { token: string | null; vi: boolean; canEdit: boolean; onChanged: () => void }) {
+  // Old notes that say something different from the linked documents (found by the last "Kiểm tra AI").
+  const [t, setT] = useState<KTest | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<KTest | null>('/ai-brain/knowledge-test', { token }).then(setT).catch(() => setT(null));
+  }, [token]);
+  const open = (t?.conflicts ?? []).filter((c) => !c.off && c.label);
+  const turnOff = async () => {
+    setBusy(true); setNote(null);
+    try {
+      const r = await apiFetch<{ turnedOff: string[] }>('/ai-brain/knowledge-test/turn-off-conflicts', { method: 'POST', token });
+      setNote(r.turnedOff.length ? L(vi, `Đã tắt ${r.turnedOff.length} ghi chú cũ: ${r.turnedOff.join(', ')}.`, `Turned off ${r.turnedOff.length} old notes: ${r.turnedOff.join(', ')}.`) : L(vi, 'Không còn ghi chú nào cần tắt.', 'Nothing left to turn off.'));
+      setT(await apiFetch<KTest | null>('/ai-brain/knowledge-test', { token }));
+    } catch (e) { setNote(e instanceof Error ? e.message : 'Error'); }
+    finally { setBusy(false); }
+  };
   return (
     <div>
+      {open.length > 0 && (
+        <div style={{ ...ui.card, borderColor: 'var(--ink-warn)', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', flex: '1 1 240px' }}>{L(vi, `${open.length} ghi chú cũ nói khác tài liệu mới`, `${open.length} old notes disagree with the documents`)}</div>
+            {canEdit && <button type="button" onClick={turnOff} disabled={busy} style={{ ...ui.primaryBtn, minHeight: 44, opacity: busy ? 0.6 : 1 }}>{busy ? '…' : L(vi, `Tắt ${open.length} ghi chú cũ`, `Turn off ${open.length} old notes`)}</button>}
+          </div>
+          <p style={{ fontSize: 12.5, color: 'var(--c94a3b8)', margin: '6px 0 10px', lineHeight: 1.5 }}>
+            {L(vi, 'AI vẫn trả lời theo tài liệu (link) mới, nhưng ghi chú cũ làm AI dễ nhầm. Tắt ghi chú cũ không xoá nó — bật lại được ở thẻ Kiến thức.', 'The AI follows the documents (links), but an old note makes mistakes more likely. Turning a note off does not delete it — switch it back on under Knowledge.')}
+          </p>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {open.map((c, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+                <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--c94a3b8)' }}>{L(vi, 'GHI CHÚ CŨ', 'OLD NOTE')}{c.label ? ` · ${c.label}` : ''}</div>
+                  <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', marginTop: 2, overflowWrap: 'anywhere' }}>{c.old}</div>
+                </div>
+                <div style={{ border: '1px solid var(--ink-good)', borderRadius: 10, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-good)' }}>{L(vi, 'TÀI LIỆU MỚI (LINK)', 'THE DOCUMENT (LINK)')}</div>
+                  <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', marginTop: 2, overflowWrap: 'anywhere' }}>{c.doc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {t?.at && <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8 }}>{L(vi, `Tìm thấy ở lần Kiểm tra AI ${fmtWhen(t.at, vi)}. Chạy lại ở Kiến thức › Học từ link để cập nhật.`, `Found by the AI check of ${fmtWhen(t.at, vi)}. Run it again under Knowledge › Learn from links to refresh.`)}</div>}
+        </div>
+      )}
+      {note && <div role="status" style={{ ...ui.banner, marginBottom: 12 }}>{note}</div>}
       <p style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', margin: '0 0 12px', lineHeight: 1.5 }}>
         {L(vi, 'Mở một câu, bấm “AI soạn giúp” để AI soạn từ câu nhân viên đã trả lời hoặc từ ghi chú, tài liệu của tiệm. Đọc lại rồi bấm “Lưu cho bot”: AI biết ngay từ tin nhắn kế tiếp.',
           'Open a question and press “Draft with AI”: it drafts from the staff reply or the salon’s own notes and documents. Read it, then press “Teach the bot” — the AI knows it from the next message.')}

@@ -1,3 +1,4 @@
+import { docsForVoice } from '../ai-brain/knowledge-sources';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { aiPriceText } from '../common/price-label';
@@ -1318,6 +1319,10 @@ export class VoiceService implements OnModuleInit {
         : Promise.resolve([] as { id: string; firstName: string; lastName: string | null }[]),
     ]);
     const facts = factsText;
+    // The business's own documents (Học từ link) — the hotline used to answer
+    // without them, so chat quoted the price list and the phone did not.
+    // This salon's documents only, cut for a phone call (docsForVoice).
+    const docs = this.brain ? docsForVoice(await this.brain.docsFor(tenantId).catch(() => '')) : '';
     const ownerNote = (blocks ? blocks.rules : [sharedText, String(aiInstruction ?? '').trim()].filter(Boolean).join('\n')).slice(0, 4000);
     const asks = asksRaw as unknown as AskRow[];
     const menuLocale = localeRow.locale;
@@ -1350,7 +1355,7 @@ export class VoiceService implements OnModuleInit {
       : 'No services are configured yet; take a message and tell them someone will call back.';
 
 
-    return { persona, salonName, tz, infoBlock, blocks, facts, ownerNote, servicesBlock, groupMode, staff, menu, ownerAll: ownerTurn?.all ?? null };
+    return { persona, salonName, tz, infoBlock, blocks, facts, docs, ownerNote, servicesBlock, groupMode, staff, menu, ownerAll: ownerTurn?.all ?? null };
   }
 
   /** "KNOWN CALLER: …" — the caller's record and memory, or '' for a new number. */
@@ -1388,7 +1393,7 @@ export class VoiceService implements OnModuleInit {
     // Everything about the salon is read ONCE per call (call-cache.ts): the
     // first turn loads it, every later turn starts the model straight away.
     const sc = await this.callCache.get(tenantId, callSid, `agent:${brainLang}`, () => this.loadAgentContext(tenantId, aiInstruction, brainLang));
-    const { persona, salonName, tz, infoBlock, blocks, facts, ownerNote, servicesBlock, groupMode, staff, menu } = sc;
+    const { persona, salonName, tz, infoBlock, blocks, facts, docs, ownerNote, servicesBlock, groupMode, staff, menu } = sc;
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     // The owner's instructions: the list is the call's (loaded above); which of
     // them THIS sentence is about is pure matching, no database.
@@ -1442,7 +1447,7 @@ Speak times naturally ("two thirty PM on Friday"). Interpret "today/tomorrow/thi
 Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours.
 When the conversation is finished — they've booked and have nothing else, or their question is answered, or they say goodbye — call end_call. ${canTransfer ? 'If the caller asks for a real person — a staff member, the owner, a manager, "someone at the ' + persona.venueNoun + '" — or is upset and wants a human, do not argue or keep them: say ONE short sentence that you are connecting them now (no goodbye), and call transfer_to_human. If they ask something you cannot answer from what you were given here (never guess), say you are not sure and offer to connect them to the front desk; if they say yes, call transfer_to_human.' : 'If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. If they ask something you cannot answer from what you were given here, never guess: say a staff member will call them back with the answer.'} Never ask for payment or card details.
 ${blocks?.persona ? blocks.persona + '\n' : ''}${servicesBlock}
-${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\n' + facts + '\n' : ''}${ownerRules}${blocks?.booking ? blocks.booking + '\n' : ''}${blocks ? blocks.handoffNote + '\n' : ''}If you cannot help with something — a question not answered here, a request the ${persona.venueNoun} must handle — call request_callback with a one-line summary; a team member calls back. Never end the call on your own because you are stuck.${owner?.block ? `\n${owner.block}\nOn the phone: say an instruction's answer in one or two short spoken sentences.` : ''}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
+${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\n' + facts + '\n' : ''}${docs ? docs + '\n' : ''}${ownerRules}${blocks?.booking ? blocks.booking + '\n' : ''}${blocks ? blocks.handoffNote + '\n' : ''}If you cannot help with something — a question not answered here, a request the ${persona.venueNoun} must handle — call request_callback with a one-line summary; a team member calls back. Never end the call on your own because you are stuck.${owner?.block ? `\n${owner.block}\nOn the phone: say an instruction's answer in one or two short spoken sentences.` : ''}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
     // THIS CALL, THIS TURN — never cached.
     const turnPart = [
       `THIS CALL: ${callerLine}`,

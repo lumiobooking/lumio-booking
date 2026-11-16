@@ -5,7 +5,7 @@
  * and an upload error must say what to change.
  */
 import { generateKeyPairSync } from 'crypto';
-import { normalizePrivateKey, readSftpEnv, sftpErrorHint } from './sftp-config';
+import { normalizePrivateKey, readSandboxMirror, readSftpEnv, sftpErrorHint } from './sftp-config';
 import { allowedCountries, lintTenant } from './feed-lint';
 import { buildServicesFeed, serviceDuration, type FeedTenant } from './feed';
 import { bookingLinkBlock } from './google-book.service';
@@ -115,5 +115,17 @@ describe('the region Google approved', () => {
     expect(bookingLinkBlock(lintTenant(au, { googleLinked: false, enabled: true, countries: ['US', 'CA'] }))).toMatch(/Chưa nối/);
     // a salon with no structured address is not judged by country
     expect(lintTenant(salon({ address: null, unstructuredAddress: '1 Main St, Austin' }), { googleLinked: true, enabled: true, countries: ['US', 'CA'] }).status).toBe('ready');
+  });
+});
+
+describe('readSandboxMirror', () => {
+  const main = { host: 'partnerupload.google.com', user: 'feeds-prod', key: 'K', port: 19321, dir: '/' };
+  it('copies to the sandbox user with the same host, key and folder', () => {
+    expect(readSandboxMirror({ RWG_SANDBOX_SFTP_USER: ' feeds-sbx ' }, main)).toEqual({ ...main, user: 'feeds-sbx' });
+  });
+  it('nothing when unset, same user, or no main config', () => {
+    expect(readSandboxMirror({}, main)).toBeNull();
+    expect(readSandboxMirror({ RWG_SANDBOX_SFTP_USER: 'feeds-prod' }, main)).toBeNull();
+    expect(readSandboxMirror({ RWG_SANDBOX_SFTP_USER: 'feeds-sbx' }, null)).toBeNull();
   });
 });

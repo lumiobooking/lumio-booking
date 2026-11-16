@@ -89,6 +89,21 @@ describe('the Google feed, salon by salon', () => {
     expect(svc.getLastRun()).toEqual(r);
   });
 
+  it('production run also copies the files to the sandbox user; a sandbox failure keeps the production upload', async () => {
+    const { svc } = build();
+    const saved = { ...process.env };
+    Object.assign(process.env, { RWG_SFTP_HOST: 'partnerupload.google.com', RWG_SFTP_USER: 'feeds-prod', RWG_SFTP_KEY: '-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----', RWG_SANDBOX_SFTP_USER: 'feeds-sbx' });
+    delete process.env.RWG_SANDBOX; delete process.env.NEXT_PUBLIC_RWG_SANDBOX;
+    const users: string[] = [];
+    (svc as unknown as { sftpUpload: unknown }).sftpUpload = async (c: { user: string }) => { users.push(c.user); if (c.user === 'feeds-sbx') throw new Error('sandbox down'); };
+    const r = await svc.runDaily(new Date('2026-11-16T03:10:00Z'), { links: false });
+    process.env = saved;
+    expect(users).toEqual(['feeds-prod', 'feeds-sbx']);
+    expect(r.uploaded).toBe(true);
+    expect(r.error).toBeUndefined();
+    expect(r.mirror).toEqual({ user: 'feeds-sbx', uploaded: false, error: 'sandbox down' });
+  });
+
   it('no salon ready: the nightly run uploads nothing; only an explicit withdraw sends empty feeds', async () => {
     const { svc } = build();
     delete process.env.RWG_SFTP_HOST;

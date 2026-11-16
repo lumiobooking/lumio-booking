@@ -75,6 +75,19 @@ export function readSftpEnv(env: Record<string, string | undefined>): { config: 
   return { config, missing, keyProblem, host, user, port, dir };
 }
 
+/**
+ * The SANDBOX copy while production is not launched yet. Google keeps scoring
+ * "Entity feeds ready in Sandbox" (feeds every day) and blocks the production
+ * tasks behind it, so after the switch to the production user the same files
+ * also go to the sandbox user — same host, port, folder and key, only the user
+ * differs (RWG_SANDBOX_SFTP_USER). Null when unset or the main user is that one.
+ */
+export function readSandboxMirror(env: Record<string, string | undefined>, main: SftpConfig | null): SftpConfig | null {
+  const user = (env.RWG_SANDBOX_SFTP_USER ?? '').trim();
+  if (!main || !user || user === main.user) return null;
+  return { ...main, user };
+}
+
 /** The SSH library's error → what to change, in Vietnamese for the agency screen. */
 export function sftpErrorHint(message: string): string {
   const m = String(message ?? '');

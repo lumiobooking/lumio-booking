@@ -8,7 +8,7 @@ import { AuditService } from '../audit/audit.service';
 import { toE164, dialCodeFor } from '../common/phone';
 import { namesMatch } from '../google-reviews/location-match';
 import { buildUpload, type FeedTenant } from './feed';
-import { readSftpEnv, sftpErrorHint, type SftpConfig } from './sftp-config';
+import { readSftpEnv, sftpErrorHint, type SftpConfig, readSandboxMirror } from './sftp-config';
 import { allowedCountries, cleanForFeed, isAllCaps, lintTenant, titleCase, type TenantLint } from './feed-lint';
 
 /**
@@ -37,7 +37,7 @@ const DEFAULT: GoogleBookSetting = { enabled: true };
 /** platform_config key of the last daily feed run. */
 const LAST_RUN_KEY = 'rwg_feed_last_run';
 
-export interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string; hint?: string; sandbox?: boolean; user?: string | null; withdrawn?: boolean }
+export interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string; hint?: string; sandbox?: boolean; user?: string | null; withdrawn?: boolean; /** The sandbox copy (readSandboxMirror). */ mirror?: { user: string; uploaded: boolean; error?: string } }
 export interface SftpTestResult { ok: boolean; at: string; host: string | null; user: string | null; port: number; dir: string; sandbox: boolean; files?: number; ms?: number; error?: string; hint?: string; missing?: string[] }
 
 /** Which Google environment the credentials point at — the agency sets RWG_SANDBOX=1 while on the sandbox user. */
@@ -325,6 +325,19 @@ export class GoogleBookService {
       await this.sftpUpload(env.config, files);
       report.uploaded = true;
       this.logger.log(`Uploaded ${files.length} feed files for ${ready.length} salons (${held.length} held back) to ${report.sandbox ? 'SANDBOX' : 'PRODUCTION'} as ${env.user}.`);
+      // Same files to the sandbox user until launch — its failure never undoes the production upload.
+      const mirror = report.sandbox ? null : readSandboxMirror(process.env, env.config);
+      if (mirror) {
+        report.mirror = { user: mirror.user, uploaded: false };
+        try {
+          await this.sftpUpload(mirror, files);
+          report.mirror.uploaded = true;
+          this.logger.log(`Also uploaded to SANDBOX as ${mirror.user}.`);
+        } catch (e) {
+          report.mirror.error = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+          this.logger.warn(`Sandbox copy failed: ${report.mirror.error}`);
+        }
+      }
     } catch (e) {
       report.error = (e instanceof Error ? e.message : String(e)).slice(0, 300);
       report.hint = sftpErrorHint(report.error);

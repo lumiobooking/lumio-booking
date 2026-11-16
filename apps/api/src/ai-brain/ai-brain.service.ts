@@ -21,7 +21,8 @@ import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLan
 import { AiInstructionsService, instructionChannel } from './instructions.service';
 import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, needsMeaning, type Instruction, type InstructionChannel } from './instructions';
 import { agentModel, forModel } from '../common/ai-model';
-import { REPLY_STYLE_RULE, tidyReply, cleanChoices, choicesAsText } from '../messenger/reply-style';
+import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, cleanChoices, choicesAsText, cleanCards, cardText, type PackageCard } from '../messenger/reply-style';
+import { ungroundedMoney } from '../messenger/price-grounding';
 import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
 import { browserHeaders } from '../common/browser-headers';
@@ -846,7 +847,25 @@ export class AiBrainService {
     const lastUser = msgs[msgs.length - 1].content;
     const insCh: InstructionChannel = opts.on ?? (channel === 'voice' ? 'voice' : 'messenger');
     const owner = this.instructions ? await this.instructions.forTurn(tenantId, insCh, lastUser, opts.instructions).catch(() => null) : null;
-    const system = `You are the ${channel === 'voice' ? 'phone receptionist' : 'booking assistant'} for "${tenant?.name ?? 'our salon'}". THIS IS A TEST CONVERSATION run by the salon's own staff: behave exactly as with a real customer, but no booking will be written.
+    // A sales page (Lumio's own agency page, say) is tried as it really runs:
+    // the sales flow, quoting from the documents, with package cards — not as
+    // a salon's booking desk.
+    const docs = await this.docsFor(tenantId).catch(() => '');
+    const conn: Row | null = channel === 'chat'
+      ? await Promise.resolve().then(() => this.db.messengerConnection.findUnique({ where: { tenantId }, select: { botMode: true, quotePolicy: true, bizIntro: true } as never })).catch(() => null)
+      : null;
+    const sales = conn?.botMode === 'sales';
+    const salesQuotes = sales && conn?.quotePolicy === 'facts' && !!docs;
+    const system = sales ? `You are a sales & customer-care team member of "${tenant?.name ?? 'our company'}"${conn?.bizIntro ? ` — ${conn.bizIntro}` : ''}. You chat on Messenger with business owners. THIS IS A TEST CONVERSATION run by the company's own staff: behave exactly as with a real customer, nothing is saved or sent.
+${pre.persona}
+${REPLY_STYLE_RULE}
+${salesQuotes ? SALES_FLOW_RULE : 'Prices are quoted by the team after they look at the shop: never state a price; ask for the shop name and city, then their name and phone.'}
+Your goal: answer from the documents, show one advantage that fits, and get the shop name + the customer's name + phone so a person can follow up. Never invent a package, price, discount, gift or free offer.
+${blocks.facts ? `Older notes (the documents win where they differ):\n${blocks.facts}` : ''}
+${docs}
+${blocks.rules ? `THE OWNER'S RULES — follow on every conversation:\n${blocks.rules}` : ''}
+The local time is ${nowLocal} (${tz}).
+${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n` : ''}${blocks.language}` : `You are the ${channel === 'voice' ? 'phone receptionist' : 'booking assistant'} for "${tenant?.name ?? 'our salon'}". THIS IS A TEST CONVERSATION run by the salon's own staff: behave exactly as with a real customer, but no booking will be written.
 ${pre.persona}
 ${channel === 'voice' ? 'Your words are read aloud: one or two short sentences, under 30 words, one question at a time, no lists or emoji.' : REPLY_STYLE_RULE}
 Collect what a booking needs (service, day and time, first name, phone), check the book with check_availability before offering a time, recap once and ask for a yes, then call create_booking.
@@ -854,7 +873,7 @@ ${blocks.booking}
 ${blocks.handoffNote}
 Menu (pass the code to the tools; never say a code aloud):\n${menuText || '(no services yet)'}
 ${blocks.facts ? `Salon notes:\n${blocks.facts}` : ''}
-${await this.docsFor(tenantId).catch(() => '')}
+${docs}
 ${blocks.rules ? `THE OWNER'S RULES — follow on every conversation:\n${blocks.rules}` : ''}
 ${this.memoryBlock(memory)}
 The salon's local time is ${nowLocal} (${tz}). Only state hours, prices and services given here.
@@ -866,10 +885,21 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
       { name: 'create_booking', description: 'Book after the customer said yes to the recap.', input_schema: { type: 'object', properties: { localDateTime: { type: 'string' }, people: { type: 'array', items: { type: 'object', properties: { firstName: { type: 'string' }, services: { type: 'array', items: { type: 'string' } } }, required: ['firstName', 'services'] } }, customerPhone: { type: 'string' } }, required: ['localDateTime', 'people'] } },
       { name: 'request_callback', description: 'Leave the desk a task when you cannot help.', input_schema: { type: 'object', properties: { reason: { type: 'string' }, summary: { type: 'string' } }, required: ['summary'] } },
       ...(channel === 'voice' ? [] : [{ name: 'offer_choices', description: 'Show 2–5 tap buttons under your reply, written as the customer\'s own words with no pronoun (max 20 characters each). Then write the reply without listing them.', input_schema: { type: 'object', properties: { options: { type: 'array', items: { type: 'string' } } }, required: ['options'] } }]),
+      ...(salesQuotes ? [{ name: 'send_package_card', description: 'Send the package you recommend (or every package of one group when they ask to see all / compare) as Messenger cards. Exact names and figures from the documents. After SUCCESS write at most two short lines and ONE question; never repeat the card.', input_schema: { type: 'object', properties: { packages: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, price: { type: 'string' }, tag: { type: 'string' }, points: { type: 'array', items: { type: 'string' } } }, required: ['name', 'price'] } } }, required: ['packages'] } }] : []),
     ];
+    // Sales pages answer a lead, not a booking: the booking tools are not theirs.
+    if (sales) tools.splice(0, 2);
     let choices: string[] = [];
-    // The reply as the customer sees it: no markdown, and the tap buttons under it.
-    const shown = (t: string) => { const r = channel === 'voice' ? t : tidyReply(t); return choices.length ? `${r}\n\n${choicesAsText(choices)}` : r; };
+    let cards: PackageCard[] = [];
+    // The reply as the customer sees it: no markdown, the cards it sent, the tap buttons under it.
+    // `reply` (one text) is what the knowledge test grades; the screen draws text, cards and buttons apart.
+    const textOf = (t: string) => (channel === 'voice' ? t : tidyReply(t));
+    const shown = (t: string) => [
+      cards.length ? cards.map((c) => `[${c.name} · ${c.price}${c.tag ? ` · ${c.tag}` : ''}${c.points?.length ? ` · ${c.points.join(' · ')}` : ''}]`).join('\n') : '',
+      textOf(t),
+      choices.length ? choicesAsText(choices) : '',
+    ].filter(Boolean).join('\n\n');
+    const parts = (t: string) => ({ text: textOf(t), choices, cards });
     const messages: Row[] = msgs.map((m) => ({ role: m.role, content: m.content }));
     const trace: string[] = [];
     const t0 = Date.now();
@@ -897,6 +927,12 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
             out = 'SUCCESS (TEST — nothing was written). Tell the customer it is booked, as you would for real.';
           } else if (b.name === 'request_callback') {
             out = 'NOTED (TEST — no task was created). Tell the customer the team will get back to them.';
+          } else if (b.name === 'send_package_card') {
+            const want = cleanCards((b.input as Row)?.packages);
+            const bad = ungroundedMoney(cardText(want), [docs, blocks.facts]);
+            if (!want.length) out = 'ERROR: give at least one package with its exact name and price.';
+            else if (bad.length) out = `ERROR: ${bad.join(', ')} is not a price in the documents. Use the exact figures, then call send_package_card again.`;
+            else { cards = [...cards, ...want].slice(0, 10); out = `SUCCESS (TEST) — ${want.length} card(s) shown. Write at most two short lines and ONE question; do not repeat the card.`; }
           } else if (b.name === 'offer_choices') {
             choices = cleanChoices((b.input as Row)?.options);
             out = choices.length >= 2 ? `OK — buttons ready: ${choices.join(' | ')}. Write the reply without listing them.` : 'ERROR: give 2–5 short options.';
@@ -927,11 +963,11 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
           const sameLang = chk.broken.every((i) => { const l = detectLanguage(i.text); return !l || l === lang; });
           const last = lastResort(chk.broken, chk.rewrite, sameLang);
           trace.push('blocked twice: replaced');
-          return { reply: shown(last || checkingLine(lang, owner.all)), lang, trace, ms: Date.now() - t0, check: { followed: !!last, corrected: true, draft: firstDraft ?? text, broken: firstBroken ?? brokenText, applied: chk.applied.map((i) => i.id) } };
+          return { reply: shown(last || checkingLine(lang, owner.all)), ...parts(last || checkingLine(lang, owner.all)), lang, trace, ms: Date.now() - t0, check: { followed: !!last, corrected: true, draft: firstDraft ?? text, broken: firstBroken ?? brokenText, applied: chk.applied.map((i) => i.id) } };
         }
-        return { reply: shown(text), lang, trace, ms: Date.now() - t0, check: { followed: true, corrected, draft: firstDraft, broken: firstBroken ?? [], applied: (chk?.applied ?? []).map((i) => i.id) } };
+        return { reply: shown(text), ...parts(text), lang, trace, ms: Date.now() - t0, check: { followed: true, corrected, draft: firstDraft, broken: firstBroken ?? [], applied: (chk?.applied ?? []).map((i) => i.id) } };
       }
-      return { reply: shown(text), lang, trace, ms: Date.now() - t0, check: null };
+      return { reply: shown(text), ...parts(text), lang, trace, ms: Date.now() - t0, check: null };
     }
     return { reply: '', lang, trace: [...trace, 'tool loop exhausted'], ms: Date.now() - t0, check: null };
   }

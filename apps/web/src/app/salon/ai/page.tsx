@@ -902,11 +902,55 @@ function Memory({ token, vi, canEdit }: { token: string | null; vi: boolean; can
 
 // ---------------------------------------------------------------- 7 · sandbox & logs
 
+interface SandboxCard { name: string; price: string; tag?: string; points?: string[] }
+
+/** At most two bubbles: everything but the last paragraph, then the last (where the question sits) — as Messenger shows it. */
+function bubblesOf(t: string): string[] {
+  const paras = String(t || '').trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (paras.length < 2 || t.trim().length < 80) return [String(t || '').trim()];
+  return [paras.slice(0, -1).join('\n\n'), paras[paras.length - 1]];
+}
+
+/** One AI turn drawn the way the customer sees it on Messenger: cards, up to two bubbles, tap buttons. */
+function BotTurn({ m, last, busy, onPick }: { m: { content: string; text?: string; choices?: string[]; cards?: SandboxCard[] }; last: boolean; busy: boolean; onPick: (c: string) => void }) {
+  const bubble = { background: 'var(--c111827)', color: 'var(--ce2e8f0)', border: '1px solid var(--line)', borderRadius: '14px 14px 14px 4px', padding: '8px 12px', fontSize: 14, whiteSpace: 'pre-line' as const, lineHeight: 1.5 };
+  const text = m.text ?? m.content;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {!!m.cards?.length && (
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+          {m.cards.map((c, k) => (
+            <div key={k} style={{ flex: '0 0 220px', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden', background: 'var(--c111827)' }}>
+              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                {c.tag && <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c94a3b8)' }}>{c.tag}</div>}
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{c.name}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#818cf8' }}>{c.price}</div>
+              </div>
+              {!!c.points?.length && <div style={{ padding: '8px 12px', fontSize: 12.5, lineHeight: 1.5, color: 'var(--ccbd5e1)', whiteSpace: 'pre-line' }}>{c.points.join('\n')}</div>}
+              <div style={{ borderTop: '1px solid var(--line)', padding: 8, textAlign: 'center', fontSize: 13, fontWeight: 700, color: '#818cf8' }}>Xem đủ quyền lợi</div>
+              <div style={{ borderTop: '1px solid var(--line)', padding: 8, textAlign: 'center', fontSize: 13, fontWeight: 700, color: '#818cf8' }}>So với gói khác</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {bubblesOf(text).map((b, k) => <div key={k} style={bubble}>{b}</div>)}
+      {!!m.choices?.length && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {m.choices.map((c) => (
+            <button key={c} type="button" disabled={!last || busy} onClick={() => onPick(c)}
+              style={{ minHeight: 34, padding: '0 12px', borderRadius: 999, border: '1px solid #818cf8', background: 'transparent', color: '#818cf8', fontSize: 13, fontWeight: 700, cursor: last ? 'pointer' : 'default', opacity: last ? 1 : 0.6, fontFamily: 'inherit' }}>{c}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Sandbox({ token, vi }: { token: string | null; vi: boolean }) {
   const mayTeach = canTeachAi(useAuth().user);
   const [teach, setTeach] = useState<{ question: string; reply: string; channel: InsChannel; source: { kind: 'session' | 'manual'; id: string | null }; context: { role: 'user' | 'assistant'; content: string }[] } | null>(null);
   const [channel, setChannel] = useState<'chat' | 'voice'>('chat');
-  const [msgs, setMsgs] = useState<{ role: 'user' | 'assistant'; content: string; trace?: string[]; ms?: number; lang?: string }[]>([]);
+  const [msgs, setMsgs] = useState<{ role: 'user' | 'assistant'; content: string; trace?: string[]; ms?: number; lang?: string; text?: string; choices?: string[]; cards?: SandboxCard[] }[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -921,14 +965,14 @@ function Sandbox({ token, vi }: { token: string | null; vi: boolean }) {
     apiFetch<Health>('/ai-brain/health?days=1', { token }).then((h) => setLabels(h.labels)).catch(() => undefined);
   }, [token, filter]);
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (typed?: string) => {
+    const text = (typed ?? input).trim();
     if (!text || busy) return;
     const next = [...msgs, { role: 'user' as const, content: text }];
     setMsgs(next); setInput(''); setBusy(true); setErr(null);
     try {
-      const r = await apiFetch<{ reply: string; lang: string; trace: string[]; ms: number }>('/ai-brain/sandbox', { method: 'POST', token, body: { channel, messages: next.map((m) => ({ role: m.role, content: m.content })) } });
-      setMsgs((m) => [...m, { role: 'assistant', content: r.reply || '…', trace: r.trace, ms: r.ms, lang: r.lang }]);
+      const r = await apiFetch<{ reply: string; lang: string; trace: string[]; ms: number; text?: string; choices?: string[]; cards?: SandboxCard[] }>('/ai-brain/sandbox', { method: 'POST', token, body: { channel, messages: next.map((m) => ({ role: m.role, content: m.content })) } });
+      setMsgs((m) => [...m, { role: 'assistant', content: r.reply || '…', trace: r.trace, ms: r.ms, lang: r.lang, text: r.text, choices: r.choices, cards: r.cards }]);
     } catch (e) { setErr(e instanceof Error ? e.message : 'Error'); }
     finally { setBusy(false); }
   };
@@ -949,9 +993,9 @@ function Sandbox({ token, vi }: { token: string | null; vi: boolean }) {
             {msgs.length === 0 && <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L(vi, 'Gõ như khách — tiếng nào cũng được. Ví dụ: "Hola, ¿cuánto cuesta un full set?"', 'Type as a customer, in any language. E.g. "Hola, ¿cuánto cuesta un full set?"')}</div>}
             {msgs.map((m, i) => (
               <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
-                <div style={m.role === 'user'
-                  ? { background: '#6366f1', color: '#fff', borderRadius: '14px 14px 4px 14px', padding: '8px 12px', fontSize: 14 }
-                  : { background: 'var(--c111827)', color: 'var(--ce2e8f0)', border: '1px solid var(--line)', borderRadius: '14px 14px 14px 4px', padding: '8px 12px', fontSize: 14 }}>{m.content}</div>
+                {m.role === 'user'
+                  ? <div style={{ background: '#6366f1', color: '#fff', borderRadius: '14px 14px 4px 14px', padding: '8px 12px', fontSize: 14, whiteSpace: 'pre-line' }}>{m.content}</div>
+                  : <BotTurn m={m} last={i === msgs.length - 1} busy={busy} onPick={(c) => void send(c)} />}
                 {m.role === 'assistant' && (m.trace?.length || m.ms) ? <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 3 }}>↳ {m.lang?.toUpperCase()} · {m.ms} ms{m.trace?.length ? ` · ${m.trace.join(' · ')}` : ''}</div> : null}
                 {m.role === 'assistant' && mayTeach && (
                   <button type="button" onClick={() => {
@@ -967,7 +1011,7 @@ function Sandbox({ token, vi }: { token: string | null; vi: boolean }) {
           {err && <div style={{ fontSize: 13, color: 'var(--ink-bad)', marginTop: 6 }}>{err}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); }} placeholder={L(vi, 'Gõ như khách…', 'Type as a customer…')} style={{ ...ui.input, flex: 1 }} />
-            <button type="button" disabled={busy} onClick={send} style={ui.primaryBtn}>{busy ? '…' : L(vi, 'Gửi', 'Send')}</button>
+            <button type="button" disabled={busy} onClick={() => void send()} style={ui.primaryBtn}>{busy ? '…' : L(vi, 'Gửi', 'Send')}</button>
           </div>
         </Card>
         <Card title={L(vi, 'Nhật ký cuộc trò chuyện', 'Conversation log')} hint={L(vi, 'Mỗi cuộc gọi, mỗi hội thoại: kết quả và lý do kết thúc. Bấm để xem lại.', 'Every call and chat: the outcome and why it ended. Tap to review.')}>

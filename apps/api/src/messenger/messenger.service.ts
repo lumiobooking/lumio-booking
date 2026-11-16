@@ -9,6 +9,7 @@ import { chosenIndustry, personaFor } from '../common/business-persona';
 import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
 import { ungroundedMoney, priceCorrection, priceHoldLine } from './price-grounding';
 import { briefPrompt, briefTranscript, canBrief, parseBrief, type BriefTurn, type HandoffBrief } from './handoff-brief';
+import { SURVEY_KEY, shouldAskSurvey, surveyAnswer, surveyAsk, surveyBadPush, surveyPending, surveySettingFrom, surveyThanks, type SurveyRating, type SurveyTurn } from './chat-survey';
 import { buildTrace, traceFrom, type ReplyTrace, type TraceCandidate } from './reply-trace';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
@@ -115,6 +116,8 @@ type Turn = {
   sendError?: string | null;
   /** What this AI reply was built from (./reply-trace) — staff Inbox only. */
   why?: ReplyTrace | null;
+  /** The one-tap survey (./chat-survey): 'ask' on our question, the rating on the customer's answer. */
+  survey?: 'ask' | SurveyRating;
   /**
    * A reply Meta refused seconds after the customer wrote ("outside of allowed
    * window"): kept and sent again on a schedule (send-errors FRESH_RETRY_AFTER_MIN)
@@ -3418,6 +3421,39 @@ export class MessengerService implements OnModuleInit {
   }
 
   /** Add what a photo said to turns already written on arrival (see replyAndRecord). */
+  /** The customer's survey tap, when its turn was already written on arrival: the rating goes on that turn. */
+  private async markSurveyAnswer(threadId: string, rids: Set<string>, text: string, rating: SurveyRating): Promise<void> {
+    const live = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { history: true } });
+    const hist = (Array.isArray(live?.history) ? live!.history : []) as Turn[];
+    let at = -1;
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const t = hist[i];
+      if (t?.role === 'user' && ((t.rid && rids.has(t.rid)) || t.content === text)) { at = i; break; }
+      if (t?.role === 'assistant' && t.survey === 'ask') break;
+    }
+    if (at < 0) return;
+    const next = hist.map((t, i) => (i === at ? { ...t, survey: rating } : t));
+    await this.prisma.messengerThread.update({ where: { id: threadId }, data: { history: next as unknown as Prisma.InputJsonValue } });
+  }
+
+  /** Is the one-tap survey switched on for THIS salon (setting `chat_survey`)? Off unless saved on. */
+  private async surveyOn(tenantId: string): Promise<boolean> {
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: SURVEY_KEY } } }).catch(() => null);
+    return surveySettingFrom(row?.value).on;
+  }
+
+  async getChatSurvey(user: AuthenticatedUser): Promise<{ on: boolean; ask: { vi: { text: string; choices: string[] }; en: { text: string; choices: string[] } } }> {
+    return { on: await this.surveyOn(this.tenantId(user)), ask: { vi: surveyAsk(true), en: surveyAsk(false) } };
+  }
+
+  async setChatSurvey(user: AuthenticatedUser, on: boolean): Promise<{ on: boolean }> {
+    const tenantId = this.tenantId(user);
+    const value = JSON.stringify({ on: on === true });
+    await this.prisma.setting.upsert({ where: { tenantId_key: { tenantId, key: SURVEY_KEY } }, create: { tenantId, key: SURVEY_KEY, value }, update: { value } });
+    await this.audit(tenantId, on === true ? 'messenger.chat_survey_on' : 'messenger.chat_survey_off').catch(() => undefined);
+    return { on: on === true };
+  }
+
   private async noteOnTurns(threadId: string, rids: Set<string>, note: string): Promise<void> {
     const live = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { history: true } });
     const hist = (Array.isArray(live?.history) ? live!.history : []) as Turn[];
@@ -3888,6 +3924,23 @@ export class MessengerService implements OnModuleInit {
     // What the photo said was read just now; the turn it belongs to was
     // written before that, so the note is added to it in place.
     if (arrived.length && photoNote) await this.noteOnTurns(threadId, ridSet, photoNote).catch(() => undefined);
+    // The one-tap survey (./chat-survey): a tap on one of its three buttons
+    // while the question is open is a rating — kept on the turn, thanked in
+    // one line, no model. Anything else is a message like any other.
+    const rating = inImages.length ? null : surveyAnswer(text);
+    if (rating && surveyPending(prior as SurveyTurn[], Date.now())) {
+      const sCh = (fresh as unknown as { channel?: string }).channel;
+      const sVi = conversationLang([...prior.filter((h) => h.role === 'user').map((h) => String(h.content ?? '')), text]) !== 'en';
+      const thanks = surveyThanks(rating, sVi);
+      const inAtS = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+      if (userAlready) await this.markSurveyAnswer(threadId, ridSet, text, rating).catch(() => undefined);
+      const sentS = await this.sendText(conn.pageToken, senderId, thanks, sCh === 'zalo' ? 'zalo' : sCh === 'web' ? 'web' : undefined, conn.tenantId);
+      const thanksTurn: Turn = sentS.ok ? { role: 'assistant', content: thanks, at: new Date().toISOString() } : { role: 'assistant', content: thanks, at: new Date().toISOString(), failed: true, sendError: sentS.error ?? null };
+      await this.appendTurns(threadId, history, this.threadSummary(fresh), userAlready ? [thanksTurn] : [{ role: 'user', content: text, at: inAtS, survey: rating }, thanksTurn]);
+      if (rating === 'bad') void this.push.sendToTenant(conn.tenantId, surveyBadPush((fresh as unknown as { senderName?: string | null }).senderName ?? null, sVi)).catch(() => undefined);
+      this.events.publish(conn.tenantId, 'message');
+      return;
+    }
     // The same words for the third time in half an hour get no answer; the fifth
     // time the thread goes to Spam (./burst repeatVerdict). A photo is never a repeat.
     // Only a question that WAS answered (a delivered reply after an earlier copy) counts as a repeat.
@@ -4193,6 +4246,13 @@ export class MessengerService implements OnModuleInit {
     const newTurns: Turn[] = userAlready
       ? [...photoTurns, outTurn]
       : [{ role: 'user', content: text, at: inAt, ...imgTurn }, ...photoTurns, outTurn];
+    // The AI booked a visit in this chat and the salon switched the survey on:
+    // one question, three taps, at most once in 30 days (./chat-survey).
+    if (sent.ok && agentCtx?.booked?.id && shouldAskSurvey({ on: await this.surveyOn(conn.tenantId).catch(() => false), booked: true, history: history as SurveyTurn[], nowMs: Date.now() })) {
+      const q = surveyAsk(conversationLang([...history.filter((h) => h.role === 'user').map((h) => String(h.content ?? '')), text]) !== 'en');
+      const sentQ = await this.sendText(conn.pageToken, senderId, q.text, freshCh === 'zalo' ? 'zalo' : freshCh === 'web' ? 'web' : undefined, conn.tenantId, undefined, { choices: q.choices }).catch(() => ({ ok: false }));
+      if (sentQ.ok) newTurns.push({ role: 'assistant', content: `${q.text}\n\n${choicesAsText(q.choices)}`, at: new Date(Date.now() + 1).toISOString(), survey: 'ask' });
+    }
     await this.appendTurns(threadId, history, memory, newTurns);
 
     // The brain's bookkeeping (ai-brain): what this customer is in the middle

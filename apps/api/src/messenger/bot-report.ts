@@ -15,6 +15,8 @@
  */
 import { nudgeKindFor, type StoredTurn } from './followup';
 
+import { surveyStats, type SurveyStats, type SurveyTurn } from './chat-survey';
+
 export interface ReportThread {
   id: string; channel: string; handoff: boolean; customerId: string | null;
   lastMessageAt: Date | null; history: StoredTurn[];
@@ -35,6 +37,8 @@ export interface BotReport {
    */
   selfHandled: number;
   selfHandledRate: number | null;
+  /** The one-tap survey after an AI booking (./chat-survey): asked and answered in the period. */
+  survey: SurveyStats;
   medianMinutesToBook: number | null;
   stoppedAt: Record<Stop, number>;
   byChannel: Record<string, { conversations: number; booked: number }>;
@@ -97,6 +101,7 @@ export function botReport(o: {
     from: o.from.toISOString(), to: o.to.toISOString(),
     conversations, booked, bookingRate: rate, medianMinutesToBook: median,
     selfHandled, selfHandledRate: conversations ? selfHandled / conversations : null,
+    survey: surveyStats(o.threads as unknown as { history: SurveyTurn[] }[], f, t),
     stoppedAt, byChannel,
     unanswered: { open: o.gapsOpen, newInPeriod: o.gapsNew },
     tips: tipsFor({ conversations, rate, stoppedAt, gapsOpen: o.gapsOpen }),

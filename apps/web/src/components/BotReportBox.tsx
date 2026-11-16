@@ -13,7 +13,8 @@ import { ui } from '../lib/ui';
 import { ind } from '../lib/ui-industry';
 
 interface Report {
-  days: number; conversations: number; booked: number; bookingRate: number | null; selfHandled?: number; selfHandledRate?: number | null; medianMinutesToBook: number | null;
+  days: number; conversations: number; booked: number; bookingRate: number | null; selfHandled?: number; selfHandledRate?: number | null;
+  survey?: { asked: number; answered: number; good: number; ok: number; bad: number; happyRate: number | null }; medianMinutesToBook: number | null;
   stoppedAt: Record<'time' | 'contact' | 'confirm' | 'general' | 'noReply' | 'human', number>;
   byChannel: Record<string, { conversations: number; booked: number }>;
   unanswered: { open: number; newInPeriod: number };
@@ -34,6 +35,21 @@ export function BotReportBox({ token, vi }: { token: string | null; vi: boolean 
   const [days, setDays] = useState(30);
   const [r, setR] = useState<Report | null>(null);
   const [err, setErr] = useState(false);
+  // The one-tap survey after an AI booking: this salon's switch (owner / manager only — a 403 just hides it).
+  const [survey, setSurvey] = useState<{ on: boolean; ask: { vi: { text: string; choices: string[] }; en: { text: string; choices: string[] } } } | null>(null);
+  const [savingSurvey, setSavingSurvey] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<NonNullable<typeof survey>>('/messenger/chat-survey', { token }).then(setSurvey).catch(() => setSurvey(null));
+  }, [token]);
+  async function toggleSurvey() {
+    if (!survey || savingSurvey) return;
+    setSavingSurvey(true);
+    try {
+      const out = await apiFetch<{ on: boolean }>('/messenger/chat-survey', { method: 'POST', token, body: { on: !survey.on } });
+      setSurvey({ ...survey, on: out.on });
+    } catch { /* stays as it was */ } finally { setSavingSurvey(false); }
+  }
   const L = (v: string, e: string) => ind(vi ? v : e);
 
   useEffect(() => {
@@ -98,6 +114,35 @@ export function BotReportBox({ token, vi }: { token: string | null; vi: boolean 
               {Object.entries(r.byChannel).map(([ch, v]) => (
                 <span key={ch}>{CH[ch] ?? ch}: <b style={{ color: 'var(--ce2e8f0)' }}>{v.booked}/{v.conversations}</b></span>
               ))}
+            </div>
+          )}
+
+          {survey && (
+            <div style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 10, display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{L('Hỏi khách sau khi AI đặt lịch', 'Ask the customer after an AI booking')}</div>
+                <button type="button" role="switch" aria-checked={survey.on} onClick={() => void toggleSurvey()} disabled={savingSurvey}
+                  style={{ marginLeft: 'auto', minHeight: 30, padding: '0 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${survey.on ? '#6366f1' : 'var(--c475569)'}`, background: survey.on ? 'var(--c312e81)' : 'transparent', color: 'var(--ce2e8f0)' }}>
+                  {savingSurvey ? '…' : survey.on ? L('Đang bật', 'On') : L('Đang tắt — bấm để bật', 'Off — tap to turn on')}
+                </button>
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+                {L('Ngay sau khi AI đặt xong lịch trong cuộc chat, khách nhận một câu hỏi với ba nút bấm. Mỗi khách tối đa một lần trong 30 ngày.', 'Right after the AI books a visit in the chat, the customer gets one question with three buttons. At most once per customer every 30 days.')}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 12.5 }}>
+                <span style={{ color: 'var(--ce2e8f0)' }}>“{(vi ? survey.ask.vi : survey.ask.en).text}”</span>
+                {(vi ? survey.ask.vi : survey.ask.en).choices.map((c) => (
+                  <span key={c} style={{ padding: '2px 10px', borderRadius: 999, border: '1px solid var(--c475569)', color: 'var(--ccbd5e1)' }}>{c}</span>
+                ))}
+              </div>
+              {r.survey && r.survey.asked > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+                  {tile(L('Khách hài lòng', 'Happy customers'), r.survey.happyRate == null ? '—' : `${Math.round(r.survey.happyRate * 100)}%`, L(`${r.survey.answered}/${r.survey.asked} khách trả lời`, `${r.survey.answered}/${r.survey.asked} answered`), 'var(--ink-good)')}
+                  {tile(L('Hài lòng', 'Great'), String(r.survey.good))}
+                  {tile(L('Bình thường', 'Okay'), String(r.survey.ok))}
+                  {tile(L('Chưa ổn', 'Not good'), String(r.survey.bad), undefined, r.survey.bad ? 'var(--ink-warn)' : undefined)}
+                </div>
+              )}
             </div>
           )}
 

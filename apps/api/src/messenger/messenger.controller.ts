@@ -308,6 +308,17 @@ export class MessengerController {
     return this.svc.importFacts(user, dto || {});
   }
 
+  /** The one-tap survey after an AI booking (chat-survey): this salon's switch. Owner's call — it changes what customers are sent. */
+  @Get('chat-survey')
+  chatSurvey(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.getChatSurvey(user);
+  }
+
+  @Post('chat-survey')
+  setChatSurvey(@CurrentUser() user: AuthenticatedUser, @Body() dto: { on?: boolean }) {
+    return this.svc.setChatSurvey(user, dto?.on === true);
+  }
+
   @Post('suggest-greeting')
   @UseGuards(FeaturePolicyGuard)
   @RequiresFeature('messengerAi')

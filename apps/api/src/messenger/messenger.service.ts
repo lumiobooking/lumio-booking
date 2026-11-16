@@ -10,6 +10,7 @@ import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
 import { ungroundedMoney, priceCorrection, priceHoldLine } from './price-grounding';
 import { briefPrompt, briefTranscript, canBrief, parseBrief, type BriefTurn, type HandoffBrief } from './handoff-brief';
 import { SURVEY_KEY, shouldAskSurvey, surveyAnswer, surveyAsk, surveyBadPush, surveyPending, surveySettingFrom, surveyThanks, type SurveyRating, type SurveyTurn } from './chat-survey';
+import { HardBudget, hardTurnReason, modelForTurn } from '../common/hard-turn';
 import { buildTrace, traceFrom, type ReplyTrace, type TraceCandidate } from './reply-trace';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
@@ -1749,6 +1750,9 @@ export class MessengerService implements OnModuleInit {
    * A receptionist reads the first messages while Meta is still being asked
    * about the rest.
    */
+  /** The stronger model's daily allowance, per salon (common/hard-turn). */
+  private readonly hardBudget = new HardBudget();
+
   /** A brief already written for this thread at this point of the conversation (never across salons: the key carries the tenant). */
   private readonly briefs = new Map<string, { at: number; brief: HandoffBrief }>();
 
@@ -5097,6 +5101,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       || customerWords.includes(PHOTO_SHOP)
       || hasIdentitySignal(String(ctx.memory ?? ''));
 
+    // Two-tier brain (common/hard-turn): a complaint, a group, a comparison or a
+    // long message runs on the stronger model — only when the platform named
+    // one, and within this salon's daily allowance. Otherwise undefined = the everyday model.
+    let turnModel = modelForTurn({ tenantId, reason: hardTurnReason(userText), budget: this.hardBudget });
+    if (turnModel) this.logger.log(`hard turn (${hardTurnReason(userText)}) → ${turnModel}`);
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       // One door to the model. Anthropic first; when it fails for a reason the
       // account owns — no credit, a dead key, an outage — and an OpenAI key is
@@ -5108,6 +5117,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         // A card call for several packages is long; 500 cut it off mid-way and nothing was sent.
         max_tokens: 1400,
         timeoutMs: 30_000,
+        ...(turnModel ? { model: turnModel } : {}),
       });
       // Counted whether it worked or not: a failing call still burns a
       // request, and a retry loop that costs money must be visible as one.
@@ -5206,6 +5216,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           }
           groundRetried = true;
           ctx.traceGuards?.push('price');
+          // A draft a guard sent back is rewritten by the stronger model, when there is one.
+          turnModel = turnModel ?? modelForTurn({ tenantId, reason: 'corrected', budget: this.hardBudget });
           this.logger.warn(`Reply blocked (price not in the sources: ${bad.join(', ')}): ${text.slice(0, 140)}`);
           messages.push({ role: 'assistant', content: blocks });
           messages.push({ role: 'user', content: priceCorrection(bad) });
@@ -5366,6 +5378,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           if (!ownerRetried) {
             ownerRetried = true;
             ctx.traceGuards?.push('instruction');
+            turnModel = turnModel ?? modelForTurn({ tenantId, reason: 'corrected', budget: this.hardBudget });
             this.logger.warn(`Reply blocked (owner instruction): ${text.slice(0, 140)}`);
             messages.push({ role: 'assistant', content: blocks });
             messages.push({ role: 'user', content: correctionFor(owner.all, chk.broken) });

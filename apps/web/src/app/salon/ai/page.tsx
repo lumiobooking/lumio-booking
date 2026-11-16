@@ -397,12 +397,81 @@ function Persona({ brain, patch, vi, canEdit }: { brain: Brain; patch: (fn: (b: 
   );
 }
 
+// ---------------------------------------------------------------- Học từ link
+
+interface LinkSource { id: string; url: string; label: string; on: boolean; preview: string; chars: number; fetchedAt: string | null; error: string | null; errorAt: string | null }
+
+/**
+ * "Học từ link": the business gives the AI a link (price list, menu, policy,
+ * a JSON feed); it is read now and every day after. When it disagrees with
+ * typed notes, the link wins. API: /ai-brain/sources (ai-brain/knowledge-sources).
+ */
+function LinkSources({ vi, canEdit, token, onCount }: { vi: boolean; canEdit: boolean; token: string | null; onCount: (n: number) => void }) {
+  const [items, setItems] = useState<LinkSource[] | null>(null);
+  const [max, setMax] = useState(5);
+  const [url, setUrl] = useState('');
+  const [label, setLabel] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [show, setShow] = useState<string | null>(null);
+  const take = (r: { items: LinkSource[]; max: number }) => { setItems(r.items); setMax(r.max); onCount(r.items.length); };
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ items: LinkSource[]; max: number }>('/ai-brain/sources', { token }).then(take).catch((e) => setErr(e instanceof Error ? e.message : String(e)));
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  const run = async (key: string, fn: () => Promise<{ items: LinkSource[]; max: number }>) => {
+    setBusy(key); setErr(null);
+    try { take(await fn()); } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+  };
+  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(vi ? 'vi-VN' : 'en-US', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>
+        {L(vi, 'Dán link bảng giá, menu, chính sách hoặc link dữ liệu (JSON). AI đọc ngay và tự đọc lại mỗi ngày — bạn chỉ cần sửa trang gốc, không phải nhập lại ở đây. Khi link nói khác ghi chú cũ, AI theo link.',
+          'Paste a link to a price list, menu, policy or a data feed (JSON). The AI reads it now and again every day — change the page itself, nothing to retype here. When the link disagrees with older notes, the AI follows the link.')}
+      </div>
+      {canEdit && (items?.length ?? 0) < max && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" aria-label={L(vi, 'Link', 'Link')} style={{ ...ui.input, flex: '2 1 280px' }} />
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={L(vi, 'Tên (vd: Bảng giá)', 'Name (e.g. Prices)')} aria-label={L(vi, 'Tên', 'Name')} maxLength={80} style={{ ...ui.input, flex: '1 1 160px' }} />
+          <button type="button" disabled={!url.trim() || !!busy} onClick={() => void run('add', async () => { const r = await apiFetch<{ items: LinkSource[]; max: number }>('/ai-brain/sources', { method: 'POST', token, body: { url: url.trim(), label: label.trim() } }); setUrl(''); setLabel(''); return r; })} style={{ ...kitPrimary, opacity: url.trim() ? 1 : 0.5 }}>
+            {busy === 'add' ? L(vi, 'Đang đọc…', 'Reading…') : `+ ${L(vi, 'Thêm & đọc', 'Add & read')}`}
+          </button>
+        </div>
+      )}
+      {err && <div style={ui.banner}>{err}</div>}
+      {items === null && !err && <span style={{ color: 'var(--c94a3b8)' }}>{L(vi, 'Đang tải…', 'Loading…')}</span>}
+      {items?.length === 0 && <Empty>{L(vi, 'Chưa có link nào. Dán link bảng giá của bạn ở trên.', 'No links yet. Paste your price list link above.')}</Empty>}
+      {items?.map((x) => (
+        <div key={x.id} style={{ border: '1px solid var(--line)', borderRadius: 14, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, opacity: x.on ? 1 : 0.6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <b style={{ fontSize: 14.5, color: 'var(--ce2e8f0)', flex: '1 1 200px', minWidth: 0 }}>{x.error && !x.chars ? '⚠️' : '✅'} {x.label}</b>
+            {canEdit && <Switch on={x.on} disabled={!!busy} onChange={() => void run(`on-${x.id}`, () => apiFetch('/ai-brain/sources/' + x.id, { method: 'PATCH', token, body: { on: !x.on } }))} label={L(vi, 'Đang dùng', 'In use')} />}
+          </div>
+          <a href={x.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: 'var(--ink-link)', wordBreak: 'break-all' }}>{x.url}</a>
+          <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+            {x.fetchedAt ? L(vi, `Đọc lúc ${when(x.fetchedAt)} · ${x.chars.toLocaleString()} chữ · tự đọc lại mỗi ngày`, `Read ${when(x.fetchedAt)} · ${x.chars.toLocaleString()} characters · re-read daily`) : L(vi, 'Chưa đọc được lần nào', 'Not read yet')}
+          </span>
+          {x.error && <span style={{ fontSize: 12.5, color: 'var(--ink-warn)' }}>⚠ {x.error}{x.chars ? L(vi, ' — AI vẫn dùng bản đọc được lần trước.', ' — the AI keeps using the last good read.') : ''}</span>}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setShow(show === x.id ? null : x.id)} style={kitGhost}>{show === x.id ? L(vi, 'Ẩn', 'Hide') : L(vi, 'Xem AI đọc được gì', 'What the AI read')}</button>
+            {canEdit && <button type="button" disabled={!!busy} onClick={() => void run(`r-${x.id}`, () => apiFetch('/ai-brain/sources/' + x.id + '/refresh', { method: 'POST', token }))} style={kitGhost}>{busy === `r-${x.id}` ? L(vi, 'Đang đọc…', 'Reading…') : `↻ ${L(vi, 'Đọc lại ngay', 'Read again now')}`}</button>}
+            {canEdit && <button type="button" disabled={!!busy} onClick={() => { if (window.confirm(L(vi, `Xoá link "${x.label}"? AI sẽ không dùng nội dung này nữa.`, `Remove "${x.label}"? The AI stops using it.`))) void run(`d-${x.id}`, () => apiFetch('/ai-brain/sources/' + x.id, { method: 'DELETE', token })); }} style={{ ...kitGhost, color: 'var(--ink-bad)' }}>{L(vi, 'Xoá', 'Remove')}</button>}
+          </div>
+          {show === x.id && <pre style={{ margin: 0, maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.5, background: 'var(--raised)', borderRadius: 10, padding: 10, color: 'var(--ccbd5e1)' }}>{x.preview || '—'}{x.chars > 4000 ? `\n… (+${(x.chars - 4000).toLocaleString()})` : ''}</pre>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- 3 · knowledge & rules
 
 function Knowledge({ brain, patch, vi, canEdit, token, pageConnected }: { brain: Brain; patch: (fn: (b: Brain) => Brain) => void; vi: boolean; canEdit: boolean; token: string | null; pageConnected: boolean }) {
   // Two pages instead of one endless one: the FAQ list (short rows, one opened
   // at a time to edit) and the free-text rules.
-  const [page, setPage] = useState<'faq' | 'rules'>('faq');
+  const [page, setPage] = useState<'faq' | 'rules' | 'links'>('faq');
+  const [linkCount, setLinkCount] = useState<number | null>(null);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<number | null>(null);
   const f = field(vi);
@@ -440,7 +509,9 @@ function Knowledge({ brain, patch, vi, canEdit, token, pageConnected }: { brain:
       </div>
 
       <SubTabs label={L(vi, 'Các trang kiến thức', 'Knowledge pages')} value={page} onChange={(v) => { setPage(v); setOpen(null); }}
-        tabs={[{ id: 'faq', label: L(vi, 'Câu hỏi thường gặp', 'FAQ'), count: facts.length }, { id: 'rules', label: L(vi, 'Quy tắc', 'Rules'), count: ruleLines }]} />
+        tabs={[{ id: 'faq', label: L(vi, 'Câu hỏi thường gặp', 'FAQ'), count: facts.length }, { id: 'rules', label: L(vi, 'Quy tắc', 'Rules'), count: ruleLines }, { id: 'links', label: L(vi, '🔗 Học từ link', '🔗 Learn from links'), count: linkCount ?? 0 }]} />
+
+      {page === 'links' && <LinkSources vi={vi} canEdit={canEdit} token={token} onCount={setLinkCount} />}
 
       {page === 'faq' && (
         <>

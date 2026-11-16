@@ -4840,8 +4840,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       : '';
     const crossMemoryBlock = ctx.crossMemory ? `\n${ctx.crossMemory}` : '';
     const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang)) + NO_REPLY_RULE;
+    // The business's own documents (Học từ link) — sales page and booking page alike.
+    const docs = this.brain ? await this.brain.docsFor(tenantId).catch(() => '') : '';
     const system = [
       { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
+      ...(docs ? [{ type: 'text', text: docs, cache_control: { type: 'ephemeral' } }] : []),
       { type: 'text', text: dynamicSystem },
     ];
     const PRICE_TOOLS = new Set(['quote_price', 'get_software_plans', 'send_price_cards']);
@@ -5852,7 +5855,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }
       if (name === 'get_pricing') {
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
-        return this.factsText(await this.factsOf(tenantId, conn), await this.tzOf(tenantId)) || 'No facts configured yet — do not state any price.';
+        // The business's own linked documents (Học từ link) come FIRST and win:
+        // the typed facts are often an older copy of the same price list.
+        const docs = this.brain ? await this.brain.docsFor(tenantId).catch(() => '') : '';
+        const facts = this.factsText(await this.factsOf(tenantId, conn), await this.tzOf(tenantId));
+        if (docs) return `${docs}\n\n--- Older typed notes (use ONLY for what the documents above do not cover; if a number differs, the documents win) ---\n${facts || '(none)'}`;
+        return facts || 'No facts configured yet — do not state any price.';
       }
       if (name === 'quote_price') {
         // Website-matched maths. Fixed rates, half-up rounding to WHOLE units,
@@ -5900,6 +5908,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }
       if (name === 'send_price_cards') {
         if (!ctx?.pageToken || !ctx?.senderId) return 'ERROR: cards unavailable in this context — answer in short text instead.';
+        // Cards are drawn from the typed facts. When the business keeps its
+        // price list at a link, those facts are the stale copy — a card would
+        // put the old price in front of the customer. Answer from the link.
+        if (this.brain && (await this.brain.docsFor(tenantId).catch(() => ''))) {
+          return 'CARDS OFF: this business keeps its price list in the linked documents in your instructions. Answer in short text, quoting the documents exactly. Do not mention cards.';
+        }
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
         const facts = (await this.factsOf(tenantId, conn)).filter((f) => f && f.on);
         const cat = String(input.category || 'all');

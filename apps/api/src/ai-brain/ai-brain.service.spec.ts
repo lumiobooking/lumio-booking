@@ -183,6 +183,32 @@ describe('callback tasks and the log of why it ended', () => {
     expect(h.slowTurns).toBe(1);
     expect(h.refusedBookings).toBe(1);
     expect((await svc.health(owner('tb'))).endReasons).toEqual({ error: 1 });
-    await expect(svc.sessionDetail(owner('tb'), (await svc.listSessions(owner('ta'), {}))[0].id)).rejects.toThrow(/not found/i);
+    await expect(svc.sessionDetail(owner('tb'), ((await svc.listSessions(owner('ta'), {}))[0] as unknown as { id: string }).id)).rejects.toThrow(/not found/i);
+  });
+});
+
+describe('links the AI learns from belong to one salon', () => {
+  const realFetch = global.fetch;
+  afterEach(() => { global.fetch = realFetch; });
+  it('reads a JSON price list for A only; B never sees it, cannot edit or delete it', async () => {
+    global.fetch = (async () => new Response(JSON.stringify({ packages: [{ name: 'Boost', price: 179 }] }), { status: 200, headers: { 'content-type': 'application/json' } })) as never;
+    const { svc, db } = build();
+    const a = await svc.addSource(owner('ta'), { url: 'https://example.com/api/public/pricing', label: 'Prices' });
+    expect(a.items).toHaveLength(1);
+    expect(a.items[0].chars).toBeGreaterThan(0);
+    const id = a.items[0].id;
+    expect(await svc.docsFor('ta')).toContain('Boost');
+    expect(await svc.docsFor('tb')).toBe('');
+    expect((await svc.listSources(owner('tb'))).items).toHaveLength(0);
+    await expect(svc.removeSource(owner('tb'), id)).rejects.toThrow();
+    await expect(svc.refreshSource(owner('tb'), id)).rejects.toThrow();
+    expect(db.setting.rows.filter((r: Row) => r.key === 'ai_brain_sources').map((r: Row) => r.tenantId)).toEqual(['ta']);
+    await svc.updateSource(owner('ta'), id, { on: false });
+    expect(await svc.docsFor('ta')).toBe('');
+  });
+  it('refuses internal addresses', async () => {
+    const { svc } = build();
+    await expect(svc.addSource(owner('ta'), { url: 'http://127.0.0.1/admin' })).rejects.toThrow();
+    await expect(svc.addSource(owner('ta'), { url: 'http://localhost:3000' })).rejects.toThrow();
   });
 });

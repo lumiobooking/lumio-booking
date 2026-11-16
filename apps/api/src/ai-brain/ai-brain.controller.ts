@@ -139,6 +139,33 @@ export class AiBrainController {
   @Delete('instructions/:id')
   deleteInstruction(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.instructions.remove(user, id); }
 
+  // ---- Học từ link: the business's own documents (./knowledge-sources). Reading: anyone with
+  // the screen; writing: owner / manager / Lumio, decided in the service.
+  @Get('sources')
+  listSources(@CurrentUser() user: AuthenticatedUser) { return this.brain.listSources(user); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature(...TEACH_KEYS)
+  @RateLimit(20, 60_000)
+  @Post('sources')
+  addSource(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.brain.addSource(user, { url: dto?.url, label: dto?.label }); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature(...TEACH_KEYS)
+  @RateLimit(30, 60_000)
+  @Post('sources/:id/refresh')
+  refreshSource(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.brain.refreshSource(user, id); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature(...TEACH_KEYS)
+  @Patch('sources/:id')
+  updateSource(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: Record<string, unknown>) { return this.brain.updateSource(user, id, { on: dto?.on, label: dto?.label }); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature(...TEACH_KEYS)
+  @Delete('sources/:id')
+  removeSource(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.brain.removeSource(user, id); }
+
   @Post('callbacks')
   addCallback(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.brain.ownerCallback(user, dto); }
 }

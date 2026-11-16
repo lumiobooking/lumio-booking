@@ -21,6 +21,9 @@ import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLan
 import { AiInstructionsService, instructionChannel } from './instructions.service';
 import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, needsMeaning, type Instruction, type InstructionChannel } from './instructions';
 import { agentModel, forModel } from '../common/ai-model';
+import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
+import { browserHeaders } from '../common/browser-headers';
+import { randomUUID } from 'crypto';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -79,6 +82,117 @@ export class AiBrainService {
     if (user.role === UserRole.SALON_ADMIN || user.role === UserRole.SUPER_ADMIN) return true;
     if (user.role === UserRole.STAFF && user.staffRole === StaffRole.MANAGER) return true;
     return false;
+  }
+
+  // ---------------------------------------------------------------- Học từ link (./knowledge-sources)
+
+  private readonly docsCache = new Map<string, { at: number; text: string }>();
+  private readonly refreshing = new Set<string>();
+
+  private async readSources(tenantId: string): Promise<KnowledgeSource[]> {
+    const row = await this.db.setting.findUnique({ where: { tenantId_key: { tenantId, key: SOURCES_KEY } } }).catch(() => null);
+    return sourcesFrom(row?.value);
+  }
+
+  private async writeSources(tenantId: string, list: KnowledgeSource[]): Promise<void> {
+    await this.db.setting.upsert({
+      where: { tenantId_key: { tenantId, key: SOURCES_KEY } },
+      update: { value: list },
+      create: { tenantId, key: SOURCES_KEY, value: list },
+    });
+    this.docsCache.delete(tenantId);
+  }
+
+  /** Read one link now. A failed read keeps the text from the last good read. */
+  private async fetchSource(src: KnowledgeSource): Promise<KnowledgeSource> {
+    const now = new Date().toISOString();
+    try {
+      const res = await fetch(src.url, { redirect: 'follow', headers: browserHeaders(), signal: AbortSignal.timeout(20_000) });
+      if (!res.ok) return { ...src, error: `Không đọc được (lỗi ${res.status})`, errorAt: now };
+      // A redirect must not land inside our own network either.
+      if (!cleanSourceUrl(res.url || src.url)) return { ...src, error: 'Link chuyển sang địa chỉ không được phép đọc.', errorAt: now };
+      const body = (await res.text()).slice(0, 1_000_000);
+      const text = docText(body, res.headers.get('content-type'));
+      if (text.trim().length < 20) return { ...src, error: 'Link không có đủ nội dung để đọc.', errorAt: now };
+      return { ...src, text, chars: text.length, fetchedAt: now, error: null, errorAt: null };
+    } catch (e) {
+      return { ...src, error: `Không đọc được (${String((e as Error)?.message ?? e).slice(0, 80)})`, errorAt: now };
+    }
+  }
+
+  async listSources(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const items = await this.readSources(tenantId);
+    return { items: items.map((s) => ({ ...s, text: undefined, preview: s.text.slice(0, 4000) })), canEdit: this.canEdit(user), max: MAX_SOURCES };
+  }
+
+  async addSource(user: AuthenticatedUser, dto: { url?: unknown; label?: unknown }) {
+    if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can change the AI brain');
+    const tenantId = this.tenantId(user);
+    const url = cleanSourceUrl(dto.url);
+    if (!url) throw new BadRequestException('Link phải bắt đầu bằng https:// và là một trang công khai.');
+    const list = await this.readSources(tenantId);
+    if (list.some((s) => s.url === url)) throw new BadRequestException('Link này đã có trong danh sách.');
+    if (list.length >= MAX_SOURCES) throw new BadRequestException(`Tối đa ${MAX_SOURCES} link.`);
+    const label = String(dto.label ?? '').trim().slice(0, 80) || new URL(url).hostname;
+    const read = await this.fetchSource({ id: randomUUID(), url, label, on: true, text: '', chars: 0, fetchedAt: null, error: null, errorAt: null });
+    await this.writeSources(tenantId, [...list, read]);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'ai_brain.source_added', resourceType: 'setting', resourceId: SOURCES_KEY, metadata: { url, ok: !read.error } });
+    return this.listSources(user);
+  }
+
+  async refreshSource(user: AuthenticatedUser, id: string) {
+    if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can change the AI brain');
+    const tenantId = this.tenantId(user);
+    const list = await this.readSources(tenantId);
+    const i = list.findIndex((s) => s.id === id);
+    if (i < 0) throw new NotFoundException('Không tìm thấy link.');
+    list[i] = await this.fetchSource(list[i]);
+    await this.writeSources(tenantId, list);
+    return this.listSources(user);
+  }
+
+  async updateSource(user: AuthenticatedUser, id: string, dto: { on?: unknown; label?: unknown }) {
+    if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can change the AI brain');
+    const tenantId = this.tenantId(user);
+    const list = await this.readSources(tenantId);
+    const s = list.find((x) => x.id === id);
+    if (!s) throw new NotFoundException('Không tìm thấy link.');
+    if (typeof dto.on === 'boolean') s.on = dto.on;
+    if (typeof dto.label === 'string' && dto.label.trim()) s.label = dto.label.trim().slice(0, 80);
+    await this.writeSources(tenantId, list);
+    return this.listSources(user);
+  }
+
+  async removeSource(user: AuthenticatedUser, id: string) {
+    if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can change the AI brain');
+    const tenantId = this.tenantId(user);
+    const list = await this.readSources(tenantId);
+    if (!list.some((s) => s.id === id)) throw new NotFoundException('Không tìm thấy link.');
+    await this.writeSources(tenantId, list.filter((s) => s.id !== id));
+    await this.audit.log({ tenantId, userId: user.userId, action: 'ai_brain.source_removed', resourceType: 'setting', resourceId: SOURCES_KEY, metadata: { id } });
+    return this.listSources(user);
+  }
+
+  /**
+   * The documents section for this salon's prompt — what was last read. A link
+   * older than a day is read again in the background (the reply never waits).
+   */
+  async docsFor(tenantId: string): Promise<string> {
+    const hit = this.docsCache.get(tenantId);
+    if (hit && Date.now() - hit.at < CACHE_MS) return hit.text;
+    const list = await this.readSources(tenantId).catch(() => [] as KnowledgeSource[]);
+    const text = docsBlock(list);
+    this.docsCache.set(tenantId, { at: Date.now(), text });
+    const stale = list.filter((s) => s.on && (!s.fetchedAt || Date.now() - new Date(s.fetchedAt).getTime() > STALE_MS) && (!s.errorAt || Date.now() - new Date(s.errorAt).getTime() > 60 * 60_000));
+    if (stale.length && !this.refreshing.has(tenantId)) {
+      this.refreshing.add(tenantId);
+      void (async () => {
+        const fresh = await Promise.all(list.map((s) => (stale.includes(s) ? this.fetchSource(s) : Promise.resolve(s))));
+        await this.writeSources(tenantId, fresh);
+      })().catch((e) => this.log.warn(`knowledge sources refresh ${tenantId}: ${String(e).slice(0, 120)}`)).finally(() => this.refreshing.delete(tenantId));
+    }
+    return text;
   }
 
   // ---------------------------------------------------------------- the brain
@@ -600,6 +714,7 @@ ${blocks.booking}
 ${blocks.handoffNote}
 Menu (pass the code to the tools; never say a code aloud):\n${menuText || '(no services yet)'}
 ${blocks.facts ? `Salon notes:\n${blocks.facts}` : ''}
+${await this.docsFor(tenantId).catch(() => '')}
 ${blocks.rules ? `THE OWNER'S RULES — follow on every conversation:\n${blocks.rules}` : ''}
 ${this.memoryBlock(memory)}
 The salon's local time is ${nowLocal} (${tz}). Only state hours, prices and services given here.

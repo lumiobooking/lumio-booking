@@ -27,6 +27,7 @@ import { isWebPage, webPageId } from './web-chat';
 import {
   metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, localizeStage, type InboundMedia,
 } from './inbound-media';
+import { cleanTurns, cutText } from './well-formed';
 import { escalationPush, fallbackText, heldPush, isTransientStatus, needsAnswer, sendFailedPush, silentQuestionPush } from './agent-fallback';
 import { conversationLang, defaultLangForMarket, localeForLang, replyLangRule, sayIn, type ReplyLang } from '../common/reply-language';
 import {
@@ -2408,7 +2409,7 @@ export class MessengerService implements OnModuleInit {
         where: { id: thread.id },
         data: {
           history: this.windowOf(thread.id, [...hist0, { role: 'assistant', content: body, manual: true, at: wAt, ...sig }], (thread as unknown as { summary?: string | null }).summary ?? null) as unknown as Prisma.InputJsonValue,
-          lastText: body.slice(0, 300), lastMessageAt: new Date(), readAt: new Date(),
+          lastText: cutText(body, 300), lastMessageAt: new Date(), readAt: new Date(),
           handoff: true, handoffAt: new Date(),
         } as never,
       });
@@ -2432,7 +2433,7 @@ export class MessengerService implements OnModuleInit {
         where: { id: thread.id },
         data: {
           history: this.windowOf(thread.id, [...hist0, turn as Turn], (thread as unknown as { summary?: string | null }).summary ?? null) as unknown as Prisma.InputJsonValue,
-          lastText: body.slice(0, 300), lastMessageAt: new Date(), readAt: new Date(),
+          lastText: cutText(body, 300), lastMessageAt: new Date(), readAt: new Date(),
           handoff: true, handoffAt: new Date(),
         } as never,
       }).catch(() => undefined);
@@ -2545,7 +2546,7 @@ export class MessengerService implements OnModuleInit {
         // it moved to the staff reply, so the row described two different
         // messages at once. A list that quietly disagrees with itself is how
         // people stop trusting the list.
-        lastText: body.slice(0, 300),
+        lastText: cutText(body, 300),
         lastMessageAt: new Date(),
         // Read, too. Unread means "nobody has looked since the last message",
         // and the person who just typed the last message has plainly looked.
@@ -2889,8 +2890,8 @@ export class MessengerService implements OnModuleInit {
         // Meta's Business Agent, another tool) is NOT the bot's: it is marked
         // like a staff reply, with its origin, so the inbox never shows it as "AI".
         const turns: Turn[] = msgs.map((m) => (src.own.includes(m.from?.id ?? '')
-          ? { role: 'assistant' as const, content: String(m.message).slice(0, 2000), at: new Date(m.created_time!).toISOString(), manual: true, source: 'page' as const }
-          : { role: 'user' as const, content: String(m.message).slice(0, 2000), at: new Date(m.created_time!).toISOString() }));
+          ? { role: 'assistant' as const, content: cutText(m.message, 2000), at: new Date(m.created_time!).toISOString(), manual: true, source: 'page' as const }
+          : { role: 'user' as const, content: cutText(m.message, 2000), at: new Date(m.created_time!).toISOString() }));
         const last = turns[turns.length - 1];
         const lastAgeMs = Date.now() - new Date(last.at!).getTime();
         const existing = await this.prisma.messengerThread.findUnique({ where: { pageId_senderId: { pageId: pg.pageId, senderId: other.id } } }).catch(() => null);
@@ -2910,7 +2911,7 @@ export class MessengerService implements OnModuleInit {
             const lastCustomer = [...toWrite].reverse().find((t) => t.role === 'user');
             await this.prisma.messengerThread.update({
               where: { id: existing.id },
-              data: { lastText: toWrite[toWrite.length - 1].content.slice(0, 300), lastMessageAt: new Date(toWrite[toWrite.length - 1].at!), ...(lastCustomer ? { lastCustomerAt: new Date(lastCustomer.at!) } : {}), ...(other.name && !existing.senderName ? { senderName: other.name } : {}) } as never,
+              data: { lastText: cutText(toWrite[toWrite.length - 1].content, 300), lastMessageAt: new Date(toWrite[toWrite.length - 1].at!), ...(lastCustomer ? { lastCustomerAt: new Date(lastCustomer.at!) } : {}), ...(other.name && !existing.senderName ? { senderName: other.name } : {}) } as never,
             }).catch(() => undefined);
             updated++;
           }
@@ -2919,12 +2920,12 @@ export class MessengerService implements OnModuleInit {
           await this.prisma.messengerThread.create({
             data: {
               tenantId, pageId: pg.pageId, senderId: other.id, senderName: other.name || null, channel: src.channel,
-              lastText: toWrite[toWrite.length - 1].content.slice(0, 300),
+              lastText: cutText(toWrite[toWrite.length - 1].content, 300),
               // The conversation's own clock, so a mirrored chat from September
               // sits where September belongs — not at the top as "just now".
               lastMessageAt: new Date(toWrite[toWrite.length - 1].at!),
               lastCustomerAt: lastCustomer ? new Date(lastCustomer.at!) : null,
-              history: toWrite as unknown as Prisma.InputJsonValue,
+              history: cleanTurns(toWrite) as unknown as Prisma.InputJsonValue,
               status: 'open',
             } as never,
           });
@@ -3315,7 +3316,7 @@ export class MessengerService implements OnModuleInit {
    * came to ask for a phone number it had been given.
    */
   private windowOf(threadId: string, full: Turn[], summary: string | null): Turn[] {
-    const next = full.slice(-MAX_TURNS);
+    const next = cleanTurns(full.slice(-MAX_TURNS));
     const dropped = full.slice(0, full.length - next.length);
     if (dropped.length) {
       void this.distillThreadSummary(threadId, summary, dropped).catch((e) =>
@@ -3470,8 +3471,8 @@ export class MessengerService implements OnModuleInit {
     const pageId = page.pageId;
     const thread = await this.prisma.messengerThread.upsert({
       where: { pageId_senderId: { pageId, senderId } },
-      update: { lastText: text.slice(0, 300), channel } as never,
-      create: { tenantId: page.tenantId, pageId, senderId, lastText: text.slice(0, 300), channel } as never,
+      update: { lastText: cutText(text, 300), channel } as never,
+      create: { tenantId: page.tenantId, pageId, senderId, lastText: cutText(text, 300), channel } as never,
     });
     // Best-effort: resolve the customer's display name once (User Profile API).
     if (!thread.senderName && channel !== 'web') {

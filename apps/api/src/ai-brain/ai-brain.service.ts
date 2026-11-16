@@ -21,10 +21,10 @@ import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLan
 import { AiInstructionsService, instructionChannel } from './instructions.service';
 import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, needsMeaning, type Instruction, type InstructionChannel } from './instructions';
 import { agentModel, forModel } from '../common/ai-model';
-import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, cleanChoices, choicesAsText, cleanCards, cardText, type PackageCard } from '../messenger/reply-style';
+import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, cleanChoices, choicesAsText, cleanCards, cardText, type PackageCard, SALES_NOT_READY_RULE } from '../messenger/reply-style';
 import { ungroundedMoney } from '../messenger/price-grounding';
 import { CORRECTION_RULE, leaksCorrection } from '../messenger/correction-guard';
-import { SIM_KEY, pickScenarios, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
+import { SIM_KEY, mergeGrades, pickScenarios, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
 import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
 import { browserHeaders } from '../common/browser-headers';
@@ -313,9 +313,13 @@ export class AiBrainService {
     const sources = [menu ? `MENU:\n${menu}` : '', blocks.facts ? `NOTES:\n${blocks.facts}` : '', notes ? `OLDER NOTES:\n${notes}` : '', blocks.rules ? `OWNER RULES:\n${blocks.rules}` : '', docs].filter(Boolean).join('\n\n');
     const ui: SimLang = uiLang === 'en' ? 'en' : 'vi';
     const jp = simJudgePrompt(answers, sources, ui);
-    const grades = jsonArray<{ i: number; pass: boolean; why: string }>(await this.ask(jp.system, jp.user, 4000, 90_000));
+    // Graded twice, independently: a script fails only when BOTH gradings fail it.
+    // One strict reading of "short" or "one question" used to flip a script between
+    // runs with nothing changed (16 → 13 of 18 on 16/11/2026) — a failure both agree on is a real one.
+    const [gradesA, gradesB] = await Promise.all([0, 1].map(() => this.ask(jp.system, jp.user, 4000, 90_000).then((t) => jsonArray<{ i: number; pass: boolean; why: string }>(t)).catch(() => [] as { i: number; pass: boolean; why: string }[])));
+    const grades = mergeGrades(gradesA, gradesB, picked.length);
     const items: SimItem[] = picked.map(({ scenario, lang }, i) => {
-      const g = grades.find((x) => Number(x?.i) === i);
+      const g = grades[i];
       const failed = answers[i].reply.startsWith('(lỗi:');
       return {
         id: scenario.id, lang, title: scenario.title[ui], customer: answers[i].customer, reply: answers[i].reply,
@@ -952,6 +956,7 @@ export class AiBrainService {
 ${pre.persona}
 ${REPLY_STYLE_RULE}
 ${salesQuotes ? SALES_FLOW_RULE : 'Prices are quoted by the team after they look at the shop: never state a price; ask for the shop name and city, then their name and phone.'}
+${SALES_NOT_READY_RULE}
 Your goal: answer from the documents, show one advantage that fits, and get the shop name + the customer's name + phone so a person can follow up. Never invent a package, price, discount, gift or free offer.
 ${blocks.facts ? `Older notes (the documents win where they differ):\n${blocks.facts}` : ''}
 ${docs}

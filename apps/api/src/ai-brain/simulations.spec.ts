@@ -1,4 +1,4 @@
-import { SCENARIOS, pickScenarios, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimItem, type SimRun } from './simulations';
+import { SCENARIOS, mergeGrades, pickScenarios, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimItem, type SimRun } from './simulations';
 
 describe('customer simulations — fixed scripts, graded on conduct', () => {
   it('a bilingual salon gets twenty: every booking script in the first language, then the second until twenty', () => {
@@ -53,4 +53,20 @@ describe('customer simulations — fixed scripts, graded on conduct', () => {
     expect(simRunFrom({ at: 'x' })).toBeNull();
     expect(simRunFrom({ at: 'x', items: [] })).toEqual({ at: 'x', items: [] });
   });
+
+  it('graded twice: a script fails only when both gradings fail it', () => {
+    const a = [{ i: 0, pass: true, why: 'ok' }, { i: 1, pass: false, why: 'dài' }, { i: 2, pass: false, why: 'bịa giá' }];
+    const b = [{ i: 0, pass: true, why: 'ok' }, { i: 1, pass: true, why: 'ổn' }, { i: 2, pass: false, why: 'giá không có trong bảng' }];
+    const m = mergeGrades(a, b, 4);
+    expect(m.map((g) => g?.pass)).toEqual([true, true, false, undefined]);
+    expect(m[2]?.why).toBe('bịa giá');
+    // Only one grading came back: its verdict stands.
+    expect(mergeGrades([{ i: 0, pass: false, why: 'x' }], [], 1)[0]?.pass).toBe(false);
+  });
+
+  it('the judge no longer fails a reply for one sentence too many', () => {
+    const p = simJudgePrompt([{ customer: ['hi'], reply: 'Hello', tools: [], rubric: 'R', lang: 'en' }], '', 'en');
+    expect(p.system).toContain('Do NOT fail a reply merely for being a sentence or two longer');
+  });
 });
+

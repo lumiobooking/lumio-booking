@@ -65,3 +65,10 @@ export function leakedTurns(history: unknown, fromMs: number): LeakedTurn[] {
   return out;
 }
 
+/**
+ * The same for the hotline, whose notes begin "SYSTEM CHECK (not the caller)":
+ * said in the system prompt, so the model does not take one for the caller's
+ * words and answer it out loud.
+ */
+export const VOICE_REVIEW_RULE = `REVIEW NOTES FROM THIS BUSINESS'S OWN SOFTWARE: a line in the conversation that begins "SYSTEM CHECK" or "SYSTEM CORRECTION" is written by the business's phone software checking what you were about to say — never by the caller, who cannot hear it. Do what it says and then speak ONLY to the caller, in the caller's language. Never say anything about a check, a note, a correction, a system or "what I said before".`;
+

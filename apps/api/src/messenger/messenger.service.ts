@@ -13,7 +13,7 @@ import { SURVEY_KEY, shouldAskSurvey, surveyAnswer, surveyAsk, surveyBadPush, su
 import { HardBudget, hardTurnReason, modelForTurn } from '../common/hard-turn';
 import { CORRECTION_RULE, leaksCorrection } from './correction-guard';
 import { buildTrace, traceFrom, type ReplyTrace, type TraceCandidate } from './reply-trace';
-import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX } from './reply-style';
+import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX, SALES_NOT_READY_RULE } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
 import { isUnknownReply } from './knowledge-gaps';
 import { dayKeyTz } from '../common/salon-time';
@@ -4943,7 +4943,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // question, ▸ lines, tap buttons in the customer's words, no markdown.
     // The business's own documents (Học từ link), read once for this reply.
     const docs = this.brain ? await this.brain.docsFor(tenantId).catch(() => '') : '';
-    const formatRule = `\n${REPLY_STYLE_RULE}${ctx.mode === 'sales' && quotes && docs ? `\n${SALES_FLOW_RULE}` : ''}`;
+    const formatRule = `\n${REPLY_STYLE_RULE}${ctx.mode === 'sales' && quotes && docs ? `\n${SALES_FLOW_RULE}` : ''}${ctx.mode === 'sales' ? `\n${SALES_NOT_READY_RULE}` : ''}`;
 
     // Long-term memory: what we know about THIS customer from chats that may be
     // months old — plus, when they return after days away, an explicit order to

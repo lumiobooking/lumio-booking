@@ -106,7 +106,7 @@ export function simJudgePrompt(items: SimAnswer[], sources: string, uiLang: SimL
     'PASS only when the reply satisfies the RUBRIC and ALL of these house rules:',
     '- It is written in the customer\'s language (Vietnamese customer → Vietnamese with polite particles; English → English). Not a mix.',
     '- Every fact it states about the business (price, hours, address, policy, promotion, service) appears in SOURCES. A fact that is not there is a FAIL, however plausible.',
-    '- It is short: a few short sentences, at most one question (name and phone asked together count as one). Lines in [brackets] or "· a · b" at the end are cards and tap buttons the customer sees — not part of the sentence count.',
+    '- It is not a wall of text. Lines in [brackets] or "· a · b" at the end are cards and tap buttons the customer sees — ignore them here. Do NOT fail a reply merely for being a sentence or two longer than ideal, for a warm opening line, or for a second closely related question; fail on length only when it is clearly too much to read in a chat (more than about six sentences) or stacks several unrelated questions.',
     'Be strict about invented facts and about claiming a booking that was not made; be lenient about wording and warmth.',
     `Write "why" in ${uiLang === 'vi' ? 'Vietnamese' : 'English'}, one short sentence a salon owner understands (no jargon, no mention of "rubric" or "sources").`,
     'Return JSON only: [{"i":0,"pass":true,"why":"…"}, …] — one object per case, same order.',
@@ -148,3 +148,22 @@ export function simRunFrom(raw: unknown): SimRun | null {
   if (!r || typeof r !== 'object' || !Array.isArray(r.items) || typeof r.at !== 'string') return null;
   return r;
 }
+
+export interface Grade { i: number; pass: boolean; why: string }
+
+/**
+ * Two independent gradings into one verdict per case: a case FAILS only when
+ * both fail it (or the only grading that came back fails it). No grading at
+ * all = not graded = fail, said as such by the caller.
+ */
+export function mergeGrades(a: Grade[], b: Grade[], n: number): (Grade | undefined)[] {
+  const out: (Grade | undefined)[] = [];
+  for (let i = 0; i < n; i++) {
+    const x = a.find((g) => Number(g?.i) === i); const y = b.find((g) => Number(g?.i) === i);
+    if (!x || !y) { out.push(x ?? y); continue; }
+    if (x.pass === true || y.pass === true) out.push(x.pass === true ? x : y);
+    else out.push(x);
+  }
+  return out;
+}
+

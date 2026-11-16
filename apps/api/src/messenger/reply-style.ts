@@ -169,3 +169,11 @@ export function cardTapLine(payload: string): string | null {
   if (p.startsWith(CMP_PREFIX)) return `So sánh gói ${p.slice(CMP_PREFIX.length).trim()} với các gói khác`;
   return null;
 }
+
+/**
+ * A lead who is not ready is not chased. The booking desk already had this
+ * rule; the sales page did not, and the customer simulations (16/11/2026)
+ * caught it asking for a name and phone right after "để mình suy nghĩ thêm".
+ */
+export const SALES_NOT_READY_RULE = `NOT READY: when they say they want to think about it, are only looking, or will get back to you ("để mình suy nghĩ thêm", "để xem đã", "I'll think about it", "let me get back to you") — do NOT ask for their name, phone, shop or a time, and do not pitch again. One warm line that they can message any time, and stop. If they come back, pick up where you left off.`;
+

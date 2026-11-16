@@ -268,7 +268,37 @@ const Avatar = memo(function Avatar(
   );
 });
 
-interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Meta refused it; sendError says why. */ failed?: boolean; sendError?: string | null; /** Ours, minutes old, and missing from Meta's copy: the customer most likely never got it. */ undelivered?: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite, another tool), mirrored in; 'automation': the Page's own automatic reply (welcome / instant reply); 'meta-ai': Meta's Business AI. */ source?: 'page' | 'automation' | 'meta-ai'; /** First name of the teammate who typed it. */ by?: string | null; /** An automatic follow-up after the customer went quiet — not an AI answer. */ nudge?: boolean; /** Meta refused it at first; a later resend delivered it at this time. */ lateAt?: string | null }
+interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Meta refused it; sendError says why. */ failed?: boolean; sendError?: string | null; /** Ours, minutes old, and missing from Meta's copy: the customer most likely never got it. */ undelivered?: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite, another tool), mirrored in; 'automation': the Page's own automatic reply (welcome / instant reply); 'meta-ai': Meta's Business AI. */ source?: 'page' | 'automation' | 'meta-ai'; /** First name of the teammate who typed it. */ by?: string | null; /** An automatic follow-up after the customer went quiet — not an AI answer. */ nudge?: boolean; /** Meta refused it at first; a later resend delivered it at this time. */ lateAt?: string | null; /** What an AI reply was built from ("Nguồn"). */ why?: { refs: WhyRef[] } | null }
+interface WhyRef { kind: 'rule' | 'fact' | 'doc' | 'tool' | 'guard'; label: string; snippet?: string; id?: string }
+
+/** What the AI looked up or did, in the words of the desk. */
+const WHY_TOOL: Record<string, [string, string]> = {
+  check_availability: ['Xem giờ trống trên lịch', 'Checked the calendar for open times'],
+  create_booking: ['Tạo lịch hẹn', 'Created the booking'],
+  reschedule_appointment: ['Đổi giờ lịch hẹn', 'Rescheduled the appointment'],
+  cancel_appointment: ['Huỷ lịch hẹn', 'Cancelled the appointment'],
+  find_appointment: ['Tìm lịch hẹn của khách', "Looked up the customer's appointment"],
+  get_services: ['Đọc bảng dịch vụ & giá', 'Read the service menu and prices'],
+  get_pricing: ['Đọc bảng giá', 'Read the price list'],
+  quote_price: ['Tính giá theo bảng giá', 'Worked out the price from the price list'],
+  get_software_plans: ['Đọc các gói phần mềm', 'Read the software plans'],
+  send_package_card: ['Gửi thẻ gói', 'Sent package cards'],
+  send_price_cards: ['Gửi thẻ giá', 'Sent price cards'],
+  send_photos: ['Gửi ảnh của tiệm', "Sent the salon's photos"],
+  save_contact: ['Lưu tên & số điện thoại', 'Saved name and phone'],
+  save_lead: ['Lưu khách tiềm năng', 'Saved the lead'],
+  save_birthday: ['Lưu ngày sinh', 'Saved the birthday'],
+  request_callback: ['Hẹn nhân viên gọi lại', 'Asked staff to call back'],
+};
+const WHY_GUARD: Record<string, [string, string]> = {
+  price: ['Bản nháp có giá không nằm trong nguồn — AI đã phải viết lại', 'The draft had a price not found in the sources — the AI rewrote it'],
+  instruction: ['Bản nháp trái lệnh của chủ tiệm — AI đã phải viết lại', "The draft broke an owner instruction — the AI rewrote it"],
+};
+const WHY_KIND: Record<WhyRef['kind'], [string, string]> = { rule: ['Lệnh của chủ tiệm', 'Owner instruction'], fact: ['Ghi chú đã lưu', 'Saved note'], doc: ['Tài liệu / link', 'Document / link'], tool: ['AI đã tra / làm', 'Looked up / did'], guard: ['Đã chặn và sửa', 'Stopped and fixed'] };
+/** A number in the reply with no note, document, rule or lookup behind it. */
+function whyUnsourced(t: { content: string; why?: { refs: WhyRef[] } | null }): boolean {
+  return !!t.why && !t.why.refs.some((r) => r.kind !== 'guard') && /\d{2,}/.test(t.content);
+}
 interface ApptCtx {
   id: string;
   startTime: string;
@@ -415,6 +445,7 @@ export function InboxView() {
   const mayTeach = canTeachAi(authUser);
   // The follow-up wording is a salon setting (owner only, like the rest of Settings).
   const mayEditNudge = authUser?.role === 'SALON_ADMIN' || authUser?.role === 'SUPER_ADMIN';
+  const [whyOpen, setWhyOpen] = useState<number | null>(null);
   const [teach, setTeach] = useState<{ index: number; question: string; reply: string; nudge?: boolean } | null>(null);
   const [topRows, setRows] = useState<InboxRow[]>([]);
   /** Pages of older conversations the person asked for with "load more". The
@@ -1591,6 +1622,13 @@ export function InboxView() {
                       <span style={{ fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5, padding: '0 4px' }}>
                         {mine && !t.manual && <span style={{ width: 14, height: 14, borderRadius: 4, background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 8, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>AI</span>}
                         {who}{mine && t.nudge && <span title={vi ? 'Tin nhắc tự động khi khách im lặng' : 'Sent automatically after the customer went quiet'} style={{ marginLeft: 2, padding: '0 6px', borderRadius: 999, border: '1px solid var(--c475569)', fontSize: 10.5, fontWeight: 600, color: 'var(--c94a3b8)' }}>{vi ? 'Nhắc lại tự động' : 'Auto follow-up'}</span>}{t.at ? <span title={fmtInTz(t.at, { dateStyle: 'full', timeStyle: 'short' })}> · {bubbleStampLabel(t.at, vi)}</span> : null}
+                        {mine && !t.manual && !t.source && t.why && (t.why.refs.length > 0 || whyUnsourced(t)) && (
+                          <button type="button" onClick={() => setWhyOpen(whyOpen === i ? null : i)} aria-expanded={whyOpen === i}
+                            title={vi ? 'Vì sao AI trả lời vậy?' : 'Why did the AI say this?'}
+                            style={{ marginLeft: 4, minHeight: 26, padding: '0 8px', borderRadius: 7, border: `1px solid ${whyUnsourced(t) ? 'var(--ink-warn)' : 'var(--c475569)'}`, background: 'transparent', color: whyUnsourced(t) ? 'var(--ink-warn)' : 'var(--ccbd5e1)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {whyUnsourced(t) ? (vi ? 'Chưa thấy nguồn' : 'No source found') : `${vi ? 'Nguồn' : 'Sources'} · ${t.why.refs.length}`}
+                          </button>
+                        )}
                         {mine && !t.manual && !t.source && mayTeach && (
                           <button type="button" onClick={() => {
                             let qi = i - 1;
@@ -1602,6 +1640,33 @@ export function InboxView() {
                           </button>
                         )}
                       </span>
+                      {mine && whyOpen === i && t.why && (
+                        // "Vì sao AI trả lời vậy?" — staff only. The note / document line shown
+                        // is a match with the reply's own numbers and words, said as such.
+                        <div role="region" aria-label={vi ? 'Nguồn của câu trả lời' : 'Sources of this reply'}
+                          style={{ maxWidth: 420, width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', display: 'grid', gap: 8, textAlign: 'left' }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{vi ? 'Vì sao AI trả lời vậy?' : 'Why did the AI say this?'}</div>
+                          {t.why.refs.map((r, ri) => (
+                            <div key={ri} style={{ display: 'grid', gap: 2 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: r.kind === 'guard' ? 'var(--ink-warn)' : 'var(--c94a3b8)' }}>{(WHY_KIND[r.kind] ?? WHY_KIND.tool)[vi ? 0 : 1]}</span>
+                              <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.45, overflowWrap: 'anywhere' }}>
+                                {r.kind === 'tool' ? (WHY_TOOL[r.label]?.[vi ? 0 : 1] ?? r.label) : r.kind === 'guard' ? (WHY_GUARD[r.label]?.[vi ? 0 : 1] ?? r.label) : r.label}
+                              </span>
+                              {r.snippet && <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.45, borderLeft: '2px solid var(--c475569)', paddingLeft: 8, overflowWrap: 'anywhere' }}>{r.snippet}</span>}
+                            </div>
+                          ))}
+                          {whyUnsourced(t) && (
+                            <div style={{ fontSize: 12.5, color: 'var(--ink-warn)', lineHeight: 1.45 }}>
+                              {vi ? 'Câu này có con số nhưng không khớp ghi chú, tài liệu hay lần tra cứu nào. Nếu sai, bấm “Sửa” để dạy AI câu đúng.' : 'This reply states a number that matches no note, document or lookup. If it is wrong, press “Fix” to teach the AI.'}
+                            </div>
+                          )}
+                          {t.why.refs.some((r) => r.kind === 'fact' || r.kind === 'doc') && (
+                            <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.4 }}>
+                              {vi ? 'Ghi chú / tài liệu ở trên là dòng khớp nhất với câu trả lời. Sai ở đâu thì sửa đúng dòng đó trong trang AI.' : 'The note / document above is the line that best matches the reply. Fix that line on the AI page if it is wrong.'}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   )}

@@ -13,7 +13,7 @@ import { ui } from '../lib/ui';
 import { ind } from '../lib/ui-industry';
 
 interface Report {
-  days: number; conversations: number; booked: number; bookingRate: number | null; medianMinutesToBook: number | null;
+  days: number; conversations: number; booked: number; bookingRate: number | null; selfHandled?: number; selfHandledRate?: number | null; medianMinutesToBook: number | null;
   stoppedAt: Record<'time' | 'contact' | 'confirm' | 'general' | 'noReply' | 'human', number>;
   byChannel: Record<string, { conversations: number; booked: number }>;
   unanswered: { open: number; newInPeriod: number };
@@ -70,6 +70,7 @@ export function BotReportBox({ token, vi }: { token: string | null; vi: boolean 
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
             {tile(L('Cuộc trò chuyện', 'Conversations'), String(r.conversations))}
+            {r.selfHandledRate != null && tile(L('AI tự xử lý', 'Handled by AI alone'), `${Math.round(r.selfHandledRate * 100)}%`, L(`${r.selfHandled ?? 0} cuộc không cần nhân viên`, `${r.selfHandled ?? 0} chats with no staff reply`), 'var(--ink-link)')}
             {tile(L('Đã chốt lịch', 'Booked'), String(r.booked), L(`tỉ lệ ${pct}`, `rate ${pct}`), 'var(--ink-good)')}
             {tile(L('Thời gian chốt (trung vị)', 'Time to book (median)'), r.medianMinutesToBook == null ? '—' : `${r.medianMinutesToBook}′`)}
             {tile(L('Câu bot chưa biết', 'Unanswered questions'), String(r.unanswered.open), L(`+${r.unanswered.newInPeriod} mới`, `+${r.unanswered.newInPeriod} new`), r.unanswered.open ? 'var(--ink-warn)' : undefined)}

@@ -97,6 +97,12 @@ export class AiBrainService {
     return sourcesFrom(row?.value);
   }
 
+  /** The linked documents that are switched on, for "Vì sao AI trả lời vậy?" (messenger/reply-trace). This salon's own rows only. */
+  async sourcesFor(tenantId: string): Promise<{ id: string; label: string; text: string }[]> {
+    const list = await this.readSources(tenantId).catch(() => [] as KnowledgeSource[]);
+    return list.filter((x) => x.on && x.text.trim()).map((x) => ({ id: x.id, label: x.label || x.url, text: x.text }));
+  }
+
   private async writeSources(tenantId: string, list: KnowledgeSource[]): Promise<void> {
     await this.db.setting.upsert({
       where: { tenantId_key: { tenantId, key: SOURCES_KEY } },

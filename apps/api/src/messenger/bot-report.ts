@@ -28,6 +28,13 @@ export interface BotReport {
   conversations: number;
   booked: number;
   bookingRate: number | null;
+  /**
+   * Conversations the AI carried alone: it answered the customer's last
+   * message, nobody at the salon typed a reply, and the thread was never
+   * handed to staff. The Page's own automation is not a person.
+   */
+  selfHandled: number;
+  selfHandledRate: number | null;
   medianMinutesToBook: number | null;
   stoppedAt: Record<Stop, number>;
   byChannel: Record<string, { conversations: number; booked: number }>;
@@ -50,7 +57,8 @@ export function botReport(o: {
   const stoppedAt: Record<Stop, number> = { time: 0, contact: 0, confirm: 0, general: 0, noReply: 0, human: 0 };
   const byChannel: Record<string, { conversations: number; booked: number }> = {};
   const minutes: number[] = [];
-  let conversations = 0; let booked = 0;
+  let conversations = 0; let booked = 0; let selfHandled = 0;
+  const byPerson = (x: StoredTurn) => x.role === 'assistant' && !!x.manual && !['automation', 'meta-ai'].includes(String((x as { source?: string }).source ?? ''));
 
   for (const th of o.threads) {
     const turns = Array.isArray(th.history) ? th.history : [];
@@ -62,6 +70,12 @@ export function botReport(o: {
     byChannel[ch] = byChannel[ch] ?? { conversations: 0, booked: 0 };
     byChannel[ch].conversations++;
     const firstAsk = Math.min(...mine.map(at));
+    {
+      const person = th.handoff || turns.some((x) => byPerson(x) && at(x) >= firstAsk);
+      const bot = [...turns].reverse().find((x) => x.role === 'assistant' && !x.nudge && !x.manual);
+      const user = [...turns].reverse().find((x) => x.role === 'user');
+      if (!person && bot && !(user && at(user) > at(bot))) selfHandled++;
+    }
     const end = Math.max(t, (th.lastMessageAt?.getTime() ?? t)) + 24 * 60 * MIN;
     const made = th.customerId ? (byCustomer.get(th.customerId) ?? []).filter((x) => x >= firstAsk - 5 * MIN && x <= end) : [];
     if (made.length) {
@@ -82,6 +96,7 @@ export function botReport(o: {
   return {
     from: o.from.toISOString(), to: o.to.toISOString(),
     conversations, booked, bookingRate: rate, medianMinutesToBook: median,
+    selfHandled, selfHandledRate: conversations ? selfHandled / conversations : null,
     stoppedAt, byChannel,
     unanswered: { open: o.gapsOpen, newInPeriod: o.gapsNew },
     tips: tipsFor({ conversations, rate, stoppedAt, gapsOpen: o.gapsOpen }),

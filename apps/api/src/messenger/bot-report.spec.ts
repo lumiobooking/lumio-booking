@@ -34,6 +34,19 @@ describe('the bot report', () => {
     expect(r.byChannel).toEqual({ instagram: { conversations: 1, booked: 1 }, messenger: { conversations: 5, booked: 0 } });
   });
 
+  it('counts the conversations the AI carried alone — a person typing, a handoff or an unanswered customer is not one', () => {
+    // booked, stopContact, stopConfirm, stopTime: the bot had the last word and nobody stepped in.
+    expect(r.selfHandled).toBe(4);
+    expect(r.selfHandledRate).toBeCloseTo(4 / 6);
+    const typed: ReportThread = { ...th('typed', [['user', 'price?', '2026-10-05T10:00:00Z'], ['assistant', 'It is $40', '2026-10-05T10:02:00Z']]) };
+    (typed.history[1] as { manual?: boolean }).manual = true;
+    const auto: ReportThread = { ...th('auto', [['user', 'hi', '2026-10-05T10:00:00Z'], ['assistant', 'Welcome!', '2026-10-05T10:00:02Z'], ['assistant', 'Hi! How can I help?', '2026-10-05T10:00:05Z']]) };
+    Object.assign(auto.history[1], { manual: true, source: 'automation' });
+    const r2 = botReport({ threads: [typed, auto], bookings: [], gapsOpen: 0, gapsNew: 0, from: FROM, to: TO });
+    expect(r2.selfHandled).toBe(1); // the Page's own welcome message is not a person
+    expect(botReport({ threads: [], bookings: [], gapsOpen: 0, gapsNew: 0, from: FROM, to: TO }).selfHandledRate).toBeNull();
+  });
+
   it('says where everyone else stopped (a follow-up nudge does not count as the bot’s last word)', () => {
     expect(r.stoppedAt).toEqual({ time: 1, contact: 1, confirm: 1, general: 0, noReply: 1, human: 1 });
     expect(r.unanswered).toEqual({ open: 3, newInPeriod: 2 });

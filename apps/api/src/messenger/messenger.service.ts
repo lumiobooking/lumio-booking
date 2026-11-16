@@ -8,6 +8,7 @@ import { isPagePostChange, requestChannelSync } from '../marketing/sync-signals'
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
 import { ungroundedMoney, priceCorrection, priceHoldLine } from './price-grounding';
+import { buildTrace, traceFrom, type ReplyTrace, type TraceCandidate } from './reply-trace';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
 import { isUnknownReply } from './knowledge-gaps';
@@ -111,6 +112,8 @@ type Turn = {
   role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean;
   /** Meta's refusal of this reply, in plain words (./send-errors). */
   sendError?: string | null;
+  /** What this AI reply was built from (./reply-trace) — staff Inbox only. */
+  why?: ReplyTrace | null;
   /**
    * A reply Meta refused seconds after the customer wrote ("outside of allowed
    * window"): kept and sent again on a schedule (send-errors FRESH_RETRY_AFTER_MIN)
@@ -1918,6 +1921,8 @@ export class MessengerService implements OnModuleInit {
           ...(t.failed ? { failed: true, sendError: (t as { sendError?: string | null }).sendError ?? null } : {}),
           // Delivered by a later resend, after Meta first refused it (./late-resend).
           ...((t as { lateAt?: string | null }).lateAt ? { lateAt: (t as { lateAt?: string | null }).lateAt } : {}),
+          // What an AI reply was built from (./reply-trace) — this screen is staff-only.
+          ...(t.role === 'assistant' && !t.manual && traceFrom((t as { why?: unknown }).why) ? { why: traceFrom((t as { why?: unknown }).why) } : {}),
           ...((t as { undelivered?: boolean }).undelivered ? { undelivered: true } : {}),
           ...(['page', 'automation', 'meta-ai'].includes(String((t as { source?: string }).source)) ? { source: (t as { source?: string }).source } : {}),
           // An automatic reminder, not an answer: its "Fix" edits the reminder
@@ -4133,7 +4138,9 @@ export class MessengerService implements OnModuleInit {
     // "Failed" instead of a "Sent" nobody received — and so the repeat guard
     // lets the bot try again when the customer writes the same thing.
     // The thread shows the buttons the customer saw, so staff reading it later know what was offered.
-    const outTurn: Turn = sent.ok ? { role: 'assistant', content: choices.length ? `${reply}\n\n${choicesAsText(choices)}` : reply, at: outAt } : ({
+    // What the reply was built from, for the staff Inbox ("Nguồn"). Never fatal.
+    const why = agentFailed ? null : await this.traceOf(conn, reply, agentCtx).catch(() => null);
+    const outTurn: Turn = sent.ok ? { role: 'assistant', content: choices.length ? `${reply}\n\n${choicesAsText(choices)}` : reply, at: outAt, ...(why ? { why } : {}) } : ({
       role: 'assistant', content: reply, at: outAt, failed: true, sendError: sent.error ?? null,
       ...(sent.retryable ? { retry: { first: outAt, n: 0, next: new Date(Date.parse(outAt) + FRESH_RETRY_AFTER_MIN[0] * 60_000).toISOString(), customerAt: customerAt != null ? new Date(customerAt).toISOString() : null, tries: sent.tries ?? 1 } } : {}),
     } as Turn);
@@ -4280,6 +4287,25 @@ export class MessengerService implements OnModuleInit {
   }
 
   // ---- AI agent (tool use) -------------------------------------------------
+  /**
+   * "Vì sao AI trả lời vậy?" — the instructions matched, the lookups made, the
+   * guards that fired, and the saved note / document line the reply repeats
+   * (./reply-trace). Read by THIS salon's tenantId only.
+   */
+  private async traceOf(
+    conn: { tenantId: string; botFacts?: unknown },
+    reply: string,
+    ctx: { toolsRun?: string[]; traceRules?: { id: string; text: string }[]; traceGuards?: string[] } | null,
+  ): Promise<ReplyTrace> {
+    const facts = (await this.factsOf(conn.tenantId, conn).catch(() => [] as BotFact[])).filter((f) => f && f.on);
+    const docs = this.brain ? await this.brain.sourcesFor(conn.tenantId).catch(() => []) : [];
+    const candidates: TraceCandidate[] = [
+      ...facts.map((f) => ({ kind: 'fact' as const, label: f.label, text: `${f.label}: ${f.value}` })),
+      ...docs.map((d) => ({ kind: 'doc' as const, id: d.id, label: d.label, text: d.text })),
+    ];
+    return buildTrace({ reply, rules: ctx?.traceRules ?? [], tools: Array.from(new Set(ctx?.toolsRun ?? [])), guards: Array.from(new Set(ctx?.traceGuards ?? [])), candidates });
+  }
+
   private async runAgent(
     tenantId: string,
     aiInstruction: string,
@@ -4308,7 +4334,10 @@ export class MessengerService implements OnModuleInit {
       photos?: { urls: string[]; label: string }[];
       lang?: ReplyLang | null;
       /** Tap buttons offer_choices chose for THIS reply (./reply-style). */
-      choices?: string[] } = { mode: 'booking', leadEmail: null },
+      choices?: string[];
+      /** For "Vì sao AI trả lời vậy?" (./reply-trace): the owner instructions matched to this message, and the guards that rewrote a draft. */
+      traceRules?: { id: string; text: string }[];
+      traceGuards?: string[] } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
     if (!process.env.ANTHROPIC_API_KEY && !openAiEnabled()) {
       // THIS USED TO BE SILENT. A missing key returned the holding line to
@@ -4395,6 +4424,8 @@ export class MessengerService implements OnModuleInit {
     const owner = this.instructions
       ? await this.instructions.forTurn(tenantId, insCh, userText).catch(() => null)
       : null;
+    ctx.traceRules = (owner?.matches ?? []).map((m) => ({ id: m.ins.id, text: m.ins.text }));
+    ctx.traceGuards = [];
 
     // WHERE this chat is happening. It said "Facebook Messenger" to everyone,
     // including a customer typing into the salon's own website and one writing
@@ -5071,6 +5102,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
             return priceHoldLine(customerLang);
           }
           groundRetried = true;
+          ctx.traceGuards?.push('price');
           this.logger.warn(`Reply blocked (price not in the sources: ${bad.join(', ')}): ${text.slice(0, 140)}`);
           messages.push({ role: 'assistant', content: blocks });
           messages.push({ role: 'user', content: priceCorrection(bad) });
@@ -5230,6 +5262,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           this.instructions.noteUse(tenantId, chk.applied, chk.broken);
           if (!ownerRetried) {
             ownerRetried = true;
+            ctx.traceGuards?.push('instruction');
             this.logger.warn(`Reply blocked (owner instruction): ${text.slice(0, 140)}`);
             messages.push({ role: 'assistant', content: blocks });
             messages.push({ role: 'user', content: correctionFor(owner.all, chk.broken) });

@@ -168,6 +168,13 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const [padLine, setPadLine] = useState<CheckLine | null>(null);
   const [showMove, setShowMove] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+  // Joining tables: pick free tables on the floor ("Ghép bàn"), add tables to a
+  // bill, or join two tables already eating (button or drag one onto the other).
+  const [joinMode, setJoinMode] = useState(false);
+  const [joinIds, setJoinIds] = useState<string[]>([]);
+  const [joinAsk, setJoinAsk] = useState(false);
+  const [showAddTables, setShowAddTables] = useState(false);
+  const [mergePick, setMergePick] = useState<{ intoId: string; into: { tables: string; itemCount: number; subtotalCents: number }; from: FloorCheck } | null>(null);
   const [showSplit, setShowSplit] = useState(false);
   const [showVoidCheck, setShowVoidCheck] = useState(false);
   const [showGuests, setShowGuests] = useState(false);
@@ -289,6 +296,31 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     else void loadFloor();
   }
   function openBill(c: FloorCheck) { setChoose(null); setMoreOpen(false); void loadCheck(c.id); setTab(phone ? 'bill' : 'menu'); setQ(''); }
+  async function openTables(ids: string[], guests: number) {
+    const c = await call<CheckView>('/restaurant/checks', 'POST', { tableIds: ids, guests });
+    setJoinAsk(false); setJoinMode(false); setJoinIds([]);
+    if (c) { setCheck(c); setTab('menu'); setQ(''); say(true, L(`Đã mở bàn ghép ${c.tables} — một bill chung.`, `Opened joined tables ${c.tables} — one bill.`)); }
+    else void loadFloor();
+  }
+  async function mergeChecks(intoId: string, from: FloorCheck) {
+    const v = await call<CheckView>(`/restaurant/checks/${intoId}/merge`, 'POST', { fromCheckId: from.id });
+    setMergePick(null); setShowMerge(false);
+    if (v) { setCheck(v); setTab(phone ? 'bill' : 'menu'); say(true, L(`Đã gộp ${from.tables} vào — giờ là bàn ${v.tables}, một bill chung.`, `Joined ${from.tables} — now ${v.tables}, one bill.`)); void loadFloor(); }
+  }
+  function toggleJoin(t: Table) {
+    if (checksByTable.has(t.id)) {
+      say(false, L(`Bàn ${t.name} đang có khách. Muốn gộp bàn đang ăn: mở bàn đó → "Gộp bàn đang ăn", hoặc kéo bàn này thả lên bàn kia.`, `${t.name} has guests. To join tables that are eating: open it → "Join a table", or drag it onto the other table.`));
+      return;
+    }
+    if (!joinIds.includes(t.id) && joinIds.length >= 6) { say(false, L('Ghép tối đa 6 bàn.', 'Up to 6 tables.')); return; }
+    setJoinIds((ids) => (ids.includes(t.id) ? ids.filter((x) => x !== t.id) : [...ids, t.id]));
+  }
+  function dropTable(fromId: string, toId: string) {
+    const a = checksByTable.get(fromId) ?? [];
+    const b = checksByTable.get(toId) ?? [];
+    if (a.length !== 1 || b.length !== 1 || a[0].id === b[0].id) return;
+    setMergePick({ intoId: b[0].id, into: b[0], from: a[0] });
+  }
   function tapTable(t: Table) {
     const cs = checksByTable.get(t.id) ?? [];
     if (cs.length === 1) openBill(cs[0]);
@@ -596,6 +628,10 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                 <b style={{ color: C.strong }}>{stats.busyTables}/{stats.tables}</b> {L('bàn', 'tables')} · <b style={{ color: C.strong }}>{stats.guests}</b> {L('khách', 'guests')} · <b style={{ color: C.strong }}>{fmt(stats.openCents)}</b> {L('đang mở', 'open')}
               </span>
             )}
+            <button type="button" aria-pressed={joinMode} onClick={() => { setJoinMode((v) => !v); setJoinIds([]); setSelId(null); }}
+              style={{ minHeight: 38, padding: '0 13px', flexShrink: 0, borderRadius: 999, border: `1.5px solid ${joinMode ? '#4f46e5' : C.border}`, background: joinMode ? '#4f46e5' : C.panel, color: joinMode ? '#fff' : C.text, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}>
+              🔗 {joinMode ? L('Đang chọn bàn ghép…', 'Picking tables…') : L('Ghép bàn', 'Join tables')}
+            </button>
             {floor && (
               <div role="group" aria-label={L('Kiểu xem', 'View')} style={{ display: 'flex', flexShrink: 0, gap: 2, padding: 3, borderRadius: 11, border: `1px solid ${C.border}`, background: C.panel, marginLeft: stats ? 0 : 'auto' }}>
                 {(['map', 'grid'] as const).map((v) => (
@@ -630,7 +666,9 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
             )}
             {floorView === 'map' && floor && floor.tables.length > 0 && (
               <TillFloorMap tables={tablesSorted} layout={floor.layout} selectedId={selId} phone={phone} vi={vi}
-                onSelect={(t) => selectTable(t.id)}
+                onSelect={(t) => (joinMode ? toggleJoin(t) : selectTable(t.id))}
+                canDrag={(t) => !joinMode && (checksByTable.get(t.id) ?? []).length === 1}
+                onDropOn={dropTable}
                 view={(t) => {
                   const cs = checksByTable.get(t.id) ?? [];
                   const st = combinedState(cs);
@@ -641,6 +679,8 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                     label: cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name,
                     sub: !cs.length ? L(`${t.seats} ghế`, `${t.seats} seats`) : st === 'unsent' ? L(`${unsent} món · ${mins}′`, `${unsent} new · ${mins}′`) : `${mins}′`,
                     dim: !inFilter(st, floorFilter) || (!!area && (t.area || '') !== area),
+                    picked: joinIds.includes(t.id),
+                    joined: cs.length === 1 && cs[0].tableIds.length > 1,
                   };
                 }}
                 footer={isOwner ? <a href="/salon/tables?view=map" style={{ position: 'absolute', right: 16, bottom: 10, fontSize: 12.5, fontWeight: 700, color: '#64748b' }}>{L('Sắp xếp sơ đồ bàn ›', 'Arrange the floor ›')}</a> : null} />
@@ -652,7 +692,19 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                   {shownTables.filter((t) => (t.area || '') === g).map((t) => {
                     const cs = checksByTable.get(t.id) ?? [];
                     const label = cs.length === 1 && cs[0].tableIds.length > 1 ? cs[0].tables : t.name;
-                    return tile(t.id, label, cs, () => tapTable(t), t.seats);
+                    const picked = joinIds.includes(t.id);
+                    const drag = !joinMode && cs.length === 1;
+                    return (
+                      <div key={t.id} draggable={drag}
+                        onDragStart={(e) => { e.dataTransfer.setData('text/plain', t.id); e.dataTransfer.effectAllowed = 'move'; }}
+                        onDragOver={(e) => { if (cs.length === 1) e.preventDefault(); }}
+                        onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from && from !== t.id) dropTable(from, t.id); }}
+                        style={{ position: 'relative', display: 'grid', borderRadius: 16, ...(picked ? { outline: '3px solid #4f46e5', outlineOffset: 2 } : {}) }}>
+                        {tile(t.id, label, cs, () => (joinMode ? toggleJoin(t) : tapTable(t)), t.seats)}
+                        {picked && <span aria-hidden style={{ position: 'absolute', top: -9, right: -9, width: 26, height: 26, borderRadius: '50%', background: '#4f46e5', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800, boxShadow: '0 0 0 3px #fff' }}>✓</span>}
+                        {cs.length === 1 && cs[0].tableIds.length > 1 && <span aria-hidden title={L('Bàn ghép', 'Joined tables')} style={{ position: 'absolute', top: -9, left: -9, width: 24, height: 24, borderRadius: 12, background: '#0f766e', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 13, boxShadow: '0 0 0 3px #fff' }}>🔗</span>}
+                      </div>
+                    );
                   })}
                 </div>
               </section>
@@ -667,6 +719,33 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
             <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxHeight: '86vh', overflowY: 'auto' }}>{tablePanel(selTable, true)}</div>
           </div>, document.body)}
         </div>
+        {joinMode && (() => {
+          const picked = joinIds.map((id) => tablesSorted.find((t) => t.id === id)).filter((t): t is Table => !!t);
+          const seats = picked.reduce((n, t) => n + t.seats, 0);
+          return (
+            <div role="region" aria-label={L('Ghép bàn', 'Join tables')} style={{ position: 'sticky', bottom: 10, zIndex: 30, ...card, padding: '12px 14px', border: '2px solid #4f46e5', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <b style={{ fontSize: 16, color: C.strong }}>{picked.length ? `🔗 ${L('Bàn', 'Tables')} ${picked.map((t) => t.name.replace(/^(Bàn|Table)\s*/i, '')).join(' + ')}` : L('Chạm vào các bàn TRỐNG muốn ghép', 'Tap the FREE tables to join')}</b>
+                <span style={{ fontSize: 12.5, color: C.muted }}>{picked.length ? L(`${picked.length} bàn · ${seats} ghế · một bill chung`, `${picked.length} tables · ${seats} seats · one bill`) : L('Chọn 2–6 bàn. Bàn đang có khách: kéo thả lên bàn kia để gộp.', 'Pick 2–6 tables. Tables with guests: drag one onto the other to join.')}</span>
+              </span>
+              <button type="button" onClick={() => { setJoinMode(false); setJoinIds([]); }} style={{ ...btn, minHeight: 48 }}>{L('Thôi', 'Cancel')}</button>
+              <button type="button" disabled={picked.length < 2 || busy} onClick={() => setJoinAsk(true)} style={{ ...primary, minHeight: 48, fontSize: 15, opacity: picked.length < 2 ? 0.5 : 1 }}>{L('Mở bàn ghép', 'Open joined tables')}{picked.length >= 2 ? ` (${picked.length})` : ''}</button>
+            </div>
+          );
+        })()}
+        {joinAsk && (() => {
+          const seats = joinIds.reduce((n, id) => n + (tablesSorted.find((t) => t.id === id)?.seats ?? 0), 0);
+          return (
+            <Modal vi={vi} title={L('Bàn ghép — bao nhiêu khách?', 'Joined tables — how many guests?')} onClose={() => setJoinAsk(false)}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 8 }}>
+                {Array.from({ length: Math.min(40, Math.max(10, seats + 4)) }, (_, i) => i + 1).map((n) => (
+                  <button key={n} type="button" disabled={busy} onClick={() => void openTables(joinIds, n)} style={{ ...btn, minHeight: 50, fontSize: 17, ...(n === seats ? { borderColor: '#4f46e5', color: '#4f46e5' } : {}) }}>{n}</button>
+                ))}
+              </div>
+            </Modal>
+          );
+        })()}
+        {mergePick && <MergeConfirm vi={vi} fmt={fmt} busy={busy} into={mergePick.into} from={mergePick.from} onClose={() => setMergePick(null)} onConfirm={() => void mergeChecks(mergePick.intoId, mergePick.from)} />}
         {openFor && (
           <Modal vi={vi} title={L(`Mở bàn ${openFor.name}`, `Open ${openFor.name}`)} onClose={() => setOpenFor(null)}>
             <span style={{ color: C.muted }}>{L('Bao nhiêu khách?', 'How many guests?')}</span>
@@ -937,7 +1016,8 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, ...(phone ? { flexBasis: '100%' } : {}) }}>
             <button type="button" onClick={() => setShowGuests(true)} style={btn}>{check.guests} {L('khách', 'guests')} ▾</button>
             {!check.takeaway && <button type="button" onClick={() => setShowMove(true)} style={btn}>{L('Chuyển bàn', 'Move')}</button>}
-            <button type="button" onClick={() => setShowMerge(true)} style={btn}>{L('Gộp bill', 'Merge')}</button>
+            {!check.takeaway && <button type="button" onClick={() => setShowAddTables(true)} style={btn}>{L('+ Thêm bàn', '+ Add table')}</button>}
+            <button type="button" onClick={() => setShowMerge(true)} style={btn}>🔗 {L('Gộp bàn đang ăn', 'Join a table')}</button>
             <button type="button" onClick={() => setShowSplit(true)} disabled={check.itemCount < 2} style={{ ...btn, opacity: check.itemCount < 2 ? 0.5 : 1 }}>{L('Tách bill', 'Split')}</button>
             <button type="button" onClick={() => setShowVoidCheck(true)} style={{ ...btn, color: 'var(--ink-bad)' }}>{L('Huỷ bill', 'Void')}</button>
           </div>
@@ -1005,17 +1085,28 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
         </Modal>
       )}
       {showMerge && (
-        <Modal vi={vi} title={L(`Gộp bill khác vào ${check.tables}`, `Merge another bill into ${check.tables}`)} onClose={() => setShowMerge(false)}>
-          <span style={{ color: C.muted }}>{L('Món, bàn và số khách của bill được chọn chuyển sang bill này. Bếp nhận phiếu chuyển bàn cho món đang làm.', 'Its dishes, tables and guests come over to this bill. The kitchen is told about dishes still cooking.')}</span>
+        <Modal vi={vi} title={L(`Gộp bàn đang ăn vào ${check.tables}`, `Join a table into ${check.tables}`)} onClose={() => setShowMerge(false)}>
+          <span style={{ color: C.muted }}>{L('Chọn bàn đang ăn muốn gộp. Món, bàn và số khách chuyển sang bill này — thành một bill chung.', 'Pick the table to join. Its dishes, tables and guests come over to this bill — one bill.')}</span>
           {otherBills.length === 0 && <span style={{ color: C.muted }}>{L('Không có bill nào khác đang mở.', 'No other open bill.')}</span>}
           {otherBills.map((c) => (
-            <button key={c.id} type="button" disabled={busy} onClick={async () => { const v = await call<CheckView>(`/restaurant/checks/${check.id}/merge`, 'POST', { fromCheckId: c.id }); setShowMerge(false); if (v) { setCheck(v); say(true, L(`Đã gộp ${c.tables} vào bill này.`, `Merged ${c.tables} into this bill.`)); void loadFloor(); } }}
+            <button key={c.id} type="button" disabled={busy} onClick={() => { setShowMerge(false); setMergePick({ intoId: check.id, into: check, from: c }); }}
               style={{ ...btn, minHeight: 56, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>{c.tables} · #{c.number} · {c.guests} {L('khách', 'guests')}</span><b>{fmt(c.subtotalCents)}</b>
             </button>
           ))}
         </Modal>
       )}
+      {showAddTables && floor && (
+        <AddTablesModal vi={vi} busy={busy} current={check.tables} max={6 - check.tableIds.length}
+          free={tablesSorted.filter((t) => !checksByTable.has(t.id))}
+          onClose={() => setShowAddTables(false)}
+          onConfirm={async (ids) => {
+            const c = await call<CheckView>(`/restaurant/checks/${check.id}/move`, 'POST', { tableIds: [...check.tableIds, ...ids] });
+            setShowAddTables(false);
+            if (c) { setCheck(c); say(true, L(`Đã thêm bàn — giờ là bàn ${c.tables}, một bill chung.`, `Table added — now ${c.tables}, one bill.`)); void loadFloor(); }
+          }} />
+      )}
+      {mergePick && <MergeConfirm vi={vi} fmt={fmt} busy={busy} into={mergePick.into} from={mergePick.from} onClose={() => setMergePick(null)} onConfirm={() => void mergeChecks(mergePick.intoId, mergePick.from)} />}
       {showSplit && <SplitModal vi={vi} check={check} fmt={fmt} busy={busy} onClose={() => setShowSplit(false)}
         onSplit={async (lines) => {
           const r = await call<{ from: CheckView; to: CheckView }>(`/restaurant/checks/${check.id}/split`, 'POST', { lines });
@@ -1287,6 +1378,64 @@ function QtyPad({ vi, line, onClose, onSave }: { vi: boolean; line: CheckLine; o
         {[6, 12, 24].map((k) => <button key={k} type="button" onClick={() => add(k)} style={{ ...btn, minHeight: 46 }}>+{k}</button>)}
       </div>
       <div style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>{L(`Tối đa ${QTY_MAX} cho một dòng — nhiều hơn thì bấm món thêm lần nữa.`, `Up to ${QTY_MAX} per line — tap the dish again for more.`)}</div>
+    </Modal>
+  );
+}
+
+/** "Gộp Bàn 6 vào Bàn 5?" — both bills and what they become, before anything moves. */
+function MergeConfirm({ vi, fmt, busy, into, from, onClose, onConfirm }: {
+  vi: boolean; fmt: (c: number) => string; busy: boolean;
+  into: { tables: string; itemCount: number; subtotalCents: number };
+  from: { tables: string; itemCount: number; subtotalCents: number };
+  onClose: () => void; onConfirm: () => void;
+}) {
+  const L = (v: string, e: string) => (vi ? v : e);
+  const row = (label: string, items: number, cents: number, strong = false) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, padding: '10px 12px', borderRadius: 12, background: strong ? 'rgba(79,70,229,.10)' : C.raised }}>
+      <span style={{ fontWeight: strong ? 800 : 600 }}>{label} · {items} {L('món', 'items')}</span>
+      <b style={{ fontSize: strong ? 18 : 15, fontVariantNumeric: 'tabular-nums' }}>{fmt(cents)}</b>
+    </div>
+  );
+  return (
+    <Modal vi={vi} title={L(`Gộp ${from.tables} vào ${into.tables}?`, `Join ${from.tables} into ${into.tables}?`)} onClose={onClose} width={420}>
+      {row(from.tables, from.itemCount, from.subtotalCents)}
+      {row(into.tables, into.itemCount, into.subtotalCents)}
+      <div style={{ textAlign: 'center', color: C.muted, fontSize: 18 }}>↓</div>
+      {row(L('Bill chung', 'One bill'), from.itemCount + into.itemCount, from.subtotalCents + into.subtotalCents, true)}
+      <span style={{ fontSize: 12.5, color: C.muted }}>{L('Món đã báo bếp giữ nguyên, bếp không làm lại. Muốn trả riêng sau này: mở bill → Tách bill.', 'Dishes already sent stay as they are. To pay separately later: open the bill → Split.')}</span>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button type="button" onClick={onClose} style={{ ...btn, minHeight: 48 }}>{L('Thôi', 'Cancel')}</button>
+        <button type="button" disabled={busy} onClick={onConfirm} style={{ ...primary, minHeight: 48, fontSize: 15 }}>🔗 {L('Gộp bàn', 'Join tables')}</button>
+      </div>
+    </Modal>
+  );
+}
+
+/** "+ Thêm bàn": more guests arrived — tick free tables, they join this bill. */
+function AddTablesModal({ vi, busy, current, max, free, onClose, onConfirm }: {
+  vi: boolean; busy: boolean; current: string; max: number; free: Table[];
+  onClose: () => void; onConfirm: (ids: string[]) => void;
+}) {
+  const L = (v: string, e: string) => (vi ? v : e);
+  const [ids, setIds] = useState<string[]>([]);
+  return (
+    <Modal vi={vi} title={L(`Thêm bàn cho ${current}`, `Add tables to ${current}`)} onClose={onClose}>
+      <span style={{ color: C.muted }}>{L('Chạm chọn bàn trống ghép thêm — vẫn một bill chung.', 'Tap the free tables to add — still one bill.')}</span>
+      {free.length === 0 && <span style={{ color: C.muted }}>{L('Không còn bàn trống.', 'No free table.')}</span>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 8 }}>
+        {free.map((t) => {
+          const on = ids.includes(t.id);
+          return (
+            <button key={t.id} type="button" aria-pressed={on} disabled={!on && ids.length >= max}
+              onClick={() => setIds((x) => (on ? x.filter((y) => y !== t.id) : [...x, t.id]))}
+              style={{ ...btn, minHeight: 58, ...(on ? { border: '2px solid #4f46e5', background: 'rgba(79,70,229,.10)', color: '#4f46e5' } : {}) }}>
+              {on ? '✓ ' : ''}{t.name}<br /><span style={{ fontSize: 11.5, color: C.muted }}>{t.seats} {L('ghế', 'seats')}</span>
+            </button>
+          );
+        })}
+      </div>
+      {max <= 0 && <span style={{ color: 'var(--ink-warn)' }}>{L('Bill đã ghép tối đa 6 bàn.', 'This bill already has 6 tables.')}</span>}
+      <button type="button" disabled={!ids.length || busy} onClick={() => onConfirm(ids)} style={{ ...primary, minHeight: 50, opacity: ids.length ? 1 : 0.5 }}>{L('Thêm vào bill', 'Add to the bill')}{ids.length ? ` (${ids.length})` : ''}</button>
     </Modal>
   );
 }

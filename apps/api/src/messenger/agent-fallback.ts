@@ -114,3 +114,29 @@ export function heldPush(name: string | null | undefined, vi: boolean): { title:
     tag: 'lumio-inbox-held',
   };
 }
+
+/**
+ * A message a person is owed an answer to: a question (a "?", or one of the
+ * usual question openings) — "where are you located", "how much", "giá bao
+ * nhiêu". Used when the AI chose silence because of the salon's rules: a
+ * question left unanswered must reach a person (Amy's Lash 15/11: "where are
+ * you located?" asked eight times, nothing sent, nobody told).
+ */
+export function needsAnswer(text: string | null | undefined): boolean {
+  const t = String(text ?? '').trim().toLowerCase();
+  if (!t || t.length < 3) return false;
+  if (t.includes('?')) return true;
+  if (/^(?:where|how|what|when|which|who|why|is|are|do|does|did|can|could|may|will|would|should|any)\b/.test(t)) return true;
+  return /(?:ở đâu|o dau|bao nhiêu|bao nhieu|mấy giờ|may gio|khi nào|khi nao|có\s.+\skhông|giá|gia\s)/.test(t);
+}
+
+/** The AI stayed silent on a question because of the salon's rules — a person has to answer. */
+export function silentQuestionPush(name: string | null | undefined, vi: boolean): { title: string; body: string; url: string; tag: string } {
+  const who = String(name ?? '').trim() || (vi ? 'Khách' : 'A customer');
+  return {
+    title: vi ? `${who} đang hỏi — AI không trả lời theo lời dặn của tiệm` : `${who} asked — the AI stayed silent by the salon's rules`,
+    body: vi ? 'Khách hỏi một câu và AI im lặng (theo lời dặn). Vào trả lời khách nhé.' : 'The customer asked a question and the AI stayed silent (salon rule). Please answer them.',
+    url: '/staff/inbox',
+    tag: 'lumio-inbox-silent',
+  };
+}

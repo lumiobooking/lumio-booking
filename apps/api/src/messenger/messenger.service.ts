@@ -20,14 +20,14 @@ import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
 import { igCustomer, igVerdict } from './instagram-status';
-import { decideFollowUp, threadStateFrom, contextualNudge, followUpSettingsFrom, isNudgeLine, CHAT_FOLLOWUP_KEY, WINDOW_MS, type StoredTurn } from './followup';
+import { decideFollowUp, threadStateFrom, contextualNudge, followUpSettingsFrom, isNudgeLine, saysStop, CHAT_FOLLOWUP_KEY, WINDOW_MS, type StoredTurn } from './followup';
 import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION, repeatCorrection, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap, questionFirstCorrection, answersBeforeRecap, endsOnFiller, customerWrappingUp, FILLER_CORRECTION } from './booking-guards';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
 import {
   metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, localizeStage, type InboundMedia,
 } from './inbound-media';
-import { escalationPush, fallbackText, heldPush, isTransientStatus, sendFailedPush } from './agent-fallback';
+import { escalationPush, fallbackText, heldPush, isTransientStatus, needsAnswer, sendFailedPush, silentQuestionPush } from './agent-fallback';
 import { conversationLang, defaultLangForMarket, localeForLang, replyLangRule, sayIn, type ReplyLang } from '../common/reply-language';
 import {
   sharedAiHealth, recordAiSuccess, recordAiFailure, shouldAlert, markAlerted, aiAlertLine,
@@ -3890,6 +3890,18 @@ export class MessengerService implements OnModuleInit {
     // leaves the pictures it delivered on it, and they become a turn of
     // their own below — after the customer's message, before the reply.
     let agentCtx: Parameters<MessengerService['runAgent']>[4] | null = null;
+    // "STOP", "Unsubscribe", "don't message me": nothing is sent — no greeting,
+    // no "I understand", no model at all (it used to depend on the model obeying
+    // the salon's rule, and a greeting slipped out at Amy's Lash 15/11). The
+    // turn is kept; follow-ups already read it as an opt-out (./followup).
+    if (saysStop(text)) {
+      if (!userAlready) {
+        const inAtStop = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+        await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtStop, ...imgTurn }]);
+      }
+      this.logger.log(`opt-out on thread ${threadId}: no reply`);
+      return;
+    }
     try {
       // Booking mode reads the AI brain on its own (runAgent); a SALES page
       // gets the brain's facts and rules here — the same list the owner edits.
@@ -3977,6 +3989,17 @@ export class MessengerService implements OnModuleInit {
         }
         if (door.why === 'silent') {
           this.logger.log(`bot chose silence on thread ${threadId}`);
+          // Silence on a QUESTION is a customer left waiting: tell a person.
+          // (Booking requests are silent on purpose at some salons — the owner
+          // answers those; the push is how the owner knows to.)
+          // …or a reply to the AI's own question ("Would you like to book?" → "Yes please").
+          const lastBot = [...history].reverse().find((h) => h.role === 'assistant');
+          if (needsAnswer(text) || String(lastBot?.content ?? '').includes('?')) {
+            const who = (fresh as unknown as { senderName?: string | null }).senderName ?? null;
+            const vi = conversationLang([...history.filter((h) => h.role === 'user').map((h) => String(h.content ?? '')), text]) !== 'en';
+            void this.push.sendToTenant(conn.tenantId, silentQuestionPush(who, vi)).catch(() => undefined);
+            this.events.publish(conn.tenantId, 'message');
+          }
           return;
         }
         this.logger.warn(`reply held back (${door.why}) on thread ${threadId}: ${String(reply).slice(0, 140)}`);

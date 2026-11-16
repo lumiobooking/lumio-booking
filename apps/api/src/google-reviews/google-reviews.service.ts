@@ -17,6 +17,7 @@ import { oauthBase } from '../common/public-url.util';
 type GStatus = 'NEW' | 'DRAFTED' | 'REPLIED' | 'NEEDS_ATTENTION' | 'SKIPPED';
 
 const GBR_KEY = 'googleReviews';
+import { isDeadToken, poolKey, tokenCandidates } from './account-tokens';
 import { otherBookingLinks, placeActionsError, planBookingLink, type PlaceLink } from './place-action-links';
 import { reviewModel, forModel } from '../common/ai-model';
 const SCOPE = 'https://www.googleapis.com/auth/business.manage';
@@ -458,6 +459,12 @@ export class GoogleReviewsService {
         email = (me as { email?: string }).email || '';
       }
       await this.writeSettings(tenantId, { connected: true, refreshToken: data.refresh_token, connectedEmail: email });
+      // The newest token of this Google account now serves every salon it manages (./account-tokens).
+      if (email) {
+        await this.remember(email, data.refresh_token);
+        this.accessCache.delete(email.trim().toLowerCase());
+        for (const k of [...this.deadUntil.keys()]) if (k.startsWith(`${email.trim().toLowerCase()}|`)) this.deadUntil.delete(k);
+      }
       await this.audit(tenantId, null, 'google_reviews.connected');
       // Best-effort: auto-detect the first account+location so the salon is ready.
       await this.detectLocation(tenantId).catch(() => undefined);
@@ -507,26 +514,87 @@ export class GoogleReviewsService {
     return { ...(await this.get(user)), removed };
   }
 
-  /** Refresh an access token for the tenant's stored refresh token. */
-  private async accessToken(s: GbrSettings): Promise<string> {
-    if (!s.refreshToken) throw new BadRequestException('Google account is not connected.');
+  /** Access tokens already minted, per Google account (or per token when no email), kept 50 minutes. */
+  private readonly accessCache = new Map<string, { token: string; until: number }>();
+  /** Accounts whose every token just failed: not retried for 10 minutes (no storm of refreshes). */
+  private readonly deadUntil = new Map<string, number>();
+
+  private async pooled(email: string): Promise<string | null> {
+    const key = poolKey(email);
+    if (!key) return null;
+    const row = await this.prisma.platformConfig.findUnique({ where: { key } }).catch(() => null);
+    return row?.value || null;
+  }
+
+  private async remember(email: string, token: string): Promise<void> {
+    const key = poolKey(email);
+    if (!key || !token) return;
+    await this.prisma.platformConfig.upsert({ where: { key }, create: { key, value: token }, update: { value: token } }).catch(() => undefined);
+  }
+
+  /** One refresh-token exchange. ok → the access token; dead → invalid_grant; else a passing failure. */
+  private async exchange(refreshToken: string): Promise<{ ok: true; token: string } | { ok: false; dead: boolean; status: number; body: string }> {
     const res = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: this.clientId(),
-        client_secret: this.clientSecret(),
-        refresh_token: s.refreshToken,
-        grant_type: 'refresh_token',
-      }).toString(),
+      body: new URLSearchParams({ client_id: this.clientId(), client_secret: this.clientSecret(), refresh_token: refreshToken, grant_type: 'refresh_token' }).toString(),
     });
     if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      throw new BadRequestException(`Google auth failed (${res.status}). Reconnect the account. ${t.slice(0, 120)}`);
+      const body = await res.text().catch(() => '');
+      return { ok: false, dead: isDeadToken(res.status, body), status: res.status, body };
     }
-    const data = (await res.json()) as { access_token?: string };
-    if (!data.access_token) throw new BadRequestException('Google returned no access token.');
-    return data.access_token;
+    const data = (await res.json().catch(() => ({}))) as { access_token?: string };
+    return data.access_token ? { ok: true, token: data.access_token } : { ok: false, dead: false, status: res.status, body: 'no access_token' };
+  }
+
+  /**
+   * An access token for this salon's Google connection — see ./account-tokens:
+   * the account's newest token first, the salon's own second, then (both dead)
+   * the newest working token of another salon connected with the SAME account.
+   */
+  private async accessToken(s: GbrSettings): Promise<string> {
+    if (!s.refreshToken) throw new BadRequestException('Google account is not connected.');
+    const email = String(s.connectedEmail ?? '').trim().toLowerCase();
+    const cacheKey = email || `t:${s.refreshToken.slice(-24)}`;
+    const hit = this.accessCache.get(cacheKey);
+    if (hit && hit.until > Date.now()) return hit.token;
+    const deadKey = `${cacheKey}|${s.refreshToken.slice(-24)}`;
+    const keep = (token: string) => { this.accessCache.set(cacheKey, { token, until: Date.now() + 50 * 60_000 }); this.deadUntil.delete(deadKey); return token; };
+    if ((this.deadUntil.get(deadKey) ?? 0) > Date.now()) {
+      throw new BadRequestException('Google auth failed (400). Reconnect the account. {"error":"invalid_grant","error_description":"Token has been expired or revoked."}');
+    }
+
+    const pool = email ? await this.pooled(email) : null;
+    let last: { status: number; body: string } | null = null;
+    let allDead = true;
+    for (const t of tokenCandidates(pool, s.refreshToken)) {
+      const r = await this.exchange(t);
+      if (r.ok) {
+        if (email && t !== pool) await this.remember(email, t);
+        return keep(r.token);
+      }
+      last = r; if (!r.dead) allDead = false;
+    }
+    // Every token this salon knows is dead: borrow the newest live one of the same Google account.
+    if (email && allDead) {
+      const tried = new Set(tokenCandidates(pool, s.refreshToken));
+      const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY }, select: { value: true, updatedAt: true }, orderBy: { updatedAt: 'desc' }, take: 500 }).catch(() => [] as { value: unknown; updatedAt: Date }[]);
+      const same = rows
+        .map((r) => r.value as Partial<GbrSettings>)
+        .filter((v) => v?.connected && v.refreshToken && String(v.connectedEmail ?? '').trim().toLowerCase() === email && !tried.has(v.refreshToken))
+        .map((v) => v.refreshToken as string);
+      for (const t of [...new Set(same)].slice(0, 10)) {
+        const r = await this.exchange(t);
+        if (r.ok) {
+          await this.remember(email, t);
+          this.logger.log(`Google token for ${email}: healed from another salon connected with the same account`);
+          return keep(r.token);
+        }
+        last = r; if (!r.dead) allDead = false;
+      }
+    }
+    if (allDead) this.deadUntil.set(deadKey, Date.now() + 10 * 60_000);
+    throw new BadRequestException(`Google auth failed (${last?.status ?? 400}). Reconnect the account. ${(last?.body ?? '').slice(0, 120)}`);
   }
 
   // ---- location discovery (best-effort) ------------------------------------

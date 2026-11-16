@@ -1,4 +1,5 @@
 import { visitsAreTracked } from './visits-tracked';
+import { poolKey } from '../google-reviews/account-tokens';
 import { lumioPostsOn } from './lumio-posts';
 import { monthWindow } from './month-window';
 import { Injectable, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common';
@@ -1752,10 +1753,15 @@ export class MarketingService {
       // gbp — the reviews module's settings row, plus the app client pair from
       // env (the same pair the reviews OAuth itself used).
       const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'googleReviews' } } }).catch(() => null);
-      const v = (row?.value ?? {}) as { connected?: boolean; refreshToken?: string; locationId?: string; locationTitle?: string };
+      const v = (row?.value ?? {}) as { connected?: boolean; refreshToken?: string; locationId?: string; locationTitle?: string; connectedEmail?: string };
+      // The Google account's newest token first (google-reviews/account-tokens): a salon's own
+      // token can be revoked by Google's 100-tokens-per-account limit while the account's is live.
+      const key = poolKey(v.connectedEmail);
+      const pooled = key ? (await this.prisma.platformConfig.findUnique({ where: { key } }).catch(() => null))?.value : null;
       return linkedCredsFor(platform, {
         gbr: {
           ...v,
+          ...(pooled ? { refreshToken: pooled } : {}),
           clientId: process.env.GBP_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '',
           clientSecret: process.env.GBP_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
         },

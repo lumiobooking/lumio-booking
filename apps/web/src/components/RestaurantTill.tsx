@@ -226,6 +226,20 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     apiFetch<ReceiptProfile>('/pos/receipt-profile', { token }).then(setProfile).catch(() => undefined);
   }, [token, loadFloor, loadMenu]);
 
+  // Orders › ✏ Sửa bill lands here with ?check=<id>: open that bill straight away, once.
+  const openedFromLink = useRef(false);
+  useEffect(() => {
+    if (!token || openedFromLink.current || typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const id = sp.get('check');
+    if (!id) return;
+    openedFromLink.current = true;
+    void loadCheck(id);
+    setTab(phone ? 'bill' : 'menu');
+    say(true, sp.get('takeaway') ? L('Bàn cũ đã có khách mới — bill mở lại thành bill mang về. Sửa món rồi bấm Thanh toán.', 'The table has new guests — the bill reopened as takeaway. Fix it, then Pay.') : L('Bill đã mở lại với đủ món. Sửa món rồi bấm Thanh toán.', 'The bill is open again with its dishes. Fix it, then Pay.'));
+    try { window.history.replaceState(null, '', window.location.pathname); } catch { /* old browser */ }
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // The floor, the open bill and sold-out dishes follow what the other devices do.
   useEffect(() => {
     const t = setInterval(() => {

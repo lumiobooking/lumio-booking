@@ -791,6 +791,38 @@ export class RestaurantService {
     return { order, check: await this.getCheck(user, id) };
   }
 
+  /**
+   * FIX A PAID BILL WITHOUT TYPING IT AGAIN (Nẫu Chill Đêm, 15/11: three bills
+   * voided and keyed in again by hand).
+   *
+   * The sale is voided exactly as Orders › Huỷ bill does it (reason, a
+   * manager's PIN when the cashier lacks "refund & void", the same day window,
+   * stock and gift cards back) and the table's own check opens again with
+   * every dish as it was — sent dishes stay sent, so the kitchen gets nothing
+   * new. The cashier changes what was wrong and takes the money again; that
+   * makes a new bill number. A table that has new guests by now is not taken
+   * over: the check comes back as a takeaway bill instead.
+   */
+  async reopenPaid(user: AuthenticatedUser, orderId: string, dto: { reason?: string; approvalPin?: string }) {
+    const tenantId = this.tenantId(user);
+    const reason = String(dto.reason ?? '').trim().slice(0, 120);
+    if (reason.length < 2) throw new BadRequestException('REASON_REQUIRED');
+    const check = await this.prisma.tableCheck.findFirst({ where: { tenantId, orderId, status: 'PAID' }, select: { id: true, number: true, tableIds: true } });
+    if (!check) throw new NotFoundException('NOT_A_TABLE_BILL');
+    // Void first: if the PIN, the day window or a part refund says no, nothing on the floor moves.
+    await this.pos.voidOrder(user, orderId, { reason, note: `Sửa bill → mở lại bill bàn #${check.number}`, approvalPin: dto.approvalPin });
+    const taken = check.tableIds.length
+      ? await this.prisma.tableCheck.findFirst({ where: { tenantId, id: { not: check.id }, status: { in: ['OPEN', 'PAYING'] }, tableIds: { hasSome: check.tableIds } }, select: { id: true } })
+      : null;
+    const reopened = await this.prisma.tableCheck.updateMany({
+      where: { id: check.id, tenantId, status: 'PAID', orderId },
+      data: { status: 'OPEN', orderId: null, closedAt: null, payRequestedAt: null, ...(taken ? { tableIds: [] } : {}) },
+    });
+    if (reopened.count === 0) throw new ConflictException('CHECK_CHANGED');
+    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.check_reopened', resourceType: 'table_check', resourceId: check.id, metadata: { orderId, reason, asTakeaway: !!taken } });
+    return { check: await this.getCheck(user, check.id), asTakeaway: !!taken };
+  }
+
   // ------------------------------------------------------------ hold / fire --
 
   /** Keep an unsent dish back (the mains after the starters), or let it go with the next send. */

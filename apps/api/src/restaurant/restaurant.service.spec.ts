@@ -469,3 +469,55 @@ describe('RestaurantService — phase 3', () => {
   });
 });
 
+
+describe('RestaurantService.reopenPaid — fix a paid bill without keying it in again', () => {
+  async function paidTable(m: ReturnType<typeof make>) {
+    const c = await m.svc.openCheck(user('t1'), { tableIds: ['A3'], guests: 2 });
+    await m.svc.addLine(user('t1'), c.id, { menuItemId: 'beer', quantity: 3 });
+    await m.svc.send(user('t1'), c.id);
+    await m.svc.pay(user('t1'), c.id, { tenders: [{ method: 'CASH' as never, amountCents: 90000 }] });
+    return c.id;
+  }
+  const withVoid = (m: ReturnType<typeof make>) => {
+    (m.pos as Row).voidOrder = jest.fn(async (_u: Row, _id: string, o: Row) => { if (o.approvalPin === 'bad') throw new ForbiddenException('APPROVAL_PIN_REQUIRED'); return { id: 'order-1', status: 'VOID' }; });
+    return m;
+  };
+
+  it('voids the sale and opens the same table bill with its dishes, still sent', async () => {
+    const m = withVoid(make());
+    const id = await paidTable(m);
+    const sentBefore = m.printJob.rows.length;
+    const r = await m.svc.reopenPaid(user('t1'), 'order-1', { reason: 'Tính sai món' });
+    expect((m.pos as Row).voidOrder).toHaveBeenCalledWith(expect.anything(), 'order-1', expect.objectContaining({ reason: 'Tính sai món' }));
+    expect(r.asTakeaway).toBe(false);
+    const row = m.tableCheck.rows.find((x) => x.id === id)!;
+    expect(row).toMatchObject({ status: 'OPEN', orderId: null, tableIds: ['A3'] });
+    expect(m.tableCheckLine.rows.filter((l) => l.checkId === id).map((l) => [l.quantity, l.state])).toEqual([[3, 'SENT']]);
+    expect(m.printJob.rows.length).toBe(sentBefore); // nothing new for the kitchen
+    expect(m.audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'restaurant.check_reopened', tenantId: 't1' }));
+  });
+
+  it('a table with new guests is not taken over: the bill comes back as takeaway', async () => {
+    const m = withVoid(make());
+    const id = await paidTable(m);
+    await m.svc.openCheck(user('t1'), { tableIds: ['A3'], guests: 4 });
+    const r = await m.svc.reopenPaid(user('t1'), 'order-1', { reason: 'Tính sai món' });
+    expect(r.asTakeaway).toBe(true);
+    expect(m.tableCheck.rows.find((x) => x.id === id)!.tableIds).toEqual([]);
+  });
+
+  it('a refused void (PIN) leaves the paid bill exactly as it was', async () => {
+    const m = withVoid(make());
+    const id = await paidTable(m);
+    await expect(m.svc.reopenPaid(user('t1'), 'order-1', { reason: 'Tính sai món', approvalPin: 'bad' })).rejects.toThrow(ForbiddenException);
+    expect(m.tableCheck.rows.find((x) => x.id === id)!).toMatchObject({ status: 'PAID', orderId: 'order-1' });
+  });
+
+  it('needs a reason, and never reaches another restaurant\'s bill', async () => {
+    const m = withVoid(make());
+    await paidTable(m);
+    await expect(m.svc.reopenPaid(user('t1'), 'order-1', { reason: '' })).rejects.toThrow('REASON_REQUIRED');
+    await expect(m.svc.reopenPaid(user('t2'), 'order-1', { reason: 'Tính sai món' })).rejects.toThrow(NotFoundException);
+    expect((m.pos as Row).voidOrder).not.toHaveBeenCalled();
+  });
+});

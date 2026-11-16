@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -136,4 +136,11 @@ export class RestaurantController {
 
   @Post('checks/:id/pay')
   pay(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: PayCheckDto) { return this.svc.pay(user, id, dto); }
+
+  /** A paid table bill was wrong: void it (same rules as Orders › Huỷ bill) and open the table's bill again with its dishes. */
+  @Post('orders/:orderId/reopen')
+  @HttpCode(200)
+  reopenPaid(@CurrentUser() user: AuthenticatedUser, @Param('orderId') orderId: string, @Body() body?: { reason?: string; approvalPin?: string }) {
+    return this.svc.reopenPaid(user, orderId, { reason: typeof body?.reason === 'string' ? body.reason : undefined, approvalPin: typeof body?.approvalPin === 'string' ? body.approvalPin : undefined });
+  }
 }

@@ -41,6 +41,8 @@ export interface OrderDetail {
   refundedCents: number; collectedCents: number;
   history: { action: string; at: string; by: string | null; meta: Record<string, unknown> }[];
   canRefund: boolean; canVoid: boolean; canDelete: boolean;
+  /** A restaurant table's bill: it can be opened again with its dishes to fix it. */
+  tableCheck?: { number: number } | null; canReopen?: boolean;
   /** Why this person may not void it (shift closed / day over) — refund instead. */
   voidLock?: string | null;
 }
@@ -96,7 +98,7 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
   const [d, setD] = useState<OrderDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [dialog, setDialog] = useState<'refund' | 'void' | 'delete' | null>(null);
+  const [dialog, setDialog] = useState<'refund' | 'void' | 'delete' | 'reopen' | null>(null);
   const [editClient, setEditClient] = useState(false);
   const [techEdit, setTechEdit] = useState<Record<string, string> | null>(null);
   // The tip of each line while re-splitting (typed in the salon's money).
@@ -340,6 +342,7 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, borderTop: '1px solid var(--c1f2937)', paddingTop: 14 }}>
               <button type="button" onClick={() => void reprint()} style={ghost}>🖨 {L('In lại', 'Reprint')}</button>
               <span style={{ flex: 1 }} />
+              {d.canReopen && <button type="button" onClick={() => setDialog('reopen')} style={{ ...ghost, borderColor: '#4f46e5', color: 'var(--ink-link)' }}>✏ {L('Sửa bill', 'Fix bill')}</button>}
               {d.canRefund && <button type="button" onClick={() => setDialog('refund')} style={{ ...ghost, borderColor: '#f97316', color: 'var(--ink-warn)' }}>↩ {L('Hoàn tiền', 'Refund')}</button>}
               {d.status === 'PAID' && <button type="button" disabled={!d.canVoid} title={d.canVoid ? undefined : d.voidLock || L('Bill đã có hoàn tiền — hoàn tiếp phần còn lại.', 'Part of it was refunded — refund the rest instead.')} onClick={() => setDialog('void')} style={{ ...ghost, borderColor: '#ef4444', color: 'var(--ink-bad)', opacity: d.canVoid ? 1 : 0.45 }}>{L('Huỷ bill', 'Void')}</button>}
               {canMoveMoney && d.canDelete && <button type="button" disabled={busy} onClick={() => setDialog('delete')} style={{ ...ghost, borderColor: '#ef4444', color: 'var(--ink-bad)' }}>{L('Xoá bill nháp', 'Delete draft')}</button>}
@@ -362,6 +365,7 @@ export function OrderDrawer({ id, token, vi, canMoveMoney, isOwner, canEditClien
           </div>
         </Modal>
       )}
+      {d && dialog === 'reopen' && <ReopenDialog d={d} token={token} vi={vi} needPin={!canMoveMoney} onClose={() => setDialog(null)} />}
       {d && dialog === 'void' && <VoidDialog d={d} token={token} vi={vi} needPin={!canMoveMoney} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void load(); onChanged(); }} />}
     </>
   );
@@ -544,6 +548,64 @@ function VoidDialog({ d, token, vi, needPin, onClose, onDone }: { d: OrderDetail
           <button type="button" disabled={!reason || (needPin && pin.length < 4)} onClick={() => setSure(true)} style={{ ...ui.dangerBtn, opacity: reason && (!needPin || pin.length >= 4) ? 1 : 0.5 }}>{L('Huỷ bill…', 'Void bill…')}</button>
         </div>
       )}
+    </Modal>
+  );
+}
+
+const REOPEN_REASONS = [
+  { k: 'dish', vi: 'Tính sai món / số lượng', en: 'Wrong dish or quantity' },
+  { k: 'discount', vi: 'Quên giảm giá / sai giá', en: 'Missed a discount / wrong price' },
+  { k: 'pay', vi: 'Sai cách trả tiền', en: 'Wrong payment method' },
+  { k: 'other', vi: 'Khác', en: 'Other' },
+];
+
+/**
+ * ✏ Sửa bill (restaurant tables): the paid bill is voided with a reason (a
+ * manager's PIN when needed) and the table's bill opens again on the till with
+ * every dish — fix what was wrong and take the money again. No re-typing.
+ */
+function ReopenDialog({ d, token, vi, needPin, onClose }: { d: OrderDetail; token: string | null; vi: boolean; needPin: boolean; onClose: () => void }) {
+  const L = (v: string, e: string) => (vi ? v : e);
+  const [pin, setPin] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const ready = !!reason && (!needPin || pin.length >= 4);
+  async function submit() {
+    if (!ready) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await apiFetch<{ check: { id: string }; asTakeaway: boolean }>(`/restaurant/orders/${d.id}/reopen`, { method: 'POST', token, body: { reason: REOPEN_REASONS.find((x) => x.k === reason)?.vi ?? reason, ...(needPin ? { approvalPin: pin } : {}) } });
+      window.location.href = `/salon/pos?check=${encodeURIComponent(r.check.id)}${r.asTakeaway ? '&takeaway=1' : ''}`;
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      const known: Record<string, [string, string]> = {
+        NOT_A_TABLE_BILL: ['Bill này không phải bill bàn (hoặc đã được mở lại rồi) — dùng Hoàn tiền hoặc Huỷ bill.', 'This is not a table bill (or it was reopened already) — use Refund or Void.'],
+        CHECK_CHANGED: ['Bill bàn vừa bị thay đổi trên máy khác — tải lại trang rồi thử lại.', 'The table bill just changed on another device — reload and try again.'],
+        REASON_REQUIRED: ['Chọn lý do sửa bill.', 'Pick a reason.'],
+        APPROVAL_PIN_REQUIRED: ['Cần PIN của chủ tiệm hoặc quản lý.', 'The owner\'s or a manager\'s PIN is needed.'],
+      };
+      const hit = Object.keys(known).find((k) => m.includes(k));
+      setErr(hit ? known[hit][vi ? 0 : 1] : m); setBusy(false);
+    }
+  }
+  return (
+    <Modal title={<>✏ {L('Sửa bill', 'Fix bill')} #{d.orderNumber}</>} onClose={onClose}>
+      <div style={{ ...box, fontSize: 13, color: 'var(--ce2e8f0)', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+        <span>{d.items.map((l) => (l.quantity > 1 ? `${l.quantity}× ${l.name}` : l.name)).join(', ')}</span><b style={{ whiteSpace: 'nowrap' }}>{formatPrice(d.totalCents, d.currency)}</b>
+      </div>
+      <div style={sec}>{L('LÝ DO (BẮT BUỘC)', 'REASON (REQUIRED)')}</div>
+      {REOPEN_REASONS.map((r) => <Choice key={r.k} on={reason === r.k} onClick={() => setReason(r.k)}>{vi ? r.vi : r.en}</Choice>)}
+      {needPin && <PinField value={pin} onChange={setPin} vi={vi} />}
+      <div style={{ fontSize: 12.5, padding: '8px 10px', borderRadius: 10, background: 'var(--wash-indigo, rgba(79,70,229,.12))', color: 'var(--ccbd5e1)', lineHeight: 1.5 }}>
+        {L(`Bill #${d.orderNumber} chuyển "Đã huỷ" (không tính doanh thu). Bill bàn #${d.tableCheck?.number ?? ''} mở lại trên máy tính tiền với đủ món như cũ — món đã báo bếp không báo lại. Sửa xong bấm Thanh toán, hệ thống ra số bill mới. Nếu bàn đã có khách mới, bill mở thành bill mang về.`,
+          `Bill #${d.orderNumber} becomes "Voided" (no revenue). Table bill #${d.tableCheck?.number ?? ''} opens again on the till with every dish — sent dishes are not sent again. Fix it and press Pay; it gets a new bill number. If the table has new guests, it opens as a takeaway bill.`)}
+      </div>
+      {err && <div style={ui.banner}>{err}</div>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button type="button" onClick={onClose} style={ghost}>{L('Thôi', 'Cancel')}</button>
+        <button type="button" disabled={!ready || busy} onClick={() => void submit()} style={{ ...ui.primaryBtn, opacity: ready ? 1 : 0.5 }}>{busy ? '…' : L('Mở lại bill để sửa', 'Reopen to fix')}</button>
+      </div>
     </Modal>
   );
 }

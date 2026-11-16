@@ -237,6 +237,10 @@ export class PosService {
         : Promise.resolve([] as { id: string; firstName: string; lastName: string | null }[]),
     ]);
     const voidLock = order.status === OrderStatus.PAID ? await this.voidWindow(user, tenantId, order) : null;
+    // A restaurant table's bill can be opened again to fix it (Restaurant › reopenPaid).
+    const table = order.status === OrderStatus.PAID
+      ? await Promise.resolve(this.prisma.tableCheck?.findFirst({ where: { tenantId, orderId: id, status: 'PAID' }, select: { id: true, number: true } })).catch(() => null) ?? null
+      : null;
     const userIds = [...new Set([order.createdByUserId, ...logs.map((l) => l.userId)].filter((x): x is string => !!x))];
     const people = userIds.length ? await this.namesOfUsers(tenantId, userIds) : new Map<string, string>();
     const paidRows = ledger.filter((r) => r.status === PaymentStatus.PAID);
@@ -257,6 +261,8 @@ export class PosService {
       canVoid: order.status === OrderStatus.PAID && refundedCents === 0 && !voidLock,
       voidLock,
       canDelete: this.isDraft(order),
+      tableCheck: table ? { number: table.number } : null,
+      canReopen: !!table && order.status === OrderStatus.PAID && refundedCents === 0 && !voidLock,
     };
   }
 

@@ -40,6 +40,9 @@ import { PAYROLL_SETTINGS_KEY } from '../payroll/payroll.service';
 /** Wrong approval PINs per salon (this API process): 5 in 10 minutes locks PIN entry. */
 const PIN_FAILS = new Map<string, { n: number; until: number }>();
 
+/** The approval PIN of a salon owner who has not set their own (Tài khoản của tôi → PIN duyệt). */
+export const DEFAULT_APPROVAL_PIN = '0000';
+
 @Injectable()
 export class PosService {
   constructor(
@@ -332,6 +335,16 @@ export class PosService {
       const sm = cards.find((c) => c.userId === p.id);
       const may = p.role === 'SALON_ADMIN' || (p.role === 'STAFF' && hasCapability('STAFF' as never, (sm?.staffRole ?? null) as never, 'pos.void', cleanStaffCaps(sm?.permissions) ?? undefined));
       if (may && await verifySecret(clean, p.approvalPinHash)) { PIN_FAILS.delete(tenantId); return p.id; }
+    }
+    // The default PIN (the owner's choice, 16/11/2026): an OWNER of this salon
+    // who has not set a PIN yet approves with 0000 — until they set their own
+    // under Tài khoản của tôi, which ends the default for them.
+    if (clean === DEFAULT_APPROVAL_PIN) {
+      const owner = await Promise.resolve().then(() => this.prisma.user.findFirst({
+        where: { tenantId, isActive: true, role: 'SALON_ADMIN', approvalPinHash: null } as never,
+        orderBy: { createdAt: 'asc' }, select: { id: true },
+      })).catch(() => null);
+      if (owner) { PIN_FAILS.delete(tenantId); return owner.id; }
     }
     const prev = lock && lock.until > now ? lock : { n: 0, until: now + 10 * 60_000 };
     PIN_FAILS.set(tenantId, { n: prev.n + 1, until: prev.until });

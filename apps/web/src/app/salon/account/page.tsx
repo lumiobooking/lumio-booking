@@ -203,7 +203,7 @@ function ApprovalPin() {
       <p style={{ fontSize: 13, color: 'var(--c94a3b8)', margin: '4px 0 12px' }}>
         {L('Thu ngân không có quyền hoàn/huỷ sẽ cần bạn nhập PIN này ngay trên máy của họ. Mỗi lần duyệt được ghi lại với tên bạn.',
           'A cashier who may not refund or void asks you to type this PIN on their screen. Every approval is recorded with your name.')}
-        {' '}{isSet === true ? <b style={{ color: 'var(--ink-good)' }}>{L('Đã đặt PIN.', 'PIN is set.')}</b> : isSet === false ? <b style={{ color: 'var(--ink-warn)' }}>{L('Chưa đặt PIN.', 'No PIN yet.')}</b> : null}
+        {' '}{isSet === true ? <b style={{ color: 'var(--ink-good)' }}>{L('Đã đặt PIN.', 'PIN is set.')}</b> : isSet === false ? <b style={{ color: 'var(--ink-warn)' }}>{user?.role === 'SALON_ADMIN' ? L('Đang dùng PIN mặc định 0000 — nên đổi PIN riêng để thu ngân không tự duyệt được.', 'Using the default PIN 0000 — set your own so a cashier cannot approve alone.') : L('Chưa đặt PIN.', 'No PIN yet.')}</b> : null}
       </p>
       {err && <div style={ui.banner}>{err}</div>}
       {msg && <div style={{ fontSize: 13, color: 'var(--ink-good)', marginBottom: 10 }}>{msg}</div>}

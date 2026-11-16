@@ -1,3 +1,4 @@
+import { SOURCES_KEY, docRules, sourcesFrom } from './knowledge-sources';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { StaffRole, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -115,6 +116,28 @@ export class AiInstructionsService {
     return list;
   }
 
+  private readonly docRuleCache = new Map<string, { at: number; list: Instruction[] }>();
+
+  /**
+   * The rules written INSIDE the salon's linked documents ("QUY TẮC TRẢ LỜI
+   * KHÁCH (dành cho AI)", "Khách hỏi khuyến mãi → …"), as ALWAYS instructions.
+   * Read from the salon's own setting row only. Never throws.
+   */
+  async docRulesFor(tenantId: string): Promise<Instruction[]> {
+    const hit = this.docRuleCache.get(tenantId);
+    if (hit && Date.now() - hit.at < CACHE_MS) return hit.list;
+    const row: Row | null = await Promise.resolve()
+      .then(() => this.db.setting.findUnique({ where: { tenantId_key: { tenantId, key: SOURCES_KEY } } }))
+      .catch(() => null);
+    const sources = row && (row.tenantId === undefined || row.tenantId === tenantId) ? sourcesFrom(row.value) : [];
+    const list: Instruction[] = docRules(sources).map((text, i) => ({
+      id: `doc-rule-${i + 1}`, kind: 'always', text, triggers: [], mode: 'meaning', channels: [], on: true, usedCount: 0,
+      meaning: `A rule the business wrote in its own price list / document for the assistant: ${text}`,
+    }));
+    this.docRuleCache.set(tenantId, { at: Date.now(), list });
+    return list;
+  }
+
   private readonly filling = new Set<string>();
   /** Row+wording → when it was last tried: a note the model cannot read is not asked about again for hours. */
   private readonly tried = new Map<string, number>();
@@ -199,7 +222,9 @@ export class AiInstructionsService {
 
   /** What one reply on one channel must obey. `list` overrides the stored rows (the try-out). */
   async forTurn(tenantId: string, channel: InstructionChannel, message: string, list?: Instruction[]): Promise<TurnInstructions> {
-    const all = list ?? await this.allFor(tenantId);
+    // The owner's typed rules, then the rules written inside the business's
+    // own linked documents (Học từ link) — both obeyed and both checked.
+    const all = [...(list ?? await this.allFor(tenantId)), ...await this.docRulesFor(tenantId)];
     const matches = matchInstructions(all, message, channel);
     return { all, block: instructionsBlock(all, channel), matches, matched: matchedBlock(all, matches) };
   }

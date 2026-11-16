@@ -125,3 +125,39 @@ export function docSummary(text: string): { lines: number; sections: string[] } 
   const heads = lines.filter((l) => /^#{2,4}\s+\S/.test(l)).map((l) => l.replace(/^#+\s+/, '').trim().slice(0, 60));
   return { lines: lines.length, sections: heads.slice(0, 60) };
 }
+
+/**
+ * The document's OWN RULES — "QUY TẮC TRẢ LỜI KHÁCH (dành cho AI)", "Lưu ý",
+ * "Rules", and lines like "Khách hỏi khuyến mãi → mời để lại số điện thoại".
+ * The rest of a document is data the AI learns from; these lines are orders
+ * it must obey. They are handed to the owner-instruction machinery (top of the
+ * prompt + the check on every reply), exactly like the owner's typed rules.
+ */
+export const RULE_HEADING = /(quy\s*t[aắ]c|l[ưu]u\s*[ýy]|nguy[eê]n\s*t[aắ]c|d[aà]nh\s+cho\s+ai|\brules?\b|guidelines?|instructions?\s+for|for\s+(the\s+)?ai\b|ai\s+must)/i;
+const DIRECTED = /^(kh[aá]ch\s+(h[oỏ]i|mu[oố]n|c[aầ]n)|n[eế]u\s+kh[aá]ch|when\s+(a|the)\s+customer|if\s+(a|the)\s+customer)/i;
+export const MAX_DOC_RULES = 20;
+
+export function docRules(sources: KnowledgeSource[]): string[] {
+  const out: string[] = [];
+  for (const s of sources.filter((x) => x.on && x.text.trim())) {
+    let inRules = false;
+    let ruleLevel = 0;
+    for (const raw of s.text.split('\n')) {
+      const line = raw.trim();
+      if (!line) continue;
+      const h = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (h) {
+        const level = h[1].length;
+        if (inRules && level <= ruleLevel) inRules = false;
+        if (!inRules && RULE_HEADING.test(h[2])) { inRules = true; ruleLevel = level; }
+        continue;
+      }
+      const body = line.replace(/^[-*•]\s*/, '').trim();
+      if (body.length < 8) continue;
+      const directed = DIRECTED.test(body) && /→|->|:/.test(body);
+      if (inRules || directed) out.push(body.slice(0, 400));
+      if (out.length >= MAX_DOC_RULES) return [...new Set(out)];
+    }
+  }
+  return [...new Set(out)];
+}

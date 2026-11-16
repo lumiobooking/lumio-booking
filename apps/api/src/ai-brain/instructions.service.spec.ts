@@ -147,3 +147,21 @@ describe('the check before a reply goes', () => {
     expect(instructionChannel('weird')).toBe('messenger');
   });
 });
+
+describe('rules written inside a salon\'s linked document are obeyed for that salon only', () => {
+  it('adds them to A\'s turn as ALWAYS rules; B never gets them', async () => {
+    const doc = '## QUY TẮC TRẢ LỜI KHÁCH (dành cho AI)\n- Chỉ báo giá đúng như bảng dưới.\n## GÓI\n### BOOST — $179/tháng';
+    const settings = [{ tenantId: 'ta', key: 'ai_brain_sources', value: [{ id: 's1', url: 'https://a.b', label: 'Giá', on: true, text: doc }] }];
+    const db = {
+      aiInstruction: { findMany: async () => [] },
+      setting: { findUnique: async ({ where }: Row) => settings.find((r) => r.tenantId === where.tenantId_key.tenantId && r.key === where.tenantId_key.key) ?? null },
+    };
+    const svc = new AiInstructionsService(db as never, { log: async () => undefined } as never);
+    const a = await svc.forTurn('ta', 'messenger', 'giá bao nhiêu');
+    expect(a.all.map((i) => i.text)).toEqual(['Chỉ báo giá đúng như bảng dưới.']);
+    expect(a.all[0].kind).toBe('always');
+    expect(a.block).toContain('Chỉ báo giá đúng như bảng dưới.');
+    const b = await svc.forTurn('tb', 'messenger', 'giá bao nhiêu');
+    expect(b.all).toEqual([]);
+  });
+});

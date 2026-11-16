@@ -29,3 +29,31 @@ describe('Học từ link — the AI reads the business own documents', () => {
     expect(sourcesFrom(Array.from({ length: 9 }, (_, i) => ({ id: String(i), url: `https://a.com/${i}` }))).length).toBe(5);
   });
 });
+
+import { docRules } from './knowledge-sources';
+describe('the document\'s own rules (docRules)', () => {
+  const src = (text: string) => ({ id: 'x', url: 'https://a.b', label: 'L', on: true, text, chars: text.length, fetchedAt: null, error: null, errorAt: null });
+  const DOC = `# BẢNG GIÁ
+## QUY TẮC TRẢ LỜI KHÁCH (dành cho AI)
+- Chỉ báo giá, khối lượng và quyền lợi đúng như bảng dưới.
+- Gói không ghi một kênh hay hạng mục nào thì gói đó KHÔNG bao gồm.
+## ƯU ĐÃI HIỆN TẠI
+Hiện KHÔNG có chương trình ưu đãi. Báo đúng giá niêm yết.
+Khách hỏi khuyến mãi → mời để lại số điện thoại.
+## GÓI MARKETING
+### BOOST — $179/tháng
+- Kênh đăng: Facebook, Instagram, TikTok
+Không bao gồm:
+- Ngân sách quảng cáo`;
+  it('takes the rule section and customer-directed lines, never the price data', () => {
+    const r = docRules([src(DOC)]);
+    expect(r).toEqual([
+      'Chỉ báo giá, khối lượng và quyền lợi đúng như bảng dưới.',
+      'Gói không ghi một kênh hay hạng mục nào thì gói đó KHÔNG bao gồm.',
+      'Khách hỏi khuyến mãi → mời để lại số điện thoại.',
+    ]);
+  });
+  it('ignores links that are off', () => {
+    expect(docRules([{ ...src(DOC), on: false }])).toEqual([]);
+  });
+});

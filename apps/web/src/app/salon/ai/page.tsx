@@ -399,7 +399,7 @@ function Persona({ brain, patch, vi, canEdit }: { brain: Brain; patch: (fn: (b: 
 
 // ---------------------------------------------------------------- Học từ link
 
-interface LinkSource { id: string; url: string; label: string; on: boolean; preview: string; chars: number; fetchedAt: string | null; error: string | null; errorAt: string | null; summary?: { lines: number; sections: string[] } }
+interface LinkSource { id: string; url: string; label: string; on: boolean; preview: string; chars: number; fetchedAt: string | null; error: string | null; errorAt: string | null; summary?: { lines: number; sections: string[] }; rules?: string[] }
 interface KTest { at: string; ms: number; score: number; total: number; passed: number; lang: 'vi' | 'en'; items: { q: string; expect: string; kind: string; reply: string; pass: boolean; why: string }[]; conflicts: { old: string; doc: string; why: string }[] }
 
 /**
@@ -486,8 +486,8 @@ function LinkSources({ vi, canEdit, token, onCount }: { vi: boolean; canEdit: bo
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>
-        {L(vi, 'Dán link bảng giá, menu, chính sách hoặc link dữ liệu (JSON). AI đọc ngay và tự đọc lại mỗi ngày — bạn chỉ cần sửa trang gốc, không phải nhập lại ở đây. Khi link nói khác ghi chú cũ, AI theo link. Mỗi câu trả lời có giá tiền đều được hệ thống đối chiếu với link trước khi gửi — giá không có trong link sẽ bị chặn.',
-          'Paste a link to a price list, menu, policy or a data feed (JSON). The AI reads it now and again every day — change the page itself, nothing to retype here. When the link disagrees with older notes, the AI follows the link. Every reply with a price is checked against the links before it is sent — a figure not in them is blocked.')}
+        {L(vi, 'Dán link bảng giá, menu, chính sách hoặc link dữ liệu (JSON). Nội dung trong link là dữ liệu AI học; phần "Quy tắc / Lưu ý / dành cho AI" trong link là lệnh AI bắt buộc làm theo. AI đọc ngay và tự đọc lại mỗi ngày — bạn chỉ cần sửa trang gốc, không phải nhập lại ở đây. Khi link nói khác ghi chú cũ, AI theo link. Mỗi câu trả lời có giá tiền đều được hệ thống đối chiếu với link trước khi gửi — giá không có trong link sẽ bị chặn.',
+          'Paste a link to a price list, menu, policy or a data feed (JSON). The content is what the AI learns; a "Rules / Notes / for AI" section in it is orders the AI must follow. The AI reads it now and again every day — change the page itself, nothing to retype here. When the link disagrees with older notes, the AI follows the link. Every reply with a price is checked against the links before it is sent — a figure not in them is blocked.')}
       </div>
       {canEdit && (items?.length ?? 0) < max && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -513,6 +513,12 @@ function LinkSources({ vi, canEdit, token, onCount }: { vi: boolean; canEdit: bo
             {x.fetchedAt ? L(vi, `Đọc trọn lúc ${when(x.fetchedAt)} · ${x.chars.toLocaleString()} chữ${x.summary ? ` · ${x.summary.lines} dòng · ${x.summary.sections.length} mục` : ''} · tự đọc lại mỗi ngày`, `Read in full ${when(x.fetchedAt)} · ${x.chars.toLocaleString()} characters${x.summary ? ` · ${x.summary.lines} lines · ${x.summary.sections.length} sections` : ''} · re-read daily`) : L(vi, 'Chưa đọc được lần nào', 'Not read yet')}
           </span>
           {!!x.summary?.sections.length && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{x.summary.sections.slice(0, 24).map((h, i) => <span key={i} style={{ fontSize: 11.5, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--line)', color: 'var(--ccbd5e1)' }}>{h}</span>)}{x.summary.sections.length > 24 && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>+{x.summary.sections.length - 24}</span>}</div>}
+          {!!x.rules?.length && (
+            <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <b style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>📏 {L(vi, `${x.rules.length} quy tắc trong link — AI BẮT BUỘC làm theo, mỗi câu trả lời đều được kiểm tra trước khi gửi:`, `${x.rules.length} rules in this link — the AI MUST follow them; every reply is checked before it is sent:`)}</b>
+              {x.rules.map((r, i) => <span key={i} style={{ fontSize: 12.5, color: 'var(--ccbd5e1)' }}>• {r}</span>)}
+            </div>
+          )}
           {x.error && <span style={{ fontSize: 12.5, color: 'var(--ink-warn)' }}>⚠ {x.error}{x.chars ? L(vi, ' — AI vẫn dùng bản đọc được lần trước.', ' — the AI keeps using the last good read.') : ''}</span>}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={() => setShow(show === x.id ? null : x.id)} style={kitGhost}>{show === x.id ? L(vi, 'Ẩn', 'Hide') : L(vi, 'Xem AI đọc được gì', 'What the AI read')}</button>

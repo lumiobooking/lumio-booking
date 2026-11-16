@@ -21,7 +21,7 @@ import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLan
 import { AiInstructionsService, instructionChannel } from './instructions.service';
 import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, needsMeaning, type Instruction, type InstructionChannel } from './instructions';
 import { agentModel, forModel } from '../common/ai-model';
-import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
+import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
 import { browserHeaders } from '../common/browser-headers';
 import { randomUUID } from 'crypto';
@@ -124,7 +124,7 @@ export class AiBrainService {
   async listSources(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const items = await this.readSources(tenantId);
-    return { items: items.map((s) => ({ ...s, text: undefined, preview: s.text.slice(0, 60_000), summary: docSummary(s.text) })), canEdit: this.canEdit(user), max: MAX_SOURCES };
+    return { items: items.map((s) => ({ ...s, text: undefined, preview: s.text.slice(0, 60_000), summary: docSummary(s.text), rules: docRules([{ ...s, on: true }]) })), canEdit: this.canEdit(user), max: MAX_SOURCES };
   }
 
   async addSource(user: AuthenticatedUser, dto: { url?: unknown; label?: unknown }) {

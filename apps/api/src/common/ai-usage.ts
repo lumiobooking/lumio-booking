@@ -112,6 +112,8 @@ export const PRICES: Record<string, Price> = {
   // Haiku 5.5: prompts up to 100k tokens (ours are far below). Over 100k bills 5x.
   'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01 },
   'claude-haiku-4-5': { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+  // Sonnet 5.5 — the two-tier brain's stronger model (common/hard-turn). List price read 16/11/2026 from platform.claude.com/docs/en/about-claude/pricing.
+  'claude-sonnet-5-5': { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.1 },
   'claude-sonnet-4-5': { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   'claude-opus-4-5': { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   'gpt-5.6-luna': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.125 },

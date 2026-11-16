@@ -60,6 +60,8 @@ const STAFF_MUST_NOT = [
   'knowledgeGaps', 'answerGap', 'draftGap', 'dismissGap', 'botReport',
   // Switching the after-booking survey on changes what every customer is sent.
   'chatSurvey', 'setChatSurvey',
+  // The weekly digest goes to the owner; switching it is the owner's call.
+  'aiDigest', 'setAiDigest',
 ];
 
 describe('what a technician can reach in the inbox', () => {

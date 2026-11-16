@@ -1,4 +1,4 @@
-import { SCENARIOS, mergeGrades, pickScenarios, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimItem, type SimRun } from './simulations';
+import { SCENARIOS, mergeGrades, parseSimTranslation, pickScenarios, simFingerprint, simTranslatePrompt, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimItem, type SimRun } from './simulations';
 
 describe('customer simulations — fixed scripts, graded on conduct', () => {
   it('a bilingual salon gets twenty: every booking script in the first language, then the second until twenty', () => {
@@ -72,6 +72,25 @@ describe('customer simulations — fixed scripts, graded on conduct', () => {
     const p = simJudgePrompt([{ customer: ['hi'], reply: 'Hello', tools: [], rubric: 'R', lang: 'en' }], '', 'en');
     expect(p.system).toContain('never fails a case');
     expect(p.system).toContain('only for one of these SERIOUS faults');
+  });
+
+  it('the fingerprint changes when a link’s text, an instruction or the saved settings change — and only then', () => {
+    const base = { brainVersion: 3, sources: [{ id: 's1', text: 'Gel tay: $35' }], instructions: [{ id: 'i1', on: true, kind: 'always', text: 'xưng em' }] };
+    const fp = simFingerprint(base);
+    expect(simFingerprint({ ...base, sources: [...base.sources] })).toBe(fp);
+    expect(simFingerprint({ ...base, brainVersion: 4 })).not.toBe(fp);
+    expect(simFingerprint({ ...base, sources: [{ id: 's1', text: 'Gel tay: $40' }] })).not.toBe(fp);
+    expect(simFingerprint({ ...base, instructions: [{ id: 'i1', on: false, kind: 'always', text: 'xưng em' }] })).not.toBe(fp);
+    expect(simFingerprint({ ...base, instructions: [...base.instructions, { id: 'i2', on: true, kind: 'never', text: 'giảm giá' }] })).not.toBe(fp);
+  });
+
+  it('scripts for another language are used only when the translation came back whole', () => {
+    const p = simTranslatePrompt([{ id: 'greeting', turns: ['Hi there'] }], 'Spanish');
+    expect(p.system).toContain('Spanish');
+    expect(JSON.parse(p.user)).toEqual({ greeting: ['Hi there'] });
+    expect(parseSimTranslation('```json\n{"greeting":["Hola"],"price":[],"unknown":"x","not-ready":["a","b"]}\n```', ['greeting', 'price', 'unknown', 'not-ready', 'missing']))
+      .toEqual({ greeting: ['Hola'], 'not-ready': ['a', 'b'] });
+    expect(parseSimTranslation('sorry', ['greeting'])).toEqual({});
   });
 });
 

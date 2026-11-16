@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { MessengerService } from './messenger.service';
 import { InboxEventsService } from './inbox-events.service';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
+import { AiDigestService } from './ai-digest.service';
 import { BotReportService } from './bot-report.service';
 import { HandoffDto, LeadStatusDto, RenameThreadDto, SendTestDto, SuggestGreetingDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -36,6 +37,7 @@ export class MessengerController {
     private readonly events: InboxEventsService,
     private readonly gaps: KnowledgeGapsService,
     private readonly report: BotReportService,
+    private readonly digest: AiDigestService,
   ) {}
 
   // How the bot is doing: conversations → bookings, where the rest stopped, next steps.
@@ -323,6 +325,17 @@ export class MessengerController {
   @Post('chat-survey')
   setChatSurvey(@CurrentUser() user: AuthenticatedUser, @Body() dto: { on?: boolean }) {
     return this.svc.setChatSurvey(user, dto?.on === true);
+  }
+
+  /** The Monday AI digest for the salon's owner (ai-digest): this salon's switch, off by default. */
+  @Get('ai-digest')
+  aiDigest(@CurrentUser() user: AuthenticatedUser) {
+    return this.digest.get(user);
+  }
+
+  @Post('ai-digest')
+  setAiDigest(@CurrentUser() user: AuthenticatedUser, @Body() dto: { on?: boolean }) {
+    return this.digest.set(user, dto?.on === true);
   }
 
   @Post('suggest-greeting')

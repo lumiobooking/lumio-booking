@@ -24,7 +24,7 @@ import { agentModel, forModel } from '../common/ai-model';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, cleanChoices, choicesAsText, cleanCards, cardText, type PackageCard, SALES_NOT_READY_RULE } from '../messenger/reply-style';
 import { ungroundedMoney } from '../messenger/price-grounding';
 import { CORRECTION_RULE, leaksCorrection } from '../messenger/correction-guard';
-import { SIM_KEY, mergeGrades, pickScenarios, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
+import { SIM_KEY, SIM_OTHER_LANGS, mergeGrades, parseSimTranslation, pickScenarios, simFingerprint, simTranslatePrompt, type Scenario, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
 import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
 import { browserHeaders } from '../common/browser-headers';
@@ -260,9 +260,28 @@ export class AiBrainService {
   }
 
   // ---- Mô phỏng khách (./simulations): fixed customers, the real assistant, graded on conduct.
-  async lastSimulation(user: AuthenticatedUser): Promise<SimRun | null> {
-    const row = await this.db.setting.findUnique({ where: { tenantId_key: { tenantId: this.tenantId(user), key: SIM_KEY } } }).catch(() => null);
-    return simRunFrom(row?.value);
+  async lastSimulation(user: AuthenticatedUser): Promise<(SimRun & { stale: boolean }) | null> {
+    const tenantId = this.tenantId(user);
+    const row = await this.db.setting.findUnique({ where: { tenantId_key: { tenantId, key: SIM_KEY } } }).catch(() => null);
+    const run = simRunFrom(row?.value);
+    if (!run) return null;
+    // Has what the AI knows changed since this run (settings, a link's text, an owner instruction)?
+    const now = await this.knowledgeFingerprint(tenantId).catch(() => null);
+    return { ...run, stale: !!now && !!run.fp && run.fp !== now };
+  }
+
+  /** One short hash of everything a simulation's outcome depends on, for THIS salon. */
+  private async knowledgeFingerprint(tenantId: string): Promise<string> {
+    const [brain, sources, ins] = await Promise.all([
+      this.getBrain(tenantId),
+      this.readSources(tenantId).catch(() => [] as KnowledgeSource[]),
+      this.instructions ? this.instructions.allFor(tenantId).catch(() => []) : Promise.resolve([]),
+    ]);
+    return simFingerprint({
+      brainVersion: brain.version,
+      sources: sources.filter((x) => x.on).map((x) => ({ id: x.id, text: x.text })),
+      instructions: (ins as Instruction[]).map((i) => ({ id: i.id, on: i.on, kind: i.kind, text: i.text })),
+    });
   }
 
   /**
@@ -281,7 +300,17 @@ export class AiBrainService {
     const allowed = (brain.languages.allowed as string[]).filter((l): l is SimLang => l === 'vi' || l === 'en');
     const primary = brain.languages.primary === 'vi' || brain.languages.primary === 'en' ? brain.languages.primary as SimLang : null;
     const langs: SimLang[] = [...(primary ? [primary] : []), ...allowed.filter((l) => l !== primary)];
-    const picked = pickScenarios(mode, langs);
+    const picked: { scenario: Scenario; lang: string }[] = pickScenarios(mode, langs);
+    // A salon that also serves Spanish, Chinese, Korean, French or Japanese: the same
+    // scripts, translated once for this run, for its first such language.
+    const other = [brain.languages.primary as string, ...(brain.languages.allowed as string[])].find((l) => SIM_OTHER_LANGS[l]);
+    let translated: Record<string, string[]> = {};
+    if (other) {
+      const base = pickScenarios(mode, ['en']).slice(0, 8);
+      const tp = simTranslatePrompt(base.map((x) => ({ id: x.scenario.id, turns: x.scenario.turns.en })), SIM_OTHER_LANGS[other]);
+      translated = parseSimTranslation(await this.ask(tp.system, tp.user, 2500, 45_000).catch(() => ''), base.map((x) => x.scenario.id));
+      for (const x of base) if (translated[x.scenario.id]) picked.push({ scenario: x.scenario, lang: other });
+    }
 
     const answers: SimAnswer[] = new Array(picked.length);
     let next = 0;
@@ -290,7 +319,7 @@ export class AiBrainService {
       while (next < picked.length) {
         const i = next++;
         const { scenario, lang } = picked[i];
-        const turns = scenario.turns[lang];
+        const turns = lang === 'vi' || lang === 'en' ? scenario.turns[lang] : translated[scenario.id];
         const messages: { role: 'user' | 'assistant'; content: string }[] = [];
         let reply = ''; const tools = new Set<string>();
         for (const t of turns) {
@@ -300,7 +329,7 @@ export class AiBrainService {
           for (const name of toolsFromTrace((r as { trace?: unknown }).trace)) tools.add(name);
           messages.push({ role: 'assistant', content: reply || '…' });
         }
-        answers[i] = { customer: turns, reply, tools: [...tools], rubric: scenario.rubric, lang };
+        answers[i] = { customer: turns, reply, tools: [...tools], rubric: scenario.rubric, lang: lang as SimLang };
       }
     }));
 
@@ -322,12 +351,12 @@ export class AiBrainService {
       const g = grades[i];
       const failed = answers[i].reply.startsWith('(lỗi:');
       return {
-        id: scenario.id, lang, title: scenario.title[ui], customer: answers[i].customer, reply: answers[i].reply,
+        id: scenario.id, lang: lang as SimLang, title: scenario.title[ui], customer: answers[i].customer, reply: answers[i].reply,
         pass: !failed && g?.pass === true, ...(g?.pass === true && typeof g.note === 'string' && g.note.trim() ? { note: g.note.trim().slice(0, 240) } : {}), why: failed ? (ui === 'vi' ? 'AI không trả lời được lượt này' : 'The AI could not answer this turn') : String(g?.why ?? (ui === 'vi' ? 'Chưa chấm được' : 'Not graded')),
       };
     });
     const prev = await this.lastSimulation(user).catch(() => null);
-    const run: SimRun = { at: new Date().toISOString(), ms: Date.now() - t0, total: items.length, passed: items.filter((x) => x.pass).length, mode, items, regressions: regressionsOf(prev, items) };
+    const run: SimRun = { at: new Date().toISOString(), ms: Date.now() - t0, total: items.length, passed: items.filter((x) => x.pass).length, mode, items, regressions: regressionsOf(prev, items), fp: await this.knowledgeFingerprint(tenantId).catch(() => undefined) };
     await this.db.setting.upsert({
       where: { tenantId_key: { tenantId, key: SIM_KEY } },
       update: { value: run as never },
@@ -965,7 +994,7 @@ The local time is ${nowLocal} (${tz}).
 ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n` : ''}${blocks.language}` : `You are the ${channel === 'voice' ? 'phone receptionist' : 'booking assistant'} for "${tenant?.name ?? 'our salon'}". THIS IS A TEST CONVERSATION run by the salon's own staff: behave exactly as with a real customer, but no booking will be written.
 ${pre.persona}
 ${channel === 'voice' ? 'Your words are read aloud: one or two short sentences, under 30 words, one question at a time, no lists or emoji.' : REPLY_STYLE_RULE}
-Collect what a booking needs (service, day and time, first name, phone), check the book with check_availability before offering a time, recap once and ask for a yes, then call create_booking.
+Collect what a booking needs (service, day and time, first name, phone), check the book with check_availability before offering a time, recap once and ask for a yes (with that recap call offer_choices with exactly two options — Vietnamese "Xác nhận" and "Đổi thông tin", English "Confirm" and "Change something"; a tap on the first is the yes), then call create_booking.
 ${blocks.booking}
 ${blocks.handoffNote}
 Menu (pass the code to the tools; never say a code aloud):\n${menuText || '(no services yet)'}

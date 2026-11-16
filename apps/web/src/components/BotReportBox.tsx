@@ -42,6 +42,19 @@ export function BotReportBox({ token, vi }: { token: string | null; vi: boolean 
     if (!token) return;
     apiFetch<NonNullable<typeof survey>>('/messenger/chat-survey', { token }).then(setSurvey).catch(() => setSurvey(null));
   }, [token]);
+  // The Monday digest for the owner: this salon's switch (owner / manager only — a 403 just hides it).
+  const [digest, setDigest] = useState<{ on: boolean } | null>(null);
+  const [savingDigest, setSavingDigest] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ on: boolean }>('/messenger/ai-digest', { token }).then(setDigest).catch(() => setDigest(null));
+  }, [token]);
+  async function toggleDigest() {
+    if (!digest || savingDigest) return;
+    setSavingDigest(true);
+    try { setDigest(await apiFetch<{ on: boolean }>('/messenger/ai-digest', { method: 'POST', token, body: { on: !digest.on } })); }
+    catch { /* stays as it was */ } finally { setSavingDigest(false); }
+  }
   async function toggleSurvey() {
     if (!survey || savingSurvey) return;
     setSavingSurvey(true);
@@ -143,6 +156,21 @@ export function BotReportBox({ token, vi }: { token: string | null; vi: boolean 
                   {tile(L('Chưa ổn', 'Not good'), String(r.survey.bad), undefined, r.survey.bad ? 'var(--ink-warn)' : undefined)}
                 </div>
               )}
+            </div>
+          )}
+
+          {digest && (
+            <div style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 10, display: 'grid', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{L('Bản tin AI mỗi sáng thứ Hai', 'AI digest every Monday morning')}</div>
+                <button type="button" role="switch" aria-checked={digest.on} onClick={() => void toggleDigest()} disabled={savingDigest}
+                  style={{ marginLeft: 'auto', minHeight: 30, padding: '0 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${digest.on ? '#6366f1' : 'var(--c475569)'}`, background: digest.on ? 'var(--c312e81)' : 'transparent', color: 'var(--ce2e8f0)' }}>
+                  {savingDigest ? '…' : digest.on ? L('Đang bật', 'On') : L('Đang tắt — bấm để bật', 'Off — tap to turn on')}
+                </button>
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+                {L('9 giờ sáng thứ Hai (giờ của tiệm), chủ tiệm nhận một thông báo: AI tự xử lý bao nhiêu %, chốt bao nhiêu lịch, còn mấy câu cần dạy. Chỉ gửi cho chủ tiệm, và chỉ khi tuần đó có khách nhắn. Điện thoại của chủ tiệm cần đã bật thông báo Lumio.', 'Monday 9 am (the salon’s time), the owner gets one notification: how much the AI handled alone, how many bookings, how many questions to teach. Owner only, and only for a week with conversations. The owner’s phone needs Lumio alerts turned on.')}
+              </div>
             </div>
           )}
 

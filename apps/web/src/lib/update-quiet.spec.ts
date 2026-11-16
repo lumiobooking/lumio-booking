@@ -22,4 +22,12 @@ describe('updates are silent', () => {
     expect(pwa).not.toMatch(/Tải lại|Reload'/);
     expect(src('app/api/version/route.ts')).toMatch(/buildId\s*:/);
   });
+
+  it('the worker still takes over at once — that is what reloads a tab left on the old code', () => {
+    const sw = readFileSync(join(__dirname, '..', '..', 'public', 'sw.js'), 'utf8');
+    expect(sw).toMatch(/addEventListener\('install', \(\) => self\.skipWaiting\(\)\)/);
+    expect(sw).toContain('self.clients.claim()');
+    expect(sw).toMatch(/const CACHE = 'lumio-cache-v(1[1-9]|[2-9]\d)'/);
+  });
 });
+

@@ -284,18 +284,19 @@ const fmtWhen = (iso: string | null | undefined, vi: boolean) => (iso ? new Date
 function Home({ token, vi, view, toTeach, onGo }: { token: string | null; vi: boolean; view: View; toTeach: number | null; onGo: (t: Tab) => void }) {
   const connected = view.channels.messenger.connected || (view.channels.voice.provisioned && view.channels.voice.enabled);
   // The last customer simulation: never run, or run before the brain was last saved → worth running again.
-  const [sim, setSim] = useState<{ at: string; passed: number; total: number } | null | undefined>(undefined);
+  const [sim, setSim] = useState<{ at: string; passed: number; total: number; stale?: boolean } | null | undefined>(undefined);
   useEffect(() => {
     if (!token) return;
-    apiFetch<{ at: string; passed: number; total: number } | null>('/ai-brain/simulations', { token }).then((r) => setSim(r && r.at ? r : null)).catch(() => setSim(undefined));
+    apiFetch<{ at: string; passed: number; total: number; stale?: boolean } | null>('/ai-brain/simulations', { token }).then((r) => setSim(r && r.at ? r : null)).catch(() => setSim(undefined));
   }, [token]);
-  const simStale = sim === null || (!!sim && !!view.brain.updatedAt && Date.parse(sim.at) < Date.parse(view.brain.updatedAt));
+  // Stale = the server says what the AI knows (settings, a link's text, an owner instruction) changed since that run.
+  const simStale = sim === null || (!!sim && (sim.stale === true || (!!view.brain.updatedAt && Date.parse(sim.at) < Date.parse(view.brain.updatedAt))));
   const steps: { title: string; sub: string; action: string; primary?: boolean; go?: Tab; href?: string }[] = [];
   if (!connected) steps.push({ title: L(vi, 'AI chưa nối với kênh nào', 'The AI is not connected to any channel'), sub: L(vi, 'Nối Facebook Page, Instagram, Zalo hoặc hotline để AI bắt đầu trả lời khách.', 'Connect the Facebook Page, Instagram, Zalo or the hotline so the AI can start answering.'), action: L(vi, 'Nối kênh', 'Connect'), primary: true, href: '/salon/messenger' });
   if ((toTeach ?? 0) > 0) steps.push({ title: L(vi, `${toTeach} câu khách hỏi mà AI chưa biết`, `${toTeach} questions the AI could not answer`), sub: L(vi, 'Trả lời một lần, AI tự trả lời cho mọi khách sau. Có nút “AI soạn giúp”.', 'Answer once and the AI answers every customer after. “Draft with AI” is there to help.'), action: L(vi, 'Dạy AI', 'Teach the AI'), primary: true, go: 'learn' });
   steps.push({ title: L(vi, 'Xem lại câu AI trả lời “Chưa thấy nguồn”', 'Review replies marked “No source found”'), sub: L(vi, 'Trong Hộp thư, câu AI nói một con số mà không có nguồn sẽ có nút màu cam. Sai thì bấm “Sửa”.', 'In the Inbox, a reply that states a number with nothing behind it carries an amber chip. Press “Fix” if it is wrong.'), action: L(vi, 'Mở Hộp thư', 'Open the Inbox'), href: '/salon/inbox' });
   if (connected && simStale) steps.push({
-    title: sim ? L(vi, 'Cài đặt AI đã đổi từ lần mô phỏng trước', 'The AI settings changed since the last simulation') : L(vi, 'Chưa chạy mô phỏng khách lần nào', 'The customer simulations have never run'),
+    title: sim ? L(vi, 'Kiến thức hoặc cài đặt AI đã đổi từ lần mô phỏng trước', 'The AI’s knowledge or settings changed since the last simulation') : L(vi, 'Chưa chạy mô phỏng khách lần nào', 'The customer simulations have never run'),
     sub: sim ? L(vi, `Lần trước đạt ${sim.passed}/${sim.total}. Chạy lại để chắc thay đổi mới không làm hỏng cách AI trả lời.`, `Last run passed ${sim.passed}/${sim.total}. Run it again to make sure the change broke nothing.`) : L(vi, '20 khách ảo thử AI của tiệm trong 1–2 phút: có bịa thông tin không, có ép khách không, có báo “đã đặt” khi chưa đặt không.', 'Twenty scripted customers try the salon’s AI in 1–2 minutes: invented facts, pushing, “booked” without a booking.'),
     action: L(vi, 'Chạy mô phỏng', 'Run it'), go: 'sim' });
   steps.push({ title: L(vi, 'Thử AI như một khách hàng', 'Try the AI as a customer would'), sub: L(vi, 'Hỏi thử giá, giờ mở cửa, đặt lịch — xem AI trả lời thế nào trước khi khách hỏi.', 'Ask about prices, hours, a booking — see how it answers before a customer does.'), action: L(vi, 'Thử AI', 'Try it'), go: 'sandbox' });
@@ -321,7 +322,8 @@ function Home({ token, vi, view, toTeach, onGo }: { token: string | null; vi: bo
   );
 }
 
-interface SimItem { id: string; lang: 'vi' | 'en'; title: string; customer: string[]; reply: string; pass: boolean; why: string; note?: string }
+interface SimItem { id: string; lang: string; title: string; customer: string[]; reply: string; pass: boolean; why: string; note?: string }
+const SIM_LANG: Record<string, string> = { vi: 'Tiếng Việt', en: 'English', es: 'Español', zh: '中文', ko: '한국어', fr: 'Français', ja: '日本語' };
 interface SimRun { at: string; ms: number; total: number; passed: number; mode: string; items: SimItem[]; regressions: string[] }
 
 /**
@@ -380,7 +382,7 @@ function Simulations({ token, vi, canEdit }: { token: string | null; vi: boolean
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, minHeight: 48, padding: '8px 12px', border: 0, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
                   <span style={{ fontSize: 12, fontWeight: 800, minWidth: 54, color: x.pass ? 'var(--ink-good)' : 'var(--ink-bad)' }}>{x.pass ? L(vi, 'ĐẠT', 'PASS') : L(vi, 'TRƯỢT', 'FAIL')}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{x.title} <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--c94a3b8)' }}>· {x.lang === 'vi' ? 'Tiếng Việt' : 'English'}</span></span>
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{x.title} <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--c94a3b8)' }}>· {SIM_LANG[x.lang] ?? x.lang}</span></span>
                     {!x.pass && <span style={{ display: 'block', fontSize: 12.5, color: 'var(--ccbd5e1)', marginTop: 2, lineHeight: 1.45 }}>{x.why}</span>}
                   </span>
                   {back && <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--ink-warn)', color: 'var(--ink-warn)', whiteSpace: 'nowrap' }}>{L(vi, 'Lần trước đạt', 'Passed before')}</span>}

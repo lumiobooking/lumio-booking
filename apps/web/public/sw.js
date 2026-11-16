@@ -8,7 +8,14 @@
  *    old caches are purged on activate.
  *
  * Bump CACHE on every meaningful change to force old caches out. */
-const CACHE = 'lumio-cache-v10'; // v10: app-icon badge count (see Web Push below)
+// v11 (16/11/2026): a version bump on purpose, to RELOAD THE OLD TABS ONCE. Tabs opened
+// before the "Đã có bản cập nhật" bar was removed still run the code that draws it, and
+// a tab that had already raised the bar keeps raising it every ten minutes until it is
+// reloaded. That old code reloads itself when a new worker takes control — so a new
+// worker is the one thing that reaches it: it installs, skips waiting, claims the page,
+// and the old tab loads today's code, which has no bar. Current tabs are not disturbed
+// (PwaRegister reloads only when hidden, or on the next page change).
+const CACHE = 'lumio-cache-v11';
 
 self.addEventListener('install', () => self.skipWaiting());
 

@@ -22,6 +22,8 @@
  * reading of its verdicts (simulations.spec.ts). The run is in the service.
  */
 
+import { createHash } from 'crypto';
+
 export type SimLang = 'vi' | 'en';
 export type SimMode = 'booking' | 'sales';
 
@@ -130,8 +132,8 @@ export function simJudgePrompt(items: SimAnswer[], sources: string, uiLang: SimL
   return { system, user };
 }
 
-export interface SimItem { id: string; lang: SimLang; title: string; customer: string[]; reply: string; pass: boolean; why: string; /** A style remark on a reply that passed — never a failure. */ note?: string }
-export interface SimRun { at: string; ms: number; total: number; passed: number; mode: SimMode; items: SimItem[]; /** ids+lang that passed last time and fail now */ regressions: string[] }
+export interface SimItem { id: string; /** 'vi' | 'en', or another language the salon serves (translated scripts). */ lang: string; title: string; customer: string[]; reply: string; pass: boolean; why: string; /** A style remark on a reply that passed — never a failure. */ note?: string }
+export interface SimRun { at: string; ms: number; total: number; passed: number; mode: SimMode; items: SimItem[]; /** ids+lang that passed last time and fail now */ regressions: string[]; /** What the AI knew when this ran (simFingerprint). */ fp?: string }
 
 /** Tool names from the sandbox trace lines ("create_booking: SUCCESS …"). */
 export function toolsFromTrace(trace: unknown): string[] {
@@ -171,5 +173,42 @@ export function mergeGrades(a: Grade[], b: Grade[], n: number): (Grade | undefin
     else out.push(x);
   }
   return out;
+}
+
+/** The other languages a salon may serve: the scripts are translated once per run. */
+export const SIM_OTHER_LANGS: Record<string, string> = { es: 'Spanish', zh: 'Chinese (Simplified)', ko: 'Korean', fr: 'French', ja: 'Japanese' };
+
+export function simTranslatePrompt(items: { id: string; turns: string[] }[], language: string): { system: string; user: string } {
+  return {
+    system: `Translate what a customer types to a business into ${language}, as a native speaker would text it — casual, short, natural. Keep numbers, days and times. Return JSON only: {"<id>":["turn 1","turn 2"], …} with the same ids and the same number of turns each.`,
+    user: JSON.stringify(Object.fromEntries(items.map((x) => [x.id, x.turns]))),
+  };
+}
+
+/** Only complete, well-formed translations are used; a script that came back wrong is simply not run in that language. */
+export function parseSimTranslation(raw: string, ids: string[]): Record<string, string[]> {
+  const text = String(raw ?? ''); const a = text.indexOf('{'); const b = text.lastIndexOf('}');
+  if (a < 0 || b <= a) return {};
+  let j: Record<string, unknown>;
+  try { j = JSON.parse(text.slice(a, b + 1)) as Record<string, unknown>; } catch { return {}; }
+  const out: Record<string, string[]> = {};
+  for (const id of ids) {
+    const v = j[id];
+    if (Array.isArray(v) && v.length > 0 && v.length <= 4 && v.every((t) => typeof t === 'string' && t.trim().length > 0 && t.length < 400)) out[id] = (v as string[]).map((t) => t.trim());
+  }
+  return out;
+}
+
+/**
+ * What a run's outcome depends on, as one short hash: the brain's saved
+ * version, the text of every linked document that is on, and the owner's
+ * instructions. Different hash = the AI knows something different now.
+ */
+export function simFingerprint(o: { brainVersion: number; sources: { id: string; text: string }[]; instructions: { id: string; on: boolean; kind: string; text: string }[] }): string {
+  const h = createHash('sha1');
+  h.update(String(o.brainVersion));
+  for (const s of [...o.sources].sort((a, b) => a.id.localeCompare(b.id))) h.update(`|s:${s.id}:${createHash('sha1').update(s.text).digest('hex')}`);
+  for (const i of [...o.instructions].sort((a, b) => a.id.localeCompare(b.id))) h.update(`|i:${i.id}:${i.on ? 1 : 0}:${i.kind}:${i.text}`);
+  return h.digest('hex').slice(0, 16);
 }
 

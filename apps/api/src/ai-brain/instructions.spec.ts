@@ -104,3 +104,14 @@ describe('the check before a reply is sent', () => {
     expect(checkingLine('es')).toMatch(/double-check/);
   });
 });
+
+describe('a wording rule in one language never leaks into another', () => {
+  it('the block tells the model so (found by the customer simulations: "Em is Trang…")', () => {
+    const { instructionsBlock } = jest.requireActual('./instructions') as typeof import('./instructions');
+    const ins = { id: 'i1', kind: 'always', text: 'xưng em, gọi khách là anh/chị', triggers: [], mode: 'meaning', channels: [], on: true } as never;
+    const block = instructionsBlock([ins], 'messenger');
+    expect(block).toContain('never insert those words');
+    expect(block).toContain('never "em" or "anh/chị"');
+  });
+});
+

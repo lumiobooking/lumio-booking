@@ -46,3 +46,22 @@ export function leaksCorrection(text: string | null | undefined): boolean {
   const t = String(text ?? '');
   return t.trim().length > 0 && META.some((re) => re.test(t));
 }
+
+export interface LeakedTurn { at: string | null; snippet: string; failed: boolean }
+
+/**
+ * The AI turns of one thread that talked about a correction, since `fromMs` —
+ * for the platform's check of whether any customer was ever sent one. Staff
+ * replies and automatic nudges are not the AI's words and are skipped.
+ */
+export function leakedTurns(history: unknown, fromMs: number): LeakedTurn[] {
+  const out: LeakedTurn[] = [];
+  for (const t of (Array.isArray(history) ? history : []) as { role?: string; content?: unknown; at?: string | null; manual?: boolean; nudge?: boolean; failed?: boolean }[]) {
+    if (!t || t.role !== 'assistant' || t.manual || t.nudge || typeof t.content !== 'string') continue;
+    const at = t.at ? Date.parse(t.at) : NaN;
+    if (Number.isFinite(at) && at < fromMs) continue;
+    if (leaksCorrection(t.content)) out.push({ at: t.at ?? null, snippet: t.content.replace(/\s+/g, ' ').trim().slice(0, 240), failed: !!t.failed });
+  }
+  return out;
+}
+

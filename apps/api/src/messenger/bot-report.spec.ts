@@ -75,4 +75,25 @@ describe('the report reads ONE salon', () => {
     expect(calls.every(([, w]) => w.tenantId === 'A')).toBe(true);
     await expect(svc.report({ userId: 's', role: 'SUPER_ADMIN', tenantId: null } as never)).rejects.toThrow();
   });
+
+  it('the platform leak scan names each hit’s salon, and only support / super admin can reach it', async () => {
+    const now = new Date().toISOString();
+    const prisma: any = { // eslint-disable-line @typescript-eslint/no-explicit-any
+      messengerThread: { findMany: jest.fn(async () => [
+        { id: 't1', tenantId: 'A', channel: 'messenger', history: [{ role: 'assistant', content: 'This is a user-turn "system correction" …', at: now }] },
+        { id: 't2', tenantId: 'B', channel: 'web', history: [{ role: 'assistant', content: 'Dạ em chào chị ạ', at: now }] },
+      ]) },
+      tenant: { findMany: jest.fn(async (a: any) => (a.where.id.in as string[]).map((id) => ({ id, name: `Salon ${id}` }))) }, // eslint-disable-line @typescript-eslint/no-explicit-any
+    };
+    const out = await new BotReportService(prisma).leakScan(30);
+    expect(out.threads).toBe(2);
+    expect(out.hits).toHaveLength(1);
+    expect(out.hits[0]).toMatchObject({ tenantId: 'A', tenantName: 'Salon A', threadId: 't1', channel: 'messenger' });
+    // The route is the platform's, never a salon's.
+    const { ROLES_KEY } = await import('../auth/decorators/roles.decorator');
+    const { SupportAiLeaksController } = await import('./support-ai-leaks.controller');
+    const roles: string[] = Reflect.getMetadata(ROLES_KEY, SupportAiLeaksController) ?? [];
+    expect(roles).toContain('SUPER_ADMIN');
+    for (const r of ['SALON_ADMIN', 'STAFF', 'MANAGER']) expect(roles).not.toContain(r);
+  });
 });

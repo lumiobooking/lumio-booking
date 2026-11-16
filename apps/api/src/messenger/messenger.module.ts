@@ -1,3 +1,4 @@
+import { SupportAiLeaksController } from './support-ai-leaks.controller';
 import { OAuthGate } from '../common/oauth-gate.service';
 import { Module } from '@nestjs/common';
 import { BookingsModule } from '../bookings/bookings.module';
@@ -22,7 +23,7 @@ import { KnowledgeGapsService } from './knowledge-gaps.service';
 
 @Module({
   imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule],
-  controllers: [MessengerController, ChatTurnsController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
+  controllers: [SupportAiLeaksController, MessengerController, ChatTurnsController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
   providers: [OAuthGate, InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService, ChatFollowUpScheduler, KnowledgeGapsService, BotReportService],
   exports: [InboxEventsService, MessengerService, ChatTurnsService],
 })

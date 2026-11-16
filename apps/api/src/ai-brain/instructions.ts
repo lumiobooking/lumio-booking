@@ -227,6 +227,7 @@ export function instructionsBlock(all: Instruction[], channel: InstructionChanne
   }
   return `THE OWNER'S INSTRUCTIONS — HIGHEST PRIORITY. The salon owner wrote these, most of them to correct a reply you got wrong before. They override EVERYTHING else in this prompt: notes, promotions, menu wording, examples, your own assumptions. If anything else here disagrees with them, follow them. They are written in the owner's language; say them in the customer's language.
 Owners write them quickly — short, with typos, without accents. Follow what the owner MEANS, in spirit and in every situation it covers, not only the literal words: a rule about wording or tone (how to address the customer, how to refer to the salon) holds in EVERY reply; "leave X out" means X never appears, however the question is asked.
+A rule about the WORDS of one language — Vietnamese pronouns (em, anh/chị, mình, bạn), particles (dạ, ạ), a specific word to say or avoid — applies to replies written in that language. In a reply in another language keep its spirit (the same politeness and warmth) but never insert those words: an English reply says "I" and "you", never "em" or "anh/chị".
 ${lines.join('\n')}`;
 }
 

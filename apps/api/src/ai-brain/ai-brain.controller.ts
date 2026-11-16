@@ -176,6 +176,12 @@ export class AiBrainController {
   @Post('knowledge-test')
   testKnowledge(@CurrentUser() user: AuthenticatedUser) { return this.brain.testKnowledge(user); }
 
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature(...TEACH_KEYS)
+  @RateLimit(20, 60 * 60_000)
+  @Post('knowledge-test/turn-off-conflicts')
+  turnOffConflicts(@CurrentUser() user: AuthenticatedUser) { return this.brain.turnOffConflicts(user); }
+
   @Post('callbacks')
   addCallback(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.brain.ownerCallback(user, dto); }
 }

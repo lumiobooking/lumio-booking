@@ -17,7 +17,7 @@
 
 export interface TestQuestion { q: string; expect: string; kind: string }
 export interface TestItem extends TestQuestion { reply: string; pass: boolean; why: string }
-export interface Conflict { old: string; doc: string; why: string }
+export interface Conflict { old: string; doc: string; why: string; n?: number; label?: string; off?: boolean }
 export interface KnowledgeTest { at: string; ms: number; score: number; total: number; passed: number; items: TestItem[]; conflicts: Conflict[]; lang: 'vi' | 'en' }
 
 export const TEST_KEY = 'ai_brain_test';
@@ -55,12 +55,14 @@ export function questionPrompt(material: string, lang: 'vi' | 'en', n = TEST_COU
   };
 }
 
-export function judgePrompt(items: { q: string; expect: string; reply: string }[], lang: 'vi' | 'en'): { system: string; user: string } {
+export function judgePrompt(items: { q: string; expect: string; reply: string }[], lang: 'vi' | 'en', docs = ''): { system: string; user: string } {
   return {
     system: 'You grade a customer-chat AI strictly but fairly. Output ONLY a JSON array, no prose.',
-    user: `For each test, compare the AI's reply with the expected answer.\n`
+    user: (docs ? `THE BUSINESS'S DOCUMENTS (the truth to judge by):\n${docs}\n\n` : '')
+      + `For each test, compare the AI's reply with the expected answer${docs ? ' AND the documents' : ''}.\n`
       + `PASS when every figure, package name and condition the reply states is correct, and it answers what was asked (it may be shorter, may ask a follow-up question, may phrase things differently). A reply that only asks for contact details without answering a question the documents DO answer is a FAIL. For "not listed" questions, PASS only when the reply does not invent a figure or offer.\n`
-      + `FAIL on any wrong number, wrong package, invented discount/gift/feature, or a confident answer to something the documents do not say.\n\n`
+      + `Extra details are FINE when the documents say them (an extra true feature, the price next to the package name, a polite follow-up question or an offer to take their contact). Do not fail a reply for adding true information.\n`
+      + `FAIL on any wrong number, wrong package, invented discount/gift/feature/free offer, a claim the documents contradict, or a confident answer to something the documents do not say.\n\n`
       + items.map((t, i) => `#${i}\nCustomer: ${t.q}\nExpected: ${t.expect}\nAI reply: ${t.reply || '(no reply)'}`).join('\n\n')
       + `\n\nOutput: [{"i": number, "pass": true|false, "why": one short sentence in ${lang === 'vi' ? 'Vietnamese' : 'English'} naming exactly what is wrong (or "Đúng" / "Correct")}] — one entry per test.`,
   };
@@ -71,6 +73,6 @@ export function conflictPrompt(oldNotes: string, docs: string, lang: 'vi' | 'en'
     system: 'You find contradictions between a business\'s old typed notes and its current documents. Output ONLY a JSON array, no prose.',
     user: `CURRENT DOCUMENTS (the truth):\n${docs}\n\nOLD TYPED NOTES:\n${oldNotes}\n\n`
       + `List every old note line that states something the documents contradict: a different price, a different amount, an offer or gift the documents say does not exist, a package that no longer exists. Ignore notes the documents simply do not mention. `
-      + `Output: [{"old": the old note line (quoted short), "doc": what the documents say instead (short, exact figures), "why": one short sentence in ${lang === 'vi' ? 'Vietnamese' : 'English'}}]. Output [] when there is none.`,
+      + `Old notes are numbered [n]. Output: [{"n": the note's number, "old": the old note (quoted short), "doc": what the documents say instead (short, exact figures), "why": one short sentence in ${lang === 'vi' ? 'Vietnamese' : 'English'}}]. Output [] when there is none.`,
   };
 }

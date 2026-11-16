@@ -191,13 +191,57 @@ export class AiBrainService {
     return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join('');
   }
 
-  /** The old typed notes: the brain's facts and the Messenger page's bot facts. */
+  /**
+   * The old typed notes the assistants actually read — the same choice the
+   * Messenger bot makes (messenger factsOf): the saved brain's facts when it
+   * has some, otherwise the page's bot facts. Numbered, for the conflict check.
+   */
+  private async oldNoteList(tenantId: string): Promise<{ n: number; label: string; value: string }[]> {
+    const b = await this.getBrainFor(tenantId).catch(() => null);
+    let list: Row[] = [];
+    if (b && !b.legacy && b.brain.version > 0 && b.brain.knowledge.facts.length) list = b.brain.knowledge.facts as unknown as Row[];
+    else {
+      const conn = await this.db.messengerConnection.findUnique({ where: { tenantId }, select: { botFacts: true } }).catch(() => null);
+      list = (Array.isArray(conn?.botFacts) ? conn.botFacts : []) as Row[];
+    }
+    return list.filter((f) => f && f.on !== false && String(f.value ?? '').trim()).map((f, i) => ({ n: i + 1, label: String(f.label ?? '').trim(), value: String(f.value ?? '').trim() }));
+  }
+
   private async oldNotes(tenantId: string): Promise<string> {
-    const { blocks } = await this.promptBlocks(tenantId, 'chat', 'vi');
+    return (await this.oldNoteList(tenantId)).map((f) => `[${f.n}] ${f.label}: ${f.value}`).join('\n');
+  }
+
+  /**
+   * "Tắt ghi chú cũ đang sai": the old notes the last test found contradicting
+   * the documents are switched OFF (never deleted — the owner can switch them
+   * back on) in both places a note can live: the saved brain and the page's
+   * bot facts. Only notes named by this salon's own last test.
+   */
+  async turnOffConflicts(user: AuthenticatedUser): Promise<{ turnedOff: string[] }> {
+    if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can change the AI brain');
+    const tenantId = this.tenantId(user);
+    const test = await this.lastTest(user);
+    const labels = [...new Set((test?.conflicts ?? []).map((c) => String(c.label ?? '').trim()).filter(Boolean))];
+    if (!labels.length) return { turnedOff: [] };
+    const hit = (l: unknown) => labels.some((x) => x.toLowerCase() === String(l ?? '').trim().toLowerCase());
+    const done = new Set<string>();
     const conn = await this.db.messengerConnection.findUnique({ where: { tenantId }, select: { botFacts: true } }).catch(() => null);
-    const bot = (Array.isArray(conn?.botFacts) ? conn.botFacts : []) as Row[];
-    const botLines = bot.filter((f) => f && f.on !== false && (f.label || f.value)).map((f) => `- ${String(f.label ?? '')}: ${String(f.value ?? '')}`);
-    return [blocks.facts || '', ...botLines].filter((x) => x.trim()).join('\n');
+    if (conn && Array.isArray(conn.botFacts)) {
+      const next = (conn.botFacts as Row[]).map((f) => (f && f.on !== false && hit(f.label) ? (done.add(String(f.label)), { ...f, on: false }) : f));
+      await this.db.messengerConnection.updateMany({ where: { tenantId }, data: { botFacts: next } });
+    }
+    const b = await this.getBrainFor(tenantId).catch(() => null);
+    if (b && !b.legacy && b.brain.version > 0 && b.brain.knowledge.facts.some((f) => f.on && hit(f.label))) {
+      const next = { ...b.brain, knowledge: { ...b.brain.knowledge, facts: b.brain.knowledge.facts.map((f) => (f.on && hit(f.label) ? (done.add(f.label), { ...f, on: false }) : f)) }, version: (b.brain.version || 0) + 1, updatedAt: new Date().toISOString(), updatedBy: user.email || user.userId };
+      await this.db.setting.upsert({ where: { tenantId_key: { tenantId, key: AI_BRAIN_KEY } }, update: { value: next }, create: { tenantId, key: AI_BRAIN_KEY, value: next } });
+    }
+    this.cache.delete(tenantId);
+    if (test) {
+      const kept = { ...test, conflicts: test.conflicts.map((c) => (c.label && hit(c.label) ? { ...c, off: true } : c)) };
+      await this.db.setting.upsert({ where: { tenantId_key: { tenantId, key: TEST_KEY } }, update: { value: kept as never }, create: { tenantId, key: TEST_KEY, value: kept as never } });
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'ai_brain.conflicting_notes_off', resourceType: 'setting', resourceId: AI_BRAIN_KEY, metadata: { labels: [...done] } });
+    return { turnedOff: [...done] };
   }
 
   async lastTest(user: AuthenticatedUser): Promise<KnowledgeTest | null> {
@@ -243,8 +287,13 @@ export class AiBrainService {
       }
     }));
 
-    const jp = judgePrompt(questions.map((q, i) => ({ q: q.q, expect: q.expect, reply: replies[i] })), lang);
+    const jp = judgePrompt(questions.map((q, i) => ({ q: q.q, expect: q.expect, reply: replies[i] })), lang, docs);
     const grades = jsonArray<{ i: number; pass: boolean; why: string }>(await this.ask(jp.system, jp.user, 3000));
+    const noteList: { n: number; label: string; value: string }[] = await this.oldNoteList(tenantId).catch(() => []);
+    const named = (c: Conflict): Conflict => {
+      const f = noteList.find((x) => x.n === Number(c.n));
+      return f ? { ...c, label: f.label } : c;
+    };
     const items: TestItem[] = questions.map((q, i) => {
       const g = grades.find((x) => Number(x?.i) === i);
       return { q: q.q, expect: q.expect, kind: String(q.kind || ''), reply: replies[i], pass: g?.pass === true, why: String(g?.why ?? (lang === 'vi' ? 'Chưa chấm được' : 'Not graded')) };
@@ -253,7 +302,7 @@ export class AiBrainService {
     const result: KnowledgeTest = {
       at: new Date().toISOString(), ms: Date.now() - t0, total: items.length, passed,
       score: Math.round((passed / Math.max(1, items.length)) * 100), items,
-      conflicts: conflicts.filter((c) => c && c.old).slice(0, 20), lang,
+      conflicts: conflicts.filter((c) => c && c.old).map(named).slice(0, 20), lang,
     };
     await this.db.setting.upsert({
       where: { tenantId_key: { tenantId, key: TEST_KEY } },

@@ -400,7 +400,7 @@ function Persona({ brain, patch, vi, canEdit }: { brain: Brain; patch: (fn: (b: 
 // ---------------------------------------------------------------- Học từ link
 
 interface LinkSource { id: string; url: string; label: string; on: boolean; preview: string; chars: number; fetchedAt: string | null; error: string | null; errorAt: string | null; summary?: { lines: number; sections: string[] }; rules?: string[] }
-interface KTest { at: string; ms: number; score: number; total: number; passed: number; lang: 'vi' | 'en'; items: { q: string; expect: string; kind: string; reply: string; pass: boolean; why: string }[]; conflicts: { old: string; doc: string; why: string }[] }
+interface KTest { at: string; ms: number; score: number; total: number; passed: number; lang: 'vi' | 'en'; items: { q: string; expect: string; kind: string; reply: string; pass: boolean; why: string }[]; conflicts: { old: string; doc: string; why: string; label?: string; off?: boolean }[] }
 
 /**
  * "Kiểm tra AI": questions written from the salon's own documents, answered by
@@ -412,6 +412,16 @@ function KnowledgeTestCard({ vi, canEdit, token, hasLinks }: { vi: boolean; canE
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showPass, setShowPass] = useState(false);
+  const [offMsg, setOffMsg] = useState<string | null>(null);
+  const turnOff = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await apiFetch<{ turnedOff: string[] }>('/ai-brain/knowledge-test/turn-off-conflicts', { method: 'POST', token });
+      setOffMsg(r.turnedOff.length ? L(vi, `Đã tắt ${r.turnedOff.length} ghi chú cũ: ${r.turnedOff.join(', ')}. Bấm "Kiểm tra lại" để chấm điểm mới.`, `Turned off ${r.turnedOff.length} old notes: ${r.turnedOff.join(', ')}. Press "Test again" for a new score.`) : L(vi, 'Không còn ghi chú nào cần tắt.', 'Nothing left to turn off.'));
+      setT(await apiFetch<KTest | null>('/ai-brain/knowledge-test', { token }));
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+  };
+  const openConflicts = t?.conflicts.filter((c) => !c.off && c.label) ?? [];
   useEffect(() => {
     if (!token) return;
     apiFetch<KTest | null>('/ai-brain/knowledge-test', { token }).then((r) => setT(r ?? null)).catch(() => undefined);
@@ -445,11 +455,14 @@ function KnowledgeTestCard({ vi, canEdit, token, hasLinks }: { vi: boolean; canE
         {canEdit && <button type="button" disabled={busy || !hasLinks} onClick={() => void run()} style={{ ...kitPrimary, opacity: hasLinks ? 1 : 0.5 }}>{busy ? L(vi, 'Đang kiểm tra… (~1 phút)', 'Testing… (~1 min)') : t ? L(vi, '↻ Kiểm tra lại', '↻ Test again') : L(vi, 'Chạy kiểm tra', 'Run test')}</button>}
       </div>
       {err && <div style={ui.banner}>{err}</div>}
+      {offMsg && <span style={{ fontSize: 13, color: 'var(--ink-good)' }}>✓ {offMsg}</span>}
       {t && <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L(vi, 'Lần kiểm tra gần nhất:', 'Last test:')} {new Date(t.at).toLocaleString(vi ? 'vi-VN' : 'en-US')}</span>}
       {t && t.conflicts.length > 0 && (
         <div style={{ border: '1px solid var(--ink-warn)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <b style={{ fontSize: 13.5, color: 'var(--ink-warn)' }}>⚠ {L(vi, `${t.conflicts.length} ghi chú cũ đang nói khác link — AI vẫn theo link, nhưng nên tắt dòng cũ ở tab "Câu hỏi thường gặp" (hoặc trang Messenger › Bot facts):`, `${t.conflicts.length} old notes contradict the links — the AI follows the links, but turn the old lines off under FAQ (or Messenger › Bot facts):`)}</b>
-          {t.conflicts.map((c, i) => <span key={i} style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>• <s>{c.old}</s> → <b>{c.doc}</b> <span style={{ color: 'var(--c94a3b8)' }}>({c.why})</span></span>)}
+          {t.conflicts.map((c, i) => <span key={i} style={{ fontSize: 13, color: 'var(--ccbd5e1)', opacity: c.off ? 0.55 : 1 }}>{c.off ? '✓ ' + L(vi, 'Đã tắt · ', 'Off · ') : '• '}<s>{c.old}</s> → <b>{c.doc}</b> <span style={{ color: 'var(--c94a3b8)' }}>({c.why})</span></span>)}
+          {canEdit && openConflicts.length > 0 && <button type="button" disabled={busy} onClick={() => void turnOff()} style={{ ...kitPrimary, alignSelf: 'flex-start' }}>{L(vi, `Tắt ${openConflicts.length} ghi chú cũ đang sai`, `Turn off ${openConflicts.length} wrong old notes`)}</button>}
+          {canEdit && openConflicts.length > 0 && <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L(vi, 'Chỉ tắt, không xoá — muốn dùng lại thì bật lên ở tab Câu hỏi thường gặp.', 'Only switched off, not deleted — switch back on under FAQ any time.')}</span>}
         </div>
       )}
       {fails.map((x, i) => <Row key={`f${i}`} x={x} />)}

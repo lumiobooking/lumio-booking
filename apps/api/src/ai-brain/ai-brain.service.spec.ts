@@ -248,3 +248,34 @@ describe('Kiểm tra AI — the knowledge test belongs to one salon', () => {
     await expect(svc.testKnowledge(owner('tb'))).rejects.toThrow(/Chưa có gì/);
   });
 });
+
+describe('turning off old notes that contradict the documents', () => {
+  const realFetch = global.fetch;
+  const realKey = process.env.ANTHROPIC_API_KEY;
+  afterEach(() => { global.fetch = realFetch; process.env.ANTHROPIC_API_KEY = realKey; });
+  it('switches off only the conflicting note, only in A, and keeps it (not deleted)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test';
+    const doc = '### BOOST — $179/tháng\nHiện KHÔNG có chương trình ưu đãi. Khối lượng: 12 bài, 4 video. Cam kết từ 6 tháng.';
+    global.fetch = (async (url: string, init?: { body?: string }) => {
+      if (!String(url).includes('anthropic')) return new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } });
+      const body = String(init?.body ?? '');
+      const say = (text: string) => new Response(JSON.stringify({ stop_reason: 'end_turn', content: [{ type: 'text', text }] }), { status: 200 });
+      if (body.includes('write an exam')) return say('[{"q":"Boost bao nhiêu?","expect":"$179/tháng","kind":"price"}]');
+      if (body.includes('find contradictions')) return say('[{"n":1,"old":"Giảm 50% Boost","doc":"Không có ưu đãi","why":"Sai"}]');
+      if (body.includes('grade a customer-chat AI')) return say('[{"i":0,"pass":true,"why":"Đúng"}]');
+      return say('Dạ Boost $179/tháng ạ');
+    }) as never;
+    const { svc, db } = build();
+    db.messengerConnection.rows.find((x: Row) => x.tenantId === 'tb').botFacts.push({ label: 'Parking', value: 'Behind', on: true });
+    await svc.addSource(owner('ta'), { url: 'https://example.com/p', label: 'Giá' });
+    const r = await svc.testKnowledge(owner('ta'));
+    // A's saved brain holds its notes (the same choice the live bot makes).
+    expect(r.conflicts[0].label).toBe('Parking');
+    expect((await svc.turnOffConflicts(owner('ta'))).turnedOff).toEqual(['Parking']);
+    const brainA = db.setting.rows.find((x: Row) => x.tenantId === 'ta' && x.key === 'ai_brain');
+    expect(brainA.value.knowledge.facts).toEqual([expect.objectContaining({ label: 'Parking', on: false })]);
+    const b = db.messengerConnection.rows.find((x: Row) => x.tenantId === 'tb');
+    expect(b.botFacts.every((f: Row) => f.on === true)).toBe(true);
+    expect((await svc.turnOffConflicts(owner('tb'))).turnedOff).toEqual([]);
+  });
+});

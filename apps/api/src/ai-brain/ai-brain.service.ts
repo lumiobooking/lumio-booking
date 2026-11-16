@@ -25,7 +25,7 @@ import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, 
 import { agentModel, forModel } from '../common/ai-model';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, cleanChoices, choicesAsText, cleanCards, cardText, type PackageCard, SALES_NOT_READY_RULE } from '../messenger/reply-style';
 import { ungroundedMoney } from '../messenger/price-grounding';
-import { CORRECTION_RULE, leaksCorrection, stripLeak, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from '../messenger/correction-guard';
+import { CORRECTION_RULE, leaksCorrection, stripLeak, ownerAnswersOnly, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from '../messenger/correction-guard';
 import { SIM_KEY, SIM_OTHER_LANGS, scenarioTurns, type SimTrade, mergeGrades, parseSimTranslation, pickScenarios, simFingerprint, simTranslatePrompt, type Scenario, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
 import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
@@ -1128,6 +1128,14 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
       }
       // Live, a reply that talks about the review instead of to the customer is held
       // for a person (messenger/correction-guard). Here it is shown as what it is.
+      // As live: a reply around the owner's exact answers is read by the second
+      // reader; if it thinks aloud, the owner's own words go out alone.
+      const exact = ownerAnswersOnly(owner?.matches);
+      if (text && exact && !corrected && !wasCorrected(messages) && !leaksCorrection(text) && text.trim() !== exact
+        && secondReaderSaysLeak(await (async () => { const p = secondReaderPrompt(text); return this.ask(p.system, p.user, 8, 8000).catch(() => ''); })())) {
+        trace.push(`replaced: the draft was not addressed to the customer — the owner's exact answers are sent instead`);
+        text = exact;
+      }
       const readerHolds = text && !leaksCorrection(text) && (corrected || wasCorrected(messages))
         ? secondReaderSaysLeak(await (async () => { const p = secondReaderPrompt(text); return this.ask(p.system, p.user, 8, 8000).catch(() => ''); })())
         : false;

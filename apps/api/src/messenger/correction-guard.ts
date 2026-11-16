@@ -52,6 +52,9 @@ const META = [
   /\bpre-?approved\b/i,
   /\b(two|three|four|five|multi)[- ]part (message|question)\b/i,
   /\bI('ll| will) answer each\b/i,
+  // Fourth form (rt164 on production): "The customer asked three things: … I must say each in full, in order."
+  /^\s*the customer (asked|is asking|has asked|wants|sent)\b/im,
+  /\bI (must|need to|have to|should) (say|answer|reply|respond|give|include|address)\b/i,
   /tin nhắn hệ thống|chỉ dẫn hệ thống|ghi chú hệ thống|bản nháp (trước|bị chặn)|câu trả lời trước (của em )?(đã )?bị chặn|em (đã )?viết lại câu trả lời/i,
 ];
 
@@ -79,6 +82,16 @@ export function stripLeak(text: string | null | undefined): string | null {
   const out = kept.join('\n\n').trim();
   if (out.length < 20 || leaksCorrection(out) || out === String(text ?? '').trim()) return null;
   return out;
+}
+
+/**
+ * The owner's exact answers this message matched, as one reply — what is sent
+ * when a draft around them cannot be trusted (it thinks aloud): the owner's
+ * own words and nothing else. '' when there are none.
+ */
+export function ownerAnswersOnly(matches: { ins: { kind: string; mode?: string; text: string } }[] | null | undefined): string {
+  const texts = (matches ?? []).filter((m) => m.ins.kind === 'answer' && m.ins.mode === 'verbatim').map((m) => m.ins.text.trim()).filter(Boolean);
+  return [...new Set(texts)].slice(0, 3).join('\n\n');
 }
 
 export interface LeakedTurn { at: string | null; snippet: string; failed: boolean }

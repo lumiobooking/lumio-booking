@@ -102,3 +102,20 @@ describe('thinking aloud in front of a good answer (Amy\'s Lash sandbox, 16/11/2
     expect(strip(answer)).toBeNull();
   });
 });
+
+import { ownerAnswersOnly } from './correction-guard';
+describe('fourth form seen on production (rt164): narrating the task', () => {
+  const a = 'I understand how it feels to draw your brows on every day. Your brows will last 1 to 5 years.';
+  it('is recognised and removed', () => {
+    const t = `The customer asked three things: how long brows last, location, and correcting old brows. I must say each in full, in order. ${a}`;
+    expect(leaks(t)).toBe(true);
+    expect(strip(t)).toBe(a);
+    expect(leaks('We must say thank you to all our lovely clients!')).toBe(false);
+  });
+  it("the owner's exact answers alone: matched verbatim answers, in order, nothing else", () => {
+    const m = [{ ins: { kind: 'answer', mode: 'verbatim', text: 'A one.' } }, { ins: { kind: 'always', text: 'rule' } }, { ins: { kind: 'answer', mode: 'meaning', text: 'loose' } }, { ins: { kind: 'answer', mode: 'verbatim', text: 'B two.' } }];
+    expect(ownerAnswersOnly(m)).toBe('A one.\n\nB two.');
+    expect(ownerAnswersOnly([])).toBe('');
+    expect(ownerAnswersOnly(null)).toBe('');
+  });
+});

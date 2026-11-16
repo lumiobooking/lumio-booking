@@ -315,7 +315,7 @@ Decide:
 - Judge by what the owner MEANS (their words are often short, misspelt or without accents; the meaning, when given, spells it out).
 - An instruction about WORDING in one language — which pronoun to use, a particle, a word to say or avoid ("xưng em", "không dùng mình/bạn", "always say dạ") — does not apply to a draft written in another language. It is neither applying nor violated there: an English reply cannot break a rule about Vietnamese pronouns.
 - "violations": labels the draft breaks. An applying ANSWER is broken when the draft contradicts it, leaves out its key fact, or (word-for-word ones) changes its wording. A NEVER is broken when the draft does or says what it forbids. An ALWAYS is broken when it applies right now and the draft skips it. Do not flag an instruction that does not apply.
-- "rewrite": when there is a violation, the corrected reply in ${o.langName}${o.voice ? ', short enough to be read aloud (under 40 words, no lists, no emoji)' : ', 1–3 short sentences'}: the draft with the smallest change that obeys every instruction — keep everything else it did right (times, names, the next question). Otherwise "".
+- "rewrite": when there is a violation, the corrected reply in ${o.langName}${o.voice ? ', short enough to be read aloud (under 40 words, no lists, no emoji)' : ''}: the draft with the smallest change that obeys every instruction — change only the offending words or sentence and keep everything else exactly as the draft has it (times, names, prices, the next question)${o.voice ? '' : ', including its LAYOUT: the same line breaks, the same blank line between its two messages, the same "▸ " lines. Never merge a tidy reply into one paragraph and never make it longer'}. Otherwise "".
 - The rewrite may only use facts that are already in the draft or in the instructions above. NEVER add a fact, a price, a duration, a distance, a travel time or a promise of your own — when the draft has to lose a sentence, the rewrite is simply shorter.
 - "silent": true ONLY when an instruction that applies says this kind of message must get NO reply at all (the owner wrote "do not reply", "stay silent", "send no message" for exactly this situation) — and the customer's message is that situation as a whole. Then the right reply is no reply: leave "rewrite" empty. When only PART of the message is such a situation (they also asked a price, an address, a question the owner wants answered), "silent" is false and the rewrite answers the rest without the forbidden part.
 Return exactly: {"applies":[],"violations":[],"rewrite":"","silent":false}`;
@@ -344,7 +344,7 @@ export function correctionFor(all: Instruction[], broken: Instruction[]): string
   });
   return `SYSTEM CORRECTION — that reply was blocked before it was sent, because it goes against the salon owner's instructions:
 ${lines.join('\n')}
-Rewrite your reply now so it obeys them exactly. Keep everything else that was right. Same language as the conversation, same length. Send only the new reply.`;
+Rewrite your reply now so it obeys them exactly. Change only what broke them; keep everything else that was right, in the same layout (the same short messages, blank line and "▸ " lines) and call the same tools again if your reply needs its buttons or cards. Same language as the conversation, same length. Send only the new reply.`;
 }
 
 /**

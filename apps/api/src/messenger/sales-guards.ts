@@ -232,6 +232,6 @@ export function looksVietnamese(text: string): boolean {
  */
 export function safeHandoffReply(conversation: string): string {
   return looksVietnamese(conversation)
-    ? 'Dạ phần này để team em tư vấn trực tiếp cho đúng với tiệm mình ạ. Anh/chị cho em xin tên tiệm và số điện thoại, team gọi lại tư vấn ngay ạ.'
+    ? 'Dạ phần này để team em tư vấn trực tiếp cho đúng với tiệm anh/chị ạ. Anh/chị cho em xin tên tiệm và số điện thoại, team gọi lại tư vấn ngay ạ.'
     : 'The team will advise you on that directly. May I take your shop name and the best number to reach you?';
 }

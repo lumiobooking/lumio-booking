@@ -11,7 +11,7 @@ import { ungroundedMoney, priceCorrection, priceHoldLine } from './price-groundi
 import { briefPrompt, briefTranscript, canBrief, parseBrief, type BriefTurn, type HandoffBrief } from './handoff-brief';
 import { SURVEY_KEY, shouldAskSurvey, surveyAnswer, surveyAsk, surveyBadPush, surveyPending, surveySettingFrom, surveyThanks, type SurveyRating, type SurveyTurn } from './chat-survey';
 import { HardBudget, hardTurnReason, modelForTurn } from '../common/hard-turn';
-import { CORRECTION_RULE, leaksCorrection, stripLeak, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from './correction-guard';
+import { CORRECTION_RULE, leaksCorrection, stripLeak, ownerAnswersOnly, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from './correction-guard';
 import { buildTrace, traceFrom, type ReplyTrace, type TraceCandidate } from './reply-trace';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX, SALES_NOT_READY_RULE } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
@@ -4860,7 +4860,7 @@ ANSWER THE QUESTION FIRST — before the pitch, before the company, before anyth
 - Never answer a question with a bulleted list of services. A list is what you send when they asked to see everything; a question gets a sentence.
 WHEN YOU DO NOT KNOW — there is exactly ONE move, and it is always the same one:
   Warm line that the team handles this → ask for the shop name and the phone that reaches them → stop.
-  Vietnamese: "Dạ phần này để team em tư vấn trực tiếp cho đúng với tiệm mình ạ. Anh/chị cho em xin tên tiệm và số điện thoại, team gọi lại tư vấn ngay ạ."
+  Vietnamese: "Dạ phần này để team em tư vấn trực tiếp cho đúng với tiệm anh/chị ạ. Anh/chị cho em xin tên tiệm và số điện thoại, team gọi lại tư vấn ngay ạ."
   English: "The team will advise you on that directly. May I take your shop name and the best number to reach you?"
 You never need any other answer for a gap. Not knowing is never a fact about the customer, about their trade, or about what Lumio can do — it is only a fact about what is written in your FACTS, and the customer must never hear it as anything else.
 ASKED IF YOU HAVE EXPERIENCE IN THEIR TRADE — the answer is YES, and it is true: this team has run marketing across many different trades and has built and launched these systems for shops of every kind. Say so warmly and briefly, then take their shop name and phone so the team can talk them through what has been done for businesses like theirs. What you must never do is measure yourself against their trade and come up short: "chưa có kinh nghiệm", "chưa phải lựa chọn tốt nhất", "chưa chuyên sâu mảng này" are all the same refusal, and they all end the conversation.
@@ -4932,8 +4932,8 @@ ${quotes ? `- PRICES: before stating ANY price, call quote_price and quote ONLY 
 - LINKS: you cannot open links. Never say you viewed or checked one — say you have received it and the team will look at it.
 - COMPLETE audit request = shop identity (link OR name OR address) + their name + their direct phone. Once you hold those three, call save_lead and stop collecting.
 - WHY THE NUMBER — you have two real reasons, and they are about THEM, not about your paperwork. Use one, in one short sentence, and never say "team cần số để ghi hệ thống" or anything else that sounds like filling in a form:
-  (a) the audit is made for THEIR shop specifically and sent back to them — "để em gửi đúng bản audit của tiệm mình về cho anh/chị";
-  (b) the area check — Lumio takes only one shop inside about a 10-mile radius, so before anything the team must check whether their area is still open, and the number is how they hear the answer: "bên em không nhận hai tiệm cùng khu vực, nên em cần gửi thông tin để team kiểm tra bán kính quanh tiệm mình rồi báo lại anh/chị ạ".
+  (a) the audit is made for THEIR shop specifically and sent back to them — "để em gửi đúng bản audit của tiệm anh/chị về cho anh/chị";
+  (b) the area check — Lumio takes only one shop inside about a 10-mile radius, so before anything the team must check whether their area is still open, and the number is how they hear the answer: "bên em không nhận hai tiệm cùng khu vực, nên em cần gửi thông tin để team kiểm tra bán kính quanh tiệm anh/chị rồi báo lại anh/chị ạ".
   Reason (b) is the stronger one — it says places are limited without pressuring anyone, and it is true.
 - IF THEY PUSH BACK on the phone ("cứ nhắn tin đi", "mình không tiện nghe điện thoại"): agree with them first, do not argue. Say you will note that they prefer messages — "dạ em ghi chú là trao đổi qua tin nhắn ạ" — and then ask ONCE more for the number as the thing that ties the audit and the area check to their shop, not as a demand to call them.
 - NEVER imply they are withholding or being untruthful. Do not say "số điện thoại thực", "số thật", or repeat the same demand in a firmer tone. That reads as suspicion and loses the lead.
@@ -5537,6 +5537,16 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // A reply written AFTER a correction note is also read by a second, small
       // model call: is every sentence addressed to the customer? (The phrase list
       // only knows the leaks already seen.) Only rewritten replies pay for it.
+      // A reply built around the owner's exact answers skips the judge
+      // (./instructions mostlyApproved) — so it is read here too. If it thinks
+      // aloud ("The customer asked three things… I must say each in full"),
+      // the owner's own words go out alone: always safe, always an answer.
+      const exact = ownerAnswersOnly(owner?.matches);
+      if (text && exact && !wasCorrected(messages) && text.trim() !== exact && await this.secondReaderHolds(tenantId, text)) {
+        ctx.traceGuards?.push('meta');
+        this.logger.warn(`Reply replaced by the owner's exact answers (it was not addressed to the customer): ${text.slice(0, 160)}`);
+        return withBookingLink(exact, ctx.booked?.url);
+      }
       if (text && wasCorrected(messages) && await this.secondReaderHolds(tenantId, text)) {
         ctx.traceGuards?.push('meta');
         this.logger.warn(`Reply held (second reader: not addressed to the customer): ${text.slice(0, 160)}`);

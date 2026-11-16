@@ -35,3 +35,19 @@ describe('reply style (approved mockup)', () => {
     expect(cardTapLine('ASK_PKG:x')).toBeNull();
   });
 });
+
+import { REPLY_STYLE_RULE as STYLE_R, SALES_FLOW_RULE as FLOW_R } from './reply-style';
+import { judgePrompt as jp, correctionFor as cf } from '../ai-brain/instructions';
+describe('the approved layout survives an owner-instruction correction (Lumio Agency, 16/11/2026)', () => {
+  it('our own example never uses the word an owner bans ("tiệm mình")', () => {
+    expect(`${STYLE_R}\n${FLOW_R}`).not.toMatch(/tiệm mình|bên mình/);
+  });
+  it('the judge and the correction both keep the layout, and the rewrite is not squeezed into 1–3 sentences', () => {
+    const rule = { id: 'r', tenantId: 't', kind: 'always', text: 'Không được xưng hô mình', triggers: [], mode: 'meaning', channels: [], on: true } as never;
+    const j = jp({ all: [rule], check: [rule], customer: 'giá gói', draft: 'x', langName: 'Vietnamese', voice: false }).user;
+    expect(j).toContain('LAYOUT');
+    expect(j).toContain('Never merge a tidy reply into one paragraph');
+    expect(j).not.toContain('1–3 short sentences');
+    expect(cf([rule], [rule])).toContain('in the same layout');
+  });
+});

@@ -166,6 +166,16 @@ export class AiBrainController {
   @Delete('sources/:id')
   removeSource(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.brain.removeSource(user, id); }
 
+  // ---- Kiểm tra AI (./knowledge-test): questions from the documents, answered by the sandbox, graded.
+  @Get('knowledge-test')
+  lastTest(@CurrentUser() user: AuthenticatedUser) { return this.brain.lastTest(user); }
+
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature(...TEACH_KEYS)
+  @RateLimit(6, 60 * 60_000)
+  @Post('knowledge-test')
+  testKnowledge(@CurrentUser() user: AuthenticatedUser) { return this.brain.testKnowledge(user); }
+
   @Post('callbacks')
   addCallback(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) { return this.brain.ownerCallback(user, dto); }
 }

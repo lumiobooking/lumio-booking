@@ -399,7 +399,66 @@ function Persona({ brain, patch, vi, canEdit }: { brain: Brain; patch: (fn: (b: 
 
 // ---------------------------------------------------------------- Học từ link
 
-interface LinkSource { id: string; url: string; label: string; on: boolean; preview: string; chars: number; fetchedAt: string | null; error: string | null; errorAt: string | null }
+interface LinkSource { id: string; url: string; label: string; on: boolean; preview: string; chars: number; fetchedAt: string | null; error: string | null; errorAt: string | null; summary?: { lines: number; sections: string[] } }
+interface KTest { at: string; ms: number; score: number; total: number; passed: number; lang: 'vi' | 'en'; items: { q: string; expect: string; kind: string; reply: string; pass: boolean; why: string }[]; conflicts: { old: string; doc: string; why: string }[] }
+
+/**
+ * "Kiểm tra AI": questions written from the salon's own documents, answered by
+ * the real assistant (sandbox — nothing sent), graded; plus old notes that
+ * contradict the documents. API: /ai-brain/knowledge-test (ai-brain/knowledge-test).
+ */
+function KnowledgeTestCard({ vi, canEdit, token, hasLinks }: { vi: boolean; canEdit: boolean; token: string | null; hasLinks: boolean }) {
+  const [t, setT] = useState<KTest | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [showPass, setShowPass] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<KTest | null>('/ai-brain/knowledge-test', { token }).then((r) => setT(r ?? null)).catch(() => undefined);
+  }, [token]);
+  const run = async () => {
+    setBusy(true); setErr(null);
+    try { setT(await apiFetch<KTest>('/ai-brain/knowledge-test', { method: 'POST', token })); } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+  };
+  const color = !t ? 'var(--c94a3b8)' : t.score >= 90 ? 'var(--ink-good)' : t.score >= 70 ? 'var(--ink-warn)' : 'var(--ink-bad)';
+  const fails = t?.items.filter((x) => !x.pass) ?? [];
+  const passes = t?.items.filter((x) => x.pass) ?? [];
+  const Row = ({ x }: { x: KTest['items'][number] }) => (
+    <div style={{ borderTop: '1px solid var(--line)', padding: '10px 0', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+      <b style={{ color: 'var(--ce2e8f0)' }}>{x.pass ? '✅' : '❌'} {x.q}</b>
+      <span style={{ color: 'var(--ccbd5e1)' }}><b>{L(vi, 'AI trả lời:', 'AI said:')}</b> {x.reply || '—'}</span>
+      <span style={{ color: 'var(--c94a3b8)' }}><b>{L(vi, 'Đúng phải là:', 'Expected:')}</b> {x.expect}</span>
+      {!x.pass && <span style={{ color: 'var(--ink-bad)' }}>→ {x.why}</span>}
+    </div>
+  );
+  return (
+    <div style={{ border: '1px solid var(--line)', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--raised)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+          <b style={{ fontSize: 15, color: 'var(--ce2e8f0)' }}>🧪 {L(vi, 'Kiểm tra AI', 'Test the AI')}</b>
+          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+            {L(vi, `Hệ thống tự soạn ${12} câu hỏi như khách thật từ bảng giá và ghi chú của tiệm, hỏi AI, rồi chấm từng câu. Cũng tìm ghi chú cũ đang nói khác link. Không gửi gì cho khách.`,
+              'Writes 12 real-customer questions from your documents and notes, asks the AI, grades every answer, and finds old notes that contradict the links. Nothing is sent to customers.')}
+          </div>
+        </div>
+        {t && <div style={{ textAlign: 'center' }}><div style={{ fontSize: 28, fontWeight: 800, color }}>{t.score}%</div><div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{t.passed}/{t.total} {L(vi, 'câu đúng', 'correct')}</div></div>}
+        {canEdit && <button type="button" disabled={busy || !hasLinks} onClick={() => void run()} style={{ ...kitPrimary, opacity: hasLinks ? 1 : 0.5 }}>{busy ? L(vi, 'Đang kiểm tra… (~1 phút)', 'Testing… (~1 min)') : t ? L(vi, '↻ Kiểm tra lại', '↻ Test again') : L(vi, 'Chạy kiểm tra', 'Run test')}</button>}
+      </div>
+      {err && <div style={ui.banner}>{err}</div>}
+      {t && <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L(vi, 'Lần kiểm tra gần nhất:', 'Last test:')} {new Date(t.at).toLocaleString(vi ? 'vi-VN' : 'en-US')}</span>}
+      {t && t.conflicts.length > 0 && (
+        <div style={{ border: '1px solid var(--ink-warn)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <b style={{ fontSize: 13.5, color: 'var(--ink-warn)' }}>⚠ {L(vi, `${t.conflicts.length} ghi chú cũ đang nói khác link — AI vẫn theo link, nhưng nên tắt dòng cũ ở tab "Câu hỏi thường gặp" (hoặc trang Messenger › Bot facts):`, `${t.conflicts.length} old notes contradict the links — the AI follows the links, but turn the old lines off under FAQ (or Messenger › Bot facts):`)}</b>
+          {t.conflicts.map((c, i) => <span key={i} style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>• <s>{c.old}</s> → <b>{c.doc}</b> <span style={{ color: 'var(--c94a3b8)' }}>({c.why})</span></span>)}
+        </div>
+      )}
+      {fails.map((x, i) => <Row key={`f${i}`} x={x} />)}
+      {passes.length > 0 && <button type="button" onClick={() => setShowPass(!showPass)} style={{ ...kitGhost, alignSelf: 'flex-start' }}>{showPass ? L(vi, 'Ẩn câu đúng', 'Hide correct') : L(vi, `Xem ${passes.length} câu đúng`, `Show ${passes.length} correct`)}</button>}
+      {showPass && passes.map((x, i) => <Row key={`p${i}`} x={x} />)}
+      {t && fails.length > 0 && <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{L(vi, 'Câu sai thường do: link thiếu thông tin đó, ghi chú cũ nói khác, hoặc Lời dặn của chủ tiệm chặn (vd: không báo giá). Sửa xong bấm Kiểm tra lại.', 'Wrong answers usually come from: the link lacks that fact, an old note says otherwise, or an owner rule blocks it (e.g. no prices). Fix, then test again.')}</span>}
+    </div>
+  );
+}
 
 /**
  * "Học từ link": the business gives the AI a link (price list, menu, policy,
@@ -427,8 +486,8 @@ function LinkSources({ vi, canEdit, token, onCount }: { vi: boolean; canEdit: bo
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>
-        {L(vi, 'Dán link bảng giá, menu, chính sách hoặc link dữ liệu (JSON). AI đọc ngay và tự đọc lại mỗi ngày — bạn chỉ cần sửa trang gốc, không phải nhập lại ở đây. Khi link nói khác ghi chú cũ, AI theo link.',
-          'Paste a link to a price list, menu, policy or a data feed (JSON). The AI reads it now and again every day — change the page itself, nothing to retype here. When the link disagrees with older notes, the AI follows the link.')}
+        {L(vi, 'Dán link bảng giá, menu, chính sách hoặc link dữ liệu (JSON). AI đọc ngay và tự đọc lại mỗi ngày — bạn chỉ cần sửa trang gốc, không phải nhập lại ở đây. Khi link nói khác ghi chú cũ, AI theo link. Mỗi câu trả lời có giá tiền đều được hệ thống đối chiếu với link trước khi gửi — giá không có trong link sẽ bị chặn.',
+          'Paste a link to a price list, menu, policy or a data feed (JSON). The AI reads it now and again every day — change the page itself, nothing to retype here. When the link disagrees with older notes, the AI follows the link. Every reply with a price is checked against the links before it is sent — a figure not in them is blocked.')}
       </div>
       {canEdit && (items?.length ?? 0) < max && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -440,6 +499,7 @@ function LinkSources({ vi, canEdit, token, onCount }: { vi: boolean; canEdit: bo
         </div>
       )}
       {err && <div style={ui.banner}>{err}</div>}
+      <KnowledgeTestCard vi={vi} canEdit={canEdit} token={token} hasLinks={(items?.length ?? 0) > 0} />
       {items === null && !err && <span style={{ color: 'var(--c94a3b8)' }}>{L(vi, 'Đang tải…', 'Loading…')}</span>}
       {items?.length === 0 && <Empty>{L(vi, 'Chưa có link nào. Dán link bảng giá của bạn ở trên.', 'No links yet. Paste your price list link above.')}</Empty>}
       {items?.map((x) => (
@@ -450,15 +510,16 @@ function LinkSources({ vi, canEdit, token, onCount }: { vi: boolean; canEdit: bo
           </div>
           <a href={x.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: 'var(--ink-link)', wordBreak: 'break-all' }}>{x.url}</a>
           <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>
-            {x.fetchedAt ? L(vi, `Đọc lúc ${when(x.fetchedAt)} · ${x.chars.toLocaleString()} chữ · tự đọc lại mỗi ngày`, `Read ${when(x.fetchedAt)} · ${x.chars.toLocaleString()} characters · re-read daily`) : L(vi, 'Chưa đọc được lần nào', 'Not read yet')}
+            {x.fetchedAt ? L(vi, `Đọc trọn lúc ${when(x.fetchedAt)} · ${x.chars.toLocaleString()} chữ${x.summary ? ` · ${x.summary.lines} dòng · ${x.summary.sections.length} mục` : ''} · tự đọc lại mỗi ngày`, `Read in full ${when(x.fetchedAt)} · ${x.chars.toLocaleString()} characters${x.summary ? ` · ${x.summary.lines} lines · ${x.summary.sections.length} sections` : ''} · re-read daily`) : L(vi, 'Chưa đọc được lần nào', 'Not read yet')}
           </span>
+          {!!x.summary?.sections.length && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{x.summary.sections.slice(0, 24).map((h, i) => <span key={i} style={{ fontSize: 11.5, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--line)', color: 'var(--ccbd5e1)' }}>{h}</span>)}{x.summary.sections.length > 24 && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>+{x.summary.sections.length - 24}</span>}</div>}
           {x.error && <span style={{ fontSize: 12.5, color: 'var(--ink-warn)' }}>⚠ {x.error}{x.chars ? L(vi, ' — AI vẫn dùng bản đọc được lần trước.', ' — the AI keeps using the last good read.') : ''}</span>}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={() => setShow(show === x.id ? null : x.id)} style={kitGhost}>{show === x.id ? L(vi, 'Ẩn', 'Hide') : L(vi, 'Xem AI đọc được gì', 'What the AI read')}</button>
             {canEdit && <button type="button" disabled={!!busy} onClick={() => void run(`r-${x.id}`, () => apiFetch('/ai-brain/sources/' + x.id + '/refresh', { method: 'POST', token }))} style={kitGhost}>{busy === `r-${x.id}` ? L(vi, 'Đang đọc…', 'Reading…') : `↻ ${L(vi, 'Đọc lại ngay', 'Read again now')}`}</button>}
             {canEdit && <button type="button" disabled={!!busy} onClick={() => { if (window.confirm(L(vi, `Xoá link "${x.label}"? AI sẽ không dùng nội dung này nữa.`, `Remove "${x.label}"? The AI stops using it.`))) void run(`d-${x.id}`, () => apiFetch('/ai-brain/sources/' + x.id, { method: 'DELETE', token })); }} style={{ ...kitGhost, color: 'var(--ink-bad)' }}>{L(vi, 'Xoá', 'Remove')}</button>}
           </div>
-          {show === x.id && <pre style={{ margin: 0, maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.5, background: 'var(--raised)', borderRadius: 10, padding: 10, color: 'var(--ccbd5e1)' }}>{x.preview || '—'}{x.chars > 4000 ? `\n… (+${(x.chars - 4000).toLocaleString()})` : ''}</pre>}
+          {show === x.id && <pre style={{ margin: 0, maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.5, background: 'var(--raised)', borderRadius: 10, padding: 10, color: 'var(--ccbd5e1)' }}>{x.preview || '—'}</pre>}
         </div>
       ))}
     </div>
@@ -997,6 +1058,7 @@ function KnowledgeImport({ token, vi, pageConnected, patch }: { token: string | 
   return (
     <div style={{ marginTop: 10, padding: 12, border: '1px solid var(--line)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{L(vi, 'AI đọc rồi đề xuất từng dòng — bạn tick dòng đúng, bấm Thêm, rồi Lưu.', 'The AI reads it and proposes rows — tick the right ones, Add, then Save.')}</div>
+      <div style={{ fontSize: 12.5, color: 'var(--ink-warn)', lineHeight: 1.5 }}>{L(vi, '💡 Bảng giá, menu dài hoặc hay thay đổi: dùng tab "🔗 Học từ link" ở trên — AI đọc TRỌN tài liệu và tự cập nhật mỗi ngày. Ô này chỉ tóm tắt vài dòng.', '💡 Long or changing price lists and menus: use the "🔗 Learn from links" tab above — the AI reads the WHOLE document and updates daily. This box only summarises a few rows.')}</div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" aria-label={L(vi, 'Địa chỉ website', 'Website address')} style={{ ...ui.input, flex: '1 1 200px' }} />
         <button type="button" disabled={!!busy || !url.trim()} onClick={() => void run('website')} style={{ ...ui.primaryBtn, opacity: busy || !url.trim() ? 0.6 : 1 }}>{busy === 'website' ? '…' : L(vi, 'Đọc website', 'Read website')}</button>

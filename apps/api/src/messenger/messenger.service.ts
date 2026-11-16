@@ -7,6 +7,7 @@ import type { Lang as BrainLang } from '../ai-brain/brain-settings';
 import { isPagePostChange, requestChannelSync } from '../marketing/sync-signals';
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
+import { ungroundedMoney, priceCorrection, priceHoldLine } from './price-grounding';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
 import { isUnknownReply } from './knowledge-gaps';
 import { dayKeyTz } from '../common/salon-time';
@@ -4891,6 +4892,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     let qualifyRetried = false;
     let freshRetried = false;
     let priceRetried = false;
+    // The price check (./price-grounding): figures must come from what the AI was given.
+    let groundRetried = false;
+    const toolOuts: string[] = [];
     let bookedRetried = false;
     let vagueRetried = false;
     let repeatRetried = false;
@@ -4970,6 +4974,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           // The SAME object, not a copy: send_photos and create_booking leave
           // what they did on it, and the caller reads that back afterwards.
           const out = await this.runTool(tenantId, tz, blk.name || '', blk.input || {}, Object.assign(ctx, { lang: customerLang }));
+          toolOuts.push(typeof out === 'string' ? out : JSON.stringify(out));
           results.push({ type: 'tool_result', tool_use_id: blk.id, content: out });
         }
         messages.push({ role: 'user', content: results });
@@ -5004,6 +5009,23 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
             + 'Two short sentences, same language as the conversation. Send only the new reply.',
         });
         continue;
+      }
+      // PRICE CHECK — wherever the AI may quote (a page with documents, or a
+      // sales page allowed to quote), every amount must trace back to the
+      // documents, notes, menu, a tool answer or the customer's own words.
+      if (text && (docs || (ctx.mode === 'sales' && quotes))) {
+        const bad = ungroundedMoney(text, [staticSystem, docs, dynamicSystem, customerWords, ...toolOuts]);
+        if (bad.length) {
+          if (groundRetried) {
+            this.logger.warn(`Reply held twice (price not in the sources: ${bad.join(', ')}): ${text.slice(0, 140)}`);
+            return priceHoldLine(customerLang);
+          }
+          groundRetried = true;
+          this.logger.warn(`Reply blocked (price not in the sources: ${bad.join(', ')}): ${text.slice(0, 140)}`);
+          messages.push({ role: 'assistant', content: blocks });
+          messages.push({ role: 'user', content: priceCorrection(bad) });
+          continue;
+        }
       }
       if (ctx.mode === 'sales' && text && !freshRetried && claimsFreshStart(trimmed || history.length > 2, text)) {
         freshRetried = true;

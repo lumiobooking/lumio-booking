@@ -27,8 +27,12 @@ export interface KnowledgeSource {
 
 export const SOURCES_KEY = 'ai_brain_sources';
 export const MAX_SOURCES = 5;
-export const MAX_CHARS = 15_000;
-export const MAX_TOTAL = 30_000;
+// A real price list runs long: Lumio's own is 23,500 characters across 11
+// packages, and the first cap (15,000) silently dropped the last third of it —
+// the AI then "didn't know" Map Growth or Web SEO. Read whole documents; the
+// prompt block is cached, so the size costs once per few minutes, not per turn.
+export const MAX_CHARS = 60_000;
+export const MAX_TOTAL = 80_000;
 /** Read again after this long. */
 export const STALE_MS = 24 * 60 * 60_000;
 
@@ -108,6 +112,16 @@ export function docsBlock(sources: KnowledgeSource[]): string {
     '- When anything else you were given (older notes, typed facts, a tool result, your own memory) disagrees with these documents, these documents win.',
     '- Quote numbers exactly as written here. Never invent a price, package, discount or gift that is not here.',
     '- If a document marks an offer as limited to dates that have passed, say the offer may have ended and that the team can confirm.',
+    '- Read the WHOLE document before answering: the answer is often under a later heading (features, volume, conditions, "not included"). Answer with the exact package name, the exact figures and any condition that applies (commitment, one-time fee, what is not included).',
+    '- If the answer is not in the documents, do not guess: say you will have the team confirm, and offer to take their contact.',
+    '- If a document has its own rules for answering customers, follow them.',
     ...parts,
   ].join('\n');
+}
+
+/** What the screen says was read: how many sections and lines, and the section titles. */
+export function docSummary(text: string): { lines: number; sections: string[] } {
+  const lines = String(text || '').split('\n').filter((l) => l.trim());
+  const heads = lines.filter((l) => /^#{2,4}\s+\S/.test(l)).map((l) => l.replace(/^#+\s+/, '').trim().slice(0, 60));
+  return { lines: lines.length, sections: heads.slice(0, 60) };
 }

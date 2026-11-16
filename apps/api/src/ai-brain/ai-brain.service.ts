@@ -21,7 +21,8 @@ import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLan
 import { AiInstructionsService, instructionChannel } from './instructions.service';
 import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, needsMeaning, type Instruction, type InstructionChannel } from './instructions';
 import { agentModel, forModel } from '../common/ai-model';
-import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
+import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
+import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
 import { browserHeaders } from '../common/browser-headers';
 import { randomUUID } from 'crypto';
 
@@ -123,7 +124,7 @@ export class AiBrainService {
   async listSources(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const items = await this.readSources(tenantId);
-    return { items: items.map((s) => ({ ...s, text: undefined, preview: s.text.slice(0, 4000) })), canEdit: this.canEdit(user), max: MAX_SOURCES };
+    return { items: items.map((s) => ({ ...s, text: undefined, preview: s.text.slice(0, 60_000), summary: docSummary(s.text) })), canEdit: this.canEdit(user), max: MAX_SOURCES };
   }
 
   async addSource(user: AuthenticatedUser, dto: { url?: unknown; label?: unknown }) {
@@ -172,6 +173,95 @@ export class AiBrainService {
     await this.writeSources(tenantId, list.filter((s) => s.id !== id));
     await this.audit.log({ tenantId, userId: user.userId, action: 'ai_brain.source_removed', resourceType: 'setting', resourceId: SOURCES_KEY, metadata: { id } });
     return this.listSources(user);
+  }
+
+  // ---------------------------------------------------------------- Kiểm tra AI (./knowledge-test)
+
+  /** One plain model call (no tools) — for writing and grading the test. */
+  private async ask(system: string, user: string, maxTokens: number, timeoutMs = 60_000): Promise<string> {
+    const key = process.env.ANTHROPIC_API_KEY || '';
+    if (!key) throw new BadRequestException('AI is not configured on this server');
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify(forModel({ model: (process.env.ANTHROPIC_EVAL_MODEL || '').trim() || agentModel(), max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] })),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) throw new BadRequestException(`AI answered ${res.status}`);
+    const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+    return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join('');
+  }
+
+  /** The old typed notes: the brain's facts and the Messenger page's bot facts. */
+  private async oldNotes(tenantId: string): Promise<string> {
+    const { blocks } = await this.promptBlocks(tenantId, 'chat', 'vi');
+    const conn = await this.db.messengerConnection.findUnique({ where: { tenantId }, select: { botFacts: true } }).catch(() => null);
+    const bot = (Array.isArray(conn?.botFacts) ? conn.botFacts : []) as Row[];
+    const botLines = bot.filter((f) => f && f.on !== false && (f.label || f.value)).map((f) => `- ${String(f.label ?? '')}: ${String(f.value ?? '')}`);
+    return [blocks.facts || '', ...botLines].filter((x) => x.trim()).join('\n');
+  }
+
+  async lastTest(user: AuthenticatedUser): Promise<KnowledgeTest | null> {
+    const row = await this.db.setting.findUnique({ where: { tenantId_key: { tenantId: this.tenantId(user), key: TEST_KEY } } }).catch(() => null);
+    return (row?.value as KnowledgeTest | undefined) ?? null;
+  }
+
+  /**
+   * Write questions from the salon's own documents and notes, put each to the
+   * real assistant (sandbox: nothing written or sent), grade every reply, and
+   * list old notes that contradict the documents. Kept as the last result.
+   */
+  async testKnowledge(user: AuthenticatedUser): Promise<KnowledgeTest> {
+    if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can test the AI');
+    const tenantId = this.tenantId(user);
+    const t0 = Date.now();
+    const sources = (await this.readSources(tenantId)).filter((x) => x.on && x.text.trim());
+    const docs = docsBlock(sources);
+    const notes = await this.oldNotes(tenantId).catch(() => '');
+    const material = [docs, notes ? `OLDER TYPED NOTES:\n${notes}` : ''].filter(Boolean).join('\n\n');
+    if (material.trim().length < 80) throw new BadRequestException('Chưa có gì để kiểm tra — thêm link bảng giá hoặc ghi chú trước.');
+    // Judged on the salon's own words, not on our English prompt header.
+    const lang = materialLang([...sources.map((x) => x.text), notes].join('\n'));
+
+    const qp = questionPrompt(docs || material, lang, TEST_COUNT);
+    const [qText, conflicts] = await Promise.all([
+      this.ask(qp.system, qp.user, 4000),
+      docs && notes
+        ? (async () => { const cp = conflictPrompt(notes, docs, lang); return jsonArray<Conflict>(await this.ask(cp.system, cp.user, 2500)); })().catch(() => [] as Conflict[])
+        : Promise.resolve([] as Conflict[]),
+    ]);
+    const questions = jsonArray<TestQuestion>(qText).filter((x) => x && typeof x.q === 'string' && typeof x.expect === 'string').slice(0, TEST_COUNT);
+    if (!questions.length) throw new BadRequestException('AI không soạn được câu hỏi kiểm tra — bấm thử lại.');
+
+    // The real assistant answers, four at a time.
+    const replies: string[] = new Array(questions.length).fill('');
+    let next = 0;
+    await Promise.all(Array.from({ length: 4 }, async () => {
+      while (next < questions.length) {
+        const i = next++;
+        const r = await this.sandbox(user, { messages: [{ role: 'user', content: questions[i].q }], channel: 'chat' }).catch((e) => ({ reply: `(lỗi: ${String((e as Error)?.message ?? e).slice(0, 80)})` }));
+        replies[i] = String((r as { reply?: string }).reply ?? '');
+      }
+    }));
+
+    const jp = judgePrompt(questions.map((q, i) => ({ q: q.q, expect: q.expect, reply: replies[i] })), lang);
+    const grades = jsonArray<{ i: number; pass: boolean; why: string }>(await this.ask(jp.system, jp.user, 3000));
+    const items: TestItem[] = questions.map((q, i) => {
+      const g = grades.find((x) => Number(x?.i) === i);
+      return { q: q.q, expect: q.expect, kind: String(q.kind || ''), reply: replies[i], pass: g?.pass === true, why: String(g?.why ?? (lang === 'vi' ? 'Chưa chấm được' : 'Not graded')) };
+    });
+    const passed = items.filter((x) => x.pass).length;
+    const result: KnowledgeTest = {
+      at: new Date().toISOString(), ms: Date.now() - t0, total: items.length, passed,
+      score: Math.round((passed / Math.max(1, items.length)) * 100), items,
+      conflicts: conflicts.filter((c) => c && c.old).slice(0, 20), lang,
+    };
+    await this.db.setting.upsert({
+      where: { tenantId_key: { tenantId, key: TEST_KEY } },
+      update: { value: result as never },
+      create: { tenantId, key: TEST_KEY, value: result as never },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'ai_brain.knowledge_tested', resourceType: 'setting', resourceId: TEST_KEY, metadata: { score: result.score, total: result.total, conflicts: result.conflicts.length } });
+    return result;
   }
 
   /**

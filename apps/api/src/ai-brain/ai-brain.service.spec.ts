@@ -66,6 +66,8 @@ function build() {
     appointment: table([]),
     voiceCall: table([]),
     messengerThread: table([]),
+    service: table([]),
+    staffMember: table([]),
   };
   const pushes: Row[] = [];
   const svc = new AiBrainService(db as never, { log: async () => undefined } as never, { getAiNotes: async () => ({ text: 'shared' }) } as never, { sendToTenant: async (t: string, p: Row) => { pushes.push({ t, ...p }); } } as never);
@@ -210,5 +212,39 @@ describe('links the AI learns from belong to one salon', () => {
     const { svc } = build();
     await expect(svc.addSource(owner('ta'), { url: 'http://127.0.0.1/admin' })).rejects.toThrow();
     await expect(svc.addSource(owner('ta'), { url: 'http://localhost:3000' })).rejects.toThrow();
+  });
+});
+
+describe('Kiểm tra AI — the knowledge test belongs to one salon', () => {
+  const realFetch = global.fetch;
+  const realKey = process.env.ANTHROPIC_API_KEY;
+  afterEach(() => { global.fetch = realFetch; process.env.ANTHROPIC_API_KEY = realKey; });
+  it('writes questions from A\'s documents, grades the replies, stores the result for A only', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test';
+    const doc = '### BOOST — $179/tháng\nKhối lượng mỗi tháng: 12 bài, 4 video. Điều kiện gói: cam kết từ 6 tháng. Kênh: Facebook, Instagram, TikTok.';
+    global.fetch = (async (url: string, init?: { body?: string }) => {
+      if (!String(url).includes('anthropic')) return new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } });
+      const body = String(init?.body ?? '');
+      const say = (text: string) => new Response(JSON.stringify({ stop_reason: 'end_turn', content: [{ type: 'text', text }] }), { status: 200 });
+      if (body.includes('write an exam')) return say('[{"q":"Gói Boost giá bao nhiêu?","expect":"$179/tháng","kind":"price"},{"q":"Boost có giảm 50% không?","expect":"Không có, team xác nhận","kind":"not_listed"}]');
+      if (body.includes('grade a customer-chat AI')) return say('[{"i":0,"pass":true,"why":"Đúng"},{"i":1,"pass":false,"why":"Bịa giảm giá"}]');
+      return say('Dạ gói Boost $179/tháng ạ');
+    }) as never;
+    const { svc, db } = build();
+    await svc.addSource(owner('ta'), { url: 'https://example.com/pricing', label: 'Bảng giá' });
+    const r = await svc.testKnowledge(owner('ta'));
+    expect(r.total).toBe(2);
+    expect(r.passed).toBe(1);
+    expect(r.score).toBe(50);
+    expect(r.lang).toBe('vi');
+    expect(r.items[0].reply).toContain('179');
+    expect((await svc.lastTest(owner('ta')))?.score).toBe(50);
+    expect(await svc.lastTest(owner('tb'))).toBeNull();
+    expect(db.setting.rows.filter((x: Row) => x.key === 'ai_brain_test').map((x: Row) => x.tenantId)).toEqual(['ta']);
+  });
+  it('refuses when there is nothing to test', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test';
+    const { svc } = build();
+    await expect(svc.testKnowledge(owner('tb'))).rejects.toThrow(/Chưa có gì/);
   });
 });

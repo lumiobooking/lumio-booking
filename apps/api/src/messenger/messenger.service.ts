@@ -8,6 +8,7 @@ import { isPagePostChange, requestChannelSync } from '../marketing/sync-signals'
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
 import { ungroundedMoney, priceCorrection, priceHoldLine } from './price-grounding';
+import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
 import { isUnknownReply } from './knowledge-gaps';
 import { dayKeyTz } from '../common/salon-time';
@@ -3098,6 +3099,14 @@ export class MessengerService implements OnModuleInit {
         // belongs to Get Started alone; applied to a package button it threw
         // away the one thing the tap was worth — which package — on any event
         // that happened to carry a message as well.
+        // A tap on a package card's buttons (./reply-style send_package_card).
+        const cardTap = ev.postback?.payload ? cardTapLine(ev.postback.payload) : null;
+        if (cardTap) {
+          await this.handleMessage(entryId, senderId, cardTap, ev.timestamp, channel).catch((e) =>
+            this.logger.warn(`card postback failed: ${String(e).slice(0, 160)}`),
+          );
+          continue;
+        }
         const pkgTap = ev.postback?.payload ? packageFromPayload(ev.postback.payload) : null;
         if (pkgTap) {
           await this.handleMessage(entryId, senderId, tapAsCustomerLine(pkgTap), ev.timestamp, channel).catch((e) =>
@@ -4077,6 +4086,9 @@ export class MessengerService implements OnModuleInit {
     const sendStart = Date.now();
     const customerAt = eventTs && Number.isFinite(eventTs) ? eventTs
       : (() => { const v = (fresh as unknown as { lastCustomerAt?: Date | string | null }).lastCustomerAt; const n = v ? new Date(v).getTime() : NaN; return Number.isFinite(n) ? n : null; })();
+    // The approved look (./reply-style): no markdown, ▸ lines.
+    reply = tidyReply(reply);
+    const choices = agentCtx?.choices?.length ? agentCtx.choices : [];
     const sent = await this.sendText(conn.pageToken, senderId, reply, freshCh === 'zalo' ? 'zalo' : freshCh === 'web' ? 'web' : undefined, conn.tenantId, {
       customerAt,
       // Retrying for a minute: stop if a PERSON answered meanwhile (a manual
@@ -4090,7 +4102,7 @@ export class MessengerService implements OnModuleInit {
           && new Date(t.at ?? 0).getTime() > sendStart
           && !isMetaAdGreeting(t.content) && !isMetaSystemLine(t.content));
       },
-    });
+    }, { bubbles: true, choices });
     // The billable event, and the only one: a reply the ROBOT produced and the
     // mouth accepted. A refused send is not work delivered, a canned greeting
     // is not the robot thinking, and a line a person typed is the salon's own
@@ -4120,7 +4132,8 @@ export class MessengerService implements OnModuleInit {
     // A reply the mouth refused is kept, flagged, so the activity log shows
     // "Failed" instead of a "Sent" nobody received — and so the repeat guard
     // lets the bot try again when the customer writes the same thing.
-    const outTurn: Turn = sent.ok ? { role: 'assistant', content: reply, at: outAt } : ({
+    // The thread shows the buttons the customer saw, so staff reading it later know what was offered.
+    const outTurn: Turn = sent.ok ? { role: 'assistant', content: choices.length ? `${reply}\n\n${choicesAsText(choices)}` : reply, at: outAt } : ({
       role: 'assistant', content: reply, at: outAt, failed: true, sendError: sent.error ?? null,
       ...(sent.retryable ? { retry: { first: outAt, n: 0, next: new Date(Date.parse(outAt) + FRESH_RETRY_AFTER_MIN[0] * 60_000).toISOString(), customerAt: customerAt != null ? new Date(customerAt).toISOString() : null, tries: sent.tries ?? 1 } } : {}),
     } as Turn);
@@ -4293,7 +4306,9 @@ export class MessengerService implements OnModuleInit {
       booked?: OpenVisit;
       /** Pictures send_photos delivered during THIS run; replyAndRecord records them as turns. */
       photos?: { urls: string[]; label: string }[];
-      lang?: ReplyLang | null } = { mode: 'booking', leadEmail: null },
+      lang?: ReplyLang | null;
+      /** Tap buttons offer_choices chose for THIS reply (./reply-style). */
+      choices?: string[] } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
     if (!process.env.ANTHROPIC_API_KEY && !openAiEnabled()) {
       // THIS USED TO BE SILENT. A missing key returned the holding line to
@@ -4785,7 +4800,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       ? `\nWEBSITE CHAT: this customer is chatting from the salon's website and is anonymous — no name, no phone, no profile. Answer their first question fully, then in that same reply or the next one ask ONCE, lightly, for their name and phone (or Zalo) "so the salon can reach you if this chat drops". If they decline or ignore it, continue normally and do not ask again until you book. Never make the contact details a condition for answering.`
       : '';
 
-    const formatRule = `\nFORMAT: this chat shows PLAIN TEXT only — markdown is never rendered. Absolutely no **asterisks**, no # headers, no tables. Write prices and options inside natural sentences, not robotic bullet lists; if you must enumerate, short lines with "-" are the maximum.`;
+    // The approved reply style (./reply-style): two short bubbles, one
+    // question, ▸ lines, tap buttons in the customer's words, no markdown.
+    // The business's own documents (Học từ link), read once for this reply.
+    const docs = this.brain ? await this.brain.docsFor(tenantId).catch(() => '') : '';
+    const formatRule = `\n${REPLY_STYLE_RULE}${ctx.mode === 'sales' && quotes && docs ? `\n${SALES_FLOW_RULE}` : ''}`;
 
     // Long-term memory: what we know about THIS customer from chats that may be
     // months old — plus, when they return after days away, an explicit order to
@@ -4841,15 +4860,45 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       : '';
     const crossMemoryBlock = ctx.crossMemory ? `\n${ctx.crossMemory}` : '';
     const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang)) + NO_REPLY_RULE;
-    // The business's own documents (Học từ link) — sales page and booking page alike.
-    const docs = this.brain ? await this.brain.docsFor(tenantId).catch(() => '') : '';
+    // The business's own documents (Học từ link) — sales page and booking page alike (read above).
     const system = [
       { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
       ...(docs ? [{ type: 'text', text: docs, cache_control: { type: 'ephemeral' } }] : []),
       { type: 'text', text: dynamicSystem },
     ];
-    const PRICE_TOOLS = new Set(['quote_price', 'get_software_plans', 'send_price_cards']);
-    const tools = ctx.mode === 'sales' ? (quotes ? salesTools : salesTools.filter((t) => !PRICE_TOOLS.has((t as { name: string }).name))) : bookingTools;
+    const PRICE_TOOLS = new Set(['quote_price', 'get_software_plans', 'send_price_cards', 'send_package_card']);
+    // Tap buttons for any page; the package card for a page that quotes from its documents.
+    const styleTools = [
+      {
+        name: 'offer_choices',
+        description: 'Show 2–5 tap buttons under your reply (Messenger quick replies) when the customer has a choice to make. Each option max 20 characters, written as the CUSTOMER\'s own words with NO pronoun ("Suy nghĩ thêm", "Nhân viên gọi tư vấn", "Xem tất cả gói", "Sáng thứ Bảy"). Call it at most once per reply, then write your reply WITHOUT listing the options.',
+        input_schema: { type: 'object', properties: { options: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 5 } }, required: ['options'] },
+      },
+      ...(ctx.mode === 'sales' && quotes && docs ? [{
+        name: 'send_package_card',
+        description: 'Send one package (the one you recommend) — or every package of one group when they ask to see all or compare — as tidy Messenger cards with buttons "Xem đủ quyền lợi" and "So với gói khác". Every word and number must come from THE BUSINESS\'S OWN DOCUMENTS. After SUCCESS write at most two short lines (e.g. the cheaper and the higher option, then ONE question); never repeat the card\'s content.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            packages: {
+              type: 'array', minItems: 1, maxItems: 10,
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Exact package name from the documents, e.g. "Map Growth".' },
+                  price: { type: 'string', description: 'Exact price as written, e.g. "$279/tháng" or "$399 trả một lần".' },
+                  tag: { type: 'string', description: 'Who it suits, 2–4 words, e.g. "Hợp đa số tiệm".' },
+                  points: { type: 'array', items: { type: 'string' }, maxItems: 4, description: 'Up to 4 very short facts: what they get, any one-time fee, the commitment.' },
+                },
+                required: ['name', 'price'],
+              },
+            },
+          },
+          required: ['packages'],
+        },
+      }] : []),
+    ];
+    const tools = [...(ctx.mode === 'sales' ? (quotes ? salesTools : salesTools.filter((t) => !PRICE_TOOLS.has((t as { name: string }).name))) : bookingTools), ...styleTools];
 
     // Meta's own notices ("X replied to an ad." / "X đã trả lời một quảng cáo.")
     // sit in the transcript as if the Page had said them. They are not our
@@ -5040,7 +5089,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         });
         continue;
       }
-      if (ctx.mode === 'sales' && text && !qualifyRetried && disclosesBeforeQualifying(customerWords, text, identityKnown)) {
+      if (ctx.mode === 'sales' && text && !qualifyRetried && !(quotes && docs) && disclosesBeforeQualifying(customerWords, text, identityKnown)) {
         qualifyRetried = true;
         this.logger.warn(`Sales reply blocked (priced before qualifying): ${text.slice(0, 140)}`);
         messages.push({ role: 'assistant', content: blocks });
@@ -5874,6 +5923,29 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }
       if (name === 'save_lead') {
         return await this.saveLead(tenantId, input, ctx);
+      }
+      if (name === 'offer_choices') {
+        const choices = cleanChoices(input.options);
+        if (choices.length < 2) return 'ERROR: give 2–5 short options. Answer in text instead.';
+        if (ctx) (ctx as { choices?: string[] }).choices = choices;
+        return `OK — buttons ready: ${choices.join(' | ')}. Write your reply now WITHOUT listing these options; they appear under it.`;
+      }
+      if (name === 'send_package_card') {
+        if (!ctx?.pageToken || !ctx?.senderId || (ctx.channel && ctx.channel !== 'messenger')) return 'ERROR: cards are not available on this channel — write the package in at most 4 short lines instead (▸ name — price, then the key points).';
+        const cards = cleanCards(input.packages);
+        if (!cards.length) return 'ERROR: give at least one package with its exact name and price.';
+        // The price check (./price-grounding) on the card itself: every figure from the documents or notes.
+        const docs = this.brain ? await this.brain.docsFor(tenantId).catch(() => '') : '';
+        const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+        const facts = this.factsText(await this.factsOf(tenantId, conn), tz);
+        const bad = ungroundedMoney(cardText(cards), [docs, facts]);
+        if (bad.length) return `ERROR: ${bad.join(', ')} is not a price in the business's documents. Use only the exact figures written there, then call send_package_card again.`;
+        const els = cards.map((c) => cardElement(c, [
+          { type: 'postback', title: 'Xem đủ quyền lợi', payload: `${INFO_PREFIX}${c.name}`.slice(0, 900) },
+          { type: 'postback', title: 'So với gói khác', payload: `${CMP_PREFIX}${c.name}`.slice(0, 900) },
+        ]));
+        await this.sendCards(ctx.pageToken, ctx.senderId, els);
+        return `SUCCESS — ${cards.length} card(s) sent: ${cards.map((c) => `${c.name} ${c.price}`).join('; ')}. Now write at most two short lines and ONE question. Do not repeat the card.`;
       }
       if (name === 'get_pricing') {
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
@@ -6936,9 +7008,13 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     pageToken: string, recipientId: string, text: string, channel?: Channel, tenantId?: string,
     /** When the customer last wrote, and a check that sending is still wanted — for the ad-greeting retry (./send-errors). */
     hold?: { customerAt?: number | null; stillWanted?: () => Promise<boolean>; /** one resend, no waiting (the scheduled resend) */ quick?: boolean },
+    /** The approved reply style (./reply-style): up to two bubbles, tap buttons under the last. */
+    style?: { bubbles?: boolean; choices?: string[] },
   ): Promise<{ ok: boolean; error?: string; retryable?: boolean; tries?: number; refusal?: { code: string; meta: string; reason: string; windowClosed: boolean } }> {
     // Zalo is a different mouth entirely: its own endpoint, its own auth
     // header, no echo/mid machinery (Zalo webhooks do not echo our sends).
+    // Zalo and the website chat have no tap buttons: the options become one plain line.
+    if ((channel === 'zalo' || channel === 'web') && style?.choices?.length) text = `${text}\n\n${choicesAsText(style.choices)}`;
     if (channel === 'zalo') {
       const r = await sendZaloText(pageToken, recipientId, text);
       if (tenantId) await this.traceZaloSend(tenantId, r);
@@ -6955,17 +7031,29 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // WHAT META SAID IS READ, NOT ASSUMED. This used to return ok whatever came
     // back, so a refused reply was stored as delivered: the inbox showed the
     // bot answering while the customer saw nothing. See ./send-errors.
+    // Up to two bubbles; a retry resends only what Meta has not yet accepted.
+    const parts = style?.bubbles ? splitBubbles(text) : [text.slice(0, 1900)];
+    let partsSent = 0;
     const send = async () => {
-      // metadata comes back on the Messenger echo; Instagram drops it, so we
-      // also remember the message id the Send API returns.
-      const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ recipient: { id: recipientId }, messaging_type: 'RESPONSE', message: { text: text.slice(0, 1900), metadata: 'LUMIO_BOT' } }),
-        signal: AbortSignal.timeout(12_000),
-      });
-      const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: GraphError };
-      return { status: res.status, ok: res.ok && !out.error && !!out.message_id, out };
+      let last: { status: number; ok: boolean; out: { message_id?: string; error?: GraphError } } = { status: 0, ok: false, out: {} };
+      while (partsSent < parts.length) {
+        const isLast = partsSent === parts.length - 1;
+        const quick = isLast && style?.choices?.length ? { quick_replies: quickRepliesFor(style.choices) } : {};
+        // metadata comes back on the Messenger echo; Instagram drops it, so we
+        // also remember the message id the Send API returns.
+        const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ recipient: { id: recipientId }, messaging_type: 'RESPONSE', message: { text: parts[partsSent], metadata: 'LUMIO_BOT', ...quick } }),
+          signal: AbortSignal.timeout(12_000),
+        });
+        const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: GraphError };
+        last = { status: res.status, ok: res.ok && !out.error && !!out.message_id, out };
+        if (!last.ok) return last;
+        if (!isLast) this.rememberSentMid(out.message_id);
+        partsSent += 1;
+      }
+      return last;
     };
     let tries = 0;
     try {

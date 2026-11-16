@@ -21,6 +21,7 @@ import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLan
 import { AiInstructionsService, instructionChannel } from './instructions.service';
 import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, needsMeaning, type Instruction, type InstructionChannel } from './instructions';
 import { agentModel, forModel } from '../common/ai-model';
+import { REPLY_STYLE_RULE, tidyReply, cleanChoices, choicesAsText } from '../messenger/reply-style';
 import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
 import { browserHeaders } from '../common/browser-headers';
@@ -847,7 +848,7 @@ export class AiBrainService {
     const owner = this.instructions ? await this.instructions.forTurn(tenantId, insCh, lastUser, opts.instructions).catch(() => null) : null;
     const system = `You are the ${channel === 'voice' ? 'phone receptionist' : 'booking assistant'} for "${tenant?.name ?? 'our salon'}". THIS IS A TEST CONVERSATION run by the salon's own staff: behave exactly as with a real customer, but no booking will be written.
 ${pre.persona}
-${channel === 'voice' ? 'Your words are read aloud: one or two short sentences, under 30 words, one question at a time, no lists or emoji.' : 'Write like a warm receptionist texting: 1–2 short sentences, one question at a time, a light emoji sometimes.'}
+${channel === 'voice' ? 'Your words are read aloud: one or two short sentences, under 30 words, one question at a time, no lists or emoji.' : REPLY_STYLE_RULE}
 Collect what a booking needs (service, day and time, first name, phone), check the book with check_availability before offering a time, recap once and ask for a yes, then call create_booking.
 ${blocks.booking}
 ${blocks.handoffNote}
@@ -864,7 +865,11 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
       { name: 'check_availability', description: 'Look in the book before offering or confirming a time.', input_schema: { type: 'object', properties: { date: { type: 'string' }, time: { type: 'string' }, people: { type: 'array', items: { type: 'object', properties: { services: { type: 'array', items: { type: 'string' } }, technician: { type: 'string' } }, required: ['services'] } } }, required: ['date', 'people'] } },
       { name: 'create_booking', description: 'Book after the customer said yes to the recap.', input_schema: { type: 'object', properties: { localDateTime: { type: 'string' }, people: { type: 'array', items: { type: 'object', properties: { firstName: { type: 'string' }, services: { type: 'array', items: { type: 'string' } } }, required: ['firstName', 'services'] } }, customerPhone: { type: 'string' } }, required: ['localDateTime', 'people'] } },
       { name: 'request_callback', description: 'Leave the desk a task when you cannot help.', input_schema: { type: 'object', properties: { reason: { type: 'string' }, summary: { type: 'string' } }, required: ['summary'] } },
+      ...(channel === 'voice' ? [] : [{ name: 'offer_choices', description: 'Show 2–5 tap buttons under your reply, written as the customer\'s own words with no pronoun (max 20 characters each). Then write the reply without listing them.', input_schema: { type: 'object', properties: { options: { type: 'array', items: { type: 'string' } } }, required: ['options'] } }]),
     ];
+    let choices: string[] = [];
+    // The reply as the customer sees it: no markdown, and the tap buttons under it.
+    const shown = (t: string) => { const r = channel === 'voice' ? t : tidyReply(t); return choices.length ? `${r}\n\n${choicesAsText(choices)}` : r; };
     const messages: Row[] = msgs.map((m) => ({ role: m.role, content: m.content }));
     const trace: string[] = [];
     const t0 = Date.now();
@@ -892,6 +897,9 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
             out = 'SUCCESS (TEST — nothing was written). Tell the customer it is booked, as you would for real.';
           } else if (b.name === 'request_callback') {
             out = 'NOTED (TEST — no task was created). Tell the customer the team will get back to them.';
+          } else if (b.name === 'offer_choices') {
+            choices = cleanChoices((b.input as Row)?.options);
+            out = choices.length >= 2 ? `OK — buttons ready: ${choices.join(' | ')}. Write the reply without listing them.` : 'ERROR: give 2–5 short options.';
           } else out = 'Unknown tool.';
           trace.push(`${b.name}: ${out.slice(0, 160)}`);
           results.push({ type: 'tool_result', tool_use_id: b.id, content: out });
@@ -919,11 +927,11 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
           const sameLang = chk.broken.every((i) => { const l = detectLanguage(i.text); return !l || l === lang; });
           const last = lastResort(chk.broken, chk.rewrite, sameLang);
           trace.push('blocked twice: replaced');
-          return { reply: last || checkingLine(lang, owner.all), lang, trace, ms: Date.now() - t0, check: { followed: !!last, corrected: true, draft: firstDraft ?? text, broken: firstBroken ?? brokenText, applied: chk.applied.map((i) => i.id) } };
+          return { reply: shown(last || checkingLine(lang, owner.all)), lang, trace, ms: Date.now() - t0, check: { followed: !!last, corrected: true, draft: firstDraft ?? text, broken: firstBroken ?? brokenText, applied: chk.applied.map((i) => i.id) } };
         }
-        return { reply: text, lang, trace, ms: Date.now() - t0, check: { followed: true, corrected, draft: firstDraft, broken: firstBroken ?? [], applied: (chk?.applied ?? []).map((i) => i.id) } };
+        return { reply: shown(text), lang, trace, ms: Date.now() - t0, check: { followed: true, corrected, draft: firstDraft, broken: firstBroken ?? [], applied: (chk?.applied ?? []).map((i) => i.id) } };
       }
-      return { reply: text, lang, trace, ms: Date.now() - t0, check: null };
+      return { reply: shown(text), lang, trace, ms: Date.now() - t0, check: null };
     }
     return { reply: '', lang, trace: [...trace, 'tool loop exhausted'], ms: Date.now() - t0, check: null };
   }

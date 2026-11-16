@@ -368,7 +368,20 @@ export function explainMetaError(raw: string | null | undefined): string | null 
   // (birth date, phone, terms). An automated flag for "too much, too fast"
   // lifts by itself in a day or two. Not a token, not a scope: reconnecting
   // the Page changes nothing, and retrying only keeps the flag warm.
-  if (e.includes('access is restricted') || e.includes('access restricted') || e.includes('#368') || e.includes('2207050') || e.includes('deemed abusive')) {
+  // "Bạn cần xác nhận danh tính của mình rồi mới có thể đăng dưới tên Trang
+  // này" / "You need to confirm your identity…" (#368/4854002) — a FACEBOOK
+  // refusal, aimed at the Facebook ACCOUNT whose token posts (the one that
+  // pressed Connect), not at Instagram and not at whoever reads this. It used
+  // to fall into the Instagram branch below on "#368" and told Top Nails to fix
+  // Instagram while Instagram had posted fine (16/11/2026).
+  if (e.includes('4854002') || e.includes('xác nhận danh tính') || e.includes('confirm your identity') || e.includes('identity confirmation')) {
+    return 'FACEBOOK (không phải Instagram) đang chặn đăng bài: Facebook yêu cầu TÀI KHOẢN FACEBOOK ĐÃ BẤM KẾT NỐI TRANG xác nhận danh tính trước khi đăng dưới tên Trang này (#368/4854002). '
+      + 'Người khác đăng nhập Facebook của mình trên điện thoại sẽ không thấy yêu cầu này — chỉ tài khoản đã kết nối mới thấy. '
+      + 'Cách gỡ: (1) người đó mở facebook.com/id trên MÁY TÍNH (hoặc vào Trang → Cài đặt → Xác minh danh tính để đăng bài / Page Publishing Authorization) và làm hết các bước; '
+      + 'hoặc (2) kết nối lại Trang ở Cài đặt → Messenger bằng một tài khoản Admin KHÁC của Trang đã xác minh (ví dụ tài khoản chủ tiệm). Xong bấm "Đăng ngay" — chỉ Facebook được gửi lại.';
+  }
+  const igSide = e.includes('instagram');
+  if (e.includes('access is restricted') || e.includes('access restricted') || e.includes('2207050') || (igSide && (e.includes('#368') || e.includes('deemed abusive')))) {
     return 'Instagram đang HẠN CHẾ tài khoản này đăng qua ứng dụng (đăng tay trong app vẫn được — đó là lý do dễ nhầm). Không phải lỗi kết nối: kết nối lại không giúp. '
       + 'Cách gỡ: (1) đăng nhập tài khoản Instagram của tiệm trên TRÌNH DUYỆT tại instagram.com (không phải app) và làm hết những gì Instagram hỏi — ngày sinh (trên 18), xác nhận SĐT/email, đồng ý điều khoản; '
       + '(2) vào business.facebook.com → Cài đặt → tài khoản Instagram → Quản lý, đăng nhập lại nếu được hỏi; '
@@ -379,6 +392,9 @@ export function explainMetaError(raw: string | null | undefined): string | null 
   // order to impersonate it. If the page business requires Two Factor
   // Authentication…" — the account that pressed Connect lost its Page role,
   // or the Page's Business now demands 2FA. Nothing about the post itself.
+  if (e.includes('#368') || e.includes('deemed abusive')) {
+    return 'FACEBOOK đang tạm chặn Trang/tài khoản đã kết nối đăng bài (#368 — Facebook cho là vi phạm hoặc đăng quá dồn dập). Không phải lỗi bài viết. Người đã bấm kết nối Trang mở facebook.com trên máy tính xem thông báo của Facebook và làm theo; nếu không có thông báo, chờ 24–48 giờ rồi bấm "Đăng ngay".';
+  }
   const health = classifyPageError({ message: raw ?? '' });
   if (health.state === 'role_lost' || health.state === 'two_factor' || health.state === 'checkpoint') return pageHealthText(health.state);
 

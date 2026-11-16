@@ -580,3 +580,19 @@ describe('why a due post is still waiting, in words', () => {
     expect(whyWaiting(due, now, fresh)!.vi).toMatch(/lần quét tới/);
   });
 });
+
+describe('explainMetaError — #368 is told apart by channel and subcode (Top Nails 16/11)', () => {
+  const FB_ID = 'facebook: Bạn cần xác nhận danh tính của mình rồi mới có thể đăng dưới tên Trang này. Hãy mở ứng dụng Facebook trên điện thoại và làm theo hướng dẫn. (#368/4854002)';
+  it('identity confirmation on Facebook names Facebook and the connecting account, never Instagram', () => {
+    const fix = explainMetaError(FB_ID)!;
+    expect(fix).toMatch(/^FACEBOOK \(không phải Instagram\)/);
+    expect(fix).toMatch(/TÀI KHOẢN FACEBOOK ĐÃ BẤM KẾT NỐI/);
+    expect(fix).not.toMatch(/instagram\.com/);
+  });
+  it('a bare Facebook #368 is a Facebook block, not the Instagram text', () => {
+    expect(explainMetaError('facebook: The action attempted has been deemed abusive (#368)')).toMatch(/^FACEBOOK đang tạm chặn/);
+  });
+  it('Instagram #368 still gets the Instagram fix', () => {
+    expect(explainMetaError('instagram: Something (#368)')).toMatch(/Instagram đang HẠN CHẾ/);
+  });
+});

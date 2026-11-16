@@ -751,7 +751,7 @@ export class SocialPublishService {
           ? null
           // Meta first, then Google: one row can only have failed on one of them,
           // and each explainer already refuses errors that are not its own.
-          : ((f) => (f && holder && deadPage(r.lastError) ? `${f} — Tài khoản Facebook đã kết nối Trang: ${holder}.` : f))(explainMetaError(r.lastError) ?? explainGbpError(r.lastError)),
+          : ((f) => (f && holder && (deadPage(r.lastError) || /4854002|#368|xác nhận danh tính|confirm your identity/i.test(r.lastError ?? '')) ? `${f} — Tài khoản Facebook đã kết nối Trang: ${holder}.` : f))(explainMetaError(r.lastError) ?? explainGbpError(r.lastError)),
         /** True when the saved error is about a permission the token now has. */
         errorIsStale: (permissionFixed && /pages_manage_posts|instagram_content_publish|#200/i.test(r.lastError ?? '')) || pageFixed(r),
         results: Array.isArray(r.results) ? r.results : [],

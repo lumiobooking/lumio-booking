@@ -37,6 +37,43 @@ export function isGen5(model: string): boolean {
 type Msg = { role?: string; content?: unknown };
 
 /**
+ * HOW EACH MODEL WANTS "NO THINKING" SAID — learned from the API itself.
+ *
+ * Every 5-generation request here sends `thinking: { type: 'disabled' }`. The
+ * everyday model accepts that. A stronger model (ANTHROPIC_HARD_MODEL) answered
+ * 400: «To turn thinking off on this model, send "thinking": {"type":
+ * "between_tools"} instead» — and every turn routed to it became the "system
+ * is slow" line (Lumio Agency, 16/11/2026: four customers).
+ *
+ * The API names the value it wants, so it is taken from the API's own words,
+ * remembered per model for the life of the process, and never guessed.
+ */
+const THINKING_OFF = new Map<string, string>();
+const THINKING_TYPE = /^[a-z][a-z_]{2,30}$/;
+
+/** The `thinking.type` that means "off" for this model ('disabled' unless the API said otherwise). */
+export function thinkingOffFor(model: string): string {
+  return THINKING_OFF.get(String(model || '').trim().toLowerCase()) ?? 'disabled';
+}
+
+/**
+ * Read a 400 body. When it names the thinking type to send instead, remember
+ * it for this model and return it (the caller retries once); otherwise null.
+ */
+export function learnThinkingOff(model: string, status: number | null, body: string): string | null {
+  if (status !== 400) return null;
+  const m = /thinking\\?"\s*:\s*\{\s*\\?"type\\?"\s*:\s*\\?"([a-z_]+)\\?"\s*\}\s*instead/i.exec(String(body ?? ''));
+  const type = m?.[1]?.toLowerCase() ?? '';
+  const key = String(model || '').trim().toLowerCase();
+  if (!type || !key || !THINKING_TYPE.test(type) || type === thinkingOffFor(key)) return null;
+  THINKING_OFF.set(key, type);
+  return type;
+}
+
+/** Tests only. */
+export function forgetThinkingOff(): void { THINKING_OFF.clear(); }
+
+/**
  * The Messages API body, adjusted for the model it is sent to. Use it on
  * EVERY request: `JSON.stringify(forModel({ model, max_tokens, ... }))`.
  */
@@ -44,7 +81,7 @@ export function forModel<T extends { model: string; messages?: Msg[] } & Record<
   if (!isGen5(body.model)) return body;
   const out: Record<string, unknown> = {
     ...body,
-    thinking: { type: 'disabled' },
+    thinking: { type: thinkingOffFor(body.model) },
     output_config: { ...((body.output_config as Record<string, unknown>) || {}), effort: 'low' },
   };
   delete out.temperature; delete out.top_p; delete out.top_k;

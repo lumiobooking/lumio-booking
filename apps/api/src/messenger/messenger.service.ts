@@ -4042,6 +4042,7 @@ export class MessengerService implements OnModuleInit {
     const gapDays = prevAtMs ? Math.floor((Date.now() - prevAtMs) / 86_400_000) : 0;
     let reply: string;
     let agentFailed = false;
+    let agentError = '';
     // The context object the agent runs with, kept in scope: send_photos
     // leaves the pictures it delivered on it, and they become a turn of
     // their own below — after the customer's message, before the reply.
@@ -4093,6 +4094,7 @@ export class MessengerService implements OnModuleInit {
       }), 55_000, 'agent');
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
+      agentError = String((e as Error)?.message ?? e).replace(/\s+/g, ' ').slice(0, 80);
       // The bot could not think. Say so honestly, in the conversation's own
       // language — and make the "a person will reply" promise TRUE below.
       agentFailed = true;
@@ -4195,6 +4197,21 @@ export class MessengerService implements OnModuleInit {
     // it becomes a clarifying question instead of nothing.
     const prevUser = [...prior].reverse().find((h) => h.role === 'user');
     const sameAsBefore = String(prevUser?.content ?? '').trim().toLowerCase() === String(text ?? '').trim().toLowerCase();
+    // The AI failed AGAIN and its apology is already on the customer's screen:
+    // nothing more is sent (the staff were alerted the first time). It used to
+    // become "I did not quite understand you" — said to a customer who had
+    // asked a perfectly clear question (Lumio Agency, 16/11/2026).
+    if (agentFailed && alreadySaid(history, reply)) {
+      this.logger.warn(`agent failed again on thread ${threadId}; the apology was already sent — staying quiet`);
+      if (!userAlready) {
+        const inAtAgain = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+        await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtAgain, ...imgTurn }]);
+      }
+      const whoAgain = (fresh as unknown as { senderName?: string | null }).senderName ?? null;
+      void this.push.sendToTenant(conn.tenantId, escalationPush(whoAgain, conversationLang([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), text]) !== 'en')).catch(() => undefined);
+      this.events.publish(conn.tenantId, 'message');
+      return;
+    }
     if (alreadySaid(history, reply) && !sameAsBefore) {
       const prevBot = [...history].reverse().find((h) => h.role === 'assistant');
       reply = notRepeatLine(conversationLang([...history.filter((h) => h.role === 'user').map((h) => String(h.content ?? '')), text]) ?? await this.defaultLangOf(conn.tenantId), String(prevBot?.content ?? ''));
@@ -4322,7 +4339,7 @@ export class MessengerService implements OnModuleInit {
     if (this.brain) {
       const bookedId = agentCtx?.booked?.id ?? null;
       const lang = agentCtx?.brainLang ?? null;
-      this.brain.noteTurn(conn.tenantId, threadId, { ms: Date.now() - turnT0, failure: agentFailed ? 'agent error' : null, bookedId, lang, customerId: threadCustomerId }).catch(() => undefined);
+      this.brain.noteTurn(conn.tenantId, threadId, { ms: Date.now() - turnT0, failure: agentFailed ? `agent error${agentError ? `: ${agentError}` : ''}` : null, bookedId, lang, customerId: threadCustomerId }).catch(() => undefined);
       if (bookedId) this.brain.endSession(conn.tenantId, threadId, 'booked_done', 'booked').catch(() => undefined);
       const custNow = threadCustomerId ?? ((await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { customerId: true } as never }).catch(() => null)) as { customerId?: string | null } | null)?.customerId ?? null;
       if (custNow) {
@@ -4346,10 +4363,12 @@ export class MessengerService implements OnModuleInit {
       // comes) and raise a staff alarm that a routine "new message" push can
       // never overwrite. Only after the reply went out — flipping handoff
       // first would trip the guard above and silence the apology itself.
-      await this.prisma.messengerThread.update({
-        where: { id: threadId },
-        data: { handoff: true, handoffAt: new Date(), handoffMode: 'auto' } as never,
-      }).catch(() => undefined);
+      // The thread is NOT marked "a person is replying": nobody is. That flag
+      // kept the bot out for the salon's whole "human is active" window (two
+      // hours at Lumio Agency) with a badge saying a person was answering,
+      // while the customer's next messages went unanswered. The staff are
+      // alerted (push + a callback task); the bot answers the customer's next
+      // message itself, and steps aside the moment a person really writes.
       this.events.publish(conn.tenantId, 'message');
       const who = (fresh as unknown as { senderName?: string | null }).senderName ?? null;
       void this.push.sendToTenant(conn.tenantId, escalationPush(who, conversationLang([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), text]) !== 'en')).catch(() => undefined);
@@ -5174,6 +5193,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // one, and within this salon's daily allowance. Otherwise undefined = the everyday model.
     let turnModel = modelForTurn({ tenantId, reason: hardTurnReason(userText), budget: this.hardBudget });
     if (turnModel) this.logger.log(`hard turn (${hardTurnReason(userText)}) → ${turnModel}`);
+    let hardFellBack = false; let hardOff = false;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       // One door to the model. Anthropic first; when it fails for a reason the
       // account owns — no credit, a dead key, an outage — and an OpenAI key is
@@ -5206,6 +5226,18 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         this.noteAiFailure(out.kind, `${shown} ${out.body.slice(0, 120)}`);
         // Overloaded/5xx is usually a moment, not an outage — one quiet retry
         // before the customer ever sees a holding line.
+        // The stronger model is an extra, never a dependency: when the call
+        // that used it fails (a model name the account does not have, a limit
+        // of its own), the same turn is asked again on the everyday model —
+        // the customer must not get a holding line because of an optional switch.
+        if (turnModel && !hardFellBack) {
+          hardFellBack = true;
+          this.logger.error(`hard model "${turnModel}" failed (${shown}) — answering this turn on the default model. Check ANTHROPIC_HARD_MODEL.`);
+          turnModel = undefined;
+          hardOff = true;
+          loop -= 1;
+          continue;
+        }
         if (!apiRetried && out.status !== null && isTransientStatus(out.status)) {
           apiRetried = true;
           await new Promise((r) => setTimeout(r, 1500));
@@ -5297,7 +5329,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           groundRetried = true;
           ctx.traceGuards?.push('price');
           // A draft a guard sent back is rewritten by the stronger model, when there is one.
-          turnModel = turnModel ?? modelForTurn({ tenantId, reason: 'corrected', budget: this.hardBudget });
+          if (!hardOff) turnModel = turnModel ?? modelForTurn({ tenantId, reason: 'corrected', budget: this.hardBudget });
           this.logger.warn(`Reply blocked (price not in the sources: ${bad.join(', ')}): ${text.slice(0, 140)}`);
           messages.push({ role: 'assistant', content: blocks });
           messages.push({ role: 'user', content: priceCorrection(bad) });
@@ -5484,7 +5516,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           if (!ownerRetried) {
             ownerRetried = true;
             ctx.traceGuards?.push('instruction');
-            turnModel = turnModel ?? modelForTurn({ tenantId, reason: 'corrected', budget: this.hardBudget });
+            if (!hardOff) turnModel = turnModel ?? modelForTurn({ tenantId, reason: 'corrected', budget: this.hardBudget });
             this.logger.warn(`Reply blocked (owner instruction): ${text.slice(0, 140)}`);
             messages.push({ role: 'assistant', content: blocks });
             messages.push({ role: 'user', content: correctionFor(owner.all, chk.broken) });

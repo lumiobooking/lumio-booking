@@ -29,7 +29,7 @@
  */
 
 import { classifyAiFailure, type AiFailureKind } from '../messenger/ai-health';
-import { agentModel, forModel, DEFAULT_AI_MODEL } from './ai-model';
+import { agentModel, forModel, learnThinkingOff, DEFAULT_AI_MODEL } from './ai-model';
 
 // ---- the shape the callers already use (Anthropic's) ----------------------
 
@@ -222,7 +222,7 @@ export function anthropicUsage(
   };
 }
 
-async function callAnthropic(req: ChatRequest): Promise<ChatResult> {
+async function callAnthropic(req: ChatRequest, retried = false): Promise<ChatResult> {
   const key = process.env.ANTHROPIC_API_KEY || '';
   if (!key) return { ok: false, status: null, body: 'ANTHROPIC_API_KEY is not set', kind: 'no-key', provider: 'anthropic', fellBack: false };
   try {
@@ -240,6 +240,9 @@ async function callAnthropic(req: ChatRequest): Promise<ChatResult> {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
+      // The model wants "no thinking" said another way and told us which:
+      // remember it (common/ai-model) and ask once more, the right way.
+      if (!retried && learnThinkingOff(req.model || agentModel(), res.status, body)) return callAnthropic(req, true);
       return { ok: false, status: res.status, body, kind: classifyAiFailure(res.status, body), provider: 'anthropic', fellBack: false };
     }
     const data = await res.json() as {

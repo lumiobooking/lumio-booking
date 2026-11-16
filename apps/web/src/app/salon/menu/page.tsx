@@ -43,6 +43,10 @@ function MenuThumb({ url, onSet, onClear }: { url: string | null; onSet: (dataUr
 
 /** Dishes with no category. */
 const OTHER = '—';
+/** A real category name, or '' for "Tất cả" and for "Khác" (no category). */
+const realCat = (c: string) => (c && c !== '__all' && c !== OTHER ? c : '');
+/** What the owner reads for the no-category group. */
+const catLabel = (c: string, vi: boolean) => (c === OTHER ? (vi ? 'Khác' : 'Other') : c);
 
 export default function MenuPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -64,7 +68,8 @@ function Inner() {
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', category: '', price: '', description: '' });
   const [busy, setBusy] = useState(false);
-  const [activeCat, setActiveCat] = useState<string>('');
+  // Opens on "Tất cả": nothing is pre-chosen for the owner (it used to jump to the FIRST category).
+  const [activeCat, setActiveCat] = useState<string>('__all');
   // The category list (Danh mục): order, and categories with no dish yet.
   const [catData, setCatData] = useState<MenuCategories>({ categories: [], uncategorized: 0 });
   const [showCats, setShowCats] = useState(false);
@@ -97,13 +102,18 @@ function Inner() {
         method: 'POST', token,
         body: {
           name: form.name.trim(),
-          // Picked a category on the left: a new dish goes in it unless typed otherwise.
-          category: form.category.trim() || (activeCat && activeCat !== '__all' && activeCat !== OTHER ? activeCat : '') || undefined,
+          // Only the category written in the box (picking one on the left fills
+          // the box, visibly). An empty box = no category = "Khác". It used to
+          // fall back silently to the category selected on the left — and the
+          // page opened on the FIRST category — so dishes the owner left blank
+          // kept landing in a category they never chose.
+          category: form.category.trim() || undefined,
           priceCents: toMinorUnits(form.price, pageCurrency),
           description: form.description.trim() || undefined,
         },
       });
-      setForm({ name: '', category: '', price: '', description: '' });
+      // Next dish: the box keeps the category picked on the left (visible, can be cleared).
+      setForm({ name: '', category: realCat(activeCat), price: '', description: '' });
       await load();
     } catch (e2) { setErr(e2 instanceof Error ? e2.message : (vi ? 'Không lưu được' : 'Failed')); }
     finally { setBusy(false); }
@@ -143,7 +153,7 @@ function Inner() {
     return Array.from(m.entries());
   }, [items, catData]);
   const cats = useMemo(() => grouped.map(([c]) => c), [grouped]);
-  useEffect(() => { if (cats.length && activeCat !== '__all' && !cats.includes(activeCat)) setActiveCat(cats[0]); }, [cats, activeCat]);
+  useEffect(() => { if (activeCat !== '__all' && !cats.includes(activeCat)) setActiveCat('__all'); }, [cats, activeCat]);
   const query = foldText(q);
   // Searching looks through the whole menu, whatever category is picked.
   const shownGroups = query
@@ -159,7 +169,8 @@ function Inner() {
   const countPill = (n: number, on: boolean) => (
     <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11.5, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: on ? '#6366f1' : 'var(--c1e293b)', color: on ? '#fff' : 'var(--c94a3b8)' }}>{n}</span>
   );
-  const pickCat = (c: string) => { setActiveCat(c); setQ(''); };
+  // Picking a category on the left also writes it in the new-dish box, where the owner can see and clear it.
+  const pickCat = (c: string) => { setActiveCat(c); setQ(''); setForm((f) => ({ ...f, category: realCat(c) })); };
 
   return (
     <section style={{ maxWidth: 1120 }}>
@@ -220,7 +231,7 @@ function Inner() {
             <select value={activeCat} onChange={(e) => pickCat(e.target.value)} aria-label={vi ? 'Danh mục' : 'Category'}
               style={{ ...ui.input, flex: '1 1 200px', fontWeight: 600 }}>
               <option value="__all">{vi ? 'Tất cả danh mục' : 'All categories'} ({items.length})</option>
-              {grouped.map(([cat, list]) => <option key={cat} value={cat}>{cat} ({list.length})</option>)}
+              {grouped.map(([cat, list]) => <option key={cat} value={cat}>{catLabel(cat, vi)} ({list.length})</option>)}
             </select>
           )}
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={vi ? `🔍 Tìm trong ${items.length} món…` : `🔍 Search ${items.length} dishes…`}
@@ -240,7 +251,7 @@ function Inner() {
             const on = !query && activeCat === cat;
             return (
               <button key={cat} type="button" onClick={() => pickCat(cat)} title={cat} style={catRow(on)}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat}</span>{countPill(list.length, on)}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{catLabel(cat, vi)}</span>{countPill(list.length, on)}
               </button>
             );
           })}
@@ -259,7 +270,7 @@ function Inner() {
 
       {shownGroups.map(([cat, list]) => (
         <div key={cat} style={{ marginTop: 4 }}>
-          {showHeads && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c818cf8)', textTransform: 'uppercase', letterSpacing: 0.4, margin: '14px 0 6px' }}>{cat} <span style={{ color: 'var(--ink-faint)' }}>· {list.length}</span></div>}
+          {showHeads && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c818cf8)', textTransform: 'uppercase', letterSpacing: 0.4, margin: '14px 0 6px' }}>{catLabel(cat, vi)} <span style={{ color: 'var(--ink-faint)' }}>· {list.length}</span></div>}
           {list.length === 0 && <div style={{ fontSize: 13, color: 'var(--c94a3b8)', padding: '10px 0' }}>{vi ? `“${cat}” chưa có món. Thêm món ở ô bên trên — món mới tự vào danh mục đang chọn.` : `“${cat}” has no dishes yet. Add one above — it goes into the selected category.`}</div>}
           {!showHeads && <div style={{ fontSize: 17, fontWeight: 700, margin: '4px 0 8px' }}>{cat} <span style={{ fontSize: 13, color: 'var(--c94a3b8)', fontWeight: 500 }}>· {list.length} {vi ? 'món' : 'dishes'}</span></div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

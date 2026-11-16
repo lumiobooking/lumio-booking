@@ -54,6 +54,9 @@ interface Table { id: string; name: string; seats: number; area: string | null }
 /** A table inside a bill that spans several tables (see joinOf on the floor). */
 interface JoinInfo { count: number; number: number; primary: boolean; primaryName: string }
 interface Floor { currency: string; settings: Settings; canPay: boolean; tables: Table[]; checks: FloorCheck[]; layout?: Record<string, Spot> }
+/** The group key of dishes with no category ("Khác"); never a real category name. */
+const NO_CAT = '\u0000khac';
+
 interface Dish { id: string; name: string; category: string | null; priceCents: number; imageUrl: string | null; station: string; options: OptionGroup[]; soldOut: boolean }
 interface FailedJob { id: string; title: string | null; station: string | null; error: string | null; createdAt: string }
 
@@ -272,10 +275,13 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const takeaways = useMemo(() => (floor?.checks ?? []).filter((c) => c.tableIds.length === 0), [floor]);
   const tablesSorted = useMemo(() => [...(floor?.tables ?? [])].sort(byTableName), [floor]);
   const areas = useMemo(() => [...new Set(tablesSorted.map((t) => t.area || ''))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })), [tablesSorted]);
-  const categories = useMemo(() => [...new Set(menu.map((m) => m.category || ''))], [menu]);
+  // Dishes with no category are their own group, "Khác". Its key used to be '' — the
+  // same as "Tất cả" — so tapping "Khác" showed the whole menu.
+  const catOf = (m: { category: string | null }) => m.category?.trim() || NO_CAT;
+  const categories = useMemo(() => [...new Set(menu.map(catOf))], [menu]);
   const shownDishes = useMemo(() => {
     const f = fold(q.trim());
-    return menu.filter((m) => (!cat || (m.category || '') === cat) && (!f || fold(m.name).includes(f)));
+    return menu.filter((m) => (!cat || catOf(m) === cat) && (!f || fold(m.name).includes(f)));
   }, [menu, cat, q]);
   const stationName = useCallback((k: string) => floor?.settings.stations.find((s) => s.key === k)?.name ?? k, [floor]);
   // Dishes + the restaurant's service charge; the till's own tax (if any) goes on top, as at checkout.
@@ -817,7 +823,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const priceText = (c: number) => (currency === 'VND' ? fmt(c).replace(/\s*[₫đ]\s*/g, '').trim() : fmt(c));
   // "All" with no search: one block per category in the menu's order; otherwise one block.
   const menuSections = !cat && !q.trim() && categories.length > 1
-    ? categories.map((c0) => ({ key: c0 || '_', title: c0 || L('Khác', 'Other'), items: shownDishes.filter((m) => (m.category || '') === c0) })).filter((x) => x.items.length)
+    ? categories.map((c0) => ({ key: c0, title: c0 === NO_CAT ? L('Khác', 'Other') : c0, items: shownDishes.filter((m) => catOf(m) === c0) })).filter((x) => x.items.length)
     : [{ key: 'one', title: '', items: shownDishes }];
   const menuPane = (
     <section aria-label={L('Thực đơn', 'Menu')} style={{ flex: phone ? '1 1 100%' : '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -828,7 +834,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
       {!wide && (
         <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
           <button type="button" onClick={() => setCat('')} style={chip(!cat)}>{L('Tất cả', 'All')}</button>
-          {categories.map((c0) => <button key={c0 || '_'} type="button" onClick={() => setCat(c0)} style={chip(cat === c0)}>{c0 || L('Khác', 'Other')}</button>)}
+          {categories.map((c0) => <button key={c0} type="button" onClick={() => setCat(c0)} style={chip(cat === c0)}>{c0 === NO_CAT ? L('Khác', 'Other') : c0}</button>)}
         </div>
       )}
       {menu.length === 0 && <div style={{ ...card, padding: 16 }}>{L('Chưa có món nào trong thực đơn.', 'The menu is empty.')} <a href="/salon/menu">{L('Thêm món', 'Add dishes')}</a></div>}
@@ -893,7 +899,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   // The categories as a side list on a wide screen, the dishes beside them.
   const catNav = wide && categories.length > 1 ? (
     <nav aria-label={L('Danh mục', 'Categories')} style={{ flex: '0 0 190px', ...card, padding: 6, display: 'flex', flexDirection: 'column', gap: 2, position: 'sticky', top: 80, alignSelf: 'flex-start', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto' }}>
-      {[{ k: '', name: L('Tất cả', 'All'), n: menu.length }, ...categories.map((c0) => ({ k: c0, name: c0 || L('Khác', 'Other'), n: menu.filter((m) => (m.category || '') === c0).length }))].map((x) => (
+      {[{ k: '', name: L('Tất cả', 'All'), n: menu.length }, ...categories.map((c0) => ({ k: c0, name: c0 === NO_CAT ? L('Khác', 'Other') : c0, n: menu.filter((m) => catOf(m) === c0).length }))].map((x) => (
         <button key={x.k || '_all'} type="button" onClick={() => setCat(x.k)} aria-pressed={cat === x.k}
           style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 44, padding: '0 10px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', fontSize: 14, fontWeight: cat === x.k ? 800 : 600, background: cat === x.k ? 'var(--c1e1b4b)' : 'transparent', color: cat === x.k ? 'var(--ce0e7ff)' : C.text }}>
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name}</span>
@@ -1661,7 +1667,7 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
         <button type="button" onClick={addStation} style={btn}>{L('Thêm', 'Add')}</button>
       </div>
       <b>{L('Nhóm món → khu', 'Menu group → station')}</b>
-      {categories.filter(Boolean).map((c0) => (
+      {categories.filter((c0) => c0 && c0 !== NO_CAT).map((c0) => (
         <label key={c0} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <span>{c0}</span>
           <select value={s.byCategory[catKey(c0)] ?? ''} onChange={(e) => { const next = { ...s.byCategory }; if (e.target.value) next[catKey(c0)] = e.target.value; else delete next[catKey(c0)]; setS({ ...s, byCategory: next }); }} style={sel}>

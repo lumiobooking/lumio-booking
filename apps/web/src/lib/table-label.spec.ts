@@ -20,3 +20,11 @@ describe('tableTitle', () => {
     expect(tableTitle('5', false)).toBe('Table 5');
   });
 });
+
+describe('tableNum', () => {
+  it('keeps the number only', () => {
+    const { tableNum } = require('./table-label');
+    expect(tableNum('Bàn 13')).toBe('13');
+    expect(tableNum('VIP 2')).toBe('VIP 2');
+  });
+});

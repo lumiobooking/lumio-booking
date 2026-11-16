@@ -57,6 +57,11 @@ export function planFloor(tables: PlanTable[], layout?: Record<string, Spot> | n
   //     zones over each other and hid the area names (iPad, 5 Nov 2026).
   //     Areas are taken top to bottom; one whose zone would cover a zone
   //     already drawn moves down below it, keeping its own layout.
+  // 1a. A big table (10 seats is a long table with five chairs a side) is
+  //     wider than the slot the owner's grid gave it and was drawn on top of
+  //     its neighbour (Nẫu Chill Đêm: Bàn 10 over Bàn 11, 16/11/2026). On the
+  //     same row, a table that would sit on another moves right until clear.
+  separateTables(placed);
   separateZones(placed);
   // 2. The rest: each area laid out as its own block, blocks packed side by
   //    side (a small area does not take a whole row), under what is placed.
@@ -98,6 +103,20 @@ function zoneBox(ps: Placed[]): { x: number; y: number; w: number; h: number } {
   const x1 = Math.max(...ps.map((p) => p.x + p.boxW)) + PAD;
   const y1 = Math.max(...ps.map((p) => p.y + p.boxH)) + PAD;
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Tables the owner placed never cover each other: one that would, moves right (same row), left-most first. */
+export function separateTables(placed: Placed[], gap = 16): void {
+  const order = [...placed].sort((a, b) => a.y - b.y || a.x - b.x);
+  const done: Placed[] = [];
+  for (const p of order) {
+    for (let guard = 0; guard < 50; guard++) {
+      const hit = done.find((d) => p.x < d.x + d.boxW + gap && d.x < p.x + p.boxW + gap && p.y < d.y + d.boxH && d.y < p.y + p.boxH);
+      if (!hit) break;
+      p.x = hit.x + hit.boxW + gap;
+    }
+    done.push(p);
+  }
 }
 
 const overlaps = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) =>

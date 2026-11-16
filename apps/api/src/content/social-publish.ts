@@ -375,10 +375,10 @@ export function explainMetaError(raw: string | null | undefined): string | null 
   // to fall into the Instagram branch below on "#368" and told Top Nails to fix
   // Instagram while Instagram had posted fine (16/11/2026).
   if (e.includes('4854002') || e.includes('xác nhận danh tính') || e.includes('confirm your identity') || e.includes('identity confirmation')) {
-    return 'FACEBOOK (không phải Instagram) đang chặn đăng bài: Facebook yêu cầu TÀI KHOẢN FACEBOOK ĐÃ BẤM KẾT NỐI TRANG xác nhận danh tính trước khi đăng dưới tên Trang này (#368/4854002). '
-      + 'Người khác đăng nhập Facebook của mình trên điện thoại sẽ không thấy yêu cầu này — chỉ tài khoản đã kết nối mới thấy. '
-      + 'Cách gỡ: (1) người đó mở facebook.com/id trên MÁY TÍNH (hoặc vào Trang → Cài đặt → Xác minh danh tính để đăng bài / Page Publishing Authorization) và làm hết các bước; '
-      + 'hoặc (2) kết nối lại Trang ở Cài đặt → Messenger bằng một tài khoản Admin KHÁC của Trang đã xác minh (ví dụ tài khoản chủ tiệm). Xong bấm "Đăng ngay" — chỉ Facebook được gửi lại.';
+    return 'FACEBOOK (không phải Instagram) từ chối đăng bài lên Trang (#368/4854002): Facebook gắn cờ "cần xác nhận danh tính" cho việc đăng QUA ỨNG DỤNG bằng tài khoản Facebook cá nhân đã bấm kết nối. '
+      + 'Thường KHÔNG có mục xác minh nào hiện ra trong Facebook — tài khoản vẫn đăng tay bình thường, nên rất dễ tưởng không có gì. Kết nối lại bằng chính tài khoản đó không gỡ được. '
+      + 'Cách gỡ: (1) kết nối lại Trang ở Cài đặt → Messenger bằng một tài khoản Admin KHÁC của Trang; hoặc (2) chuyển Trang sang kết nối bằng System User của Meta Business (không gắn với tài khoản cá nhân, không bị cờ này) — liên hệ Lumio; hoặc (3) gửi yêu cầu xác minh qua Trung tâm trợ giúp Facebook (thường mất khoảng 3 ngày). '
+      + 'Trong lúc chờ: bấm "Đăng lại, bỏ Facebook" để Instagram và các kênh khác vẫn đúng hẹn.';
   }
   const igSide = e.includes('instagram');
   if (e.includes('access is restricted') || e.includes('access restricted') || e.includes('2207050') || (igSide && (e.includes('#368') || e.includes('deemed abusive')))) {

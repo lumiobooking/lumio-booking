@@ -66,3 +66,25 @@ describe('area zones never cover each other (iPad, 5 Nov 2026)', () => {
     expect(x('T1') < x('T2') && x('T2') < x('T3') && x('T4') < x('T5')).toBe(true);
   });
 });
+
+describe('a big table never covers its neighbour (Nẫu Chill Đêm, Bàn 10 over Bàn 11)', () => {
+  it('a 10-seat table on the owner grid pushes the next table right, same row', () => {
+    const { planFloor } = require('./floor-map');
+    const tables = [
+      { id: 'b9', name: 'Bàn 9', seats: 6, area: null },
+      { id: 'b10', name: 'Bàn 10', seats: 10, area: null },
+      { id: 'b11', name: 'Bàn 11', seats: 4, area: null },
+      { id: 'b12', name: 'Bàn 12', seats: 4, area: null },
+    ];
+    const layout = { b9: { x: 2, y: 30, shape: null }, b10: { x: 14, y: 30, shape: null }, b11: { x: 26, y: 30, shape: null }, b12: { x: 38, y: 30, shape: null } };
+    const plan = planFloor(tables, layout as never);
+    const ps = plan.tables;
+    for (const a of ps) for (const b of ps) {
+      if (a === b) continue;
+      const cover = a.x < b.x + b.boxW && b.x < a.x + a.boxW && a.y < b.y + b.boxH && b.y < a.y + a.boxH;
+      expect(cover).toBe(false);
+    }
+    const y = (id: string) => ps.find((p: { id: string }) => p.id === id)!.y;
+    expect(y('b10')).toBe(y('b11'));
+  });
+});

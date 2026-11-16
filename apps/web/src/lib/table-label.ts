@@ -9,3 +9,8 @@ export function tableTitle(label: string, vi: boolean): string {
   const l = String(label ?? '').trim();
   return /^(?:bàn|table)\b/i.test(l) ? l : `${vi ? 'Bàn' : 'Table'} ${l}`;
 }
+
+/** "Bàn 13" → "13" (a badge's room); a name without "Bàn"/"Table" stays as it is. */
+export function tableNum(name: string): string {
+  return String(name ?? '').replace(/^(?:bàn|table)\s+/i, '').trim();
+}

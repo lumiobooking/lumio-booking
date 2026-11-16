@@ -586,7 +586,7 @@ describe('explainMetaError — #368 is told apart by channel and subcode (Top Na
   it('identity confirmation on Facebook names Facebook and the connecting account, never Instagram', () => {
     const fix = explainMetaError(FB_ID)!;
     expect(fix).toMatch(/^FACEBOOK \(không phải Instagram\)/);
-    expect(fix).toMatch(/TÀI KHOẢN FACEBOOK ĐÃ BẤM KẾT NỐI/);
+    expect(fix).toMatch(/KHÔNG có mục xác minh/);
     expect(fix).not.toMatch(/instagram\.com/);
   });
   it('a bare Facebook #368 is a Facebook block, not the Instagram text', () => {

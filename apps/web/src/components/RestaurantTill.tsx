@@ -18,7 +18,7 @@
  */
 
 import { cleanQty, QTY_MAX } from '../lib/qty';
-import { shortTables, tableTitle } from '../lib/table-label';
+import { shortTables, tableNum, tableTitle } from '../lib/table-label';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch, ApiError } from '../lib/api';
@@ -51,6 +51,8 @@ interface Settings {
   priceRules?: PriceRule[];
 }
 interface Table { id: string; name: string; seats: number; area: string | null }
+/** A table inside a bill that spans several tables (see joinOf on the floor). */
+interface JoinInfo { count: number; number: number; primary: boolean; primaryName: string }
 interface Floor { currency: string; settings: Settings; canPay: boolean; tables: Table[]; checks: FloorCheck[]; layout?: Record<string, Spot> }
 interface Dish { id: string; name: string; category: string | null; priceCents: number; imageUrl: string | null; station: string; options: OptionGroup[]; soldOut: boolean }
 interface FailedJob { id: string; title: string | null; station: string | null; error: string | null; createdAt: string }
@@ -434,8 +436,27 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                   : st === 'paying' ? L('Đang thanh toán', 'Paying')
                     : L('Đang phục vụ', 'Served');
     };
-    const tile = (key: string, label: string, cs: FloorCheck[], onClick: () => void, seats?: number, place?: CSSProperties) => {
+    // A bill on several tables: the first table (in floor order) carries the bill, the others point to it.
+    const joinOf = (tableId: string, cs: FloorCheck[]): JoinInfo | null => {
+      if (cs.length !== 1 || cs[0].tableIds.length < 2) return null;
+      const mine = tablesSorted.filter((x) => cs[0].tableIds.includes(x.id));
+      const primary = mine[0];
+      if (!primary) return null;
+      return { count: cs[0].tableIds.length, number: cs[0].number, primary: primary.id === tableId, primaryName: primary.name };
+    };
+    const tile = (key: string, label: string, cs: FloorCheck[], onClick: () => void, seats?: number, place?: CSSProperties, join?: JoinInfo | null) => {
       const st = combinedState(cs);
+      // A table that only belongs to another table's joined bill: its own name, "same bill as …", no money.
+      if (join && !join.primary) {
+        return (
+          <button key={key} type="button" onClick={onClick} aria-label={`${label} · ${L(`cùng bill với ${join.primaryName}`, `same bill as ${join.primaryName}`)}`}
+            style={{ ...TILE[st], minWidth: 0, overflow: 'hidden', opacity: 0.72, minHeight: phone ? 100 : 114, borderRadius: 16, padding: '11px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'stretch', gap: 6, boxSizing: 'border-box', boxShadow: 'none', ...place }}>
+            <b style={{ fontSize: phone ? 19 : 21, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</b>
+            <span style={{ alignSelf: 'flex-start', fontSize: 12, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: 'rgba(127,127,127,.16)', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🔗 {L(`Ghép ${join.count} bàn`, `${join.count} tables`)} · #{join.number}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>← {L(`cùng bill với ${join.primaryName}`, `same bill as ${join.primaryName}`)}</span>
+          </button>
+        );
+      }
       const first = cs[0];
       const mins = first ? minutesOpen(first.openedAt, now) : 0;
       const tone = first ? timerTone(mins, floor?.settings.warnMinutes, floor?.settings.lateMinutes) : 'ok';
@@ -444,14 +465,16 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
       const solid = SOLID.has(st);
       const sub = !first ? L(`${seats ?? 0} ghế`, `${seats ?? 0} seats`)
         : `${guests} ${L('khách', 'guests')}${first.serverName ? ` · ${first.serverName}` : ''}${cs.length > 1 ? ` · ${cs.length} bill` : ''}`;
+      const joinChip = join ? `🔗 ${L(`Ghép ${join.count} bàn`, `${join.count} tables`)} · #${join.number}` : null;
       return (
         <button key={key} type="button" onClick={onClick} aria-label={`${label} · ${stateText(st, cs)}`}
-          style={{ ...TILE[st], minHeight: phone ? 100 : 114, borderRadius: 16, padding: '11px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'stretch', gap: 6, boxSizing: 'border-box', ...(st === 'free' ? { boxShadow: 'none' } : { boxShadow: '0 2px 8px rgba(15,23,42,.06)' }), ...place }}>
+          style={{ ...TILE[st], minWidth: 0, overflow: 'hidden', minHeight: phone ? 100 : 114, borderRadius: 16, padding: '11px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'stretch', gap: 6, boxSizing: 'border-box', ...(st === 'free' ? { boxShadow: 'none' } : { boxShadow: '0 2px 8px rgba(15,23,42,.06)' }), ...place }}>
           <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-            <b style={{ fontSize: phone ? 19 : 21, lineHeight: 1.1 }}>{label}</b>
+            <b style={{ fontSize: phone ? 19 : 21, lineHeight: 1.1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</b>
             {first && <span style={{ fontSize: 12, fontWeight: 800, padding: '2px 8px', borderRadius: 999, ...(tone === 'late' ? { background: '#b91c1c', color: '#fff' } : tone === 'warn' ? { background: '#f59e0b', color: '#1c1917' } : { background: solid ? 'rgba(255,255,255,.2)' : 'rgba(127,127,127,.14)' }) }}>{mins}′</span>}
           </span>
           <span style={{ alignSelf: 'flex-start', fontSize: 12, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: solid ? 'rgba(255,255,255,.22)' : st === 'free' ? 'rgba(127,127,127,.12)' : 'rgba(127,127,127,.16)', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stateText(st, cs)}</span>
+          {joinChip && <span style={{ fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{joinChip}</span>}
           <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6, fontSize: 12.5, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
             <span style={{ opacity: 0.85, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
             {total > 0 && <b style={{ fontSize: 13.5, whiteSpace: 'nowrap' }}>{fmt(total)}</b>}
@@ -570,7 +593,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
         {todo.map(({ c, state }) => (
           <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 14, border: `1px solid ${C.line}` }}>
             <button type="button" onClick={() => openBill(c)} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: 0, border: 'none', background: 'transparent', color: C.text, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
-              <span title={c.tables} style={{ ...TILE[state], minWidth: 42, maxWidth: 110, height: 42, padding: '0 8px', boxSizing: 'border-box', borderRadius: 12, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 14, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.takeaway ? L('MV', 'TG') : shortTables(c.tables)}</span>
+              <span title={c.tables} style={{ ...TILE[state], minWidth: 42, maxWidth: 110, height: 42, padding: '0 8px', boxSizing: 'border-box', borderRadius: 12, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 14, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.takeaway ? L('MV', 'TG') : c.tableIds.length > 1 ? `🔗 ${tableNum(tablesSorted.find((x) => c.tableIds.includes(x.id))?.name ?? '')} +${c.tableIds.length - 1}` : shortTables(c.tables)}</span>
               <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <b style={{ fontSize: 14 }}>{stateText(state, [c])}</b>
                 <span style={{ fontSize: 12.5, color: C.muted }}>{fmt(c.subtotalCents)}{c.callAt || c.payRequestedAt ? ` · ${minutesOpen(c.callAt ?? c.payRequestedAt ?? c.openedAt, now)}′` : ''}</span>
@@ -677,8 +700,8 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                   const unsent = cs.reduce((n, c) => n + c.unsentCount, 0);
                   return {
                     state: st,
-                    label: cs.length === 1 && cs[0].tableIds.length > 1 ? shortTables(cs[0].tables) : t.name,
-                    sub: !cs.length ? L(`${t.seats} ghế`, `${t.seats} seats`) : st === 'unsent' ? L(`${unsent} món · ${mins}′`, `${unsent} new · ${mins}′`) : `${mins}′`,
+                    label: t.name,
+                    sub: (() => { const j = joinOf(t.id, cs); return j && !j.primary ? `🔗 ${L('cùng', 'with')} ${tableNum(j.primaryName)}` : null; })() ?? (!cs.length ? L(`${t.seats} ghế`, `${t.seats} seats`) : st === 'unsent' ? L(`${unsent} món · ${mins}′`, `${unsent} new · ${mins}′`) : `${mins}′`),
                     dim: !inFilter(st, floorFilter) || (!!area && (t.area || '') !== area),
                     picked: joinIds.includes(t.id),
                     joined: cs.length === 1 && cs[0].tableIds.length > 1,
@@ -692,7 +715,8 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${phone ? 150 : 172}px, 1fr))`, gap: 10 }}>
                   {shownTables.filter((t) => (t.area || '') === g).map((t) => {
                     const cs = checksByTable.get(t.id) ?? [];
-                    const label = cs.length === 1 && cs[0].tableIds.length > 1 ? `${L('Bàn', 'T')} ${shortTables(cs[0].tables)}` : t.name;
+                    const label = t.name;
+                    const join = joinOf(t.id, cs);
                     const picked = joinIds.includes(t.id);
                     const drag = !joinMode && cs.length === 1;
                     return (
@@ -700,8 +724,8 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                         onDragStart={(e) => { e.dataTransfer.setData('text/plain', t.id); e.dataTransfer.effectAllowed = 'move'; }}
                         onDragOver={(e) => { if (cs.length === 1) e.preventDefault(); }}
                         onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from && from !== t.id) dropTable(from, t.id); }}
-                        style={{ position: 'relative', display: 'grid', borderRadius: 16, ...(picked ? { outline: '3px solid #4f46e5', outlineOffset: 2 } : {}) }}>
-                        {tile(t.id, label, cs, () => (joinMode ? toggleJoin(t) : tapTable(t)), t.seats)}
+                        style={{ position: 'relative', display: 'grid', minWidth: 0, borderRadius: 16, ...(picked ? { outline: '3px solid #4f46e5', outlineOffset: 2 } : {}) }}>
+                        {tile(t.id, label, cs, () => (joinMode ? toggleJoin(t) : tapTable(t)), t.seats, undefined, join)}
                         {picked && <span aria-hidden style={{ position: 'absolute', top: -9, right: -9, width: 26, height: 26, borderRadius: '50%', background: '#4f46e5', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800, boxShadow: '0 0 0 3px #fff' }}>✓</span>}
                         {cs.length === 1 && cs[0].tableIds.length > 1 && <span aria-hidden title={L('Bàn ghép', 'Joined tables')} style={{ position: 'absolute', top: -9, left: -9, width: 24, height: 24, borderRadius: 12, background: '#0f766e', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 13, boxShadow: '0 0 0 3px #fff' }}>🔗</span>}
                       </div>

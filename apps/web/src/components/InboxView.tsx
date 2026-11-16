@@ -445,6 +445,7 @@ export function InboxView() {
   const mayTeach = canTeachAi(authUser);
   // The follow-up wording is a salon setting (owner only, like the rest of Settings).
   const mayEditNudge = authUser?.role === 'SALON_ADMIN' || authUser?.role === 'SUPER_ADMIN';
+  const [brief, setBrief] = useState<{ id: string; loading?: boolean; err?: string; data?: { want: string; done: string; missing: string; reply: string } } | null>(null);
   const [whyOpen, setWhyOpen] = useState<number | null>(null);
   const [teach, setTeach] = useState<{ index: number; question: string; reply: string; nudge?: boolean } | null>(null);
   const [topRows, setRows] = useState<InboxRow[]>([]);
@@ -1717,6 +1718,56 @@ export function InboxView() {
               </div>
             )}
 
+            {composerMode === 'reply' && !notice.blocked && detail.history.some((h) => h.role === 'user') && (
+              // "Tóm tắt & gợi ý trả lời": for the person taking the chat over. Asked for, never automatic; sends nothing.
+              <div style={{ padding: narrow ? '8px 12px 0' : '8px 12px 0', display: 'grid', gap: 8 }}>
+                {(!brief || brief.id !== detail.id || brief.err) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={async () => {
+                      const id = detail.id;
+                      setBrief({ id, loading: true });
+                      try {
+                        const data = await apiFetch<{ want: string; done: string; missing: string; reply: string }>(`/messenger/threads/${id}/brief?lang=${vi ? 'vi' : 'en'}`, { method: 'POST', token });
+                        setBrief((b) => (b && b.id === id ? { id, data } : b));
+                      } catch (e) {
+                        setBrief((b) => (b && b.id === id ? { id, err: e instanceof Error ? e.message : 'Failed' } : b));
+                      }
+                    }}
+                      style={{ minHeight: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ink-link)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      {vi ? 'Tóm tắt & gợi ý trả lời' : 'Summary & suggested reply'}
+                    </button>
+                    {brief?.id === detail.id && brief.err && <span role="alert" style={{ fontSize: 12, color: 'var(--ink-bad)' }}>{brief.err}</span>}
+                  </div>
+                )}
+                {brief?.id === detail.id && brief.loading && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{vi ? 'AI đang đọc cuộc trò chuyện…' : 'The AI is reading the conversation…'}</div>}
+                {brief?.id === detail.id && brief.data && (
+                  <div style={{ padding: '10px 12px', borderRadius: 12, background: 'var(--c0b1220)', border: '1px solid var(--c334155)', display: 'grid', gap: 6 }}>
+                    {([[vi ? 'Khách muốn' : 'Customer wants', brief.data.want], [vi ? 'Đã làm' : 'Already done', brief.data.done], [vi ? 'Còn thiếu' : 'Still open', brief.data.missing]] as [string, string][]).map(([k, v]) => (
+                      <div key={k} style={{ display: 'grid', gridTemplateColumns: '92px 1fr', gap: 8, fontSize: 13, lineHeight: 1.45 }}>
+                        <span style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}>{k}</span>
+                        <span style={{ color: 'var(--ce2e8f0)', overflowWrap: 'anywhere' }}>{v}</span>
+                      </div>
+                    ))}
+                    {brief.data.reply && (
+                      <div style={{ marginTop: 2, padding: '8px 10px', borderRadius: 10, border: '1px dashed var(--c475569)', fontSize: 13, lineHeight: 1.5, color: 'var(--ce2e8f0)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{brief.data.reply}</div>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {brief.data.reply && (
+                        <button type="button" onClick={() => { const r = brief.data!.reply; setDraft(r); setBrief(null); window.setTimeout(() => draftRef.current?.focus(), 0); }}
+                          style={{ minHeight: 30, padding: '0 12px', borderRadius: 8, border: '1px solid #6366f1', background: 'var(--c312e81)', color: 'var(--ce2e8f0)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          {vi ? 'Đưa vào ô trả lời' : 'Put in the reply box'}
+                        </button>
+                      )}
+                      <button type="button" onClick={() => setBrief(null)}
+                        style={{ minHeight: 30, padding: '0 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {vi ? 'Đóng' : 'Close'}
+                      </button>
+                      <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{vi ? 'Chưa gửi gì cho khách — đọc lại, sửa rồi mới bấm Gửi. Chỗ “[…]” là thông tin AI không có.' : 'Nothing was sent — read, edit, then press Send. “[…]” marks a fact the AI does not have.'}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {composerMode === 'reply' && !notice.blocked && (suggestions.length > 0 || ASKS.length > 0) && (
               <div className="no-bar" style={{ display: 'flex', gap: 6, alignItems: 'center', padding: narrow ? '8px 12px 0' : '8px 10px 0', fontSize: 12.5, ...(narrow ? { overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const, flexWrap: 'nowrap' as const } : { flexWrap: 'wrap' as const }) }}>
                 <span style={{ color: 'var(--c64748b)', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>⚡{!narrow && ` ${vi ? 'Gợi ý:' : 'Suggested:'}`}</span>

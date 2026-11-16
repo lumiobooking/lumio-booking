@@ -31,6 +31,8 @@ const STAFF_MAY = [
   'threads', 'thread', 'avatar', 'stream',
   'send', 'handoff', 'threadStatus', 'threadRead', 'threadUnread', 'readAll', 'rename',
   'addNote', 'deleteNote',
+  // The summary + draft for the person taking a chat over (handoff-brief): reads this salon's thread, sends nothing.
+  'threadBrief',
   'labels', 'createLabel', 'setLabel', 'followUp',
   // Turning notifications on for their own phone is NOT here: that already
   // lived at /push/* before this work, open to any signed-in user, and building

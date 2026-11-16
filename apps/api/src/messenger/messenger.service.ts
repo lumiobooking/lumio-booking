@@ -8,6 +8,7 @@ import { isPagePostChange, requestChannelSync } from '../marketing/sync-signals'
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
 import { ungroundedMoney, priceCorrection, priceHoldLine } from './price-grounding';
+import { briefPrompt, briefTranscript, canBrief, parseBrief, type BriefTurn, type HandoffBrief } from './handoff-brief';
 import { buildTrace, traceFrom, type ReplyTrace, type TraceCandidate } from './reply-trace';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
@@ -1745,6 +1746,48 @@ export class MessengerService implements OnModuleInit {
    * A receptionist reads the first messages while Meta is still being asked
    * about the rest.
    */
+  /** A brief already written for this thread at this point of the conversation (never across salons: the key carries the tenant). */
+  private readonly briefs = new Map<string, { at: number; brief: HandoffBrief }>();
+
+  /**
+   * "Tóm tắt & gợi ý trả lời" (./handoff-brief): three lines and a draft for
+   * the person taking the chat over. On request, one small model call; nothing
+   * is sent to the customer. THIS salon's thread only.
+   */
+  async threadBrief(user: AuthenticatedUser, id: string, lang?: string): Promise<HandoffBrief> {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId }, select: { id: true, history: true } }) as { id: string; history: unknown } | null;
+    if (!row) throw new NotFoundException('Thread not found');
+    const turns = ((Array.isArray(row.history) ? row.history : []) as BriefTurn[]).filter((t) => !(t as { failed?: boolean }).failed);
+    if (!canBrief(turns)) throw new BadRequestException('Nothing to summarise yet.');
+    if (!process.env.ANTHROPIC_API_KEY && !openAiEnabled()) throw new BadRequestException('AI is not configured on the server.');
+    const vi = (lang || 'vi') !== 'en';
+    const last = turns[turns.length - 1] as { at?: string };
+    const key = `${tenantId}:${id}:${turns.length}:${last?.at ?? ''}:${vi ? 'vi' : 'en'}`;
+    const hit = this.briefs.get(key);
+    if (hit && Date.now() - hit.at < 30 * 60_000) return hit.brief;
+    const [tenant, conn] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+      this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null),
+    ]);
+    const notes = this.factsText(await this.factsOf(tenantId, conn as never).catch(() => []), await this.tzOf(tenantId));
+    const p = briefPrompt({ business: tenant?.name ?? '', vi, transcript: briefTranscript(turns), notes, agentName: (conn as unknown as { agentName?: string | null } | null)?.agentName ?? null });
+    const out = await llmChat({ system: p.system, messages: [{ role: 'user', content: p.user }], max_tokens: 500, timeoutMs: 15_000 }).catch(() => null);
+    if (out) {
+      this.usage?.record({
+        feature: 'messenger', tenantId, model: out.ok ? out.reply.usage?.model ?? 'unknown' : 'unknown',
+        input: out.ok ? out.reply.usage?.input ?? 0 : 0, output: out.ok ? out.reply.usage?.output ?? 0 : 0,
+        cacheRead: out.ok ? out.reply.usage?.cacheRead ?? 0 : 0, cacheWrite: out.ok ? out.reply.usage?.cacheWrite ?? 0 : 0, failed: !out.ok,
+      });
+    }
+    const text = out && out.ok ? out.reply.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' ') : '';
+    const brief = parseBrief(text);
+    if (!brief) throw new BadRequestException(vi ? 'AI chưa tóm tắt được cuộc trò chuyện này — thử lại sau ít phút.' : 'The AI could not summarise this conversation — try again in a few minutes.');
+    if (this.briefs.size > 500) this.briefs.clear();
+    this.briefs.set(key, { at: Date.now(), brief });
+    return brief;
+  }
+
   async getThread(user: AuthenticatedUser, id: string, full = true) {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.messengerThread.findFirst({

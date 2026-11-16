@@ -176,6 +176,15 @@ export class MessengerController {
     return this.svc.getThread(user, id, full !== '0');
   }
 
+  /** Three lines and a draft reply for the person taking this chat over (handoff-brief). Sends nothing. */
+  @Roles(...INBOX_ROLES)
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('messengerAi')
+  @Post('threads/:id/brief')
+  threadBrief(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query('lang') lang?: string) {
+    return this.svc.threadBrief(user, id, lang);
+  }
+
   /**
    * The customer's real profile picture, streamed through us.
    *

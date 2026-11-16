@@ -243,7 +243,14 @@ export function matchedBlock(all: Instruction[], matches: Match[]): string {
     }
     return `[${lab}] ${ins.kind === 'never' ? 'NEVER' : 'ALWAYS'}: ${ruleText(ins)}`;
   });
-  return `THIS MESSAGE IS ABOUT THE OWNER'S INSTRUCTIONS BELOW — they decide this reply:\n${lines.join('\n')}`;
+  // The owner's exact words outrank the owner's general rules: a salon that
+  // wrote "under 60 words" and a 120-word answer got its own answer cut, then
+  // blocked. And several questions at once each get their answer.
+  const exact = matches.filter(({ ins }) => ins.kind === 'answer' && ins.mode === 'verbatim').length;
+  const exempt = exact
+    ? `\nThe owner's exact answers above are PRE-APPROVED: say ${exact > 1 ? 'each of them in full, one after another in the order the customer asked,' : 'it in full'} even when it is longer than a length rule allows, ends with a question or an invitation, or greets — no general rule of the owner's shortens, changes or forbids the owner's own exact answer. If the customer asked something else as well, answer that too in one short sentence from the stored facts; never drop a question.`
+    : '';
+  return `THIS MESSAGE IS ABOUT THE OWNER'S INSTRUCTIONS BELOW — they decide this reply:\n${lines.join('\n')}${exempt}`;
 }
 
 // ---------------------------------------------------------------- the check
@@ -255,6 +262,21 @@ export function keepsWords(reply: string, text: string): boolean {
   const got = tokens(reply);
   const hit = want.filter((w) => got.some((g) => sameWord(w, g))).length;
   return hit / want.length >= 0.85;
+}
+
+/**
+ * Is this draft, in substance, the owner's own exact answers and little else?
+ * Then there is nothing to judge: the owner's words for this very question are
+ * not held up by the owner's general rules. "Little else" = a greeting, a name,
+ * one short sentence — at most a quarter of the draft (and never under 8 words).
+ */
+export function mostlyApproved(draft: string, approved: string[]): boolean {
+  if (!approved.length) return false;
+  const own = new Set(approved.flatMap((t) => tokens(t)));
+  const got = tokens(draft);
+  if (!got.length) return false;
+  const extra = got.filter((w) => ![...own].some((o) => sameWord(w, o))).length;
+  return extra <= Math.max(8, Math.floor(got.length * 0.25));
 }
 
 /** The instructions worth checking a reply against: every NEVER and ALWAYS, plus the matched answers. */
@@ -271,7 +293,7 @@ const fence = (s: string) => String(s ?? '').replace(/<<<|>>>/g, '"').slice(0, 2
  * The judging call. The customer's words and the draft are DATA between
  * fences; the answer is JSON only.
  */
-export function judgePrompt(o: { all: Instruction[]; check: Instruction[]; customer: string; draft: string; langName: string; voice: boolean }): { system: string; user: string } {
+export function judgePrompt(o: { all: Instruction[]; check: Instruction[]; customer: string; draft: string; langName: string; voice: boolean; approved?: string[] }): { system: string; user: string } {
   const lines = o.check.map((i) => {
     const lab = labelOf(o.all, i);
     if (i.kind === 'answer') return `[${lab}] ANSWER — when the customer asks about ${i.triggers.map(quote).join(' / ')}: ${quote(i.text)}${i.mode === 'verbatim' ? ' (must be said word for word, translated faithfully if needed)' : meant(i)}`;
@@ -281,6 +303,7 @@ export function judgePrompt(o: { all: Instruction[]; check: Instruction[]; custo
   const user = `OWNER'S INSTRUCTIONS:
 ${lines.join('\n')}
 
+${(o.approved ?? []).length ? `\nPRE-APPROVED BY THE OWNER — the owner's own exact answers to what this customer asked. Sentences of the draft taken from them are NEVER a violation of any instruction (not of a length rule, a "do not invite a booking" rule, a "do not greet" rule or any other): the owner wrote them for exactly this question.\n${(o.approved ?? []).map((t) => quote(t)).join('\n')}\n` : ''}
 CUSTOMER'S LAST MESSAGE:
 <<<${fence(o.customer)}>>>
 
@@ -293,11 +316,13 @@ Decide:
 - An instruction about WORDING in one language — which pronoun to use, a particle, a word to say or avoid ("xưng em", "không dùng mình/bạn", "always say dạ") — does not apply to a draft written in another language. It is neither applying nor violated there: an English reply cannot break a rule about Vietnamese pronouns.
 - "violations": labels the draft breaks. An applying ANSWER is broken when the draft contradicts it, leaves out its key fact, or (word-for-word ones) changes its wording. A NEVER is broken when the draft does or says what it forbids. An ALWAYS is broken when it applies right now and the draft skips it. Do not flag an instruction that does not apply.
 - "rewrite": when there is a violation, the corrected reply in ${o.langName}${o.voice ? ', short enough to be read aloud (under 40 words, no lists, no emoji)' : ', 1–3 short sentences'}: the draft with the smallest change that obeys every instruction — keep everything else it did right (times, names, the next question). Otherwise "".
-Return exactly: {"applies":[],"violations":[],"rewrite":""}`;
+- The rewrite may only use facts that are already in the draft or in the instructions above. NEVER add a fact, a price, a duration, a distance, a travel time or a promise of your own — when the draft has to lose a sentence, the rewrite is simply shorter.
+- "silent": true ONLY when an instruction that applies says this kind of message must get NO reply at all (the owner wrote "do not reply", "stay silent", "send no message" for exactly this situation) — and the customer's message is that situation as a whole. Then the right reply is no reply: leave "rewrite" empty. When only PART of the message is such a situation (they also asked a price, an address, a question the owner wants answered), "silent" is false and the rewrite answers the rest without the forbidden part.
+Return exactly: {"applies":[],"violations":[],"rewrite":"","silent":false}`;
   return { system, user };
 }
 
-export interface Verdict { applies: string[]; violations: string[]; rewrite: string }
+export interface Verdict { applies: string[]; violations: string[]; rewrite: string; silent: boolean }
 
 /** The judge's JSON, read defensively: anything unreadable is "no opinion", never a block. */
 export function parseJudge(raw: string, known: string[]): Verdict | null {
@@ -306,7 +331,7 @@ export function parseJudge(raw: string, known: string[]): Verdict | null {
   try {
     const j = JSON.parse(m[0]) as Record<string, unknown>;
     const ids = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x).replace(/[[\]\s]/g, '').toUpperCase()).filter((x) => known.includes(x)) : []);
-    return { applies: [...new Set(ids(j.applies))], violations: [...new Set(ids(j.violations))], rewrite: typeof j.rewrite === 'string' ? j.rewrite.trim().slice(0, 1200) : '' };
+    return { applies: [...new Set(ids(j.applies))], violations: [...new Set(ids(j.violations))], rewrite: typeof j.rewrite === 'string' ? j.rewrite.trim().slice(0, 1200) : '', silent: j.silent === true };
   } catch { return null; }
 }
 
@@ -333,8 +358,11 @@ export function lastResort(broken: Instruction[], rewrite: string, sameLanguage:
   // customer. A note that talks to the AI ("when they say no thanks, don't
   // reply") is an instruction — sending it hands the customer the salon's
   // internal notes, which is exactly what happened (./messenger/outbound-guard).
-  const a = broken.find((i) => i.kind === 'answer' && (i.mode === 'verbatim' || !looksLikeNote(i.text)));
-  if (a && sameLanguage) return a.text;
+  // Several questions at once (an ad's quick replies tapped one after another):
+  // each gets the owner's answer — it used to be the first one only, and the
+  // customer asked the other question eight more times.
+  const answers = broken.filter((i) => i.kind === 'answer' && (i.mode === 'verbatim' || !looksLikeNote(i.text)));
+  if (answers.length && sameLanguage) return [...new Set(answers.map((i) => i.text.trim()))].slice(0, 3).join('\n\n');
   return '';
 }
 

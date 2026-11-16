@@ -31,3 +31,19 @@ describe('price check (price-grounding)', () => {
     expect(ungroundedMoney('Dạ ngân sách $350 thì anh/chị hợp gói Growth ạ', [DOC, 'tôi có $350'])).toEqual([]);
   });
 });
+
+describe('a discount the business itself states is not an invented price', () => {
+  const { ungroundedMoney: check } = jest.requireActual('./price-grounding') as typeof import('./price-grounding');
+  it('20% off a $45 service is $36 — explained; so is a 30% deposit', () => {
+    const sources = ['Acrylic full set — $45\nGel manicure — $35', 'Promotion: 20% off acrylic this month. Deposit 30% for groups.'];
+    expect(check('Acrylic full set is $36 this month with the 20% off.', sources)).toEqual([]);
+    expect(check('The deposit is $13.50.', sources)).toEqual([]);
+  });
+  it('a price is never mistaken for a percentage: $35 on the menu does not explain 65% of $45', () => {
+    expect(check('That will be $29.25.', ['Acrylic full set — $45\nGel manicure — $35'])).toEqual([29.25]);
+  });
+  it('a price nothing explains is still caught', () => {
+    expect(check('The Signature Spa Pedicure is $49.', ['Acrylic full set — $45\nGel manicure — $35'])).toEqual([49]);
+  });
+});
+

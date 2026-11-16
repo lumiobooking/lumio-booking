@@ -238,3 +238,17 @@ describe('the same question in other words, and the draft the owner approves', (
   });
 });
 
+
+import { questionAnswered } from './knowledge-gaps';
+describe('which waiting question a staff reply answers', () => {
+  const waiting = ['Is Scalp Micropigmentation permanent?', 'How much does SMP Hair Density cost?', 'Where your location?', 'Can I book a FREE consultation?'];
+  it('the one the reply is about, not the last one', () => {
+    expect(questionAnswered(waiting, 'We have two locations: 1205 Elizabeth St, Punta Gorda and 734 Shamrock Blvd, Venice.')).toBe('Where your location?');
+    expect(questionAnswered(waiting, 'SMP Hair Density starts from $500, including a free touch-up.')).toBe('How much does SMP Hair Density cost?');
+  });
+  it('one question: that one; a reply about none of several: no lesson', () => {
+    expect(questionAnswered(['What time?'], 'At 10 am')).toBe('What time?');
+    expect(questionAnswered(waiting, 'Hi Sara!')).toBeNull();
+    expect(questionAnswered([], 'x')).toBeNull();
+  });
+});

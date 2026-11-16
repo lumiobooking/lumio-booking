@@ -192,3 +192,145 @@ export const ALL_PERSONAS: BusinessPersona[] = Object.values(PERSONAS);
 
 /** Trades that carry a persona of their own — for the picker and for tests. */
 export const TRADE_PERSONA_KEYS: TradePersonaKey[] = Object.keys(TRADE_PERSONAS) as TradePersonaKey[];
+
+/* ------------------------------------------------------------------------ *
+ * THE TRADE'S OWN VOICE
+ *
+ * The identity line above says "a restaurant" or "a dental clinic", and then
+ * four thousand words of prompt written for nail salons follow it: "salon",
+ * "technician", "gel fill", "deluxe spa pedicure". A model reads all of it,
+ * and a clinic's patient was asked which technician they prefer.
+ *
+ * Rewriting every sentence per trade would change the prompt the nail salons
+ * run on today. Instead the trade is named ONCE, with its own words, and the
+ * prompt is told what its nail-salon wording means here. A nail salon gets no
+ * rule at all — its prompt stays byte-identical.
+ *
+ * And the business is read from its OWN DATA: a SALON that never chose an
+ * industry but lists haircuts, facials or lash sets is not a nail salon, and
+ * is no longer introduced as one.
+ * ------------------------------------------------------------------------ */
+
+export type VoiceKey =
+  | 'NAIL' | 'BEAUTY' | 'LASH' | 'HAIR' | 'SPA' | 'MASSAGE' | 'DENTAL'
+  | 'RESTAURANT' | 'CAFE' | 'BAKERY' | 'BUBBLE_TEA' | 'FAST_FOOD' | 'REAL_ESTATE' | 'SERVICE';
+
+const NAIL_WORDS = /nail|mani|pedi|\bgel\b|acrylic|\bdip\b|shellac|polish|full ?set|\bfill\b|french tip|móng|mong tay|sơn|\bbột\b|uñas|manicura|pedicura|美甲|네일/i;
+const KIND_WORDS: [VoiceKey, RegExp][] = [
+  ['LASH', /lash|brow|\bmi\b|nối mi|chân mày|phun xăm|pestañ/i],
+  ['HAIR', /hair|haircut|\bcut\b|colou?r|blow ?dry|perm|balayage|barber|tóc|uốn|nhuộm|gội|cabello|corte/i],
+  ['MASSAGE', /massage|mát ?xa|bấm huyệt|masaje/i],
+  ['SPA', /facial|\bspa\b|skin|peel|body scrub|chăm sóc da|triệt lông|wax/i],
+];
+
+/**
+ * What a SALON's own menu says it is. Null = nothing to conclude (too few
+ * services, or it does list nail services) — the caller keeps today's answer.
+ */
+export function kindFromMenu(serviceNames: readonly string[] | null | undefined): VoiceKey | null {
+  const names = (serviceNames ?? []).map((n) => String(n ?? '').trim()).filter(Boolean);
+  if (names.length < 3) return null;
+  if (names.some((n) => NAIL_WORDS.test(n))) return null;
+  let best: VoiceKey = 'BEAUTY'; let bestN = 0;
+  for (const [key, re] of KIND_WORDS) {
+    const n = names.filter((x) => re.test(x)).length;
+    if (n > bestN) { best = key; bestN = n; }
+  }
+  return bestN * 2 >= names.length ? best : 'BEAUTY';
+}
+
+/** Which voice this tenant speaks in — the same precedence as personaFor, plus its own menu. */
+export function voiceKeyFor(
+  businessType: string | null | undefined,
+  trade?: string | null,
+  industry?: string | null,
+  serviceNames?: readonly string[] | null,
+): VoiceKey {
+  const k = String(businessType || '').toUpperCase();
+  const base: BusinessTypeKey = (PERSONAS as Record<string, BusinessPersona>)[k] ? (k as BusinessTypeKey) : 'SALON';
+  const ik = String(industry || '').toUpperCase();
+  if (ik && TRADE_PERSONAS[ik as TradePersonaKey]) return ik as VoiceKey;
+  if (ik && base === 'SALON' && BEAUTY_IDENTITIES[ik]) return ik as VoiceKey;
+  const t = String(trade || '').toUpperCase();
+  if (TRADE_PERSONAS[t as TradePersonaKey]) return t as VoiceKey;
+  if (base !== 'SALON') return base;
+  // The owner said "Nail": believe them, whatever the menu looks like.
+  if (ik === 'NAIL') return 'NAIL';
+  return kindFromMenu(serviceNames) ?? 'NAIL';
+}
+
+/** personaFor, but a SALON whose own menu is plainly not nails is named for what it is. */
+export function personaWithMenu(
+  businessType: string | null | undefined,
+  trade: string | null | undefined,
+  industry: string | null | undefined,
+  serviceNames: readonly string[] | null | undefined,
+): { persona: BusinessPersona; voice: VoiceKey } {
+  const persona = personaFor(businessType, trade, industry);
+  const voice = voiceKeyFor(businessType, trade, industry, serviceNames);
+  if (persona.key === 'SALON' && persona.identity === PERSONAS.SALON.identity && voice !== 'NAIL') {
+    const fine = BEAUTY_IDENTITIES[voice] ?? { identity: 'a beauty salon' };
+    return { persona: { ...persona, ...fine, key: 'SALON' }, voice };
+  }
+  return { persona, voice };
+}
+
+interface VoiceWords {
+  /** Who serves the customer, English / Vietnamese. Empty = nobody is chosen (a table, not a person). */
+  staffEn: string; staffVi: string;
+  /** What the place is called to the customer in Vietnamese. */
+  venueVi: string;
+  /** What the customer is called here. */
+  customerEn: string;
+  /** One extra line this trade needs. */
+  extra: string;
+}
+
+const MENU_ONLY = 'most people writing in want an answer (hours, address, the menu, a price) — answer it from the menu and notes below, and only take a booking or an order when they ask for one.';
+const VOICE_WORDS: Record<Exclude<VoiceKey, 'NAIL'>, VoiceWords> = {
+  BEAUTY: { staffEn: 'staff member', staffVi: 'nhân viên', venueVi: 'tiệm', customerEn: 'customer', extra: '' },
+  LASH: { staffEn: 'lash artist', staffVi: 'kỹ thuật viên', venueVi: 'tiệm', customerEn: 'customer', extra: '' },
+  HAIR: { staffEn: 'stylist', staffVi: 'thợ tóc / stylist', venueVi: 'salon', customerEn: 'customer', extra: '' },
+  SPA: { staffEn: 'therapist', staffVi: 'kỹ thuật viên', venueVi: 'spa', customerEn: 'guest', extra: '' },
+  MASSAGE: { staffEn: 'therapist', staffVi: 'kỹ thuật viên', venueVi: 'tiệm', customerEn: 'guest', extra: '' },
+  DENTAL: {
+    staffEn: 'dentist / doctor', staffVi: 'bác sĩ', venueVi: 'phòng khám', customerEn: 'patient',
+    extra: 'Never diagnose, never recommend a treatment or a medicine, never say what a symptom means: say what the clinic offers, and book the exam so the doctor can look. Severe pain, swelling, bleeding or an accident is urgent — offer the earliest time and give the clinic\'s phone number.',
+  },
+  RESTAURANT: {
+    staffEn: '', staffVi: '', venueVi: 'nhà hàng', customerEn: 'guest',
+    extra: 'A booking here is a TABLE: what you need is how many people, the date and the time (and a name and phone). Never ask which staff member they prefer and never ask "which service" when they want a table. Dishes and prices come only from the menu and notes below.',
+  },
+  CAFE: { staffEn: '', staffVi: '', venueVi: 'quán', customerEn: 'guest', extra: `A café does not seat people by appointment: ${MENU_ONLY}` },
+  BAKERY: { staffEn: '', staffVi: '', venueVi: 'tiệm bánh', customerEn: 'customer', extra: `What is booked here is an ORDER for a day and time (a cake, a tray): ${MENU_ONLY} Never promise something is in stock today unless the notes say so.` },
+  BUBBLE_TEA: { staffEn: '', staffVi: '', venueVi: 'quán', customerEn: 'customer', extra: `No table reservations: ${MENU_ONLY}` },
+  FAST_FOOD: { staffEn: '', staffVi: '', venueVi: 'quán', customerEn: 'customer', extra: `Seating is first come, first served: ${MENU_ONLY}` },
+  REAL_ESTATE: {
+    staffEn: 'agent', staffVi: 'chuyên viên tư vấn', venueVi: 'văn phòng', customerEn: 'client',
+    extra: 'A good chat here ends with a consultation or a viewing booked, or a clear lead: buying, selling or renting, which area, what timeline. Never state a property price, a rate, a fee, or legal or financial advice that is not in the notes below.',
+  },
+  SERVICE: { staffEn: 'team member', staffVi: 'nhân viên', venueVi: 'bên em', customerEn: 'customer', extra: '' },
+};
+
+/** What the place is called in Vietnamese ("tiệm" for a nail salon, "phòng khám" for a clinic). */
+export function venueViFor(voice: VoiceKey): string {
+  return voice === 'NAIL' ? 'tiệm' : VOICE_WORDS[voice].venueVi;
+}
+
+/**
+ * The rule that makes a prompt written for nail salons speak for this trade.
+ * EMPTY for a nail salon: its prompt does not change by one character.
+ */
+export function tradeVoiceRule(persona: BusinessPersona, voice: VoiceKey): string {
+  if (voice === 'NAIL') return '';
+  const w = VOICE_WORDS[voice];
+  const what = persona.identity.replace(/^an? /, '').toUpperCase();
+  return [
+    `THIS BUSINESS IS ${what} — NOT A NAIL SALON. This rule outranks any wording above it.`,
+    `- The instructions above were first written for nail salons. Wherever they say "salon", understand "${persona.venueNoun}"; wherever they say "appointment", understand "${persona.bookableNoun}"; ${w.staffEn ? `wherever they say "technician" or "tech", understand "${w.staffEn}".` : 'wherever they say "technician" or "tech": nobody is chosen here, so never ask the customer which one they prefer.'}`,
+    `- Their example sentences that mention nail services (manicure, pedicure, gel, acrylic, fill, full set…) only show the SHAPE of a good reply. Never repeat them, never mention a nail service, and never call this business a nail salon or "tiệm nail".`,
+    `- To the ${w.customerEn}, call this place "the ${persona.venueNoun}" (Vietnamese: "${w.venueVi}")${w.staffEn ? `, and the person who looks after them "${w.staffEn}" (Vietnamese: "${w.staffVi}")` : ''}. Write the way ${persona.identity} really talks to its ${w.customerEn}s.`,
+    `- READ THIS BUSINESS'S OWN DATA EXACTLY. What it offers is what its menu, notes and documents below say — the names, prices and durations as written there, nothing else. If the ${w.customerEn} asks for something that is not listed, say you will check with the team; never assume it from what another kind of business would offer. The same for how long a result lasts, how long a visit takes, a distance or a drive time: say it only when it is written there.`,
+    ...(w.extra ? [`- ${w.extra}`] : []),
+  ].join('\n');
+}

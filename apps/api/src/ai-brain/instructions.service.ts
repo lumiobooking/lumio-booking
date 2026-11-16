@@ -9,7 +9,7 @@ import { AiUsageService } from '../common/ai-usage.service';
 import { detectLanguage } from './brain-rules';
 import { LANG_NAME, type Lang } from './brain-settings';
 import {
-  CHANNELS, MAX_PER_SALON, cleanInstruction, instructionsBlock, interpretPrompt, judgePrompt, keepsWords, labelOf, matchInstructions,
+  CHANNELS, MAX_PER_SALON, cleanInstruction, instructionsBlock, interpretPrompt, judgePrompt, keepsWords, labelOf, mostlyApproved, matchInstructions,
   matchedBlock, meaningKey, needsMeaning, parseInterpret, parseJudge, toCheck,
   type Instruction, type InstructionChannel, type InstructionInput, type Interpretation, type Match,
 } from './instructions';
@@ -38,6 +38,8 @@ export interface CheckResult {
   applied: Instruction[];
   /** The judge's corrected reply, when it wrote one. */
   rewrite: string;
+  /** The owner's instructions say this message gets NO reply at all (staff take it). */
+  silent?: boolean;
 }
 
 const NONE: CheckResult = { broken: [], applied: [], rewrite: '' };
@@ -244,16 +246,23 @@ export class AiInstructionsService {
     for (const m of o.turn.matches) applied.set(m.ins.id, m.ins);
     // Word-for-word answers, same language: no model needed.
     const needJudge: Instruction[] = [];
+    // The owner's exact answers the draft really says: pre-approved text.
+    const approved: string[] = [];
     for (const i of check) {
       if (i.kind === 'answer' && i.mode === 'verbatim') {
         const l = detectLanguage(i.text);
-        if (!l || l === o.lang) { if (!keepsWords(draft, i.text)) broken.set(i.id, i); continue; }
+        if (!l || l === o.lang) { if (!keepsWords(draft, i.text)) broken.set(i.id, i); else approved.push(i.text); continue; }
       }
       needJudge.push(i);
     }
+    // The draft IS the owner's own answer(s) to this very question: nothing to
+    // judge. The owner's general rules ("under 60 words", "never invite a
+    // booking") used to block the owner's own exact answer — and the rewrite
+    // that replaced it invented facts (Amy's Lash and Brows, 16/11).
+    if (!broken.size && mostlyApproved(draft, approved)) return { broken: [], applied: [...applied.values()], rewrite: '' };
     let rewrite = '';
     if (needJudge.length && (process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY)) {
-      const p = judgePrompt({ all: o.turn.all, check: needJudge, customer: o.customer, draft, langName: LANG_NAME[o.lang]?.en ?? 'English', voice: o.channel === 'voice' });
+      const p = judgePrompt({ all: o.turn.all, check: needJudge, customer: o.customer, draft, langName: LANG_NAME[o.lang]?.en ?? 'English', voice: o.channel === 'voice', approved });
       const out = await llmChat({ system: p.system, messages: [{ role: 'user', content: p.user }], max_tokens: 400, timeoutMs: o.timeoutMs ?? 6000 }).catch(() => null);
       if (out && out.ok) {
         this.usage?.record({
@@ -269,6 +278,9 @@ export class AiInstructionsService {
           for (const l of v.applies) { const i = byLabel.get(l); if (i) applied.set(i.id, i); }
           for (const l of v.violations) { const i = byLabel.get(l); if (i) { broken.set(i.id, i); applied.set(i.id, i); } }
           rewrite = v.rewrite;
+          // "Do not reply at all" is an instruction like any other — and the
+          // only way to obey it is to send nothing (never a holding line).
+          if (v.silent && o.channel !== 'voice' && !approved.length) return { broken: [], applied: [...applied.values()], rewrite: '', silent: true };
         }
       } else if (out && !out.ok) {
         this.log.warn(`instruction check skipped (${out.status ?? 'network'})`);

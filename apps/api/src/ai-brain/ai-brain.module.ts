@@ -6,6 +6,7 @@ import { AiBrainController } from './ai-brain.controller';
 import { CalendarCallbacksController } from './calendar-callbacks.controller';
 import { AiBrainService } from './ai-brain.service';
 import { AiInstructionsService } from './instructions.service';
+import { AiCanaryController, AiCanaryService } from './ai-canary.service';
 
 /**
  * The salon's AI brain (brain-settings.ts). Global, so the hotline, Messenger,
@@ -14,8 +15,8 @@ import { AiInstructionsService } from './instructions.service';
 @Global()
 @Module({
   imports: [SettingsModule, PushModule, BookingsModule],
-  controllers: [AiBrainController, CalendarCallbacksController],
-  providers: [AiBrainService, AiInstructionsService],
+  controllers: [AiBrainController, CalendarCallbacksController, AiCanaryController],
+  providers: [AiBrainService, AiInstructionsService, AiCanaryService],
   exports: [AiBrainService, AiInstructionsService],
 })
 export class AiBrainModule {}

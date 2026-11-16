@@ -69,7 +69,7 @@ export function numbersIn(text: string): Set<number> {
 const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(0.5, b * 0.002);
 
 /** True when an amount can be explained from the known figures. */
-export function explained(amount: number, known: Set<number>): boolean {
+export function explained(amount: number, known: Set<number>, percents: number[] = []): boolean {
   const list = [...known].filter((n) => n > 0 && n < 1e10);
   for (const k of list) {
     if (near(amount, k)) return true;
@@ -79,10 +79,26 @@ export function explained(amount: number, known: Set<number>): boolean {
       for (let m = 2; m <= 12; m++) if (near(amount, Math.round(k * f * m)) || near(amount, k * f * m)) return true;
     }
   }
+  // A percentage the business itself states ("giảm 20% tháng này", "deposit 30%"): the price after it, and the part itself.
+  // Only numbers the sources write WITH a % sign — a $35 price is not "35%".
+  if (percents.length) {
+    const prices = list.filter((n) => n >= 1).slice(0, 600);
+    for (const p of percents) for (const k of prices) {
+      const off = k * (1 - p / 100); const part = k * (p / 100);
+      if (near(amount, off) || near(amount, Math.round(off)) || near(amount, part) || near(amount, Math.round(part))) return true;
+    }
+  }
   // package + add-on, setup + first month
   const small = list.filter((n) => n < 1e7).slice(0, 400);
   for (let i = 0; i < small.length; i++) for (let j = i; j < small.length; j++) if (near(amount, small[i] + small[j])) return true;
   return false;
+}
+
+/** The percentages the material states ("20%", "giảm 15 %"), 1–90. */
+export function percentsIn(sources: string[]): number[] {
+  const out = new Set<number>();
+  for (const s of sources) for (const m of String(s || '').matchAll(/(\d{1,2})\s?%/g)) { const n = Number(m[1]); if (n >= 1 && n <= 90) out.add(n); }
+  return [...out].slice(0, 40);
 }
 
 /** The amounts in a reply that nothing the AI was given can explain. */
@@ -91,7 +107,8 @@ export function ungroundedMoney(reply: string, sources: string[]): number[] {
   if (!found.length) return [];
   const known = new Set<number>();
   for (const s of sources) for (const n of numbersIn(s)) known.add(n);
-  return found.filter((n) => !explained(n, known));
+  const percents = percentsIn(sources);
+  return found.filter((n) => !explained(n, known, percents));
 }
 
 export function priceCorrection(bad: number[]): string {

@@ -85,9 +85,9 @@ export function shouldAskSurvey(o: { on: boolean; booked: boolean; history: Surv
 
 export function surveyThanks(r: SurveyRating, vi: boolean): string {
   if (r === 'bad') return vi
-    ? 'Dạ em xin lỗi anh/chị ạ. Anh/chị cho em biết điều gì chưa ổn để tiệm khắc phục ngay nhé?'
+    ? 'Dạ em xin lỗi anh/chị ạ. Anh/chị cho em biết điều gì chưa ổn để bên em khắc phục ngay nhé?'
     : 'I am sorry about that. Could you tell us what went wrong so we can fix it?';
-  return vi ? 'Dạ em cảm ơn anh/chị ạ. Hẹn gặp anh/chị tại tiệm!' : 'Thank you! See you at the salon.';
+  return vi ? 'Dạ em cảm ơn anh/chị ạ. Hẹn gặp lại anh/chị ạ!' : 'Thank you! See you soon.';
 }
 
 export function surveyBadPush(name: string | null | undefined, vi: boolean): { title: string; body: string; url: string; tag: string } {

@@ -103,6 +103,39 @@ export function pickScenarios(mode: SimMode, langs: SimLang[], limit = 20): { sc
   return out;
 }
 
+/**
+ * What THIS business's scripted customers type. The scripts above were written
+ * for a nail salon ("a gel manicure", "four pedicures"); a restaurant or a
+ * clinic graded on those would be graded on another trade's questions. A nail
+ * salon keeps them word for word; everyone else is asked about a service from
+ * its OWN menu, and a restaurant's group asks for a table.
+ */
+export interface SimTrade { nail: boolean; table: boolean; sampleService?: string | null }
+export function scenarioTurns(scenario: Scenario, lang: SimLang, trade?: SimTrade | null): string[] {
+  const base = scenario.turns[lang];
+  if (!trade || trade.nail) return base;
+  const vi = lang === 'vi';
+  const svc = String(trade.sampleService ?? '').trim().slice(0, 80);
+  switch (scenario.id) {
+    case 'price':
+      if (svc) return [vi ? `${svc} giá bao nhiêu vậy?` : `How much is ${svc}?`];
+      return [vi ? 'Cho mình hỏi bảng giá bên mình với?' : 'Could you tell me your prices?'];
+    case 'group':
+      if (trade.table) return [vi ? 'Thứ Bảy này đặt bàn 4 người lúc 7 giờ tối được không?' : 'Can I book a table for four this Saturday at 7pm?'];
+      return [vi ? 'Thứ Bảy này 4 người bên mình tới lúc 2 giờ chiều được không?' : 'Can four of us come in this Saturday at 2pm?'];
+    case 'complaint':
+      return [vi ? 'Lần trước mình tới bên bạn trải nghiệm rất tệ, mình rất bực' : 'My last visit was a really bad experience and I am really upset'];
+    case 'two-questions':
+      if (trade.table) return [vi ? 'Mấy giờ bên mình đóng cửa, và có cần đặt bàn trước không?' : 'What time do you close, and do I need a reservation?'];
+      return base;
+    case 'reschedule':
+      if (trade.table) return [vi ? 'Mình cần dời bàn đã đặt sang thứ Sáu' : 'I need to move my reservation to Friday'];
+      return base;
+    default:
+      return base;
+  }
+}
+
 export interface SimAnswer { customer: string[]; reply: string; tools: string[]; rubric: string; lang: SimLang }
 
 export function simJudgePrompt(items: SimAnswer[], sources: string, uiLang: SimLang): { system: string; user: string } {

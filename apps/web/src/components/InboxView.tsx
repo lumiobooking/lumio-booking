@@ -292,13 +292,17 @@ const WHY_TOOL: Record<string, [string, string]> = {
 };
 const WHY_GUARD: Record<string, [string, string]> = {
   price: ['Bản nháp có giá không nằm trong nguồn — AI đã phải viết lại', 'The draft had a price not found in the sources — the AI rewrote it'],
+  'price-watch': ['Câu này nêu một mức giá không thấy trong bảng giá, ghi chú hay kết quả tra cứu — xem lại; sai thì bấm “Sửa”', 'This reply states a price not found in the menu, the notes or a lookup — check it; press “Fix” if it is wrong'],
   meta: ['AI nói về ghi chú kiểm tra thay vì trả lời khách — câu đó đã bị giữ lại', 'The AI talked about a review note instead of answering — that reply was held'],
   instruction: ['Bản nháp trái lệnh của chủ tiệm — AI đã phải viết lại', "The draft broke an owner instruction — the AI rewrote it"],
 };
 const WHY_KIND: Record<WhyRef['kind'], [string, string]> = { rule: ['Lệnh của chủ tiệm', 'Owner instruction'], fact: ['Ghi chú đã lưu', 'Saved note'], doc: ['Tài liệu / link', 'Document / link'], tool: ['AI đã tra / làm', 'Looked up / did'], guard: ['Đã chặn và sửa', 'Stopped and fixed'] };
 /** A number in the reply with no note, document, rule or lookup behind it. */
 function whyUnsourced(t: { content: string; why?: { refs: WhyRef[] } | null }): boolean {
-  return !!t.why && !t.why.refs.some((r) => r.kind !== 'guard') && /\d{2,}/.test(t.content);
+  if (!t.why) return false;
+  // A price the watch could not find in the menu, notes or lookups is flagged whatever else the reply drew on.
+  if (t.why.refs.some((r) => r.kind === 'guard' && r.label === 'price-watch')) return true;
+  return !t.why.refs.some((r) => r.kind !== 'guard') && /\d{2,}/.test(t.content);
 }
 interface ApptCtx {
   id: string;
@@ -1628,7 +1632,7 @@ export function InboxView() {
                           <button type="button" onClick={() => setWhyOpen(whyOpen === i ? null : i)} aria-expanded={whyOpen === i}
                             title={vi ? 'Vì sao AI trả lời vậy?' : 'Why did the AI say this?'}
                             style={{ marginLeft: 4, minHeight: 26, padding: '0 8px', borderRadius: 7, border: `1px solid ${whyUnsourced(t) ? 'var(--ink-warn)' : 'var(--c475569)'}`, background: 'transparent', color: whyUnsourced(t) ? 'var(--ink-warn)' : 'var(--ccbd5e1)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                            {whyUnsourced(t) ? (vi ? 'Chưa thấy nguồn' : 'No source found') : `${vi ? 'Nguồn' : 'Sources'} · ${t.why.refs.length}`}
+                            {t.why.refs.some((r) => r.label === 'price-watch') ? (vi ? 'Giá chưa thấy nguồn' : 'Price not sourced') : whyUnsourced(t) ? (vi ? 'Chưa thấy nguồn' : 'No source found') : `${vi ? 'Nguồn' : 'Sources'} · ${t.why.refs.length}`}
                           </button>
                         )}
                         {mine && !t.manual && !t.source && mayTeach && (

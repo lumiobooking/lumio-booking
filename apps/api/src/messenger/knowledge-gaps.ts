@@ -131,3 +131,23 @@ export function parseGapDraft(raw: string): GapDraft {
   return { answer, from: j.from === 'staff' ? 'staff' : j.from === 'sources' ? 'sources' : null };
 }
 
+
+/**
+ * Which of the waiting questions a staff reply answers. One question: that
+ * one. Several: the one sharing the most meaningful words with the reply —
+ * and none when the reply shares nothing with any of them (better no lesson
+ * than a wrong one).
+ */
+export function questionAnswered(waiting: string[], answer: string): string | null {
+  if (!waiting.length) return null;
+  if (waiting.length === 1) return waiting[0];
+  const stem = (w: string) => w.toLowerCase().replace(/(ies|es|s|ed|ing)$/, '');
+  const words = (t: string) => new Set(topicWords(t).map(stem));
+  const a = words(answer);
+  let best: string | null = null; let bestN = 0;
+  for (const q of waiting) {
+    const n = [...words(q)].filter((w) => a.has(w)).length;
+    if (n > bestN || (n === bestN && n > 0)) { best = q; bestN = n; }
+  }
+  return bestN > 0 ? best : null;
+}

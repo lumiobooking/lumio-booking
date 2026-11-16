@@ -14,6 +14,7 @@ jest.mock('../common/llm', () => ({
 }));
 import { chat } from '../common/llm';
 import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap, answersBeforeRecap, endsOnFiller, customerWrappingUp } from './booking-guards';
+import { HELD } from './outbound-guard';
 import { MessengerService } from './messenger.service';
 
 describe('claimsBooked — a reply that says the booking exists', () => {
@@ -148,7 +149,10 @@ describe('inside the agent loop', () => {
       .mockResolvedValueOnce(reply("11:00 AM Monday works 👍 What's your first name?"));
     const out = await svc().runAgent('t1', '', hist, 'Monday 11am', { mode: 'booking', leadEmail: null, channel: 'instagram' });
     expect(out).toBe("11:00 AM Monday works 👍 What's your first name?");
-    expect(mocked).toHaveBeenCalledTimes(2);
+    // Two calls of the agent, then the second reader on the rewritten reply (correction-guard):
+    // it got no verdict here, and a reader with no verdict never holds a reply.
+    expect(mocked).toHaveBeenCalledTimes(3);
+    expect(String((mocked.mock.calls[2][0] as { system: string }).system)).toContain('last check before');
     const second = mocked.mock.calls[1][0] as { messages: { content: unknown }[] };
     expect(JSON.stringify(second.messages[second.messages.length - 1].content)).toContain('SYSTEM CORRECTION');
   });
@@ -261,3 +265,45 @@ describe('inside the agent loop', () => {
     expect(out).toContain("You're all set");
   });
 });
+
+describe('a rewritten reply that talks about the rewrite is held, not sent', () => {
+  const mocked = chat as unknown as jest.Mock;
+  const reply = (text: string) => ({ ok: true, reply: { stop_reason: 'end_turn', content: [{ type: 'text', text }], usage: {} } });
+  let prevKey: string | undefined;
+  beforeAll(() => { prevKey = process.env.ANTHROPIC_API_KEY; process.env.ANTHROPIC_API_KEY = 'test-placeholder'; });
+  afterAll(() => { if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = prevKey; });
+  beforeEach(() => mocked.mockReset());
+  const svc = () => {
+    const prisma = { tenant: { findUnique: async () => ({ name: 'Zb Nails & Spa', timezone: 'America/Chicago', contactPhone: null, contactEmail: null, businessType: 'nail_salon', market: 'US' }) }, setting: { findFirst: async () => null } };
+    const s = new MessengerService(prisma as never, {} as never, { getAiNotes: async () => ({ text: '' }) } as never, {} as never, {} as never, {} as never);
+    (s as unknown as { systemKnowledge: unknown }).systemKnowledge = async () => '';
+    return s as unknown as { runAgent: (...a: unknown[]) => Promise<string> };
+  };
+  const hist = [{ role: 'user', content: 'Hi, can I get a pedicure?' }, { role: 'assistant', content: 'Perfect! When would you like to come in?' }];
+
+  it('the second reader says LEAK: the customer gets nothing from the bot and a person is told (HELD)', async () => {
+    mocked
+      .mockResolvedValueOnce(reply("You're booked for Monday at 11!"))
+      // A wording the phrase list does not know.
+      .mockResolvedValueOnce(reply('Understood, adjusting as asked above. Monday 11 works, what is your name?'))
+      .mockResolvedValueOnce(reply('LEAK'));
+    const out = await svc().runAgent('t1', '', hist, 'Monday 11am', { mode: 'booking', leadEmail: null, channel: 'instagram' });
+    expect(out).toBe(HELD);
+  });
+
+  it('the second reader says CLEAN: the rewritten reply goes out', async () => {
+    mocked
+      .mockResolvedValueOnce(reply("You're booked for Monday at 11!"))
+      .mockResolvedValueOnce(reply("11:00 AM Monday works 👍 What's your first name?"))
+      .mockResolvedValueOnce(reply('CLEAN'));
+    const out = await svc().runAgent('t1', '', hist, 'Monday 11am', { mode: 'booking', leadEmail: null, channel: 'instagram' });
+    expect(out).toBe("11:00 AM Monday works 👍 What's your first name?");
+  });
+
+  it('a reply that was never sent back is not read twice', async () => {
+    mocked.mockResolvedValueOnce(reply('Monday at 11 is open 👍 What service would you like?'));
+    await svc().runAgent('t1', '', hist, 'Monday 11am', { mode: 'booking', leadEmail: null, channel: 'instagram' });
+    expect(mocked).toHaveBeenCalledTimes(1);
+  });
+});
+

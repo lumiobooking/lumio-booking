@@ -5,13 +5,13 @@ import { AiBrainService } from '../ai-brain/ai-brain.service';
 import { conversationLanguage as brainConversationLanguage } from '../ai-brain/brain-rules';
 import type { Lang as BrainLang } from '../ai-brain/brain-settings';
 import { isPagePostChange, requestChannelSync } from '../marketing/sync-signals';
-import { chosenIndustry, personaFor } from '../common/business-persona';
+import { chosenIndustry, personaWithMenu, tradeVoiceRule } from '../common/business-persona';
 import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
 import { ungroundedMoney, priceCorrection, priceHoldLine } from './price-grounding';
 import { briefPrompt, briefTranscript, canBrief, parseBrief, type BriefTurn, type HandoffBrief } from './handoff-brief';
 import { SURVEY_KEY, shouldAskSurvey, surveyAnswer, surveyAsk, surveyBadPush, surveyPending, surveySettingFrom, surveyThanks, type SurveyRating, type SurveyTurn } from './chat-survey';
 import { HardBudget, hardTurnReason, modelForTurn } from '../common/hard-turn';
-import { CORRECTION_RULE, leaksCorrection } from './correction-guard';
+import { CORRECTION_RULE, leaksCorrection, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from './correction-guard';
 import { buildTrace, traceFrom, type ReplyTrace, type TraceCandidate } from './reply-trace';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX, SALES_NOT_READY_RULE } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
@@ -43,6 +43,7 @@ import {
 import { chat as llmChat, openAiEnabled, type ChatMessage, type ToolDef, type TextBlock } from '../common/llm';
 import { AiInstructionsService, instructionChannel } from '../ai-brain/instructions.service';
 import { correctionFor, lastResort } from '../ai-brain/instructions';
+import { questionAnswered } from './knowledge-gaps';
 import { detectLanguage as detectBrainLanguage } from '../ai-brain/brain-rules';
 import { withBookingLink } from './booking-link';
 import { FbPageRow, FbPagesBody, walkFbPages } from './fb-pages';
@@ -336,8 +337,18 @@ export class MessengerService implements OnModuleInit {
     const lastUser = [...hist].reverse().find((t) => t.role === 'user');
     const lastAny = hist[hist.length - 1];
     // Only when the person is answering the customer's latest message, and it asked something.
-    if (!lastUser || lastAny?.role !== 'user' || !asksQuestion(String(lastUser.content ?? ''))) return;
-    void this.gaps.record({ tenantId, threadId: thread.id, question: String(lastUser.content), source: 'staff', suggestedAnswer: answer });
+    if (!lastUser || lastAny?.role !== 'user') return;
+    // Several questions waiting (an ad's quick replies tapped in a row): the
+    // answer belongs to the one it is ABOUT, not to whichever came last —
+    // "How much is SMP?" was being taught the salon's address.
+    const waiting: string[] = [];
+    for (let i = hist.length - 1; i >= 0 && hist[i].role === 'user'; i--) {
+      const q = String(hist[i].content ?? '');
+      if (asksQuestion(q) && !waiting.includes(q)) waiting.unshift(q);
+    }
+    const question = questionAnswered(waiting, answer);
+    if (!question) return;
+    void this.gaps.record({ tenantId, threadId: thread.id, question, source: 'staff', suggestedAnswer: answer });
   }
 
   private get parties(): PartyAvailabilityService {
@@ -1751,6 +1762,20 @@ export class MessengerService implements OnModuleInit {
    * A receptionist reads the first messages while Meta is still being asked
    * about the rest.
    */
+  /** The second reader (./correction-guard): true = hold the reply. Slow, failed or unsure = let it go. */
+  private async secondReaderHolds(tenantId: string, reply: string): Promise<boolean> {
+    const p = secondReaderPrompt(reply);
+    const out = await Promise.resolve().then(() => llmChat({ system: p.system, messages: [{ role: 'user', content: p.user }], max_tokens: 8, timeoutMs: 6000 })).catch(() => null);
+    if (!out) return false;
+    this.usage?.record({
+      feature: 'messenger', tenantId, model: out.ok ? out.reply.usage?.model ?? 'unknown' : 'unknown',
+      input: out.ok ? out.reply.usage?.input ?? 0 : 0, output: out.ok ? out.reply.usage?.output ?? 0 : 0,
+      cacheRead: out.ok ? out.reply.usage?.cacheRead ?? 0 : 0, cacheWrite: out.ok ? out.reply.usage?.cacheWrite ?? 0 : 0, failed: !out.ok,
+    });
+    if (!out.ok) return false;
+    return secondReaderSaysLeak(out.reply.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' '));
+  }
+
   /** The stronger model's daily allowance, per salon (common/hard-turn). */
   private readonly hardBudget = new HardBudget();
 
@@ -4465,7 +4490,7 @@ export class MessengerService implements OnModuleInit {
     // coffee shop must not open by offering a table reservation. The declared
     // trade refines the type where it has something to say; where it does not,
     // the type answers alone and nothing changes.
-    const [tradeRow, industryRow] = await Promise.all([
+    const [tradeRow, industryRow, menuNames] = await Promise.all([
       this.prisma.setting
         .findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } })
         .catch(() => null),
@@ -4473,12 +4498,22 @@ export class MessengerService implements OnModuleInit {
       this.prisma.setting
         .findFirst({ where: { tenantId, key: 'industry' }, select: { value: true } })
         .catch(() => null),
+      // What THIS business really lists — a SALON that never chose an industry
+      // but sells haircuts or facials is not introduced as a nail salon.
+      Promise.resolve()
+        .then(() => this.prisma.service.findMany({ where: { tenantId, isActive: true }, select: { name: true }, take: 80 }))
+        .then((rows) => (Array.isArray(rows) ? rows.map((r) => String((r as { name?: string }).name ?? '')) : []))
+        .catch(() => [] as string[]),
     ]);
-    const persona = personaFor(
+    const { persona, voice: tradeVoice } = personaWithMenu(
       (tenant as unknown as { businessType?: string } | null)?.businessType,
       (tradeRow?.value as { trade?: string } | null)?.trade ?? null,
       chosenIndustry(industryRow?.value),
+      menuNames,
     );
+    // Empty for a nail salon (its prompt is unchanged); for every other trade,
+    // the words and the model of THAT trade. See common/business-persona.
+    const tradeRule = ctx.mode === 'sales' ? '' : tradeVoiceRule(persona, tradeVoice);
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';
     // WHAT LANGUAGE IS THE CUSTOMER WRITING IN? Read from their own messages,
@@ -4984,7 +5019,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
      * the API's prefix, so the one breakpoint below covers them as well.
      */
     const brainStatic = brainOut ? `\n${[brainOut.blocks.persona, brainOut.blocks.booking, brainOut.blocks.handoffNote].filter(Boolean).join('\n')}` : '';
-    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + brainStatic + personaRule + readingRule + voiceRule + formatRule + channelRule + closingRule + `\n${CORRECTION_RULE}` + (owner?.block ? `\n${owner.block}` : '');
+    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + brainStatic + personaRule + (tradeRule ? `\n${tradeRule}` : '') + readingRule + voiceRule + formatRule + channelRule + closingRule + `\n${CORRECTION_RULE}` + (owner?.block ? `\n${owner.block}` : '');
     const clockLine = ctx.mode === 'sales'
       ? `\nThe current time is ${nowLocal} (timezone ${tz}).`
       : `\nThe salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.`;
@@ -5209,7 +5244,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // PRICE CHECK — wherever the AI may quote (a page with documents, or a
       // sales page allowed to quote), every amount must trace back to the
       // documents, notes, menu, a tool answer or the customer's own words.
-      if (text && (docs || (ctx.mode === 'sales' && quotes))) {
+      // A booking salon without linked documents: its menu, notes and promotions are in
+      // the prompt, so the same check can run — as a WATCH for now (the reply goes out,
+      // the Inbox marks it "giá chưa thấy nguồn" for the owner). PRICE_GUARD_BOOKING=enforce
+      // makes it block like the others, once the watch has shown it is not over-eager.
+      const enforcePrice = !!docs || (ctx.mode === 'sales' && quotes) || process.env.PRICE_GUARD_BOOKING === 'enforce';
+      if (text && !enforcePrice && ctx.mode === 'booking') {
+        const odd = ungroundedMoney(text, [staticSystem, dynamicSystem, customerWords, ...toolOuts]);
+        if (odd.length && !ctx.traceGuards?.includes('price-watch')) {
+          ctx.traceGuards?.push('price-watch');
+          this.logger.warn(`Price watch (not in the menu, notes or lookups: ${odd.join(', ')}): ${text.slice(0, 140)}`);
+        }
+      }
+      if (text && enforcePrice) {
         const bad = ungroundedMoney(text, [staticSystem, docs, dynamicSystem, customerWords, ...toolOuts]);
         if (bad.length) {
           if (groundRetried) {
@@ -5382,6 +5429,15 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (owner && this.instructions && text) {
         const insLang = brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en');
         const chk = await this.instructions.check(tenantId, { turn: owner, channel: insCh, customer: userText, draft: text, lang: insLang, timeoutMs: 6000 }).catch(() => null);
+        // The owner said this kind of message gets no reply (a person takes
+        // it): nothing is sent — and the staff are told, as for any silence
+        // on a question (silentQuestionPush).
+        if (chk?.silent) {
+          this.instructions.noteUse(tenantId, chk.applied, []);
+          ctx.traceGuards?.push('instruction');
+          this.logger.log(`Silent by the owner's instruction: ${text.slice(0, 120)}`);
+          return SILENT;
+        }
         if (chk?.broken.length) {
           this.instructions.noteUse(tenantId, chk.applied, chk.broken);
           if (!ownerRetried) {
@@ -5404,6 +5460,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         } else if (chk?.applied.length) {
           this.instructions.noteUse(tenantId, chk.applied, []);
         }
+      }
+      // A reply written AFTER a correction note is also read by a second, small
+      // model call: is every sentence addressed to the customer? (The phrase list
+      // only knows the leaks already seen.) Only rewritten replies pay for it.
+      if (text && wasCorrected(messages) && await this.secondReaderHolds(tenantId, text)) {
+        ctx.traceGuards?.push('meta');
+        this.logger.warn(`Reply held (second reader: not addressed to the customer): ${text.slice(0, 160)}`);
+        return HELD;
       }
       return withBookingLink(text || (customerLang === 'vi' ? 'Dạ em nghe ạ — em giúp gì thêm cho anh/chị không ạ?' : 'Got it! How else can I help you book?'), ctx.booked?.url);
     }

@@ -7,7 +7,9 @@ import { SettingsService } from '../settings/settings.service';
 import { PushService } from '../push/push.service';
 import { PartyAvailabilityService } from '../bookings/party-availability.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { personaFor, chosenIndustry } from '../common/business-persona';
+import { personaFor, chosenIndustry, voiceKeyFor, personaWithMenu, tradeVoiceRule } from '../common/business-persona';
+import { isNoReply, NO_REPLY_RULE } from '../messenger/outbound-guard';
+import { saysStop } from '../messenger/followup';
 import { serviceCode, type MenuItem } from '../bookings/group-booking';
 import { formatMoneyShort } from '../common/money';
 import {
@@ -23,8 +25,8 @@ import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, 
 import { agentModel, forModel } from '../common/ai-model';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, cleanChoices, choicesAsText, cleanCards, cardText, type PackageCard, SALES_NOT_READY_RULE } from '../messenger/reply-style';
 import { ungroundedMoney } from '../messenger/price-grounding';
-import { CORRECTION_RULE, leaksCorrection } from '../messenger/correction-guard';
-import { SIM_KEY, SIM_OTHER_LANGS, mergeGrades, parseSimTranslation, pickScenarios, simFingerprint, simTranslatePrompt, type Scenario, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
+import { CORRECTION_RULE, leaksCorrection, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from '../messenger/correction-guard';
+import { SIM_KEY, SIM_OTHER_LANGS, scenarioTurns, type SimTrade, mergeGrades, parseSimTranslation, pickScenarios, simFingerprint, simTranslatePrompt, type Scenario, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
 import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
 import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
 import { browserHeaders } from '../common/browser-headers';
@@ -301,13 +303,15 @@ export class AiBrainService {
     const primary = brain.languages.primary === 'vi' || brain.languages.primary === 'en' ? brain.languages.primary as SimLang : null;
     const langs: SimLang[] = [...(primary ? [primary] : []), ...allowed.filter((l) => l !== primary)];
     const picked: { scenario: Scenario; lang: string }[] = pickScenarios(mode, langs);
+    // The scripted customers ask about THIS trade — a restaurant is not asked for a gel manicure.
+    const trade = mode === 'booking' ? await this.simTrade(tenantId) : null;
     // A salon that also serves Spanish, Chinese, Korean, French or Japanese: the same
     // scripts, translated once for this run, for its first such language.
     const other = [brain.languages.primary as string, ...(brain.languages.allowed as string[])].find((l) => SIM_OTHER_LANGS[l]);
     let translated: Record<string, string[]> = {};
     if (other) {
       const base = pickScenarios(mode, ['en']).slice(0, 8);
-      const tp = simTranslatePrompt(base.map((x) => ({ id: x.scenario.id, turns: x.scenario.turns.en })), SIM_OTHER_LANGS[other]);
+      const tp = simTranslatePrompt(base.map((x) => ({ id: x.scenario.id, turns: scenarioTurns(x.scenario, 'en', trade) })), SIM_OTHER_LANGS[other]);
       translated = parseSimTranslation(await this.ask(tp.system, tp.user, 2500, 45_000).catch(() => ''), base.map((x) => x.scenario.id));
       for (const x of base) if (translated[x.scenario.id]) picked.push({ scenario: x.scenario, lang: other });
     }
@@ -319,7 +323,7 @@ export class AiBrainService {
       while (next < picked.length) {
         const i = next++;
         const { scenario, lang } = picked[i];
-        const turns = lang === 'vi' || lang === 'en' ? scenario.turns[lang] : translated[scenario.id];
+        const turns = lang === 'vi' || lang === 'en' ? scenarioTurns(scenario, lang, trade) : translated[scenario.id];
         const messages: { role: 'user' | 'assistant'; content: string }[] = [];
         let reply = ''; const tools = new Set<string>();
         for (const t of turns) {
@@ -570,6 +574,28 @@ export class AiBrainService {
     this.cache.delete(tenantId);
     await this.audit.log({ tenantId, userId: user.userId, action: 'ai_brain.updated', resourceType: 'setting', resourceId: AI_BRAIN_KEY, metadata: { version: next.version } });
     return next;
+  }
+
+  private async tradeRuleFor(tenantId: string, businessType: string | null | undefined, names: string[]): Promise<string> {
+    const [tradeRow, industryRow] = await Promise.all([
+      Promise.resolve().then(() => this.db.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } })).catch(() => null),
+      Promise.resolve().then(() => this.db.setting.findFirst({ where: { tenantId, key: 'industry' }, select: { value: true } })).catch(() => null),
+    ]);
+    const { persona, voice } = personaWithMenu(businessType, (tradeRow?.value as { trade?: string } | null)?.trade ?? null, chosenIndustry(industryRow?.value), names);
+    return tradeVoiceRule(persona, voice);
+  }
+
+  /** Which trade's questions the scripted customers ask — read from this tenant's own type, industry and menu. */
+  private async simTrade(tenantId: string): Promise<SimTrade> {
+    const [tenant, tradeRow, industryRow, rows] = await Promise.all([
+      Promise.resolve().then(() => this.db.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } })).catch(() => null),
+      Promise.resolve().then(() => this.db.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } })).catch(() => null),
+      Promise.resolve().then(() => this.db.setting.findFirst({ where: { tenantId, key: 'industry' }, select: { value: true } })).catch(() => null),
+      Promise.resolve().then(() => this.db.service.findMany({ where: { tenantId, isActive: true }, select: { name: true }, orderBy: { name: 'asc' }, take: 80 })).catch(() => []),
+    ]);
+    const names = (Array.isArray(rows) ? rows : []).map((r: Row) => String(r?.name ?? '')).filter(Boolean);
+    const voice = voiceKeyFor(tenant?.businessType, (tradeRow?.value as { trade?: string } | null)?.trade ?? null, chosenIndustry(industryRow?.value), names);
+    return { nail: voice === 'NAIL', table: voice === 'RESTAURANT', sampleService: names[0] ?? null };
   }
 
   /** The prompt lines every assistant shares, for this salon, channel and language. */
@@ -1026,16 +1052,34 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
       choices.length ? choicesAsText(choices) : '',
     ].filter(Boolean).join('\n\n');
     const parts = (t: string) => ({ text: textOf(t), choices, cards });
+    // The same trade voice as the live channels (common/business-persona): empty for a nail salon.
+    const tradeRule = sales ? '' : await this.tradeRuleFor(tenantId, tenant?.businessType, services.map((x) => String(x.name ?? ''))).catch(() => '');
     const messages: Row[] = msgs.map((m) => ({ role: m.role, content: m.content }));
     const trace: string[] = [];
     const t0 = Date.now();
+    // What the real channel does when it sends NOTHING, shown as what it is —
+    // the test used to print a holding line the customer never gets.
+    const quiet = (why: 'stop' | 'rule' | 'held' | 'none') => {
+      const vi = lang === 'vi';
+      const line = why === 'stop'
+        ? (vi ? '(Không gửi gì: khách yêu cầu dừng nhắn. AI im lặng và không nhắn theo nữa.)' : '(Nothing is sent: the customer asked to stop. The AI stays silent and sends no follow-up.)')
+        : why === 'rule'
+          ? (vi ? '(AI không trả lời: dặn dò của chủ tiệm yêu cầu im lặng với loại tin này. Nhân viên được báo để tiếp nhận.)' : '(No reply: your instructions say this kind of message gets no answer from the AI. Your staff are alerted to take over.)')
+          : why === 'held'
+            ? (vi ? '(Câu trả lời bị giữ lại, không gửi cho khách: AI không viết được câu nào đúng với mọi dặn dò. Nhân viên được báo để trả lời.)' : '(Held, not sent: the AI could not write a reply that obeys every instruction. Your staff are alerted to answer.)')
+            : (vi ? '(AI không trả lời: tin này không cần trả lời.)' : '(No reply: this message needs no answer.)');
+      return { reply: line, text: line, choices: [] as string[], cards: [] as typeof cards };
+    };
+    if (channel !== 'voice' && saysStop(String(lastUser ?? ''))) {
+      return { ...quiet('stop'), lang, trace: ['opt-out: no model, no reply'], ms: 0, check: null };
+    }
     let corrected = false;
     let firstDraft: string | null = null;
     let firstBroken: string[] | null = null;
     for (let loop = 0; loop < 6; loop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify(forModel({ model: agentModel(), max_tokens: 1400, system: `${system}\n${CORRECTION_RULE}`, tools, messages })),
+        body: JSON.stringify(forModel({ model: agentModel(), max_tokens: 1400, system: `${system}${tradeRule ? `\n${tradeRule}` : ''}\n${CORRECTION_RULE}${channel === 'voice' ? '' : NO_REPLY_RULE}`, tools, messages })),
         signal: AbortSignal.timeout(20_000),
       });
       if (!res.ok) throw new BadRequestException(`AI answered ${res.status}`);
@@ -1070,6 +1114,10 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
         continue;
       }
       const text = blocksOut.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      if (isNoReply(text)) {
+        trace.push('silent: the assistant chose not to reply');
+        return { ...quiet(owner?.all?.length ? 'rule' : 'none'), lang, trace, ms: Date.now() - t0, check: null };
+      }
       // Never an empty bubble: a reply that said nothing (and sent no card) is asked for once more.
       if (!text && !cards.length && loop < 5) {
         messages.push({ role: 'assistant', content: [{ type: 'text', text: '…' }] });
@@ -1078,7 +1126,10 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
       }
       // Live, a reply that talks about the review instead of to the customer is held
       // for a person (messenger/correction-guard). Here it is shown as what it is.
-      if (text && leaksCorrection(text)) {
+      const readerHolds = text && !leaksCorrection(text) && (corrected || wasCorrected(messages))
+        ? secondReaderSaysLeak(await (async () => { const p = secondReaderPrompt(text); return this.ask(p.system, p.user, 8, 8000).catch(() => ''); })())
+        : false;
+      if (text && (readerHolds || leaksCorrection(text))) {
         trace.push(`held: the reply talked about a correction — live, it is not sent and the staff are told: ${text.slice(0, 160)}`);
         const heldLine = lang === 'vi' ? '(Câu này bị giữ lại, không gửi cho khách: AI nói về ghi chú kiểm tra thay vì trả lời khách. Trên kênh thật, nhân viên sẽ được báo để trả lời.)' : '(Held, not sent to the customer: the AI talked about a review note instead of answering. Live, the staff are told to reply.)';
         return { reply: heldLine, text: heldLine, choices: [], cards: [], lang, trace, ms: Date.now() - t0, check: null };
@@ -1088,6 +1139,10 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
       // owner's own) words go out instead.
       if (owner && this.instructions && text) {
         const chk = await this.instructions.check(tenantId, { turn: owner, channel: insCh, customer: lastUser, draft: text, lang, timeoutMs: 8000 }).catch(() => null);
+        if (chk?.silent) {
+          trace.push('silent: the owner\'s instructions say this message gets no reply');
+          return { ...quiet('rule'), lang, trace, ms: Date.now() - t0, check: { followed: true, corrected, draft: text, broken: [], applied: chk.applied.map((i) => i.id) } };
+        }
         if (chk?.broken.length) {
           const brokenText = chk.broken.map((i) => i.text);
           if (!corrected) {
@@ -1101,7 +1156,11 @@ ${owner?.block ? `${owner.block}\n` : ''}${owner?.matched ? `${owner.matched}\n`
           }
           const sameLang = chk.broken.every((i) => { const l = detectLanguage(i.text); return !l || l === lang; });
           const last = lastResort(chk.broken, chk.rewrite, sameLang);
-          trace.push('blocked twice: replaced');
+          trace.push(last ? 'blocked twice: replaced' : 'blocked twice: held for a person');
+          // Live, a reply with no compliant version is HELD and the staff are
+          // told — the test shows that, not a "let me double-check" line the
+          // real channel never sends.
+          if (!last) return { ...quiet('held'), lang, trace, ms: Date.now() - t0, check: { followed: false, corrected: true, draft: firstDraft ?? text, broken: firstBroken ?? brokenText, applied: [] } };
           return { reply: shown(last || checkingLine(lang, owner.all)), ...parts(last || checkingLine(lang, owner.all)), lang, trace, ms: Date.now() - t0, check: { followed: !!last, corrected: true, draft: firstDraft ?? text, broken: firstBroken ?? brokenText, applied: chk.applied.map((i) => i.id) } };
         }
         return { reply: shown(text), ...parts(text), lang, trace, ms: Date.now() - t0, check: { followed: true, corrected, draft: firstDraft, broken: firstBroken ?? [], applied: (chk?.applied ?? []).map((i) => i.id) } };

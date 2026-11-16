@@ -15,14 +15,20 @@ const AGENT = String.raw`# Lumio Print agent (installed by the one-line setup; u
 $Version = '__VERSION__'
 $ErrorActionPreference = 'Stop'
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072 } catch {}
+# Windows allows 2 open connections per server by default; a reply never closed used one up for good.
+try { [Net.ServicePointManager]::DefaultConnectionLimit = 16 } catch {}
 $Dir = Split-Path -Parent $PSCommandPath
 $Cfg = Get-Content -Raw -Path (Join-Path $Dir 'config.json') | ConvertFrom-Json
 $Api = [string]$Cfg.api
 $Headers = @{ 'X-Lumio-Device' = [string]$Cfg.token }
 Add-Type -AssemblyName System.Drawing
 $Mutex = New-Object System.Threading.Mutex($false, 'Local\LumioPrintAgent')
-if (-not $Mutex.WaitOne(0)) { exit }
+# A copy that was stopped by force leaves the lock "abandoned": that is ours to take, not a reason to quit.
+$got = $false
+try { $got = $Mutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $got = $true }
+if (-not $got) { exit }
 $LogFile = Join-Path $Dir 'agent.log'
+$BeatFile = Join-Path $Dir 'heartbeat.txt'
 $script:FontName = 'Consolas'
 try {
   $fams = (New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }
@@ -36,10 +42,110 @@ function Write-Log([string]$m) {
   } catch {}
 }
 
+# Every call to the server: a hard time limit on connecting AND on reading,
+# no kept-alive connections, and the reply always closed. Invoke-RestMethod
+# (Windows PowerShell 5.1) could wait forever on a connection that died (Wi-Fi
+# dropped, the PC slept) and leaked connections until none were left: the
+# agent looked alive but never printed again until the PC was restarted.
+function Invoke-Api([string]$method, [string]$path, [string]$json, [int]$timeoutSec) {
+  $req = [System.Net.HttpWebRequest]::Create($Api + $path)
+  $req.Method = $method
+  $req.Timeout = $timeoutSec * 1000
+  $req.ReadWriteTimeout = $timeoutSec * 1000
+  $req.KeepAlive = $false
+  $req.Headers.Add('X-Lumio-Device', [string]$Cfg.token)
+  if ($json) {
+    $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+    $req.ContentType = 'application/json; charset=utf-8'
+    $req.ContentLength = $bytes.Length
+    $rs = $req.GetRequestStream()
+    try { $rs.Write($bytes, 0, $bytes.Length) } finally { $rs.Close() }
+  }
+  $resp = $null
+  $body = ''
+  try {
+    $resp = $req.GetResponse()
+    $rd = New-Object System.IO.StreamReader($resp.GetResponseStream(), [Text.Encoding]::UTF8)
+    try { $body = $rd.ReadToEnd() } finally { $rd.Close() }
+  } finally { if ($resp) { $resp.Close() } }
+  if (-not $body) { return $null }
+  return ($body | ConvertFrom-Json)
+}
+
 function Send-Json([string]$path, $obj) {
   $json = $obj | ConvertTo-Json -Compress -Depth 5
-  $bytes = [Text.Encoding]::UTF8.GetBytes($json)
-  return Invoke-RestMethod -Method Post -Uri ($Api + $path) -Headers $Headers -ContentType 'application/json; charset=utf-8' -Body $bytes -TimeoutSec 20
+  return Invoke-Api 'POST' $path $json 20
+}
+
+# The HTTP status of a failed call (0 = no answer at all).
+function Get-StatusCode($err) {
+  $ex = $err.Exception
+  while ($ex) {
+    try { if ($ex.Response) { return [int]$ex.Response.StatusCode } } catch {}
+    $ex = $ex.InnerException
+  }
+  return 0
+}
+
+# "I am alive" for the watchdog: written on every round of the loop.
+function Write-Beat {
+  try { [IO.File]::WriteAllText($BeatFile, (Get-Date -Format 'o')) } catch {}
+}
+
+# The watchdog: Windows Task Scheduler runs a tiny script every 2 minutes and
+# at sign-in. If this agent has not written its heartbeat for 4 minutes (hung,
+# crashed, or the PC woke from sleep) it is stopped and started again - no
+# restart of the PC, no reinstall. A .vbs, so no window ever flashes.
+$WatchdogVbs = @'
+' Lumio Print watchdog - restarts the print agent when it stops answering.
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set sh = CreateObject("WScript.Shell")
+dir = fso.GetParentFolderName(WScript.ScriptFullName)
+agent = dir & "\agent.ps1"
+If Not fso.FileExists(agent) Then WScript.Quit
+If Not fso.FileExists(dir & "\config.json") Then WScript.Quit
+beat = dir & "\heartbeat.txt"
+If fso.FileExists(beat) Then
+  If DateDiff("s", fso.GetFile(beat).DateLastModified, Now) < 240 Then WScript.Quit
+End If
+Set wmi = GetObject("winmgmts:\\.\root\cimv2")
+For Each p In wmi.ExecQuery("SELECT * FROM Win32_Process WHERE Name='powershell.exe'")
+  If Not IsNull(p.CommandLine) Then
+    If InStr(1, p.CommandLine, "LumioPrint\agent.ps1", 1) > 0 Then p.Terminate
+  End If
+Next
+WScript.Sleep 1500
+sh.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & agent & """", 0, False
+'@
+
+function Ensure-Watchdog {
+  try {
+    $vbs = Join-Path $Dir 'watchdog.vbs'
+    Set-Content -Path $vbs -Value $WatchdogVbs -Encoding ASCII
+    $svc = New-Object -ComObject Schedule.Service
+    $svc.Connect()
+    $td = $svc.NewTask(0)
+    $td.RegistrationInfo.Description = 'Lumio Print - keeps the print agent running'
+    $td.Settings.Enabled = $true
+    $td.Settings.Hidden = $true
+    $td.Settings.StartWhenAvailable = $true
+    $td.Settings.DisallowStartIfOnBatteries = $false
+    $td.Settings.StopIfGoingOnBatteries = $false
+    $td.Settings.ExecutionTimeLimit = 'PT5M'
+    $td.Settings.MultipleInstances = 2
+    $td.Principal.LogonType = 3
+    $tt = $td.Triggers.Create(1)
+    $tt.StartBoundary = (Get-Date).AddMinutes(1).ToString('yyyy-MM-ddTHH:mm:ss')
+    $tt.Repetition.Interval = 'PT2M'
+    $tl = $td.Triggers.Create(9)
+    $tl.UserId = [Environment]::UserDomainName + '\' + [Environment]::UserName
+    $tl.Delay = 'PT1M'
+    $act = $td.Actions.Create(0)
+    $act.Path = 'wscript.exe'
+    $act.Arguments = '//B //Nologo "' + $vbs + '"'
+    [void]$svc.GetFolder('\').RegisterTaskDefinition('LumioPrintWatchdog', $td, 6, $null, $null, 3)
+    Write-Log 'watchdog ready'
+  } catch { Write-Log ('watchdog: ' + $_) }
 }
 
 function Get-PrinterInfo {
@@ -76,6 +182,11 @@ function Layout-Ticket($g, [single]$W, [single]$H, [bool]$draw) {
   $ink = [System.Drawing.Brushes]::Black
   $gap = [single]($fN.GetHeight($g) * 0.15)
   $y = [single]0
+  # Every font, pen and string format is given back to Windows: they were not,
+  # and after a few hundred tickets Windows refused to draw any more
+  # ("A generic error occurred in GDI+") until the PC was restarted.
+  $sfs = New-Object System.Collections.ArrayList
+  try {
   while ($script:PsIndex -lt $script:PsRows.Count) {
     $row = $script:PsRows[$script:PsIndex]
     $role = [string]$row.r
@@ -122,6 +233,7 @@ function Layout-Ticket($g, [single]$W, [single]$H, [bool]$draw) {
     if ($role -ceq 't') { $font = $fT }
     if ($role -ceq 'h') { $font = $fH }
     $sf = New-Object System.Drawing.StringFormat
+    [void]$sfs.Add($sf)
     $right = ''
     if ($row.c) { $text = $text.Trim(); $sf.Alignment = [System.Drawing.StringAlignment]::Center }
     elseif ($row.a) {
@@ -139,6 +251,7 @@ function Layout-Ticket($g, [single]$W, [single]$H, [bool]$draw) {
       $g.DrawString($text, $font, $ink, (New-Object System.Drawing.RectangleF([single]0, $y, $leftW, $h)), $sf)
       if ($right) {
         $sfr = New-Object System.Drawing.StringFormat
+        [void]$sfs.Add($sfr)
         $sfr.Alignment = [System.Drawing.StringAlignment]::Far
         $g.DrawString($right, $font, $ink, (New-Object System.Drawing.RectangleF([single]0, $y, $W, $h)), $sfr)
       }
@@ -147,6 +260,10 @@ function Layout-Ticket($g, [single]$W, [single]$H, [bool]$draw) {
     $script:PsIndex = $script:PsIndex + 1
   }
   return @{ y = $y; more = $false }
+  } finally {
+    foreach ($o in $sfs) { try { $o.Dispose() } catch {} }
+    foreach ($o in @($fN, $fB, $fT, $fH, $pen)) { try { $o.Dispose() } catch {} }
+  }
 }
 
 # The width the ticket is drawn on, in 1/100 inch.
@@ -276,13 +393,18 @@ function Send-Raw([string]$hostName, [int]$port, [string]$b64) {
 
 function Remove-Autostart {
   try { Remove-Item -Force -ErrorAction SilentlyContinue -Path (Join-Path ([Environment]::GetFolderPath('Startup')) 'Lumio Print.lnk') } catch {}
+  try { $svc = New-Object -ComObject Schedule.Service; $svc.Connect(); $svc.GetFolder('\').DeleteTask('LumioPrintWatchdog', 0) } catch {}
+  try { Remove-Item -Force -ErrorAction SilentlyContinue -Path $BeatFile } catch {}
 }
 
 function Update-Self {
   try {
-    $wc = New-Object Net.WebClient
-    $wc.Encoding = [Text.Encoding]::UTF8
-    $new = $wc.DownloadString($Api + '/print-agent/agent.ps1')
+    $req = [System.Net.HttpWebRequest]::Create($Api + '/print-agent/agent.ps1')
+    $req.Timeout = 30000
+    $req.ReadWriteTimeout = 30000
+    $req.KeepAlive = $false
+    $resp = $req.GetResponse()
+    try { $rd = New-Object System.IO.StreamReader($resp.GetResponseStream(), [Text.Encoding]::UTF8); $new = $rd.ReadToEnd(); $rd.Close() } finally { $resp.Close() }
     if ($new -notmatch 'Lumio Print agent') { return }
     Set-Content -Path $PSCommandPath -Value $new -Encoding UTF8
     Write-Log 'updated, restarting'
@@ -293,13 +415,19 @@ function Update-Self {
 }
 
 Write-Log ('start ' + $Version)
+Write-Beat
+Ensure-Watchdog
 $lastHello = [DateTime]::MinValue
+$gone = 0
 while ($true) {
+  Write-Beat
   try {
     if (((Get-Date) - $lastHello).TotalMinutes -ge 2) { [void](Send-Json '/print-agent/hello' (Get-PrinterInfo)); $lastHello = Get-Date }
     $asked = Get-Date
     # Long poll: the server answers the moment a ticket arrives (or after 25 s with nothing).
-    $r = Invoke-RestMethod -Uri ($Api + '/print-agent/jobs?wait=25') -Headers $Headers -TimeoutSec 45
+    $r = Invoke-Api 'GET' '/print-agent/jobs?wait=25' '' 45
+    $gone = 0
+    if (-not $r) { Start-Sleep -Seconds 2; continue }
     $jobs = @($r.jobs)
     foreach ($j in $jobs) {
       if (-not $j) { continue }
@@ -322,15 +450,18 @@ while ($true) {
         }
       } catch { $ok = $false; $err = [string]$_; Write-Log ('job ' + $j.id + ': ' + $err) }
       try { [void](Send-Json ('/print-agent/jobs/' + $j.id + '/result') @{ ok = $ok; error = $err }) } catch {}
+      Write-Beat
     }
     if ($r.version -and ($r.version -ne $Version)) { Update-Self }
     # An old server answers at once: do not spin.
     if ($jobs.Count -eq 0 -and ((Get-Date) - $asked).TotalSeconds -lt 2) { Start-Sleep -Seconds 2 }
   } catch {
-    $code = 0
-    try { $code = [int]$_.Exception.Response.StatusCode } catch {}
-    if ($code -eq 401) { Write-Log 'this computer was removed in Lumio; stopping'; Remove-Autostart; exit }
-    Write-Log ('poll: ' + $_)
+    $code = Get-StatusCode $_
+    # Removed in Lumio (or reconnected with a new code): stop for good - but
+    # only after three refusals in a row, never on one odd answer.
+    if ($code -eq 401) { $gone++ } else { $gone = 0 }
+    if ($gone -ge 3) { Write-Log 'this computer was removed in Lumio; stopping'; Remove-Autostart; exit }
+    Write-Log ('poll: ' + $code + ' ' + $_)
     Start-Sleep -Seconds 5
   }
 }

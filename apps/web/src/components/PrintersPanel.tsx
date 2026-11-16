@@ -107,7 +107,7 @@ export function PrintersPanel() {
   );
 }
 
-function InstallBox({ inst, vi, busy, onNew, onClose }: { inst: Installer; vi: boolean; busy: boolean; onNew: () => void; onClose: () => void }) {
+function InstallBox({ inst, vi, busy, onNew, onClose, reconnect }: { inst: Installer; vi: boolean; busy: boolean; onNew: () => void; onClose: () => void; /** "Kết nối lại" an existing computer (its name). */ reconnect?: string }) {
   const L = (v: string, e: string) => (vi ? v : e);
   const [copied, setCopied] = useState('');
   const until = new Date(inst.expiresAt).toLocaleTimeString(vi ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' });
@@ -127,7 +127,8 @@ function InstallBox({ inst, vi, busy, onNew, onClose }: { inst: Installer; vi: b
   }
   return (
     <div style={{ border: '2px solid #4f46e5', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <b style={{ color: C.strong }}>{L('Cài trên máy tính có cắm máy in', 'On the computer with the printer')}</b>
+      <b style={{ color: C.strong }}>{reconnect ? L(`Kết nối lại máy tính “${reconnect}”`, `Reconnect “${reconnect}”`) : L('Cài trên máy tính có cắm máy in', 'On the computer with the printer')}</b>
+      {reconnect && <span style={{ fontSize: 13, color: C.muted }}>{L('Làm trên chính máy tính đó. Giữ nguyên tên máy và máy in đã chọn cho từng loại phiếu — không cần gỡ ra cài lại.', 'Do this on that same computer. Its name and printer choices are kept — no need to remove and add it again.')}</span>}
       <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14 }}>
         <li>{L('Nhấn phím', 'Press')} <kbd style={{ padding: '1px 6px', borderRadius: 6, border: `1px solid ${C.border}` }}>⊞ Windows</kbd> + <kbd style={{ padding: '1px 6px', borderRadius: 6, border: `1px solid ${C.border}` }}>R</kbd></li>
         <li>
@@ -158,7 +159,19 @@ function DeviceCard({ d, stations, vi, token, onChanged }: { d: Device; stations
   const [dirty, setDirty] = useState(false);
   const [sure, setSure] = useState(false);
   const [note, setNote] = useState('');
+  const [rec, setRec] = useState<Installer | null>(null);
+  const [recBusy, setRecBusy] = useState(false);
   useEffect(() => { if (!dirty) setRoutes(d.routes); }, [d.routes, dirty]);
+  // Back online after "Kết nối lại": the box has done its job.
+  useEffect(() => {
+    if (rec && d.online) { setRec(null); setNote(L('Đã kết nối lại. Bấm “In thử” để chắc chắn.', 'Reconnected. Press “Test” to be sure.')); }
+  }, [d.online]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function reconnect() {
+    setRecBusy(true); setNote('');
+    try { setRec(await apiFetch<Installer>(`/print-devices/${d.id}/reconnect`, { method: 'POST', token })); }
+    catch (e) { setNote(e instanceof Error ? e.message : String(e)); }
+    finally { setRecBusy(false); }
+  }
 
   const keys = [...stations.map((s) => s.key), '*'];
   const label = (k: string) => (k === 'COUNTER' ? L('Hoá đơn & phiếu tạm tính', 'Bills & guest checks')
@@ -208,7 +221,13 @@ function DeviceCard({ d, stations, vi, token, onChanged }: { d: Device; stations
         </span>
         {d.online && !d.upToDate && <span style={{ fontSize: 12, color: C.muted }}>{L('đang tự cập nhật…', 'updating itself…')}</span>}
       </div>
-      {!d.online && <span style={{ fontSize: 12.5, color: C.muted }}>{L('Kiểm tra máy tính đã bật và có mạng. Lumio Print tự chạy khi mở máy.', 'Check the computer is on and online. Lumio Print starts with Windows.')}</span>}
+      {!d.online && <span style={{ fontSize: 12.5, color: C.muted }}>{L('Kiểm tra máy tính đã bật và có mạng. Lumio Print tự chạy lại trong vài phút; nếu vẫn chưa được, bấm “Kết nối lại”.', 'Check the computer is on and online. Lumio Print restarts itself within minutes; if it does not, press “Reconnect”.')}</span>}
+      {!rec && (
+        <button type="button" disabled={recBusy} onClick={() => void reconnect()} style={{ ...(d.online ? btn : primary), alignSelf: 'flex-start', minHeight: 40 }}>
+          🔌 {L('Kết nối lại', 'Reconnect')}
+        </button>
+      )}
+      {rec && <InstallBox inst={rec} vi={vi} busy={recBusy} reconnect={d.name || 'PC'} onNew={() => void reconnect()} onClose={() => setRec(null)} />}
       <span style={{ fontSize: 12.5, color: d.printers.length ? C.muted : 'var(--ink-warn)' }}>
         {d.printers.length ? `${L('Máy in tìm thấy', 'Printers found')}: ${d.printers.join(', ')}` : L('Chưa thấy máy in nào trên máy tính này. Cài driver máy in (hoặc dùng máy in mạng bên dưới).', 'No printer on this computer yet. Install the printer driver (or use a network printer below).')}
       </span>

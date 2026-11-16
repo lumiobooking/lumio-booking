@@ -425,3 +425,42 @@ describe('one-touch printing — a bill that looks like the designer', () => {
     expect(Date.now() - t0).toBeGreaterThanOrEqual(900);
   });
 });
+
+describe('one-touch printing — "Kết nối lại" and the watchdog', () => {
+  it('reconnects the SAME computer with a new key and keeps its name and printer routes', async () => {
+    const w = world();
+    const a = await w.addComputer('tA', 'QUAY');
+    a.device.routes = { COUNTER: { printer: 'XP-80C', drawer: true } };
+    const rec = await w.svc.reconnect(w.owner('tA'), a.id, w.headers);
+    expect(rec.runLine).toContain(`irm '${rec.url}'|iex`);
+    expect(await w.svc.install(rec.code, w.headers)).toContain(`$Code = '${rec.code}'`);
+    const { token } = await w.svc.pair({ code: rec.code, name: 'QUAY', printers: ['XP-80C'], defaultPrinter: 'XP-80C' });
+    expect(token).not.toBe(a.token);
+    expect(w.prisma.printDevice.rows.filter((d) => d.tenantId === 'tA' && !d.revokedAt)).toHaveLength(1);
+    expect(a.device.routes).toEqual({ COUNTER: { printer: 'XP-80C', drawer: true } });
+    expect(a.device.name).toBe('QUAY');
+    // The new key works, the old one is refused, the code works once.
+    expect(JSON.parse(await w.svc.jobs({ 'x-lumio-device': token })).jobs).toEqual([]);
+    await expect(w.svc.jobs(a.h)).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(w.svc.pair({ code: rec.code })).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('another shop cannot reconnect a computer that is not theirs', async () => {
+    const w = world();
+    const a = await w.addComputer('tA', 'QUAY');
+    await expect(w.svc.reconnect(w.owner('tB'), a.id, w.headers)).rejects.toBeInstanceOf(NotFoundException);
+    expect(a.device.pairHash ?? null).toBeNull();
+  });
+
+  it('the agent never waits forever, gives back drawing objects, and keeps itself running', () => {
+    const a = agentScript();
+    expect(a).not.toMatch(/Invoke-RestMethod -/);
+    expect(a).toContain('ReadWriteTimeout');
+    expect(a).toContain('KeepAlive = $false');
+    expect(a).toContain('AbandonedMutexException');
+    expect(a).toContain('$fN, $fB, $fT, $fH, $pen');
+    expect(a).toContain("RegisterTaskDefinition('LumioPrintWatchdog'");
+    expect(a).toContain('DeleteTask(\'LumioPrintWatchdog\'');
+    expect(a).toContain('if ($gone -ge 3)');
+  });
+});

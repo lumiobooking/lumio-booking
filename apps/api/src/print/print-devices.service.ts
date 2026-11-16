@@ -141,6 +141,24 @@ export class PrintDevicesService implements OnModuleInit {
     return { id: row.id, code, expiresAt, url, runLine: runLine(url) };
   }
 
+  /**
+   * "Kết nối lại": a fresh one-time setup line for a computer that is ALREADY
+   * set up and has stopped answering. Running it on that PC restarts Lumio
+   * Print with a new key and keeps the computer's name and which printer
+   * prints what — no "remove and add again", no settings to redo.
+   */
+  async reconnect(user: AuthenticatedUser, id: string, headers: Record<string, unknown>) {
+    const tenantId = this.tid(user);
+    const d = await this.own(tenantId, id);
+    if (!d.pairedAt) throw new NotFoundException('DEVICE_NOT_FOUND');
+    const code = makeCode();
+    const expiresAt = new Date(Date.now() + CODE_MINUTES * 60_000);
+    await this.prisma.printDevice.updateMany({ where: { id, tenantId, revokedAt: null }, data: { pairHash: sha(code), pairExpiresAt: expiresAt } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'print.reconnect_created', resourceType: 'print_device', resourceId: id });
+    const url = `${publicApiBase(headers)}/print-agent/i/${code}`;
+    return { id, code, expiresAt, url, runLine: runLine(url) };
+  }
+
   private async own(tenantId: string, id: string) {
     const d = await this.prisma.printDevice.findFirst({ where: { id, tenantId, revokedAt: null } }) as DeviceRow | null;
     if (!d) throw new NotFoundException('DEVICE_NOT_FOUND');
@@ -219,7 +237,8 @@ export class PrintDevicesService implements OnModuleInit {
   async install(code: string, headers: Record<string, unknown>): Promise<string> {
     const c = cleanCode(code);
     if (!c) return goneScript();
-    const d = await this.prisma.printDevice.findFirst({ where: { pairHash: sha(c), pairedAt: null, revokedAt: null } }) as DeviceRow | null;
+    // A new computer's code, or a "Kết nối lại" code of one already set up.
+    const d = await this.prisma.printDevice.findFirst({ where: { pairHash: sha(c), revokedAt: null } }) as DeviceRow | null;
     if (!d || !d.pairExpiresAt || d.pairExpiresAt.getTime() < Date.now()) return goneScript();
     return installScript(publicApiBase(headers), c);
   }
@@ -232,8 +251,21 @@ export class PrintDevicesService implements OnModuleInit {
   async pair(dto: { code?: unknown; name?: unknown; printers?: unknown; defaultPrinter?: unknown }) {
     const c = cleanCode(dto.code);
     if (!c) throw new NotFoundException('CODE_INVALID');
-    const d = await this.prisma.printDevice.findFirst({ where: { pairHash: sha(c), pairedAt: null, revokedAt: null } }) as DeviceRow | null;
+    const d = await this.prisma.printDevice.findFirst({ where: { pairHash: sha(c), revokedAt: null } }) as DeviceRow | null;
     if (!d || !d.pairExpiresAt || d.pairExpiresAt.getTime() < Date.now()) throw new NotFoundException('CODE_INVALID');
+    // "Kết nối lại" on a computer already set up: a new key, everything else kept.
+    if (d.pairedAt) {
+      const fresh = makeToken();
+      const at = new Date();
+      const r = await this.prisma.printDevice.updateMany({
+        where: { id: d.id, tenantId: d.tenantId, revokedAt: null, pairHash: sha(c) },
+        data: { tokenHash: sha(fresh), pairHash: null, pairExpiresAt: null, lastSeenAt: at, printers: cleanPrinters(dto.printers), defaultPrinter: cleanName(dto.defaultPrinter) || null } as never,
+      });
+      if (r.count === 0) throw new NotFoundException('CODE_INVALID');
+      for (const [k, v] of this.known) if (v.device.id === d.id) this.known.delete(k);
+      await this.audit.log({ tenantId: d.tenantId, action: 'print.device_reconnected', resourceType: 'print_device', resourceId: d.id, metadata: { name: cleanName(dto.name) } });
+      return { token: fresh };
+    }
     // The first computer prints everything on its default printer until told otherwise.
     const others = await this.prisma.printDevice.count({ where: { tenantId: d.tenantId, revokedAt: null, pairedAt: { not: null } } });
     const token = makeToken();

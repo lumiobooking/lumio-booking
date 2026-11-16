@@ -45,6 +45,10 @@ export class PrintDevicesController {
   @Post('installer')
   installer(@CurrentUser() user: AuthenticatedUser, @Headers() headers: Record<string, unknown>) { return this.svc.installer(user, headers); }
 
+  @RateLimit(10, 60_000)
+  @Post(':id/reconnect')
+  reconnect(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Headers() headers: Record<string, unknown>) { return this.svc.reconnect(user, id, headers); }
+
   @Patch(':id')
   update(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdatePrintDeviceDto) { return this.svc.update(user, id, dto); }
 

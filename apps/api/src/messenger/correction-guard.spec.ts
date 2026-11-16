@@ -8,6 +8,12 @@ describe('a correction note is never read by the customer', () => {
     expect(leaksCorrection('Dạ em đã viết lại câu trả lời theo ghi chú hệ thống ạ.')).toBe(true);
   });
 
+  it('catches the variant the fourth production run found', () => {
+    expect(leaksCorrection('Sorry, the customer writes in English, so I\'ll reply in English. Here is the corrected reply:\n\nI\'m sorry, but I don\'t have information about parking.')).toBe(true);
+    expect(leaksCorrection('Got it — but this customer is writing in English, so I need to reply in English.')).toBe(true);
+    expect(leaksCorrection('Dạ khách đang nhắn bằng tiếng Anh nên em trả lời bằng tiếng Anh ạ.')).toBe(true);
+  });
+
   it('lets ordinary replies through, in both languages', () => {
     for (const ok of [
       'Dạ em chào anh/chị ạ, em giúp gì được ạ?',
@@ -16,6 +22,9 @@ describe('a correction note is never read by the customer', () => {
       'Our booking system sends a reminder message the day before.',
       'Dạ tiệm có quy định đặt cọc 10$ cho lịch nhóm ạ.',
       'I can reply to your message here any time.',
+      'With Lumio the customer books online in under a minute, and your staff get a reminder.',
+      'Dạ khách của tiệm đặt lịch online được 24/7 ạ.',
+      'I will reply here as soon as the team confirms.',
       '',
     ]) expect(leaksCorrection(ok)).toBe(false);
   });

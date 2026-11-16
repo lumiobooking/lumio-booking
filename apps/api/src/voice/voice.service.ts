@@ -1,4 +1,4 @@
-import { VOICE_REVIEW_RULE } from '../messenger/correction-guard';
+import { VOICE_REVIEW_RULE, leaksCorrection } from '../messenger/correction-guard';
 import { docsForVoice } from '../ai-brain/knowledge-sources';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { chosenIndustry, personaFor } from '../common/business-persona';
@@ -1761,6 +1761,13 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes:\
           this.logger.warn(`voice line replaced (owner instruction): ${text.slice(0, 120)}`);
         }
         if (chk) this.instructions.noteUse(tenantId, chk.applied, chk.broken);
+      }
+      // Never read a review note aloud (messenger/correction-guard): a line that talks
+      // about a check or a correction instead of to the caller is replaced by "how else can I help".
+      if (said && leaksCorrection(said)) {
+        this.logger.warn(`voice line replaced (it talked about a check, not to the caller): ${said.slice(0, 120)}`);
+        acc.failure = acc.failure ?? `meta reply: ${said.slice(0, 120)}`;
+        said = '';
       }
       return { reply: said || agentFallbackLines(acc.langSwitch || lang).keepGoing, done: acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch, toolCalls: acc.toolCalls, failure: acc.failure, timing };
     }

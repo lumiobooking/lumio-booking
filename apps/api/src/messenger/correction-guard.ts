@@ -38,6 +38,12 @@ const META = [
   /\bsystem (prompt|message|note|instruction)s?\b/i,
   /\b(pronoun|language) rule\b/i,
   /^\s*SYSTEM\s*[:—-]/m,
+  // Third run on production (16/11/2026): "Sorry, the customer writes in English, so I'll reply in English. Here is the corrected reply:"
+  /\b(this|the) customer (is writing|writes|wrote|is speaking|speaks) in\b/i,
+  /\b(here is|here's) (the|my) (corrected|revised|rewritten|new|updated) (reply|message|version|response)\b/i,
+  /\b(corrected|revised|rewritten) (reply|response)\b/i,
+  /\bI('ll| will| need to| should| must) (reply|respond|answer) in (english|vietnamese)\b/i,
+  /đây là (câu trả lời|tin nhắn) (đã sửa|đã chỉnh|mới)|khách (đang )?(nhắn|viết) bằng tiếng (anh|việt),? (nên|vì vậy) em/i,
   /tin nhắn hệ thống|chỉ dẫn hệ thống|ghi chú hệ thống|bản nháp (trước|bị chặn)|câu trả lời trước (của em )?(đã )?bị chặn|em (đã )?viết lại câu trả lời/i,
 ];
 

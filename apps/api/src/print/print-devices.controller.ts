@@ -31,6 +31,7 @@ export class HelloDto {
 export class JobResultDto {
   @IsBoolean() ok!: boolean;
   @IsOptional() @IsString() @MaxLength(2000) error?: string;
+  @IsOptional() @IsString() @MaxLength(2000) note?: string;
 }
 
 /** The owner's printers screen (Settings › Printed receipt › Printers). Owner only. */
@@ -99,5 +100,5 @@ export class PrintAgentController {
   @RateLimit(240, 60_000)
   @Post('jobs/:id/result')
   @HttpCode(200)
-  result(@Headers() headers: Record<string, unknown>, @Param('id') id: string, @Body() dto: JobResultDto) { return this.svc.result(headers, id, dto.ok, dto.error); }
+  result(@Headers() headers: Record<string, unknown>, @Param('id') id: string, @Body() dto: JobResultDto) { return this.svc.result(headers, id, dto.ok, dto.error, dto.note); }
 }

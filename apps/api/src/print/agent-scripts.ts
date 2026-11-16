@@ -314,8 +314,9 @@ function Invoke-GdiPrint($rows, [string]$printer, [int]$maxWidth, [string]$fontN
     # Some drivers (Xprinter XP-80C, 16/11) report a printable area one line
     # tall on a custom paper: every line then became its own page and the
     # cutter cut after each one. The page itself is the real limit.
-    $H = [single][Math]::Max([double]$area.Height, [double]$e.PageBounds.Height)
+    $H = [single]$area.Height
     if ($H -lt 50) { $H = [single]$e.PageBounds.Height }
+    $script:PsPage = ('gdi page ' + [int]$W + 'x' + [int]$H)
     if ($script:PsIndex -eq 0) { Write-Log ('page ' + $W + 'x' + $H + ' area ' + $area.Width + 'x' + $area.Height + ' bounds ' + $e.PageBounds.Width + 'x' + $e.PageBounds.Height) }
     $r = Layout-Ticket $g (Ticket-Width $W) $H $true
     $e.HasMorePages = [bool]$r.more
@@ -379,35 +380,38 @@ using System;
 using System.IO;
 using System.Drawing;
 public static class LumioRaster {
+  static bool Dark(Bitmap bmp, int x, int y, int h) {
+    if (x >= bmp.Width || y >= h) return false;
+    Color c = bmp.GetPixel(x, y);
+    return c.A > 0 && (c.R + c.G + c.B) / 3 < 140;
+  }
+  // ESC * 33: 24-dot stripes, one line at a time - every cheap receipt printer
+  // understands it (a big GS v 0 block was dropped after its first part).
   public static byte[] Build(Bitmap bmp, int height) {
     int w = bmp.Width;
-    int bw = (w + 7) / 8;
     MemoryStream ms = new MemoryStream();
-    ms.Write(new byte[] { 0x1B, 0x40 }, 0, 2);
-    for (int y0 = 0; y0 < height; y0 += 128) {
-      int h = Math.Min(128, height - y0);
-      ms.Write(new byte[] { 0x1D, 0x76, 0x30, 0x00, (byte)(bw & 0xFF), (byte)(bw >> 8), (byte)(h & 0xFF), (byte)(h >> 8) }, 0, 8);
-      for (int y = y0; y < y0 + h; y++) {
-        for (int bx = 0; bx < bw; bx++) {
+    ms.Write(new byte[] { 0x1B, 0x40, 0x1B, 0x33, 24 }, 0, 5);
+    for (int y0 = 0; y0 < height; y0 += 24) {
+      ms.Write(new byte[] { 0x1B, 0x2A, 33, (byte)(w & 0xFF), (byte)(w >> 8) }, 0, 5);
+      for (int x = 0; x < w; x++) {
+        for (int k = 0; k < 3; k++) {
           int b = 0;
-          for (int k = 0; k < 8; k++) {
-            int x = bx * 8 + k;
-            if (x < w) {
-              Color c = bmp.GetPixel(x, y);
-              if (c.A > 0 && (c.R + c.G + c.B) / 3 < 140) b |= (0x80 >> k);
-            }
+          for (int bit = 0; bit < 8; bit++) {
+            if (Dark(bmp, x, y0 + k * 8 + bit, height)) b |= (0x80 >> bit);
           }
           ms.WriteByte((byte)b);
         }
       }
+      ms.WriteByte(0x0A);
     }
-    ms.Write(new byte[] { 0x1B, 0x64, 0x04, 0x1D, 0x56, 0x42, 0x00 }, 0, 7);
+    ms.Write(new byte[] { 0x1B, 0x32, 0x1B, 0x64, 0x04, 0x1D, 0x56, 0x42, 0x00 }, 0, 9);
     return ms.ToArray();
   }
 }
 '@
 $script:RasterReady = $false
-try { Add-Type -TypeDefinition $RasterSrc -Language CSharp -ReferencedAssemblies System.Drawing; $script:RasterReady = $true } catch { Write-Log ('raster printing unavailable: ' + $_) }
+$script:RasterWhy = ''
+try { Add-Type -TypeDefinition $RasterSrc -Language CSharp -ReferencedAssemblies ([System.Drawing.Bitmap].Assembly.Location); $script:RasterReady = $true } catch { $script:RasterWhy = [string]$_; Write-Log ('raster printing unavailable: ' + $_) }
 
 # A receipt printer by its name: these speak ESC/POS.
 function Is-ThermalPrinter([string]$name) {
@@ -452,6 +456,7 @@ function Invoke-RasterPrint($rows, [string]$printer, [int]$maxWidth, [string]$fo
     $bytes = [LumioRaster]::Build($bmp, $hgt)
   } finally { $bmp.Dispose() }
   [LumioRaw]::Send($name, $bytes)
+  $script:PsPage = ('raster ' + $dots + 'x' + $hgt + ' ' + $bytes.Length + 'B')
 }
 
 function Send-Kick([string]$printer) {
@@ -521,6 +526,7 @@ while ($true) {
       if (-not $j) { continue }
       $ok = $true
       $err = ''
+      $note = ''
       try {
         if ($j.drawerOnly) {
           if ($j.raw) { Send-Raw ([string]$j.host) ([int]$j.port) ([string]$j.raw) } else { Send-Kick ([string]$j.printer) }
@@ -532,9 +538,12 @@ while ($true) {
             if ($j.raw) { Send-Raw ([string]$j.host) ([int]$j.port) ([string]$j.raw) }
             else {
               $done = $false
-              if ((Is-ThermalPrinter ([string]$j.printer)) -and $script:RasterReady) {
-                try { Invoke-RasterPrint $j.rows ([string]$j.printer) ([int]$j.maxWidth) ([string]$j.font) ([double]$j.size); $done = $true }
-                catch { Write-Log ('raster: ' + $_) }
+              $script:PsPage = ''
+              if (Is-ThermalPrinter ([string]$j.printer)) {
+                if ($script:RasterReady) {
+                  try { Invoke-RasterPrint $j.rows ([string]$j.printer) ([int]$j.maxWidth) ([string]$j.font) ([double]$j.size); $done = $true }
+                  catch { $note = 'raster failed: ' + [string]$_; Write-Log $note }
+                } else { $note = 'raster unavailable: ' + $script:RasterWhy }
               }
               if (-not $done) {
                 try { Invoke-GdiPrint $j.rows ([string]$j.printer) ([int]$j.maxWidth) ([string]$j.font) ([double]$j.size) }
@@ -544,7 +553,10 @@ while ($true) {
           }
         }
       } catch { $ok = $false; $err = [string]$_; Write-Log ('job ' + $j.id + ': ' + $err) }
-      try { [void](Send-Json ('/print-agent/jobs/' + $j.id + '/result') @{ ok = $ok; error = $err }) } catch {}
+      # What really happened (raster or the Windows page, and why), so a problem can be read from Lumio.
+      $info = (@($script:PsPage, $note) | Where-Object { $_ }) -join ' | '
+      if ($info.Length -gt 380) { $info = $info.Substring(0, 380) }
+      try { [void](Send-Json ('/print-agent/jobs/' + $j.id + '/result') @{ ok = $ok; error = $err; note = $info }) } catch {}
       Write-Beat
     }
     if ($r.version -and ($r.version -ne $Version)) { Update-Self }

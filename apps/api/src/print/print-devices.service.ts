@@ -91,11 +91,13 @@ export class PrintDevicesService implements OnModuleInit {
   async list(user: AuthenticatedUser) {
     const tenantId = this.tid(user);
     const now = Date.now();
-    const [rows, setting, pending, tenant] = await Promise.all([
+    const [rows, setting, pending, tenant, recent] = await Promise.all([
       this.prisma.printDevice.findMany({ where: { tenantId, revokedAt: null }, orderBy: { createdAt: 'asc' } }) as Promise<DeviceRow[]>,
       this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: SETTINGS_KEY } } }).catch(() => null),
       this.prisma.printJob.count({ where: { tenantId, status: PrintJobStatus.PENDING, createdAt: { gte: new Date(now - FRESH_MS) } } }),
       this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } }).catch(() => null),
+      // The last tickets and how they printed (this business only).
+      Promise.resolve().then(() => this.prisma.printJob.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 8, select: { title: true, status: true, error: true, createdAt: true, printedAt: true } })).catch(() => []),
     ]);
     const stations = [{ key: 'COUNTER', name: 'COUNTER' }];
     // A restaurant's prep stations (Kitchen, Bar… — the defaults until the owner changes them): each can have its own printer.
@@ -105,6 +107,7 @@ export class PrintDevicesService implements OnModuleInit {
     return {
       version: AGENT_VERSION,
       pendingJobs: pending,
+      recent,
       stations,
       devices: rows
         .filter((d) => d.pairedAt || (d.pairExpiresAt && d.pairExpiresAt.getTime() > now))
@@ -370,13 +373,15 @@ export class PrintDevicesService implements OnModuleInit {
   }
 
   /** A computer reports a ticket it took: printed, or why not. Only its own tickets. */
-  async result(headers: Record<string, unknown>, jobId: string, ok: boolean, error?: unknown) {
+  async result(headers: Record<string, unknown>, jobId: string, ok: boolean, error?: unknown, note?: unknown) {
     const d = await this.device(headers);
+    // How it was printed (raster / the Windows page and its size, a raster failure): kept on a printed job for support.
+    const how = String(note ?? '').replace(/\s+/g, ' ').trim().slice(0, 400);
     const r = await this.prisma.printJob.updateMany({
       where: { id: String(jobId), tenantId: d.tenantId, deviceId: d.id, status: PrintJobStatus.PENDING } as never,
       data: ok
-        ? { status: PrintJobStatus.PRINTED, printedAt: new Date(), error: null }
-        : { status: PrintJobStatus.FAILED, error: String(error ?? 'Print failed').slice(0, 400) },
+        ? { status: PrintJobStatus.PRINTED, printedAt: new Date(), error: how ? `ok · ${how}` : null }
+        : { status: PrintJobStatus.FAILED, error: [String(error ?? 'Print failed'), how].filter(Boolean).join(' | ').slice(0, 400) },
     });
     if (r.count === 0) throw new NotFoundException('JOB_NOT_FOUND');
     return { ok: true };

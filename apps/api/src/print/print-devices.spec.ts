@@ -464,3 +464,24 @@ describe('one-touch printing — "Kết nối lại" and the watchdog', () => {
     expect(a).toContain('if ($gone -ge 3)');
   });
 });
+
+describe('one-touch printing — how a ticket printed is kept for support', () => {
+  it('keeps the note on a printed ticket and lists recent tickets of this shop only', async () => {
+    const w = world();
+    const a = await w.addComputer('tA', 'QUAY');
+    await w.job('tA', { title: 'Hoá đơn #47' });
+    await w.job('tB', { title: 'B only' });
+    const [j] = await w.take(a.h);
+    await w.svc.result(a.h, j.id, true, '', 'raster 576x900 41000B');
+    expect(w.prisma.printJob.rows.find((x) => x.id === j.id)).toMatchObject({ status: 'PRINTED', error: 'ok · raster 576x900 41000B' });
+    const l = await w.svc.list(w.owner('tA')) as { recent: { title: string }[] };
+    expect(l.recent.map((x) => x.title)).toEqual(['Hoá đơn #47']);
+  });
+
+  it('the agent prints receipt printers as one picture in 24-dot stripes, and reports how', () => {
+    const a = agentScript();
+    expect(a).toContain('0x1B, 0x2A, 33');
+    expect(a).toContain('Is-ThermalPrinter');
+    expect(a).toContain('note = $info');
+  });
+});

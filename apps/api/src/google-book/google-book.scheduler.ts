@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { GoogleBookService } from './google-book.service';
+import { dueToday } from './feed-schedule';
 
 /**
  * Google asks for a full refresh of the feeds every day. This runs the build
@@ -19,17 +20,25 @@ export class GoogleBookScheduler implements OnModuleInit, OnModuleDestroy {
     const enabled = process.env.RWG_FEED_AUTORUN ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false');
     if (enabled !== 'true') { this.logger.log('Daily Google feed off (RWG_FEED_AUTORUN=true to enable).'); return; }
     const hour = Number(process.env.RWG_FEED_HOUR_UTC ?? 3);
+    let running = false;
     const tick = async () => {
+      if (running) return;
       const now = new Date();
-      if (now.getUTCHours() !== hour || now.getUTCMinutes() >= 15) return;
-      const last = this.svc.getLastRun();
-      if (last && last.at.slice(0, 10) === now.toISOString().slice(0, 10)) return; // already ran today
-      const r = await this.svc.runDaily(now);
-      this.logger.log(`Daily feed: ${r.ready} ready, ${r.held} held, uploaded=${r.uploaded}${r.error ? ` (${r.error})` : ''}`);
+      const last = await this.svc.lastRunStored();
+      if (!dueToday(now, hour, last)) return;
+      running = true;
+      try {
+        const r = await this.svc.runDaily(now);
+        this.logger.log(`Daily feed: ${r.ready} ready, ${r.held} held, uploaded=${r.uploaded}${r.error ? ` (${r.error})` : ''}`);
+      } finally { running = false; }
     };
-    this.timer = setInterval(() => { void tick().catch((e) => this.logger.error(String(e))); }, 10 * 60 * 1000);
+    // Every five minutes, and once a minute after start: a deploy at 03:08 no
+    // longer skips the day (./feed-schedule).
+    this.timer = setInterval(() => { void tick().catch((e) => this.logger.error(String(e))); }, 5 * 60 * 1000);
     this.timer.unref?.();
-    this.logger.log(`Daily Google feed on (around ${hour}:00 UTC).`);
+    const first = setTimeout(() => { void tick().catch((e) => this.logger.error(String(e))); }, 60 * 1000);
+    first.unref?.();
+    this.logger.log(`Daily Google feed on (from ${hour}:00 UTC, once a day, catches up after restarts).`);
   }
 
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }

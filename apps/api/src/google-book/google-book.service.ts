@@ -34,6 +34,9 @@ export const GBP_PROFILE_KEY = 'gbp_profile';
 export interface GoogleBookSetting { enabled: boolean }
 const DEFAULT: GoogleBookSetting = { enabled: true };
 
+/** platform_config key of the last daily feed run. */
+const LAST_RUN_KEY = 'rwg_feed_last_run';
+
 export interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string; hint?: string; sandbox?: boolean; user?: string | null; withdrawn?: boolean }
 export interface SftpTestResult { ok: boolean; at: string; host: string | null; user: string | null; port: number; dir: string; sandbox: boolean; files?: number; ms?: number; error?: string; hint?: string; missing?: string[] }
 
@@ -311,13 +314,13 @@ export class GoogleBookService {
     try {
       const { files, ready, held } = await this.buildFeeds(now);
       report.tenants = ready.length + held.length; report.ready = ready.length; report.held = held.length; report.files = files.map((f) => f.name);
-      if (!ready.length && !opts.withdraw) { report.error = 'no salon ready'; this.lastRun = report; return report; }
+      if (!ready.length && !opts.withdraw) { report.error = 'no salon ready'; await this.keepRun(report); return report; }
       if (!ready.length) report.withdrawn = true;
       const env = readSftpEnv(process.env);
       report.sandbox = rwgSandbox(process.env); report.user = env.user;
       if (!env.config) {
         report.error = env.keyProblem ?? `SFTP chưa cấu hình (thiếu ${env.missing.join(', ')})`;
-        this.lastRun = report; return report;
+        await this.keepRun(report); return report;
       }
       await this.sftpUpload(env.config, files);
       report.uploaded = true;
@@ -327,11 +330,26 @@ export class GoogleBookService {
       report.hint = sftpErrorHint(report.error);
       this.logger.error(`Feed run failed: ${report.error}`);
     }
-    this.lastRun = report;
+    await this.keepRun(report);
     return report;
   }
 
   getLastRun(): RunReport | null { return this.lastRun; }
+
+  /** The last daily run, kept in the database so a restart neither forgets it nor uploads twice (./feed-schedule). */
+  private async keepRun(report: RunReport): Promise<void> {
+    this.lastRun = report;
+    await Promise.resolve().then(() => this.prisma.platformConfig.upsert({ where: { key: LAST_RUN_KEY }, create: { key: LAST_RUN_KEY, value: JSON.stringify(report) }, update: { value: JSON.stringify(report) } })).catch(() => undefined);
+  }
+
+  /** The last run: this process's, else the stored one. */
+  async lastRunStored(): Promise<RunReport | null> {
+    if (this.lastRun) return this.lastRun;
+    const row = await Promise.resolve().then(() => this.prisma.platformConfig.findUnique({ where: { key: LAST_RUN_KEY } })).catch(() => null);
+    if (!row?.value) return null;
+    try { this.lastRun = JSON.parse(row.value) as RunReport; } catch { return null; }
+    return this.lastRun;
+  }
 
   /** Loaded on demand so an environment without the library still boots. */
   private async sftpClient(conn: SftpConfig): Promise<SftpLike> {

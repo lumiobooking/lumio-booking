@@ -23,7 +23,7 @@ export class GoogleBookController {
     const rows = await this.svc.readiness();
     const sftp = readSftpEnv(process.env);
     return {
-      rows, lastRun: this.svc.getLastRun(), lastLinkRun: this.svc.getLastLinkRun(),
+      rows, lastRun: await this.svc.lastRunStored(), lastLinkRun: this.svc.getLastLinkRun(),
       sftpConfigured: Boolean(sftp.config),
       // Never the key — only whether it is set, who logs in, and what is wrong.
       sftp: { host: sftp.host, user: sftp.user, port: sftp.port, dir: sftp.dir, missing: sftp.missing, keyProblem: sftp.keyProblem },

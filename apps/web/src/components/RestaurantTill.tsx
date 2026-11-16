@@ -1374,13 +1374,13 @@ function QtyField({ line, busy, vi, onPad, onSet }: { line: CheckLine; busy: boo
       aria-label={vi ? `Số lượng ${line.name}` : `Quantity of ${line.name}`}
       onClick={touch ? onPad : undefined}
       onFocus={(e) => { if (!touch) { setDraft(String(line.quantity)); e.currentTarget.select(); } }}
-      onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+      onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
       onKeyDown={(e) => {
         if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
         else if (e.key === 'Escape') { setDraft(null); e.currentTarget.blur(); }
       }}
       onBlur={commit}
-      style={{ width: 40, height: 36, border: 0, borderLeft: `1px solid ${C.border}`, borderRight: `1px solid ${C.border}`, background: 'none', color: C.strong, textAlign: 'center', fontWeight: 800, fontSize: 16, fontFamily: 'inherit', padding: 0, cursor: touch ? 'pointer' : 'text' }}
+      style={{ width: 52, height: 36, border: 0, borderLeft: `1px solid ${C.border}`, borderRight: `1px solid ${C.border}`, background: 'none', color: C.strong, textAlign: 'center', fontWeight: 800, fontSize: 16, fontFamily: 'inherit', padding: 0, cursor: touch ? 'pointer' : 'text' }}
     />
   );
 }
@@ -1392,7 +1392,7 @@ function QtyPad({ vi, line, onClose, onSave }: { vi: boolean; line: CheckLine; o
   const [txt, setTxt] = useState(String(line.quantity));
   const [fresh, setFresh] = useState(true);
   const n = cleanQty(txt) ?? 0;
-  const key = (d: string) => { setTxt((t) => (fresh ? d : (t + d).replace(/^0+(?=\d)/, '')).slice(0, 2)); setFresh(false); };
+  const key = (d: string) => { setTxt((t) => (fresh ? d : (t + d).replace(/^0+(?=\d)/, '')).slice(0, 3)); setFresh(false); };
   const add = (k: number) => { setTxt(String(Math.min(QTY_MAX, n + k))); setFresh(false); };
   const big: CSSProperties = { ...btn, minHeight: 58, fontSize: 22, fontWeight: 800 };
   return (

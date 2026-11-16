@@ -348,7 +348,7 @@ export class RestaurantService {
     const key = optionsKey(picked.chosen);
     const same = check.lines.find((l) => l.state === 'UNSENT' && l.menuItemId === item.id && (l.note ?? null) === note && l.unitPriceCents === unit && optionsKey(chosenOf(l.options)) === key);
     if (same) {
-      await this.prisma.tableCheckLine.updateMany({ where: { id: same.id, tenantId, state: 'UNSENT' }, data: { quantity: Math.min(99, same.quantity + n) } });
+      await this.prisma.tableCheckLine.updateMany({ where: { id: same.id, tenantId, state: 'UNSENT' }, data: { quantity: Math.min(999, same.quantity + n) } });
     } else {
       await this.prisma.tableCheckLine.create({
         data: {

@@ -223,10 +223,10 @@ export function stationsCooking(lines: LineLike[]): string[] {
   return [...new Set(lines.filter((l) => l.state === 'SENT').map((l) => l.station))];
 }
 
-/** A clean quantity: whole, 1–99. */
+/** A clean quantity: whole, 1–999 (a case of beer is easily 100+ cans). */
 export function qty(v: unknown, min = 1): number | null {
   const n = Math.round(Number(v));
-  return Number.isFinite(n) && n >= min && n <= 99 ? n : null;
+  return Number.isFinite(n) && n >= min && n <= 999 ? n : null;
 }
 
 /** A free-text kitchen note: one line, short, never priced. */

@@ -84,11 +84,12 @@ describe('send to kitchen', () => {
 });
 
 describe('input cleaning', () => {
-  it('quantity is whole 1–99', () => {
+  it('quantity is whole 1–999', () => {
     expect(qty('3')).toBe(3);
     expect(qty(0)).toBeNull();
     expect(qty(0, 0)).toBe(0);
-    expect(qty(100)).toBeNull();
+    expect(qty(100)).toBe(100);
+    expect(qty(1000)).toBeNull();
     expect(qty('x')).toBeNull();
   });
   it('notes are one short line', () => {

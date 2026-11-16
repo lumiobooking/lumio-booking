@@ -21,17 +21,17 @@ export class AddLineDto {
   @IsString() menuItemId!: string;
   /** [{ groupId, choiceIds: [] }] — checked against the dish's own groups by the service. */
   @IsOptional() @IsArray() @ArrayMaxSize(8) options?: unknown[];
-  @IsOptional() @IsInt() @Min(1) @Max(99) quantity?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(999) quantity?: number;
   @IsOptional() @IsString() @MaxLength(140) note?: string;
 }
 
 export class UpdateLineDto {
-  @IsOptional() @IsInt() @Min(0) @Max(99) quantity?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(999) quantity?: number;
   @IsOptional() @IsString() @MaxLength(140) note?: string;
 }
 
 export class VoidLineDto {
-  @IsOptional() @IsInt() @Min(1) @Max(99) quantity?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(999) quantity?: number;
   @IsString() @MaxLength(140) reason!: string;
   @IsOptional() @IsString() @MaxLength(12) approvalPin?: string;
 }
@@ -80,7 +80,7 @@ export class MergeCheckDto {
 
 export class SplitLineDto {
   @IsString() lineId!: string;
-  @IsOptional() @IsInt() @Min(1) @Max(99) quantity?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(999) quantity?: number;
 }
 
 export class SplitCheckDto {

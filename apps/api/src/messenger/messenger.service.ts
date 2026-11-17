@@ -4077,7 +4077,7 @@ export class MessengerService implements OnModuleInit {
   async dryRun(tenantId: string, turns: { role: 'user' | 'assistant'; content: string }[], o: { channel?: 'messenger' | 'instagram' | 'zalo' | 'web' } = {}): Promise<DryRunResult> {
     const clock = new TurnClock();
     const t0 = Date.now();
-    const none = (state: DryRunResult['state'], error?: string): DryRunResult => ({ reply: '', state, tools: [], guards: [], choices: [], ms: Date.now() - t0, steps: clock.steps(), ...(error ? { error } : {}) });
+    const none = (state: DryRunResult['state'], error?: string): DryRunResult => ({ reply: '', state, tools: [], found: [], guards: [], choices: [], ms: Date.now() - t0, steps: clock.steps(), ...(error ? { error } : {}) });
     const msgs = (Array.isArray(turns) ? turns : [])
       .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
       .slice(-30);
@@ -4132,6 +4132,7 @@ export class MessengerService implements OnModuleInit {
       reply: state === 'reply' ? tidyReply(reply) : '',
       state,
       tools: ctx.toolsRun ?? [],
+      found: (ctx as { toolFound?: string[] }).toolFound ?? [],
       guards: [...new Set(ctx.traceGuards ?? [])],
       choices: ctx.choices ?? [],
       ms: Date.now() - t0,
@@ -5644,6 +5645,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           // what they did on it, and the caller reads that back afterwards.
           const out = await clock.time('tools', () => this.runTool(tenantId, tz, blk.name || '', blk.input || {}, Object.assign(ctx, { lang: customerLang })));
           toolOuts.push(typeof out === 'string' ? out : JSON.stringify(out));
+          // A dry run hands back WHAT the tools found, so whoever grades the reply can tell a fact the
+          // salon's own systems returned (hours, the menu, the plans) from one the model made up.
+          if (ctx.dryRun) (ctx as { toolFound?: string[] }).toolFound = [...((ctx as { toolFound?: string[] }).toolFound ?? []), `${blk.name || 'tool'}: ${(typeof out === 'string' ? out : JSON.stringify(out)).replace(/\s+/g, ' ').slice(0, 2500)}`].slice(-8);
           results.push({ type: 'tool_result', tool_use_id: blk.id, content: out });
         }
         messages.push({ role: 'user', content: results });

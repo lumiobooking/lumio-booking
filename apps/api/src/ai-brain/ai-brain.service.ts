@@ -300,7 +300,7 @@ export class AiBrainService {
      * `store: false`: the result is the caller's, not the salon's — it is not
      * kept as the salon's last simulation and not written to its audit log.
      */
-    opts: { answer?: (messages: { role: 'user' | 'assistant'; content: string }[]) => Promise<{ reply: string; tools: string[] }>; store?: boolean; /** scripts added after the salon's own twenty, in its first language (the golden run's real-conversation scripts) */ extra?: Scenario[] } = {},
+    opts: { answer?: (messages: { role: 'user' | 'assistant'; content: string }[]) => Promise<{ reply: string; tools: string[]; /** what the tools returned, for the grader */ found?: string[] }>; store?: boolean; /** scripts added after the salon's own twenty, in its first language (the golden run's real-conversation scripts) */ extra?: Scenario[] } = {},
   ): Promise<SimRun> {
     if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can test the AI');
     const tenantId = this.tenantId(user);
@@ -335,13 +335,14 @@ export class AiBrainService {
         const { scenario, lang } = picked[i];
         const turns = lang === 'vi' || lang === 'en' ? scenarioTurns(scenario, lang, trade) : translated[scenario.id];
         const messages: { role: 'user' | 'assistant'; content: string }[] = [];
-        let reply = ''; const tools = new Set<string>();
+        let reply = ''; const tools = new Set<string>(); const found: string[] = [];
         for (const t of turns) {
           messages.push({ role: 'user', content: t });
           if (opts.answer) {
             const a = await opts.answer(messages.map((m) => ({ ...m }))).catch((e) => ({ reply: `(lỗi: ${String((e as Error)?.message ?? e).slice(0, 80)})`, tools: [] as string[] }));
             reply = String(a.reply ?? '');
             for (const name of a.tools ?? []) tools.add(name);
+            for (const f of (a as { found?: string[] }).found ?? []) found.push(f);
           } else {
             const r = await this.sandbox(user, { messages, channel: 'chat' }).catch((e) => ({ reply: `(lỗi: ${String((e as Error)?.message ?? e).slice(0, 80)})`, trace: [] as string[] }));
             reply = String((r as { reply?: string }).reply ?? '');
@@ -349,7 +350,7 @@ export class AiBrainService {
           }
           messages.push({ role: 'assistant', content: reply || '…' });
         }
-        answers[i] = { customer: turns, reply, tools: [...tools], rubric: scenario.rubric, lang: lang as SimLang };
+        answers[i] = { customer: turns, reply, tools: [...tools], rubric: scenario.rubric, lang: lang as SimLang, ...(found.length ? { found: found.join('\n').slice(0, 6000) } : {}) };
       }
     }));
 

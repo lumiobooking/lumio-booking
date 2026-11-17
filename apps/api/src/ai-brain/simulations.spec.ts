@@ -36,7 +36,7 @@ describe('customer simulations — fixed scripts, graded on conduct', () => {
     const p = simJudgePrompt([{ customer: ['Đặt cho mình 3 giờ chiều mai nha'], reply: 'Dạ em đã đặt lịch 3 giờ chiều mai cho chị rồi ạ', tools: [], rubric: 'R1', lang: 'vi' }], 'Gel tay: $35', 'vi');
     expect(p.user).toContain('Gel tay: $35');
     expect(p.user).toContain('TOOLS CALLED: (none)');
-    expect(p.system).toContain('that is not in SOURCES');
+    expect(p.system).toContain('neither SOURCES nor');
     expect(p.system).toContain('Vietnamese, one short sentence');
   });
 
@@ -94,3 +94,18 @@ describe('customer simulations — fixed scripts, graded on conduct', () => {
   });
 });
 
+describe('what the tools returned counts as a source (17/11/2026)', () => {
+  // The live assistant answered "Starter $29, Pro $69, Premium $149" from the plans tool; the grader,
+  // shown only the notes, failed it as invented — and the golden run moved 2–3 scripts between runs.
+  it('the grader is shown each case\'s tool results and told they are as trustworthy as the notes', () => {
+    const p = simJudgePrompt([
+      { customer: ['Phần mềm bên mình giá bao nhiêu?'], reply: 'Starter $29/tháng…', tools: ['get_software_plans'], rubric: 'Any price it names is in SOURCES.', lang: 'vi', found: 'get_software_plans: Starter $29, Pro $69, Premium $149' },
+      { customer: ['hi'], reply: 'Hello', tools: [], rubric: 'R', lang: 'en' },
+    ], 'Gói Boost: $179', 'vi');
+    expect(p.system).toContain('TOOL RESULTS');
+    expect(p.system).toMatch(/neither SOURCES nor that case's TOOL RESULTS/);
+    expect(p.user).toContain('TOOL RESULTS: "get_software_plans: Starter $29, Pro $69, Premium $149"');
+    // A case with no tool results gets no such line — nothing to trust that was not returned.
+    expect(p.user.split('CASE 1')[1]).not.toContain('TOOL RESULTS');
+  });
+});

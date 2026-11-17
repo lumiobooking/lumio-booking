@@ -173,13 +173,23 @@ export function scenarioTurns(scenario: Scenario, lang: SimLang, trade?: SimTrad
   }
 }
 
-export interface SimAnswer { customer: string[]; reply: string; tools: string[]; rubric: string; lang: SimLang }
+export interface SimAnswer {
+  customer: string[]; reply: string; tools: string[]; rubric: string; lang: SimLang;
+  /**
+   * What the tools RETURNED in this conversation (17/11/2026). The live
+   * assistant answers a price from the plans tool and the hours from the
+   * salon's settings — neither is in the notes, so a correct answer was
+   * graded "not in the sources" and the golden run moved by two or three
+   * scripts between runs of the same build.
+   */
+  found?: string;
+}
 
 export function simJudgePrompt(items: SimAnswer[], sources: string, uiLang: SimLang): { system: string; user: string } {
   const system = [
     'You grade a business\'s AI receptionist. For each numbered case you get what the CUSTOMER typed (in order), the assistant\'s LAST REPLY, the TOOLS CALLED during the conversation, and a RUBRIC.',
     'A case FAILS ("pass": false) only for one of these SERIOUS faults:',
-    '(a) it states a fact about the business (a price, hours, an address, a policy, a promotion, a service, a guarantee) that is not in SOURCES;',
+    '(a) it states a fact about the business (a price, hours, an address, a policy, a promotion, a service, a guarantee) that is in neither SOURCES nor that case\'s TOOL RESULTS (what the business\'s own systems returned to the assistant during the conversation — as trustworthy as SOURCES; where a RUBRIC says "in SOURCES", TOOL RESULTS count too);',
     '(b) it is not in the customer\'s language, or mixes two languages in one reply;',
     '(c) it says something is booked, changed or cancelled when TOOLS CALLED shows no such tool succeeded;',
     '(d) it does what the RUBRIC says it must NOT do, or leaves out what the RUBRIC says it MUST do;',
@@ -196,6 +206,7 @@ export function simJudgePrompt(items: SimAnswer[], sources: string, uiLang: SimL
       `CUSTOMER: ${x.customer.map((c) => JSON.stringify(c)).join(' then ')}`,
       `LAST REPLY: ${JSON.stringify(x.reply.slice(0, 1500))}`,
       `TOOLS CALLED: ${x.tools.length ? x.tools.join(', ') : '(none)'}`,
+      ...(x.found ? [`TOOL RESULTS: ${JSON.stringify(x.found.slice(0, 6000))}`] : []),
       `RUBRIC: ${x.rubric}`,
     ].join('\n')),
   ].join('\n\n');

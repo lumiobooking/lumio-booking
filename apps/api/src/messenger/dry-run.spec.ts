@@ -121,6 +121,9 @@ describe('a dry run of the live assistant', () => {
     const { s } = build({ botMode: 'sales' });
     const r = await s.dryRun('lumio-agency', [{ role: 'user', content: 'giá gói marketing' }]);
     expect(r.tools).toEqual(['send_package_card']);
+    // …and what the tool returned comes back too, so a grader can tell a looked-up fact from an invented one.
+    expect(r.found).toHaveLength(1);
+    expect(r.found[0].startsWith('send_package_card: ')).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(['reply', 'held', 'silent']).toContain(r.state);
   });

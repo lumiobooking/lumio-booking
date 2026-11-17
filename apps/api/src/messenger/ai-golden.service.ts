@@ -132,7 +132,7 @@ export class AiGoldenService implements OnModuleInit, OnModuleDestroy {
         : r.state === 'silent' ? '(the assistant sent nothing)'
           : r.state === 'held' ? '(the reply was held back for a person)'
             : `(lỗi: ${r.error ?? 'the assistant failed'})`;
-      return { reply: shown, tools: r.tools };
+      return { reply: shown, tools: r.tools, found: r.found };
     };
     try {
       const sim = await this.brain.runSimulations(actor, 'vi', { answer, store: false, extra: GOLDEN_SCENARIOS });

@@ -72,6 +72,8 @@ export interface DryRunResult {
   state: DryState;
   /** Tools the run called, in order. */
   tools: string[];
+  /** What those tools RETURNED ("name: result", trimmed) — facts the salon's own systems gave the assistant. */
+  found: string[];
   /** Guards that changed or held a draft ("Vì sao AI trả lời vậy?"). */
   guards: string[];
   /** Tap buttons under the reply. */

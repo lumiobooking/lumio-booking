@@ -9,7 +9,7 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { AiBrainService } from '../ai-brain/ai-brain.service';
 import { AiReleaseService } from '../common/ai-release.service';
 import { RELEASE_FEATURES, type ReleaseFeature } from '../common/ai-release';
-import { GOLDEN_KEY, accountResult, bestBefore, goldenFrom, goldenVerdict, type GoldenAccount, type GoldenItem, type GoldenRecord } from '../common/ai-golden';
+import { GOLDEN_KEY, goldenFail, accountResult, bestBefore, goldenFrom, goldenVerdict, type GoldenAccount, type GoldenItem, type GoldenRecord } from '../common/ai-golden';
 import { GOLDEN_SCENARIOS } from '../ai-brain/simulations';
 import { MessengerService } from './messenger.service';
 import { hardFaults } from './ai-golden-checks';
@@ -140,7 +140,15 @@ export class AiGoldenService implements OnModuleInit, OnModuleDestroy {
         const dry = lastOf.get(key(it.customer));
         return { id: it.id, lang: it.lang, pass: it.pass, why: String(it.why ?? '').slice(0, 200), ms: dry?.ms ?? 0, hard: dry ? hardFaults({ state: dry.state, reply: dry.reply }) : ['error'] };
       });
-      return accountResult({ name: salon.name, mode: sim.mode, items, steps: all.filter((r) => r.state !== 'error').map((r) => r.steps), best: bestBefore(before, salon.name, items.length) });
+      // What was actually said, for every script that did not pass (./ai-golden GoldenFail).
+      const fails = sim.items.map((it, i) => ({ it, item: items[i], dry: lastOf.get(key(it.customer)) }))
+        .filter((x) => !x.item.pass || x.item.hard.length)
+        .map((x) => goldenFail({
+          id: x.it.id, lang: x.it.lang, why: x.item.why, hard: x.item.hard, ms: x.item.ms, state: x.dry?.state ?? 'error', customer: x.it.customer,
+          reply: x.dry ? (x.dry.state === 'reply' ? [x.dry.reply, x.dry.choices.length ? `[nút: ${x.dry.choices.join(' | ')}]` : ''].filter(Boolean).join(' ') : (x.dry.error ?? '')) : '',
+          rewrites: x.dry?.steps?.r ?? 0, tools: x.dry?.tools ?? [],
+        }));
+      return accountResult({ name: salon.name, mode: sim.mode, items, steps: all.filter((r) => r.state !== 'error').map((r) => r.steps), best: bestBefore(before, salon.name, items.length), fails });
     } catch (e) {
       this.logger.warn(`golden run on ${salon.name} failed: ${String((e as Error)?.message ?? e).slice(0, 160)}`);
       return accountResult({ name: salon.name, mode: 'booking', items: [], steps: [] });

@@ -91,3 +91,28 @@ describe('the gate: a behaviour reaches every salon only on a passed run of THIS
     expect(goldenFrom('{"commit":"a","at":"2026-11-18T00:00:00Z","state":"done"}')).toMatchObject({ ok: false, live: [], accounts: [], why: [] });
   });
 });
+
+describe('a failed script is kept WITH what was said (17/11/2026)', () => {
+  const { accountResult: result, goldenFail: fail, GOLDEN_MAX_FAILS: MAX } = jest.requireActual('./ai-golden') as typeof import('./ai-golden');
+  const item = (id: string, pass: boolean) => ({ id, lang: 'vi', pass, why: pass ? '' : 'nêu giá không có trong bảng giá', ms: 4200, hard: [] });
+
+  it('stores the customer\'s lines, the reply and the reason — trimmed, so the record stays one small row', () => {
+    const f = fail({ id: 'sales-price', lang: 'vi', why: 'x'.repeat(900), customer: ['giá  gói\nmarketing?', ...Array(9).fill('thêm')], reply: 'Dạ '.repeat(900), state: 'reply', rewrites: 2, tools: ['save_lead'], ms: 4200.7, hard: [] });
+    expect(f.customer).toHaveLength(6);
+    expect(f.customer[0]).toBe('giá gói marketing?');
+    expect(f.reply.length).toBeLessThanOrEqual(900);
+    expect(f.why.length).toBeLessThanOrEqual(240);
+    expect(f).toMatchObject({ ms: 4201, rewrites: 2, tools: ['save_lead'], state: 'reply' });
+  });
+
+  it('an account carries its failures only when it has some, and never more than the cap', () => {
+    const many = Array.from({ length: 30 }, (_, i) => fail({ id: `s${i}`, lang: 'en' }));
+    const a = result({ name: 'Lumio Agency', mode: 'sales', items: [item('ok', true), item('sales-price', false)], steps: [], fails: many });
+    expect(a.fails).toHaveLength(MAX);
+    expect(result({ name: 'Lumio Salon', mode: 'booking', items: [item('ok', true)], steps: [] }).fails).toBeUndefined();
+  });
+
+  it('survives garbage: missing fields become empty, never a crash', () => {
+    expect(fail({ id: 'x', lang: 'vi' })).toEqual({ id: 'x', lang: 'vi', why: '', hard: [], ms: 0, state: 'unknown', customer: [], reply: '', rewrites: 0, tools: [] });
+  });
+});

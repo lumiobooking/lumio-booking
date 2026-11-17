@@ -46,6 +46,36 @@ export const GOLDEN_FRESH_MS = 24 * 3600_000;
 export type HardFault = 'error' | 'apology' | 'held' | 'leak' | 'wall';
 
 export interface GoldenItem { id: string; lang: string; pass: boolean; why: string; ms: number; hard: HardFault[] }
+/**
+ * A script that did not pass, kept WITH what was said (17/11/2026). The first
+ * run on a real build said "Lumio Agency: 16/19, sales-price failed" and
+ * nothing else — the same three scripts passed in the sandbox, so the only way
+ * to learn what the live assistant had answered was to run it again and watch.
+ * The customers are scripted and the accounts are the platform's own: no real
+ * customer's words are ever in here.
+ */
+export interface GoldenFail {
+  id: string; lang: string; why: string; hard: HardFault[]; ms: number;
+  /** What the dry run ended in: a reply, silence, a reply held for a person, an error. */
+  state: string;
+  customer: string[]; reply: string;
+  /** Drafts written again or repaired on the way to this reply. */
+  rewrites: number;
+  tools: string[];
+}
+/** At most this many are kept per account — the record is one small row of platform state. */
+export const GOLDEN_MAX_FAILS = 12;
+const cut = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+export function goldenFail(o: Partial<GoldenFail> & { id: string; lang: string }): GoldenFail {
+  return {
+    id: cut(o.id, 60), lang: cut(o.lang, 8), why: cut(o.why, 240), hard: Array.isArray(o.hard) ? o.hard.slice(0, 6) : [], ms: Math.max(0, Math.round(Number(o.ms) || 0)),
+    state: cut(o.state, 20) || 'unknown',
+    customer: (Array.isArray(o.customer) ? o.customer : []).slice(0, 6).map((c) => cut(c, 200)),
+    reply: cut(o.reply, 900), rewrites: Math.max(0, Math.round(Number(o.rewrites) || 0)),
+    tools: (Array.isArray(o.tools) ? o.tools : []).slice(0, 8).map((t) => cut(t, 40)),
+  };
+}
+
 export interface GoldenAccount {
   name: string; mode: 'booking' | 'sales';
   passed: number; total: number;
@@ -59,6 +89,8 @@ export interface GoldenAccount {
   steps: { prepMs: number; modelMs: number; checkMs: number } | null;
   /** The most scripts this account has passed on an earlier run of the SAME scripts (null = never run on them). */
   best?: number | null;
+  /** The scripts that did not pass, with the customer's lines and the reply. */
+  fails?: GoldenFail[];
 }
 export interface GoldenRecord {
   commit: string; at: string; state: 'running' | 'done' | 'error';
@@ -87,7 +119,7 @@ export function pctlMs(values: number[], p: number): number | null {
 }
 
 /** One account's numbers, from its graded items and the step times of its replies. */
-export function accountResult(o: { name: string; mode: 'booking' | 'sales'; items: GoldenItem[]; steps: { p: number; m: number; j: number; r: number }[]; best?: number | null }): GoldenAccount {
+export function accountResult(o: { name: string; mode: 'booking' | 'sales'; items: GoldenItem[]; steps: { p: number; m: number; j: number; r: number }[]; best?: number | null; fails?: GoldenFail[] }): GoldenAccount {
   const bad = o.items.filter((i) => !i.pass || i.hard.length);
   const times = o.items.map((i) => i.ms).filter((n) => n > 0);
   return {
@@ -99,6 +131,7 @@ export function accountResult(o: { name: string; mode: 'booking' | 'sales'; item
     rewriteRate: o.steps.length ? o.steps.filter((s) => s.r > 0).length / o.steps.length : null,
     steps: o.steps.length ? { prepMs: pctlMs(o.steps.map((s) => s.p), 0.5) as number, modelMs: pctlMs(o.steps.map((s) => s.m), 0.5) as number, checkMs: pctlMs(o.steps.map((s) => s.j), 0.5) as number } : null,
     best: typeof o.best === 'number' && Number.isFinite(o.best) ? o.best : null,
+    ...(o.fails && o.fails.length ? { fails: o.fails.slice(0, GOLDEN_MAX_FAILS).map(goldenFail) } : {}),
   };
 }
 

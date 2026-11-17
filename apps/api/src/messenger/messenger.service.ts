@@ -66,7 +66,9 @@ import { BookingsService, walkInOnlyMessage } from '../bookings/bookings.service
 import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { mergeBurst, alreadySaid, BURST_MS, MAX_SUPERSEDE, mayDropReply, repeatCount, repeatVerdict, repeatWasAnswered } from './burst';
+import { mergeBurst, alreadySaid, BURST_MS, MAX_SUPERSEDE, mayDropReply, repeatCount, repeatVerdict, repeatWasAnswered, burstWaitMs, settleMs } from './burst';
+import { supportsSenderAction, senderActionBody, typingStep, notePresence, TYPING_REFRESH_MS, type SenderAction } from './presence';
+import { AiReleaseService } from '../common/ai-release.service';
 import { SILENT, HELD, isSilent, outboundVerdict, silentOnCloser, isNoReply, NO_REPLY_RULE, withoutBadSentences } from './outbound-guard';
 import { mayAnswerMirrored, rescueVerdict } from './rescue-stuck';
 import { isMetaAdGreeting, isMetaSystemLine, isMetaAiLine } from './meta-system-lines';
@@ -119,6 +121,13 @@ type Turn = {
   sendError?: string | null;
   /** What this AI reply was built from (./reply-trace) — staff Inbox only. */
   why?: ReplyTrace | null;
+  /**
+   * Where this AI reply's time went, in milliseconds: w = from the customer's
+   * message to the moment the AI started on it (the gathering wait), t = the
+   * AI working (model, tools, checks), s = handing it to the channel. For the
+   * platform's speed report (./bot-report fleet) — never shown to a customer.
+   */
+  ms?: { w: number; t: number; s: number } | null;
   /** The one-tap survey (./chat-survey): 'ask' on our question, the rating on the customer's answer. */
   survey?: 'ask' | SurveyRating;
   /**
@@ -324,6 +333,9 @@ export class MessengerService implements OnModuleInit {
     @Optional() private readonly brain?: AiBrainService,
     // The owner's instructions (ai-brain/instructions.ts): above every other rule, checked before a reply goes.
     @Optional() private readonly instructions?: AiInstructionsService,
+    // Which new behaviours are live for which salon (common/ai-release). Optional:
+    // without it every staged behaviour is simply off, as before it existed.
+    @Optional() private readonly release?: AiReleaseService,
   ) {}
 
   /**
@@ -3197,14 +3209,14 @@ export class MessengerService implements OnModuleInit {
         // A tap on a package card's buttons (./reply-style send_package_card).
         const cardTap = ev.postback?.payload ? cardTapLine(ev.postback.payload) : null;
         if (cardTap) {
-          await this.handleMessage(entryId, senderId, cardTap, ev.timestamp, channel).catch((e) =>
+          await this.handleMessage(entryId, senderId, cardTap, ev.timestamp, channel, [], { tap: true }).catch((e) =>
             this.logger.warn(`card postback failed: ${String(e).slice(0, 160)}`),
           );
           continue;
         }
         const pkgTap = ev.postback?.payload ? packageFromPayload(ev.postback.payload) : null;
         if (pkgTap) {
-          await this.handleMessage(entryId, senderId, tapAsCustomerLine(pkgTap), ev.timestamp, channel).catch((e) =>
+          await this.handleMessage(entryId, senderId, tapAsCustomerLine(pkgTap), ev.timestamp, channel, [], { tap: true }).catch((e) =>
             this.logger.warn(`pkg postback failed: ${String(e).slice(0, 160)}`),
           );
           continue;
@@ -3244,7 +3256,7 @@ export class MessengerService implements OnModuleInit {
         // "seen" and nothing else. Now it is a turn like any other.
         const media = metaAttachments(ev.message);
         if (!text && !media.length) continue;
-        await this.handleMessage(entryId, senderId, text || describeMedia(media), ev.timestamp, channel, media).catch((e) =>
+        await this.handleMessage(entryId, senderId, text || describeMedia(media), ev.timestamp, channel, media, { tap: Boolean(ev.message?.quick_reply) }).catch((e) =>
           this.logger.warn(`handleMessage failed: ${String(e).slice(0, 160)}`),
         );
       }
@@ -3579,7 +3591,7 @@ export class MessengerService implements OnModuleInit {
     return this.handleMessage(webPageId(tenantId), visitorId, text, Date.now(), 'web');
   }
 
-  private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number, channel: Channel = 'messenger', media: InboundMedia[] = []): Promise<void> {
+  private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number, channel: Channel = 'messenger', media: InboundMedia[] = [], opts: { /** a button was tapped, not typed */ tap?: boolean } = {}): Promise<void> {
     // What came with the words. Photos ride on the turn so the inbox shows
     // them and the model looks at them; stickers and files only shape the
     // stage direction.
@@ -3743,7 +3755,7 @@ export class MessengerService implements OnModuleInit {
     // NOT answered here. The customer may still be typing, or tapping the same
     // button again because the first tap felt slow — so the reply is queued
     // and a whole burst is answered once. See ./burst.
-    this.queueReply({ ...conn, pageToken: page.pageToken }, thread.id, senderId, text, eventTs, imgTurn, rid);
+    this.queueReply({ ...conn, pageToken: page.pageToken }, thread.id, senderId, text, eventTs, imgTurn, rid, { tap: opts.tap, channel, pageId });
   }
 
   /**
@@ -3754,14 +3766,17 @@ export class MessengerService implements OnModuleInit {
    * next one they send. The alternative — a row per thread in the database,
    * written twice a second while somebody types — costs more than the problem.
    */
-  private readonly bursts = new Map<string, { texts: string[]; ts?: number; running: boolean; images: string[]; media: InboundMedia[]; rids: string[] }>();
+  private readonly bursts = new Map<string, { texts: string[]; ts?: number; running: boolean; images: string[]; media: InboundMedia[]; rids: string[]; /** the newest message was a button tap */ tap?: boolean; /** when the newest message landed here */ lastAt?: number }>();
 
   private queueReply(
     conn: { tenantId: string; pageToken: string; aiInstruction: string | null; botFacts: unknown },
     threadId: string, senderId: string, text: string, eventTs?: number, attach: Partial<Turn> = {}, rid?: string,
+    meta: { tap?: boolean; channel?: Channel | null; pageId?: string | null } = {},
   ): void {
     const q = this.bursts.get(threadId) ?? { texts: [], ts: eventTs, running: false, images: [], media: [], rids: [] };
     q.texts.push(text);
+    q.tap = Boolean(meta.tap);
+    q.lastAt = Date.now();
     if (rid) q.rids.push(rid);
     // A photo and its caption often arrive as two events a second apart;
     // the burst joins them so the model sees the picture WITH the words.
@@ -3773,6 +3788,8 @@ export class MessengerService implements OnModuleInit {
     // than starting a second agent that cannot see the first one's answer.
     if (q.running) return;
     q.running = true;
+    // "Seen" and the typing dots, at once — the customer knows somebody is on it (./presence).
+    this.startTyping(conn.tenantId, threadId, conn.pageToken, senderId, meta.channel ?? null, meta.pageId ?? null, text);
     void this.drainBurst(conn, threadId, senderId)
       .catch((e) => this.logger.warn(`burst reply failed: ${String(e).slice(0, 160)}`));
   }
@@ -3781,7 +3798,22 @@ export class MessengerService implements OnModuleInit {
     conn: { tenantId: string; pageToken: string; aiInstruction: string | null; botFacts: unknown },
     threadId: string, senderId: string,
   ): Promise<void> {
-    const beat = () => new Promise<void>((r) => { const t = setTimeout(r, BURST_MS); t.unref?.(); });
+    const pause = (ms: number) => new Promise<void>((r) => { const t = setTimeout(r, ms); t.unref?.(); });
+    // The adaptive wait (./burst), where it has been released (common/ai-release);
+    // everywhere else the fixed six seconds, exactly as before.
+    const smart = process.env.SMART_WAIT !== 'off' && Boolean(this.release?.isOn('smartWait', conn.tenantId));
+    const beat = async () => {
+      if (!smart) return pause(BURST_MS);
+      const q0 = this.bursts.get(threadId);
+      const startedAt = Date.now();
+      await pause(burstWaitMs(q0?.texts ?? [], { tap: q0?.tap, media: Boolean(q0?.images.length || q0?.media.length) }));
+      // Another message landed during the wait, a moment ago? A little more, a few times at most.
+      for (let n = 0; ; n++) {
+        const more = settleMs(this.bursts.get(threadId)?.lastAt, startedAt, Date.now(), n);
+        if (!more) break;
+        await pause(more);
+      }
+    };
     /** Replies dropped in a row for newer messages (reset by one that is sent). */
     let superseded = 0;
     try {
@@ -3825,12 +3857,72 @@ export class MessengerService implements OnModuleInit {
         await beat();
       }
     } finally {
+      this.stopTyping(threadId, conn.pageToken, senderId);
       const q = this.bursts.get(threadId);
       if (q) {
         q.running = false;
         if (!q.texts.length) this.bursts.delete(threadId);
       }
     }
+  }
+
+  /** Thread → the typing dots now showing there, and the order their calls go out in (./presence). */
+  private readonly typing = new Map<string, { timer: NodeJS.Timeout; startedAt: number; chain: Promise<void> }>();
+
+  /** One sender action to Meta. Never throws and nothing waits on it: a failure here is never the customer's problem. */
+  private async senderAction(pageToken: string, recipientId: string, action: SenderAction): Promise<void> {
+    try {
+      const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(senderActionBody(recipientId, action)),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (res.ok) { notePresence(true); return; }
+      const body = await res.text().catch(() => '');
+      notePresence(false, `${action} ${res.status}: ${body.slice(0, 140)}`);
+    } catch (e) {
+      notePresence(false, `${action}: ${String((e as Error)?.message ?? e).slice(0, 140)}`);
+    }
+  }
+
+  /**
+   * The customer's message is marked seen and the dots appear, now, and are
+   * renewed while the AI works. Only where the behaviour is released, only on
+   * Messenger and Instagram, and never for somebody who asked us to stop.
+   */
+  private startTyping(tenantId: string, threadId: string, pageToken: string, recipientId: string, channel: Channel | null, pageId: string | null, text: string): void {
+    if (process.env.TYPING_INDICATOR === 'off' || !this.release?.isOn('typing', tenantId)) return;
+    if (!pageToken || !recipientId || this.typing.has(threadId) || saysStop(text)) return;
+    void (async () => {
+      // The rescue paths do not know the channel; the thread does.
+      let ch: string | null = channel; let pg: string | null = pageId;
+      if (!ch || !pg) {
+        const row = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { channel: true, pageId: true } }).catch(() => null) as { channel?: string | null; pageId?: string | null } | null;
+        ch = ch ?? row?.channel ?? null; pg = pg ?? row?.pageId ?? null;
+      }
+      if (!supportsSenderAction(ch, pg) || this.typing.has(threadId) || !this.bursts.get(threadId)?.running) return;
+      const startedAt = Date.now();
+      const entry = { startedAt, chain: Promise.resolve() as Promise<void>, timer: null as unknown as NodeJS.Timeout };
+      entry.chain = this.senderAction(pageToken, recipientId, 'mark_seen').then(() => this.senderAction(pageToken, recipientId, 'typing_on'));
+      entry.timer = setInterval(() => {
+        const cur = this.typing.get(threadId);
+        if (cur !== entry) return;
+        if (typingStep(startedAt, Date.now()) === 'stop') { this.stopTyping(threadId, pageToken, recipientId); return; }
+        entry.chain = entry.chain.then(() => this.senderAction(pageToken, recipientId, 'typing_on'));
+      }, TYPING_REFRESH_MS);
+      entry.timer.unref?.();
+      this.typing.set(threadId, entry);
+    })().catch(() => undefined);
+  }
+
+  /** The reply went out, or nothing will: the dots end. After its own earlier calls, so "off" is never overtaken by an "on". */
+  private stopTyping(threadId: string, pageToken: string, recipientId: string): void {
+    const entry = this.typing.get(threadId);
+    if (!entry) return;
+    clearInterval(entry.timer);
+    this.typing.delete(threadId);
+    void entry.chain.then(() => this.senderAction(pageToken, recipientId, 'typing_off')).catch(() => undefined);
   }
 
   // Yield windows are per-tenant settings now (humanActiveMins / graceMins on
@@ -4268,6 +4360,7 @@ export class MessengerService implements OnModuleInit {
     // The approved look (./reply-style): no markdown, ▸ lines.
     reply = tidyReply(reply);
     const choices = agentCtx?.choices?.length ? agentCtx.choices : [];
+    const sendT0 = Date.now();
     const sent = await this.sendText(conn.pageToken, senderId, reply, freshCh === 'zalo' ? 'zalo' : freshCh === 'web' ? 'web' : undefined, conn.tenantId, {
       customerAt,
       // Retrying for a minute: stop if a PERSON answered meanwhile (a manual
@@ -4282,6 +4375,7 @@ export class MessengerService implements OnModuleInit {
           && !isMetaAdGreeting(t.content) && !isMetaSystemLine(t.content));
       },
     }, { bubbles: true, choices });
+    const sendDoneAt = Date.now();
     // The billable event, and the only one: a reply the ROBOT produced and the
     // mouth accepted. A refused send is not work delivered, a canned greeting
     // is not the robot thinking, and a line a person typed is the salon's own
@@ -4314,7 +4408,14 @@ export class MessengerService implements OnModuleInit {
     // The thread shows the buttons the customer saw, so staff reading it later know what was offered.
     // What the reply was built from, for the staff Inbox ("Nguồn"). Never fatal.
     const why = agentFailed ? null : await this.traceOf(conn, reply, agentCtx).catch(() => null);
-    const outTurn: Turn = sent.ok ? { role: 'assistant', content: choices.length ? `${reply}\n\n${choicesAsText(choices)}` : reply, at: outAt, ...(why ? { why } : {}) } : ({
+    // Where the time went (see Turn.ms). The wait is measured from Meta's own
+    // timestamp on the customer's message, so it includes the webhook's trip here.
+    const tookMs = {
+      w: Math.max(0, Math.min(600_000, turnT0 - (eventTs && Number.isFinite(eventTs) ? eventTs : turnT0))),
+      t: Math.max(0, sendT0 - turnT0),
+      s: Math.max(0, sendDoneAt - sendT0),
+    };
+    const outTurn: Turn = sent.ok ? { role: 'assistant', content: choices.length ? `${reply}\n\n${choicesAsText(choices)}` : reply, at: outAt, ms: tookMs, ...(why ? { why } : {}) } : ({
       role: 'assistant', content: reply, at: outAt, failed: true, sendError: sent.error ?? null,
       ...(sent.retryable ? { retry: { first: outAt, n: 0, next: new Date(Date.parse(outAt) + FRESH_RETRY_AFTER_MIN[0] * 60_000).toISOString(), customerAt: customerAt != null ? new Date(customerAt).toISOString() : null, tries: sent.tries ?? 1 } } : {}),
     } as Turn);
@@ -7477,6 +7578,8 @@ interface MessagingEvent {
   // an echo with no app_id — that is how the two are told apart.
   message?: {
     text?: string; is_echo?: boolean; metadata?: string; mid?: string; app_id?: string | number;
+    /** Present when the customer tapped a quick-reply button rather than typing. */
+    quick_reply?: { payload?: string };
     /** Photos, videos, stickers, files — see inbound-media.ts. */
     attachments?: { type?: string; payload?: { url?: string; sticker_id?: unknown } }[];
   };

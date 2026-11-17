@@ -7,6 +7,7 @@ import { SUPPORT_ROLE } from '../support/support.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BotReportService } from './bot-report.service';
 import { sharedAiHealth } from './ai-health';
+import { presenceStats } from './presence';
 
 /**
  * Platform check, never a salon's screen: did the AI ever send a customer a
@@ -39,6 +40,27 @@ export class SupportAiLeaksController {
   @Get('health')
   health() {
     const h = sharedAiHealth();
-    return { streak: h.streak, replies: h.okCount, failures: h.failCount, lastKind: h.lastKind, lastDetail: h.lastDetail, lastOkAt: h.lastOkAt ? new Date(h.lastOkAt).toISOString() : null, lastFailAt: h.lastFailAt ? new Date(h.lastFailAt).toISOString() : null, hardModel: String(process.env.ANTHROPIC_HARD_MODEL ?? '').trim() || null };
+    // "Seen" + typing dots sent to Meta since this server started (./presence): proof the calls arrive.
+    const presence = () => { const p = presenceStats(); return { sent: p.sent, failed: p.failed, lastError: p.lastError, lastOkAt: p.lastOkAt ? new Date(p.lastOkAt).toISOString() : null, lastFailAt: p.lastFailAt ? new Date(p.lastFailAt).toISOString() : null }; };
+    return { streak: h.streak, replies: h.okCount, failures: h.failCount, lastKind: h.lastKind, lastDetail: h.lastDetail, lastOkAt: h.lastOkAt ? new Date(h.lastOkAt).toISOString() : null, lastFailAt: h.lastFailAt ? new Date(h.lastFailAt).toISOString() : null, hardModel: String(process.env.ANTHROPIC_HARD_MODEL ?? '').trim() || null, presence: presence() };
+  }
+}
+
+/**
+ * The platform's AI health: one row of numbers per salon (./ai-fleet) — speed,
+ * failures, customers still waiting, AI on or off. Support and Super Admin
+ * only: it names every salon, which no salon-scoped screen may do. Read only,
+ * audited, and it carries counts — never a message or a customer's name.
+ */
+@Controller('support/ai-fleet')
+@Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+export class SupportAiFleetController {
+  constructor(private readonly reports: BotReportService, private readonly prisma: PrismaService) {}
+
+  @Get()
+  async fleet(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string) {
+    const out = await this.reports.fleet(Number(days));
+    await this.prisma.auditLog.create({ data: { tenantId: null, userId: user.userId ?? null, action: 'support.ai_fleet_viewed', resourceType: 'platform', resourceId: `days:${out.days}` } }).catch(() => undefined);
+    return out;
   }
 }

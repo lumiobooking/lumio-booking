@@ -719,6 +719,9 @@ export default function AgencyPage() {
           <a href="/agency/google-book" title="Nút “Book online” trên Google cho mọi tiệm: tiệm nào vào feed, tiệm nào cần sửa dữ liệu" style={benchLink}>
             <span>📍</span>Nút Google
           </a>
+          <a href="/super-admin/ai-fleet" title="AI của từng tiệm trả lời nhanh hay chậm, có lỗi không, còn khách nào đang chờ; bật tính năng mới sau khi thử" style={benchLink}>
+            <span>🤖</span>Sức khoẻ AI
+          </a>
         </div>
 
         {/* What the shops sent, across every salon — only when there is something. One line per salon. */}

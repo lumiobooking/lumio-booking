@@ -4,6 +4,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { botReport, type BotReport, type ReportThread } from './bot-report';
 import type { StoredTurn } from './followup';
 import { leakedTurns, type LeakedTurn } from './correction-guard';
+import { fleetReport, type FleetReport, type FleetThread } from './ai-fleet';
 
 /** Reads ONE salon's conversations, bookings and open questions for the bot report. */
 @Injectable()
@@ -70,5 +71,55 @@ export class BotReportService {
     for (const h of hits) h.tenantName = names.get(h.tenantId) ?? '';
     hits.sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? '')));
     return { days: d, threads, hits: hits.slice(0, 200), truncated: truncated || hits.length > 200 };
+  }
+  /**
+   * PLATFORM report (support / super admin only — see SupportAiFleetController):
+   * one row of NUMBERS per salon — how fast its AI answers, how often it
+   * failed, who is still waiting (./ai-fleet). Read only. Each salon's row is
+   * computed from that salon's own conversations; no message text leaves here.
+   */
+  async fleet(days?: number): Promise<FleetReport & { truncated: boolean }> {
+    const d = [1, 7, 30].includes(Number(days)) ? Number(days) : 7;
+    const to = new Date();
+    const from = new Date(to.getTime() - d * 86_400_000);
+    const ins = (this.prisma as unknown as { aiInstruction?: { groupBy: (a: unknown) => Promise<{ tenantId: string; _sum: { usedCount: number | null; blockedCount: number | null } }[]> } }).aiInstruction;
+    const [tenants, conns, bookings, sums] = await Promise.all([
+      this.prisma.tenant.findMany({ where: { deletedAt: null }, select: { id: true, name: true, slug: true }, take: 5000 }),
+      this.prisma.messengerConnection.findMany({ select: { tenantId: true, enabled: true }, take: 5000 }),
+      this.prisma.appointment.findMany({ where: { createdAt: { gte: new Date(from.getTime() - 86_400_000) } }, select: { tenantId: true, customerId: true, createdAt: true }, take: 50_000 }),
+      ins ? ins.groupBy({ by: ['tenantId'], _sum: { usedCount: true, blockedCount: true } }).catch(() => []) : Promise.resolve([]),
+    ]);
+    const threads: FleetThread[] = [];
+    let cursor: string | undefined; let truncated = false;
+    for (let page = 0; page < 60; page++) {
+      const rows = await this.prisma.messengerThread.findMany({
+        where: { OR: [{ lastCustomerAt: { gte: from } }, { lastMessageAt: { gte: from } }] },
+        select: { id: true, tenantId: true, channel: true, handoff: true, customerId: true, lastMessageAt: true, history: true },
+        orderBy: { id: 'asc' }, take: 400, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      for (const t of rows) {
+        threads.push({
+          id: t.id, tenantId: t.tenantId, channel: t.channel, handoff: t.handoff, customerId: t.customerId, lastMessageAt: t.lastMessageAt,
+          history: (Array.isArray(t.history) ? t.history : []) as unknown as StoredTurn[],
+        });
+      }
+      if (rows.length < 400) break;
+      cursor = rows[rows.length - 1].id;
+      if (page === 59) truncated = true;
+    }
+    const enabledOf = new Map(conns.map((c) => [c.tenantId, c.enabled]));
+    const active = new Set(threads.map((t) => t.tenantId));
+    // A salon is listed when it has a chat channel or a conversation in the period; the rest are only counted.
+    const listed = tenants.filter((t) => enabledOf.has(t.id) || active.has(t.id));
+    const report = fleetReport({
+      salons: listed.map((t) => ({ id: t.id, name: t.name, slug: t.slug, botOn: enabledOf.has(t.id) ? Boolean(enabledOf.get(t.id)) : null })),
+      threads,
+      bookings: bookings.filter((b): b is typeof b & { customerId: string } => Boolean(b.customerId)).map((b) => ({ tenantId: b.tenantId, customerId: b.customerId, createdAt: b.createdAt })),
+      instructions: sums.map((r) => ({ tenantId: r.tenantId, used: r._sum.usedCount ?? 0, blocked: r._sum.blockedCount ?? 0 })),
+      from, to, days: d,
+    });
+    report.totals.noChannel += tenants.length - listed.length;
+    report.totals.salons = tenants.length;
+    return { ...report, truncated };
   }
 }

@@ -24,6 +24,71 @@
 /** How long to wait for the rest of a burst before answering. */
 export const BURST_MS = 6_000;
 
+/* ------------------------------------------------------------------------ *
+ * THE ADAPTIVE WAIT (released in stages — common/ai-release "smartWait")
+ *
+ * Six seconds before EVERY reply was the largest single part of the 14 seconds
+ * a customer waited on production (17/11/2026): a tap on a button waited as
+ * long as somebody typing a paragraph in pieces.
+ *
+ * The wait is only there to let a customer finish what they are saying. So it
+ * is sized by what they just sent — and the gathering does not end with it:
+ * a message that lands while the reply is being written still drops that
+ * draft and is answered together with the rest (the supersede rule below),
+ * so a short wait costs a wasted draft now and then, never two half-answers.
+ * ------------------------------------------------------------------------ */
+
+/** A tap on a button: the customer has said all they meant to. */
+export const WAIT_TAP_MS = 300;
+/** A whole question or a full sentence. */
+export const WAIT_COMPLETE_MS = 1_000;
+/** Something in between. */
+export const WAIT_DEFAULT_MS = 1_500;
+/** "hi", "alo", "shop ơi", a lone photo: the real message is almost certainly still coming. */
+export const WAIT_FRAGMENT_MS = 3_200;
+/** The customer wrote again this recently: give them a moment more, a few times at most. */
+export const SETTLE_WITHIN_MS = 700;
+export const SETTLE_EXTRA_MS = 900;
+export const SETTLE_MAX = 3;
+
+const QUESTION_START = /^(what|when|where|which|who|why|how|do|does|did|can|could|is|are|will|would|may|should|have|has|cu[aá]nto|cu[aá]ndo|d[oó]nde|qu[eé]|tienen|puedo|bao nhiêu|mấy giờ|khi nào|ở đâu|có|còn|giá|cho hỏi|cho em hỏi|cho mình hỏi|cho chị hỏi|cho anh hỏi|tư vấn|đặt lịch|book)(?=[\s,?!.]|$)/iu;
+/** An asking phrase anywhere in the sentence. */
+const QUESTION_INSIDE = /(mấy giờ|bao nhiêu|bao lâu|khi nào|ở đâu|thế nào|làm sao|là gì|được không|how much|how long|what time|cuánto|cuándo)/iu;
+/** A greeting or a call for attention with nothing else in it. */
+const OPENER = /^(hi+|hello+|hey+|helo|alo+|alô|a lô|chào|xin chào|chao|hola|buenas|good (morning|afternoon|evening)|(shop|em|chị|anh|bạn|ad|admin|tiệm|quán|bác sĩ) ơi)[\s,.!]*((shop|em|chị|anh|bạn|ad|admin|there|team|tiệm|quán|ạ)[\s,.!]*)?$/iu;
+/** Vietnamese asks at the END of the sentence: "… không", "… chưa", "… bao nhiêu", "… ạ". */
+const QUESTION_END = /(?:^|\s)(không|ko|hông|hok|chưa|hả|nhỉ|vậy|sao|nào|đâu|bao nhiêu|ạ)\s*[.!]*$/iu;
+
+/**
+ * How long to wait before answering what is in the queue.
+ * `tap` = the newest message was a button; `media` = a photo or file came with it.
+ */
+export function burstWaitMs(texts: readonly string[], o: { tap?: boolean; media?: boolean } = {}): number {
+  const last = String(texts[texts.length - 1] ?? '').trim();
+  if (o.tap && texts.length <= 1) return WAIT_TAP_MS;
+  // A photo often arrives a second before its caption.
+  if (o.media && texts.length <= 1) return WAIT_FRAGMENT_MS;
+  if (!last) return WAIT_DEFAULT_MS;
+  const words = last.split(/\s+/u).filter(Boolean).length;
+  const asks = /[?？]\s*$/u.test(last) || QUESTION_START.test(last) || QUESTION_END.test(last) || QUESTION_INSIDE.test(last);
+  if (OPENER.test(last)) return WAIT_FRAGMENT_MS;
+  if (asks && words >= 2) return WAIT_COMPLETE_MS;
+  if (words >= 7) return WAIT_COMPLETE_MS;
+  // "Yes", "Tuesday", "10am", a name, a phone number: usually the whole answer to what was asked.
+  return WAIT_DEFAULT_MS;
+}
+
+/**
+ * After the wait: did ANOTHER message land during it, a moment ago? Then wait a
+ * little more (bounded). The message the wait was started for does not count.
+ */
+export function settleMs(lastArrivalMs: number | null | undefined, waitStartedMs: number, nowMs: number, extended: number): number {
+  if (lastArrivalMs == null || extended >= SETTLE_MAX) return 0;
+  if (lastArrivalMs <= waitStartedMs) return 0;
+  return nowMs - lastArrivalMs < SETTLE_WITHIN_MS ? SETTLE_EXTRA_MS : 0;
+}
+
+
 /**
  * How many replies in a row may be dropped because the customer wrote again
  * while they were being written (MessengerService.drainBurst). Two: somebody

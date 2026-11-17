@@ -65,6 +65,12 @@ export function fallbackText(conversationText: string, fallback?: ReplyLang | nu
     : 'So sorry — our system is a little slow right now 🙏 I\'ve flagged your message for a teammate, and someone will reply here as soon as possible.';
 }
 
+/** Is this line the apology above? Counted by the platform's AI health report (./ai-fleet). */
+export function isFallbackLine(text: unknown): boolean {
+  const t = String(text ?? '');
+  return /hệ thống đang hơi chậm một chút/i.test(t) || /our system is a little slow right now/i.test(t);
+}
+
 /** API statuses worth ONE quiet retry before bothering the customer.
  *  429/529 are Anthropic's "busy right now"; 5xx are momentary. */
 export function isTransientStatus(status: number): boolean {

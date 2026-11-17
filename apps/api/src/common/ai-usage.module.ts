@@ -1,6 +1,8 @@
 import { Global, Module } from '@nestjs/common';
 import { AiUsageService } from './ai-usage.service';
 import { AiUsageController } from './ai-usage.controller';
+import { AiReleaseService } from './ai-release.service';
+import { AiReleaseController } from './ai-release.controller';
 
 /**
  * Global on purpose: the meter is injected by Messenger, Content, Google
@@ -10,8 +12,8 @@ import { AiUsageController } from './ai-usage.controller';
  */
 @Global()
 @Module({
-  controllers: [AiUsageController],
-  providers: [AiUsageService],
-  exports: [AiUsageService],
+  controllers: [AiUsageController, AiReleaseController],
+  providers: [AiUsageService, AiReleaseService],
+  exports: [AiUsageService, AiReleaseService],
 })
 export class AiUsageModule {}

@@ -227,6 +227,9 @@ export default function TenantsPage() {
           <a href="/super-admin/ai-usage" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Chi phí AI
           </a>
+          <a href="/super-admin/ai-fleet" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
+            Sức khoẻ AI
+          </a>
           <a href="/super-admin/plans" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Manage plans
           </a>

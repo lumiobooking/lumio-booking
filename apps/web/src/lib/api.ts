@@ -69,6 +69,13 @@ interface ApiOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   token?: string | null;
   body?: unknown;
+  /**
+   * A request the SCREEN made by itself, not the person (the new Inbox asking
+   * for the AI's summary when a waiting conversation is opened). Its failure
+   * is the caller's to handle: a red "failed" toast about something nobody
+   * pressed is the opposite of the complaint the toasts exist to answer.
+   */
+  quiet?: boolean;
 }
 
 /**
@@ -305,7 +312,7 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
 const inFlight = new Map<string, Promise<unknown>>();
 
 async function fetchOnce<T>(path: string, options: ApiOptions, key: string): Promise<T> {
-  const { method = 'GET', token, body } = options;
+  const { method = 'GET', token, body, quiet = false } = options;
   const branch = activeBranchId();
 
   // If the answer takes long enough that the app starts to look dead, say WHY.
@@ -368,7 +375,7 @@ async function fetchOnce<T>(path: string, options: ApiOptions, key: string): Pro
     // — an error that only lands in a corner of one page is exactly that.
     // Codes the server puts in front of a refusal, made readable (body keeps the original).
     const shown = blockText(outsideHoursText(message, toastVi), toastVi);
-    if (method !== 'GET' && !(res.status === 401 && token)) notify('error', shown);
+    if (method !== 'GET' && !quiet && !(res.status === 401 && token)) notify('error', shown);
     throw new ApiError(shown, res.status, data);
   }
 

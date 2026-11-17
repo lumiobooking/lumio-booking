@@ -45,3 +45,22 @@ beforeEach(() => {
   // next: jest restores spies, and this puts the block back underneath.
   globalThis.fetch = (url) => Promise.reject(BLOCKED(url));
 });
+
+/**
+ * A TEST MUST NOT READ THE MACHINE IT RUNS ON.
+ *
+ * 17/11/2026: rt169 never reached a salon. The deploy runs these tests on
+ * Render's build machine, and Render sets RENDER_GIT_COMMIT there — which is
+ * exactly what the new promotion gate (common/ai-golden) reads to tell a real
+ * build from a development one. A test that promoted a behaviour with no
+ * golden run passed on every developer machine (no commit: not gated) and was
+ * refused on the one machine that decides whether a deploy goes out. Both
+ * services sat on the previous build for four hours with nothing on screen to
+ * say why.
+ *
+ * So the variables a platform sets are taken away before any test file loads.
+ * A test that needs one sets it itself, in the open (ai-release.spec does).
+ */
+for (const k of Object.keys(process.env)) {
+  if (/^RENDER(_|$)/.test(k) || k === 'VERCEL' || /^VERCEL_/.test(k)) delete process.env[k];
+}

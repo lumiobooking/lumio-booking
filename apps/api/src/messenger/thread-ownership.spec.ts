@@ -1,5 +1,5 @@
 import {
-  ownershipOf, handoffModeOf, waitingMinutes, replyWindow, DEFAULT_ACTIVE_MINS,
+  ownershipOf, handoffModeOf, waitingMinutes, replyWindow, customerWroteLast, DEFAULT_ACTIVE_MINS,
 } from './thread-ownership';
 
 const NOW = new Date('2026-08-27T12:00:00.000Z');
@@ -217,5 +217,27 @@ describe('chat turns with "bot answers first"', () => {
 
   it('without it, the old rule stands: the bot waits for the person', () => {
     expect(ownershipOf(routed, { now: NOW, botFirst: false }).botMaySpeak).toBe(false);
+  });
+});
+
+describe('who wrote last — the fact the inbox sorts on since 17/11/2026', () => {
+  it('the customer did, when nothing has been sent since their message', () => {
+    expect(customerWroteLast({ lastCustomerAt: minsAgo(300), lastMessageAt: minsAgo(300) })).toBe(true);
+    // The two columns are written by different statements; a second apart is still "nobody answered".
+    expect(customerWroteLast({ lastCustomerAt: new Date(NOW.getTime() - 60_000), lastMessageAt: new Date(NOW.getTime() - 59_000) })).toBe(true);
+  });
+
+  it('we did, once the AI or a teammate has answered', () => {
+    expect(customerWroteLast({ lastCustomerAt: minsAgo(10), lastMessageAt: minsAgo(9) })).toBe(false);
+  });
+
+  it('a conversation the customer never wrote in owes nobody an answer', () => {
+    expect(customerWroteLast({ lastCustomerAt: null, lastMessageAt: minsAgo(5) })).toBe(false);
+    expect(customerWroteLast(null)).toBe(false);
+  });
+
+  it('a row from before lastMessageAt existed is read from the customer\'s own stamp', () => {
+    expect(customerWroteLast({ lastCustomerAt: minsAgo(5), lastMessageAt: null })).toBe(true);
+    expect(customerWroteLast({ lastCustomerAt: minsAgo(5).toISOString(), lastMessageAt: minsAgo(5).toISOString() })).toBe(true);
   });
 });

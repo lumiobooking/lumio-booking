@@ -41,9 +41,22 @@ export const RELEASE_FEATURES = {
   quickRepair: { ships: 'canary', vi: 'Sửa nhanh câu bị dặn dò chặn, không viết lại từ đầu', en: 'Quick repair of a blocked draft' },
   /** A short, adaptive pause before answering instead of a fixed six seconds. */
   smartWait: { ships: 'canary', vi: 'Chờ thông minh thay cho chờ cố định 6 giây', en: 'Adaptive wait instead of a fixed six seconds' },
-} as const satisfies Record<string, { ships: ReleaseStage; vi: string; en: string }>;
+  /**
+   * The Inbox redrawn around WHO MUST ACT (17/11/2026): "needs a reply" and
+   * "the AI has it" instead of read/unread, a taller transcript, a customer
+   * panel that follows the kind of page. A SCREEN, not an AI behaviour: the
+   * golden run says nothing about it, so it is not held by the promotion gate
+   * (`ui`) — it is looked at on the test accounts and then switched on.
+   */
+  inboxV2: { ships: 'canary', ui: true, vi: 'Hộp thư mới: xếp theo “cần trả lời” và “AI đang lo”', en: 'New Inbox: sorted by who must act' },
+} as const satisfies Record<string, { ships: ReleaseStage; vi: string; en: string; ui?: boolean }>;
 
 export type ReleaseFeature = keyof typeof RELEASE_FEATURES;
+
+/** A screen rather than an AI behaviour — the golden run does not gate it. */
+export function isUiFeature(feature: ReleaseFeature): boolean {
+  return (RELEASE_FEATURES[feature] as { ui?: boolean }).ui === true;
+}
 export const RELEASE_KEY = 'ai_release';
 
 export interface ReleaseState {
@@ -106,6 +119,6 @@ export function featureOn(state: ReleaseState, feature: ReleaseFeature, tenantId
 /** What support sees: each feature, where it is, and who it reaches. */
 export function releaseView(state: ReleaseState) {
   return (Object.keys(RELEASE_FEATURES) as ReleaseFeature[]).map((f) => ({
-    feature: f, stage: stageOf(state, f), ships: RELEASE_FEATURES[f].ships, vi: RELEASE_FEATURES[f].vi, en: RELEASE_FEATURES[f].en,
+    feature: f, stage: stageOf(state, f), ships: RELEASE_FEATURES[f].ships, vi: RELEASE_FEATURES[f].vi, en: RELEASE_FEATURES[f].en, ui: isUiFeature(f),
   }));
 }

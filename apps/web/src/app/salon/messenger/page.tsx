@@ -153,7 +153,7 @@ const DICT: Record<string, { vi: string; en: string }> = {
   leadEmailPh: { vi: 'vd: sales@lumioagency.com — trống = email admin của tiệm', en: 'e.g. sales@lumioagency.com — blank = salon admin email' },
   leadsTitle: { vi: 'Leads từ Messenger', en: 'Messenger leads' },
   noLeads: { vi: 'Chưa có lead nào — bot sẽ ghi lại khi khách để lại tên + SĐT.', en: 'No leads yet — the bot records one when a customer leaves name + phone.' },
-  ldNew: { vi: 'MỚI', en: 'NEW' }, ldCtd: { vi: 'ĐÃ GỌI', en: 'CONTACTED' }, ldWon: { vi: 'CHỐT ✓', en: 'WON' }, ldLost: { vi: 'BỎ', en: 'LOST' },
+  ldNew: { vi: 'MỚI', en: 'NEW' }, ldCtd: { vi: 'ĐÃ GỌI', en: 'CONTACTED' }, ldQuoted: { vi: 'BÁO GIÁ', en: 'QUOTED' }, ldClosing: { vi: 'CHỜ CHỐT', en: 'CLOSING' }, ldWon: { vi: 'CHỐT ✓', en: 'WON' }, ldLost: { vi: 'BỎ', en: 'LOST' },
   greeting: { vi: 'Lời chào (tùy chọn)', en: 'Greeting (optional)' },
   greetingPh: { vi: 'vd: Chào bạn! Bạn muốn đặt dịch vụ gì hôm nay ạ?', en: 'e.g. Hi! What would you like to book today?' },
   infoTitle: { vi: '🏢 Thông tin doanh nghiệp', en: '🏢 Business information' },
@@ -1324,6 +1324,8 @@ function Inner() {
                         style={{ ...ui.input, padding: '5px 8px', fontSize: 12, width: 120 }}>
                         <option value="NEW">{t('ldNew')}</option>
                         <option value="CONTACTED">{t('ldCtd')}</option>
+                        <option value="QUOTED">{t('ldQuoted')}</option>
+                        <option value="CLOSING">{t('ldClosing')}</option>
                         <option value="WON">{t('ldWon')}</option>
                         <option value="LOST">{t('ldLost')}</option>
                       </select>

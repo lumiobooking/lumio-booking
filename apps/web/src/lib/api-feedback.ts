@@ -33,6 +33,11 @@ const SILENT_WRITES: RegExp[] = [
   /\/typing-test$/,
   // Starting the platform's golden run: the screen itself says it is running.
   /\/ai-golden\/run$/,
+  // The AI's summary of a conversation for the person taking it over: a
+  // question asked with POST, nothing is saved — and since the new Inbox asks
+  // it by itself when a waiting conversation is opened, a "✓ Saved" there
+  // would be a receipt for something nobody did.
+  /\/threads\/[^/]+\/brief$/,
 ];
 
 export type WriteKind = 'silent' | 'announce';
@@ -84,6 +89,7 @@ export const GET_TTL_MS = 15_000;
  */
 const CACHE_PRESERVING: RegExp[] = [
   /\/read$/,
+  /\/threads\/[^/]+\/brief$/, // a question asked with POST: the summary changes nothing a GET showed
   /\/push\//,
   /\/heartbeat|\/hello|\/telemetry|\/track/,
 ];

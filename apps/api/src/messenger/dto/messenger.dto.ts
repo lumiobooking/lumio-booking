@@ -35,8 +35,21 @@ export class UpdateMessengerDto {
   @IsOptional() @IsBoolean() chatPreferUsualTech?: boolean;
 }
 
+const LEAD_STAGES = ['NEW', 'CONTACTED', 'QUOTED', 'CLOSING', 'WON', 'LOST'] as const;
+
 export class LeadStatusDto {
-  @IsIn(['NEW', 'CONTACTED', 'WON', 'LOST']) status!: 'NEW' | 'CONTACTED' | 'WON' | 'LOST';
+  @IsIn(LEAD_STAGES) status!: (typeof LEAD_STAGES)[number];
+}
+
+/** What the person answering may correct about a lead, from the inbox's customer panel. */
+export class ThreadLeadDto {
+  @IsOptional() @IsString() @MaxLength(120) name?: string;
+  @IsOptional() @IsString() @MaxLength(40) phone?: string;
+  @IsOptional() @IsString() @MaxLength(160) salonName?: string;
+  @IsOptional() @IsString() @MaxLength(80) city?: string;
+  @IsOptional() @IsString() @MaxLength(200) interest?: string;
+  @IsOptional() @IsString() @MaxLength(500) note?: string;
+  @IsOptional() @IsIn(LEAD_STAGES) status?: (typeof LEAD_STAGES)[number];
 }
 
 export class RenameThreadDto {

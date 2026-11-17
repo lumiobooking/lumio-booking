@@ -1,4 +1,4 @@
-import { EMPTY_RELEASE, RELEASE_FEATURES, canarySlugs, cleanRelease, featureOn, releaseView, stageOf } from './ai-release';
+import { EMPTY_RELEASE, RELEASE_FEATURES, canarySlugs, cleanRelease, featureOn, isUiFeature, releaseView, stageOf } from './ai-release';
 import { AiReleaseService } from './ai-release.service';
 import { AiReleaseController } from './ai-release.controller';
 
@@ -60,6 +60,22 @@ describe('the release service and its endpoint', () => {
     const svc = new AiReleaseService(prisma as never);
     return { svc, ctl: new AiReleaseController(svc, prisma as never), rows, audit };
   }
+
+  // The gate reads the build's commit. These tests are about the switch itself,
+  // on a development build (not gated) — said out loud, never left to whatever
+  // machine runs them: Render's build machine HAS a commit, and that is what
+  // stopped rt169 from deploying on 17/11/2026.
+  const savedCommit = process.env.RENDER_GIT_COMMIT;
+  beforeEach(() => { delete process.env.RENDER_GIT_COMMIT; });
+  afterAll(() => { if (savedCommit === undefined) delete process.env.RENDER_GIT_COMMIT; else process.env.RENDER_GIT_COMMIT = savedCommit; });
+
+  it('on a real build, the same promotion with no golden run is refused (the case Render\'s build machine hit)', async () => {
+    process.env.RENDER_GIT_COMMIT = '75da0352ffff';
+    const { svc, ctl } = build();
+    await svc.view();
+    await expect(ctl.change({ userId: 'u1', email: 'owner@x.test', role: 'SUPER_ADMIN', tenantId: null } as never, { stages: { smartWait: 'on' } })).rejects.toMatchObject({ response: { code: 'GOLDEN_GATE' } });
+    expect(svc.isOn('smartWait', AMY)).toBe(false);
+  });
 
   it('reads the stored stage; a salon that is not a test account stays on the old behaviour until promotion', async () => {
     const { svc, ctl, audit } = build();
@@ -148,6 +164,28 @@ describe('the release service and its endpoint', () => {
       await svc.change('owner', { stages: { typing: 'off', smartWait: 'canary' } });
       expect(svc.isOn('typing', DEMO)).toBe(false);
       expect(svc.isOn('smartWait', DEMO)).toBe(true);
+    });
+
+    it('a SCREEN (the new Inbox) is not an AI behaviour: the golden run says nothing about it and does not hold it', async () => {
+      process.env.RENDER_GIT_COMMIT = 'abc1234ffff';
+      const svc = gated(null);
+      expect(RELEASE_FEATURES.inboxV2.ships).toBe('canary');
+      expect(isUiFeature('inboxV2')).toBe(true);
+      expect(isUiFeature('quickRepair')).toBe(false);
+      // Ships to the test accounts only…
+      expect(svc.isOn('inboxV2', AMY)).toBe(false);
+      await new Promise((r) => setTimeout(r, 0));
+      const view = await svc.view();
+      expect(svc.isOn('inboxV2', DEMO)).toBe(true);
+      expect(view.gate.inboxV2).toBeNull();
+      expect(view.features.find((f) => f.feature === 'inboxV2')).toMatchObject({ stage: 'canary', ui: true });
+      // …and is switched on for every salon with no golden run at all.
+      await svc.change('owner', { stages: { inboxV2: 'on' } });
+      expect(svc.isOn('inboxV2', AMY)).toBe(true);
+      // An AI behaviour in the same request is still held — and then nothing is applied.
+      const both = gated(null);
+      await expect(both.change('owner', { stages: { inboxV2: 'on', smartWait: 'on' } })).rejects.toMatchObject({ response: { feature: 'smartWait' } });
+      expect(both.isOn('inboxV2', AMY)).toBe(false);
     });
 
     it('one refused behaviour refuses the whole change: nothing is half-applied', async () => {

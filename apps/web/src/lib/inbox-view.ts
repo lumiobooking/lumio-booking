@@ -50,6 +50,12 @@ export interface InboxRow {
   /** When to come back to this customer. See followUpState(). */
   followUpAt?: string | null;
   followUpNote?: string | null;
+  /** The customer's message is the last one — somebody's answer is owed (api thread-ownership). */
+  customerLast?: boolean;
+  /** …and it was a goodbye ("cảm ơn em", 👍) the AI rightly leaves alone. */
+  closer?: boolean;
+  /** The salon's auto-reply is switched off: no AI will answer this one. */
+  botOff?: boolean;
 }
 
 /** A label the salon made. Nothing is seeded — see the migration. */

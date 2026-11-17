@@ -196,3 +196,21 @@ export function replyWindow(thread: ThreadLike | null | undefined, now: Date = n
     ? { open: true, minutesLeft: left, unknown: false }
     : { open: false, minutesLeft: 0, unknown: false };
 }
+
+/**
+ * Did the CUSTOMER write last — is somebody's answer owed?
+ *
+ * The inbox used to sort by read/unread, which says who LOOKED, not who must
+ * ACT: on 17/11/2026 a customer's question from 05:58 sat unanswered for five
+ * hours in a list that showed "waiting for a person: 0". This is the missing
+ * fact. `lastMessageAt` moves on every message (customer, AI, staff);
+ * `lastCustomerAt` only on the customer's — so when the two agree, nobody has
+ * answered since. Two seconds of slack, because the two columns are written
+ * by different statements and a reply never lands that fast.
+ */
+export function customerWroteLast(thread: { lastCustomerAt?: Date | string | null; lastMessageAt?: Date | string | null } | null | undefined): boolean {
+  const c = asTime(thread?.lastCustomerAt);
+  if (c === null) return false;
+  const m = asTime(thread?.lastMessageAt);
+  return m === null || c >= m - 2_000;
+}

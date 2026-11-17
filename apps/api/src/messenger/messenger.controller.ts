@@ -6,7 +6,7 @@ import { InboxEventsService } from './inbox-events.service';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
 import { AiDigestService } from './ai-digest.service';
 import { BotReportService } from './bot-report.service';
-import { HandoffDto, LeadStatusDto, RenameThreadDto, SendTestDto, SuggestGreetingDto, UpdateMessengerDto } from './dto/messenger.dto';
+import { HandoffDto, LeadStatusDto, ThreadLeadDto, RenameThreadDto, SendTestDto, SuggestGreetingDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -121,6 +121,20 @@ export class MessengerController {
   @Get('threads')
   threads(@CurrentUser() user: AuthenticatedUser, @Query('before') before?: string, @Query('take') take?: string) {
     return this.svc.listThreads(user, { before: before || undefined, take: take ? Number(take) : undefined });
+  }
+
+  /** Which Inbox this salon sees (release channel) and what kind of page it is. */
+  @Roles(...INBOX_ROLES)
+  @Get('inbox-ui')
+  inboxUi(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.inboxUi(user);
+  }
+
+  /** Correct (or write down) the lead a conversation produced. The thread is looked up inside the caller's salon. */
+  @Roles(...INBOX_ROLES)
+  @Post('threads/:id/lead')
+  threadLead(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ThreadLeadDto) {
+    return this.svc.saveThreadLead(user, id, dto);
   }
 
   @Roles(...INBOX_ROLES)

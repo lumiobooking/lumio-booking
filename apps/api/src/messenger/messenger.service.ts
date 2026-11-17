@@ -22,7 +22,7 @@ import {
   killsTheLead, dodgesTheQuestion, guessesGender, disclosesBeforeQualifying, hasIdentitySignal,
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
-import { ownershipOf, waitingMinutes, replyWindow, DEFAULT_ACTIVE_MINS } from './thread-ownership';
+import { ownershipOf, waitingMinutes, replyWindow, customerWroteLast, DEFAULT_ACTIVE_MINS } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
@@ -72,7 +72,7 @@ import { repairCandidate } from './quick-repair';
 import { dryToolResult, type DryRunResult } from './dry-run';
 import { supportsSenderAction, senderActionBody, typingStep, notePresence, TYPING_REFRESH_MS, SEEN_TO_TYPING_MS, type SenderAction } from './presence';
 import { AiReleaseService } from '../common/ai-release.service';
-import { SILENT, HELD, isSilent, outboundVerdict, silentOnCloser, isNoReply, NO_REPLY_RULE, withoutBadSentences } from './outbound-guard';
+import { SILENT, HELD, isSilent, outboundVerdict, silentOnCloser, isCloser, isNoReply, NO_REPLY_RULE, withoutBadSentences } from './outbound-guard';
 import { mayAnswerMirrored, rescueVerdict } from './rescue-stuck';
 import { isMetaAdGreeting, isMetaSystemLine, isMetaAiLine } from './meta-system-lines';
 import { AD_HOLD_RETRY_MS, FRESH_RETRY_AFTER_MIN, describeRefusal, freshWindowRefusal, readSendRefusal, retryableRefusal, retryNote, type GraphError } from './send-errors';
@@ -202,6 +202,8 @@ export function factLiveOn(f: BotFact, day: string): boolean {
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
+/** A lead's stage. QUOTED and CLOSING (17/11/2026) are the two steps a sale spends most of its life in. */
+const LEAD_STATUSES = ['NEW', 'CONTACTED', 'QUOTED', 'CLOSING', 'WON', 'LOST'];
 /** The dots test only touches a conversation its customer wrote in this recently. */
 const TYPING_TEST_RECENT_MS = 30 * 60_000;
 export interface TypingTestRun {
@@ -1690,6 +1692,11 @@ export class MessengerService implements OnModuleInit {
         labels: ((r as unknown as { threadLabels?: { label: { id: string; name: string; color: string } }[] }).threadLabels ?? []).map((t) => t.label),
         assignedName: who || null,
         waitingMinutes: waitingMinutes(r as never, now, botFirst),
+        // Who must act (./thread-ownership customerWroteLast): the customer's
+        // message is the last one, and it was not a goodbye the AI rightly
+        // leaves alone ("cảm ơn em", a thumbs-up).
+        customerLast: customerWroteLast(r as never),
+        closer: customerWroteLast(r as never) && isCloser((r as unknown as { lastText?: string | null }).lastText),
         replyWindow: replyWindow(r as never, now),
         // Unread means nobody has opened it since the last MESSAGE.
         //
@@ -2037,6 +2044,9 @@ export class MessengerService implements OnModuleInit {
           ...(t.failed ? { failed: true, sendError: (t as { sendError?: string | null }).sendError ?? null } : {}),
           // Delivered by a later resend, after Meta first refused it (./late-resend).
           ...((t as { lateAt?: string | null }).lateAt ? { lateAt: (t as { lateAt?: string | null }).lateAt } : {}),
+          // How long the customer waited for this AI reply, in whole seconds
+          // (wait + work + send; a held reply's hold is inside the wait).
+          ...(t.role === 'assistant' && !t.manual && t.ms && Number.isFinite(t.ms.w + t.ms.t + t.ms.s) ? { tookSec: Math.max(1, Math.round((t.ms.w + t.ms.t + t.ms.s) / 1000)) } : {}),
           // What an AI reply was built from (./reply-trace) — this screen is staff-only.
           ...(t.role === 'assistant' && !t.manual && traceFrom((t as { why?: unknown }).why) ? { why: traceFrom((t as { why?: unknown }).why) } : {}),
           ...((t as { undelivered?: boolean }).undelivered ? { undelivered: true } : {}),
@@ -2048,6 +2058,14 @@ export class MessengerService implements OnModuleInit {
       state: view.state,
       stateReason: view.reason,
       waitingMinutes: waitingMinutes(row as never, now, botFirst),
+      customerLast: customerWroteLast(row as never),
+      closer: customerWroteLast(row as never) && isCloser((row as unknown as { lastText?: string | null }).lastText),
+      // What KIND of page this is. A page that sells (the agency's own) has no
+      // appointments to show beside a chat: the person answering needs the
+      // lead — shop name, area, phone, what they asked about. A salon needs
+      // the visit history. One inbox, two customer panels.
+      pageKind: (conn as unknown as { botMode?: string } | null)?.botMode === 'sales' ? 'sales' : 'booking',
+      lead: await this.threadLead(tenantId, String(row.id)),
       // The composer has to know BEFORE someone types a long answer. Finding
       // out after pressing send is how a reply is lost silently.
       replyWindow: replyWindow(row as never, now),
@@ -6168,6 +6186,70 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
   // ---- Leads (sales mode) --------------------------------------------------
 
+  /**
+   * The lead this conversation produced, for the inbox's customer panel on a
+   * page that sells. Looked up by tenant AND thread: a thread id from another
+   * salon finds nothing.
+   */
+  private async threadLead(tenantId: string, threadId: string) {
+    const row = await this.prisma.salesLead.findFirst({
+      where: { tenantId, threadId }, orderBy: { createdAt: 'desc' },
+      select: { id: true, name: true, phone: true, salonName: true, city: true, interest: true, note: true, status: true, createdAt: true },
+    }).catch(() => null);
+    return row ?? null;
+  }
+
+  /**
+   * What the Inbox screen needs to know before it draws: is the new layout
+   * live for THIS salon (release channel `inboxV2`), what kind of page it is,
+   * and whether the AI answers at all. Nothing here is another salon's.
+   */
+  async inboxUi(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
+    const pages = await this.prisma.messengerPage.count({ where: { tenantId } }).catch(() => 0);
+    return {
+      v2: this.release?.isOn('inboxV2', tenantId) ?? false,
+      pageKind: (conn as unknown as { botMode?: string } | null)?.botMode === 'sales' ? 'sales' as const : 'booking' as const,
+      aiOn: !!(conn as { enabled?: boolean } | null)?.enabled,
+      channels: pages,
+    };
+  }
+
+  /**
+   * The person answering corrects what the AI noted about a lead — or writes
+   * it down when the AI noted nothing. One lead per conversation; the thread
+   * must belong to the caller's salon, and so must the lead that is changed.
+   */
+  async saveThreadLead(user: AuthenticatedUser, threadId: string, dto: { name?: string; phone?: string; salonName?: string; city?: string; interest?: string; note?: string; status?: string }) {
+    const tenantId = this.tenantId(user);
+    const thread = await this.prisma.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { id: true, senderName: true } });
+    if (!thread) throw new NotFoundException('Thread not found');
+    const cut = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+    const data: Record<string, string | null> = {};
+    if (dto.name !== undefined) { const v = cut(dto.name, 120); if (v) data.name = v; }
+    if (dto.phone !== undefined) data.phone = cut(dto.phone, 40).replace(/[^+\d ().-]/g, '').trim();
+    if (dto.salonName !== undefined) data.salonName = cut(dto.salonName, 160) || null;
+    if (dto.city !== undefined) data.city = cut(dto.city, 80) || null;
+    if (dto.interest !== undefined) data.interest = cut(dto.interest, 200) || null;
+    if (dto.note !== undefined) data.note = cut(dto.note, 500) || null;
+    if (dto.status !== undefined) {
+      if (!LEAD_STATUSES.includes(dto.status)) throw new BadRequestException('Unknown status');
+      data.status = dto.status;
+    }
+    if (!Object.keys(data).length) throw new BadRequestException('Nothing to save');
+    const existing = await this.prisma.salesLead.findFirst({ where: { tenantId, threadId }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+    if (existing) {
+      await this.prisma.salesLead.updateMany({ where: { id: existing.id, tenantId }, data: data as never });
+    } else {
+      await this.prisma.salesLead.create({
+        data: { tenantId, threadId, name: (data.name as string) || String(thread.senderName ?? '').trim().slice(0, 120) || 'Khách', phone: (data.phone as string) ?? '', ...data } as never,
+      });
+    }
+    try { await this.prisma.auditLog.create({ data: { tenantId, userId: user.userId, action: existing ? 'messenger.lead_updated' : 'messenger.lead_created', resourceType: 'messenger', resourceId: threadId } as never }); } catch { /* never break */ }
+    return this.threadLead(tenantId, threadId);
+  }
+
   async listLeads(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     return this.prisma.salesLead.findMany({
@@ -6179,7 +6261,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
   async setLeadStatus(user: AuthenticatedUser, id: string, status: string) {
     const tenantId = this.tenantId(user);
-    const ok = ['NEW', 'CONTACTED', 'WON', 'LOST'].includes(status);
+    const ok = LEAD_STATUSES.includes(status);
     if (!ok) throw new BadRequestException('Unknown status');
     const r = await this.prisma.salesLead.updateMany({ where: { id, tenantId }, data: { status } });
     if (r.count === 0) throw new NotFoundException('Lead not found');

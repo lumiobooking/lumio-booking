@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { EMPTY_RELEASE, RELEASE_FEATURES, RELEASE_KEY, canarySlugs, cleanRelease, featureOn, releaseView, stageOf, type ReleaseFeature, type ReleaseStage, type ReleaseState } from './ai-release';
+import { EMPTY_RELEASE, RELEASE_FEATURES, RELEASE_KEY, canarySlugs, cleanRelease, featureOn, isUiFeature, releaseView, stageOf, type ReleaseFeature, type ReleaseStage, type ReleaseState } from './ai-release';
 import { GOLDEN_KEY, goldenFrom, promotionGate, type GoldenRecord } from './ai-golden';
 
 const FRESH_MS = 30_000;
@@ -86,6 +86,7 @@ export class AiReleaseService implements OnModuleInit {
     const gate: Partial<Record<ReleaseFeature, string | null>> = {};
     for (const f of Object.keys(RELEASE_FEATURES) as ReleaseFeature[]) {
       if (stageOf(this.state, f) === 'on') continue;
+      if (isUiFeature(f)) { gate[f] = null; continue; }
       const g = promotionGate({ record, commit: this.commit(), feature: f, nowMs: Date.now() });
       gate[f] = g.ok ? null : g.vi;
     }
@@ -99,7 +100,7 @@ export class AiReleaseService implements OnModuleInit {
     // THE GATE (./ai-golden): a behaviour reaches every salon only on a passed
     // golden run of the build that is running, with that behaviour live on the
     // test accounts while it ran. Taking a behaviour away is never held up.
-    const rising = (Object.keys(asked.stages) as ReleaseFeature[]).filter((f) => asked.stages[f] === 'on' && stageOf(this.state, f) !== 'on');
+    const rising = (Object.keys(asked.stages) as ReleaseFeature[]).filter((f) => asked.stages[f] === 'on' && stageOf(this.state, f) !== 'on' && !isUiFeature(f));
     if (rising.length) {
       const record = await this.golden();
       for (const f of rising) {

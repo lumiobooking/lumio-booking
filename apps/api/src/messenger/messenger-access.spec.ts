@@ -34,6 +34,9 @@ const STAFF_MAY = [
   // The summary + draft for the person taking a chat over (handoff-brief): reads this salon's thread, sends nothing.
   'threadBrief',
   'labels', 'createLabel', 'setLabel', 'followUp',
+  // The new Inbox (17/11/2026): which layout this salon sees, and correcting the
+  // lead beside a conversation they are answering — both inside their own salon.
+  'inboxUi', 'threadLead',
   // Turning notifications on for their own phone is NOT here: that already
   // lived at /push/* before this work, open to any signed-in user, and building
   // a second copy of it under /messenger was a mistake caught late. One push

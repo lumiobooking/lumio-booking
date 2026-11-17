@@ -49,6 +49,13 @@ export const RELEASE_FEATURES = {
    * (`ui`) — it is looked at on the test accounts and then switched on.
    */
   inboxV2: { ships: 'canary', ui: true, vi: 'Hộp thư mới: xếp theo “cần trả lời” và “AI đang lo”', en: 'New Inbox: sorted by who must act' },
+  /**
+   * The AI page as ONE page (17/11/2026): on top, where the AI is answering,
+   * how ready it is and what to do next; under it four steps in the order the
+   * work is done — teach, try, switch on, watch. The sections themselves are
+   * the ones that existed; this is where they live. A screen, like the Inbox.
+   */
+  aiPageV2: { ships: 'canary', ui: true, vi: 'Trang Trợ lý AI một trang: Dạy · Thử · Bật · Theo dõi', en: 'One-page AI assistant: teach · try · switch on · watch' },
 } as const satisfies Record<string, { ships: ReleaseStage; vi: string; en: string; ui?: boolean }>;
 
 export type ReleaseFeature = keyof typeof RELEASE_FEATURES;

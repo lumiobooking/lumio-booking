@@ -33,6 +33,8 @@ import { TeachAiPanel, canTeachAi, type InsChannel } from '../../../components/T
 import { usePaged } from '../../../components/ListFilter';
 import { BotReportBox } from '../../../components/BotReportBox';
 import { KnowledgeGapsBox } from '../../../components/KnowledgeGapsBox';
+import { AiTop, AiStepBar, AiWatch, type AiStep } from '../../../components/ai/AiOnePage';
+import { aiTiles, readiness, type AiOverview, type ReadyGo } from '../../../lib/ai-readiness';
 import { Empty, PageBar, Search, SubTabs, Switch, type SubTab, ghostBtn as kitGhost, primaryBtn as kitPrimary } from '../../../components/ai/aiKit';
 
 type Lang = 'en' | 'vi' | 'es' | 'zh' | 'ko' | 'fr' | 'ja';
@@ -51,6 +53,22 @@ const GROUPS: { id: Group; vi: string; en: string; tabs: Tab[] }[] = [
   { id: 'check', vi: 'Thử & kiểm tra', en: 'Try & check', tabs: ['sandbox', 'sim', 'overview'] },
   { id: 'settings', vi: 'Cài đặt', en: 'Settings', tabs: ['persona', 'booking', 'chat', 'voice'] },
 ];
+/**
+ * ONE PAGE, FOUR STEPS (17/11/2026, release channel `aiPageV2`): the same
+ * sections, in the order the work is done — teach it, try it, switch it on,
+ * watch it. Where the new layout is not live, the five tabs above stand.
+ */
+const STEPS: { id: AiStep; tabs: Tab[] }[] = [
+  { id: 'teach', tabs: ['learn', 'teach', 'knowledge', 'memory'] },
+  { id: 'try', tabs: ['sandbox', 'sim'] },
+  { id: 'on', tabs: ['chat', 'voice', 'persona', 'booking'] },
+  { id: 'watch', tabs: ['overview'] },
+];
+const stepOf = (t: Tab): AiStep => STEPS.find((x) => x.tabs.includes(t))?.id ?? 'teach';
+/** Remembered per salon so the second visit paints the right layout at once. */
+function readAiUi(tenantId: string | null | undefined): AiOverview | null {
+  try { const o = JSON.parse(window.localStorage.getItem(`lumio_ai_ui:${tenantId ?? 'none'}`) || 'null') as AiOverview | null; return o && typeof o.v2 === 'boolean' && o.numbers ? o : null; } catch { return null; }
+}
 const groupOf = (t: Tab): Group => GROUPS.find((g) => g.tabs.includes(t))?.id ?? 'home';
 /** One small picture per section, so the list reads at a glance. */
 const TAB_ICON: Record<Tab, string> = { home: '📊', learn: '🎓', sim: '🎭', persona: '🙂', knowledge: '📚', teach: '✍️', booking: '📅', memory: '🗂️', chat: '💬', voice: '📞', overview: '🩺', sandbox: '🧪' };
@@ -99,8 +117,21 @@ function Inner() {
   const phone = useIsMobile(720);
   const asked = params.get('tab') ?? '';
   const chosen: Tab | null = (TABS as string[]).includes(asked) ? (asked as Tab) : ALIAS[asked] ?? null;
-  // Every screen opens on Tổng quan: how the AI is doing and what to do next.
-  const tab: Tab = chosen ?? 'home';
+  // THE ONE-PAGE LAYOUT — live only where the release channel says so.
+  const tenantKey = useAuth().user?.tenantId ?? null;
+  const [ov, setOv] = useState<AiOverview | null>(null);
+  const loadOv = useCallback(() => {
+    if (!token) return;
+    apiFetch<AiOverview>('/messenger/ai-overview', { token }).then((r) => {
+      if (!r || typeof r.v2 !== 'boolean') return;
+      setOv(r);
+      try { window.localStorage.setItem(`lumio_ai_ui:${tenantKey ?? 'none'}`, JSON.stringify(r)); } catch { /* fine without */ }
+    }).catch(() => undefined); // an older server, or a role that may not read it: the page stays as it was
+  }, [token, tenantKey]);
+  useEffect(() => { setOv(readAiUi(tenantKey)); loadOv(); }, [tenantKey, loadOv]);
+  const v2 = !!ov?.v2;
+  // Old layout: opens on Tổng quan. New layout: the overview is always on top, so it opens on step 1.
+  const tab: Tab = v2 ? (chosen && chosen !== 'home' ? chosen : 'learn') : (chosen ?? 'home');
   const setTab = (t: Tab) => router.replace(`${pathname}?tab=${t}`);
   // How many questions wait to be taught — the number on the "Cần dạy" tab (owner / manager only; anyone else sees none).
   const [toTeach, setToTeach] = useState<number | null>(null);
@@ -108,6 +139,18 @@ function Inner() {
     if (!token) return;
     apiFetch<{ open: unknown[] }>('/messenger/knowledge-gaps', { token }).then((r) => setToTeach(r?.open?.length ?? 0)).catch(() => setToTeach(null));
   }, [token, tab]);
+
+  // What the readiness list needs beyond the overview: old notes that contradict the documents, the last sample run, linked documents.
+  const [conflicts, setConflicts] = useState<number | null>(null);
+  const [simLast, setSimLast] = useState<{ passed: number; total: number; stale?: boolean } | null>(null);
+  const [linkCount, setLinkCount] = useState(0);
+  useEffect(() => {
+    if (!token || !v2) return;
+    apiFetch<KTest | null>('/ai-brain/knowledge-test', { token }).then((t) => setConflicts(t ? (t.conflicts ?? []).filter((c) => !c.off && c.label).length : null)).catch(() => setConflicts(null));
+    apiFetch<{ at: string; passed: number; total: number; stale?: boolean } | null>('/ai-brain/simulations', { token }).then((r) => setSimLast(r && r.at ? { passed: r.passed, total: r.total, stale: r.stale } : null)).catch(() => setSimLast(null));
+    apiFetch<{ items: unknown[] }>('/ai-brain/sources', { token }).then((r) => setLinkCount(Array.isArray(r?.items) ? r.items.length : 0)).catch(() => setLinkCount(0));
+  }, [token, v2, tab]);
+  const [aiBusy, setAiBusy] = useState(false);
 
   const [view, setView] = useState<View | null>(null);
   const [brain, setBrain] = useState<Brain | null>(null);
@@ -171,16 +214,64 @@ function Inner() {
   }));
   void tabSub; void phone;
 
+  // ---- the one-page layout ----
+  const step = stepOf(tab);
+  const activeTabs = v2 ? (STEPS.find((x) => x.id === step) ?? STEPS[0]).tabs : group.tabs;
+  if (v2) {
+    // The owner's words for the same sections.
+    Object.assign(tabLabel, {
+      learn: L(vi, 'Câu hỏi AI chưa biết', 'Questions it cannot answer'), teach: L(vi, 'Dặn dò của anh/chị', 'Your instructions'),
+      knowledge: L(vi, 'Kiến thức', 'Knowledge'), memory: L(vi, 'Điều AI nhớ về khách', 'What it remembers about customers'),
+      sandbox: L(vi, 'Nhắn thử như một khách', 'Message it as a customer'), sim: L(vi, 'Bộ khách mẫu', 'Sample customers'),
+      chat: L(vi, 'Tin nhắn', 'Messages'), voice: L(vi, 'Tổng đài', 'Phone line'), persona: L(vi, 'Giọng & ngôn ngữ', 'Voice & languages'),
+      booking: L(vi, 'Đặt lịch & chuyển cho người', 'Booking & handing over'), overview: L(vi, 'Theo dõi', 'Watch'),
+    } as Partial<Record<Tab, string>>);
+  }
+  const knowledgeCount = brain.knowledge.facts.filter((f) => f.on).length + linkCount;
+  const anyChannel = !!ov && (ov.channels.messenger.length > 0 || ov.channels.instagram.length > 0 || ov.channels.zalo.length > 0 || ov.channels.web || (view.channels.voice.provisioned && view.channels.voice.enabled));
+  const ready = ov ? readiness({ connected: anyChannel, knowledge: knowledgeCount, conflicts, blockRate: ov.numbers.blockRate, gaps: toTeach ?? ov.numbers.gapsOpen, medianSec: ov.numbers.medianSec, sim: simLast }) : [];
+  const gapsNow = toTeach ?? ov?.numbers.gapsOpen ?? 0;
+  const stepSubs: Record<AiStep, string> = {
+    teach: gapsNow || conflicts ? [gapsNow ? L(vi, `${gapsNow} câu chờ dạy`, `${gapsNow} to teach`) : '', conflicts ? L(vi, `${conflicts} ghi chú cần gỡ`, `${conflicts} notes to fix`) : ''].filter(Boolean).join(' · ') : L(vi, 'câu hỏi · dặn dò · kiến thức', 'questions · instructions · knowledge'),
+    try: L(vi, 'nhắn thử · bộ khách mẫu', 'message it · sample customers'),
+    on: L(vi, 'kênh · giọng · khi nào chuyển cho người', 'channels · voice · when to hand over'),
+    watch: ov?.numbers.waitingNow ? L(vi, `${ov.numbers.waitingNow} khách chưa được trả lời`, `${ov.numbers.waitingNow} customers unanswered`) : L(vi, 'cuộc trò chuyện đi tới đâu', 'where conversations go'),
+  };
+  const goReady = (go: ReadyGo) => { if (go !== 'channels') setTab(go); };
+  // The chat channels' own switch (Messenger settings › enabled) — the same one the Messenger screen writes.
+  const toggleAi = async () => {
+    if (!ov || aiBusy) return;
+    const next = !ov.aiOn;
+    if (!next && !window.confirm(L(vi, 'Tạm dừng AI trên Messenger, Instagram và Zalo? Khách nhắn vào sẽ chờ người trả lời cho tới khi anh/chị bật lại.', 'Pause the AI on Messenger, Instagram and Zalo? Customers who write will wait for a person until you switch it back on.'))) return;
+    setAiBusy(true); setMsg(null);
+    try {
+      await apiFetch('/messenger/settings', { method: 'POST', token, body: { enabled: next } });
+      setOv((o) => (o ? { ...o, aiOn: next } : o));
+      loadOv();
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Error'); }
+    finally { setAiBusy(false); }
+  };
+
   return (
     <div style={{ padding: '20px 16px 80px', maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 320px' }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--ce2e8f0)', margin: 0 }}>🧠 {L(vi, 'Bộ não AI', 'AI brain')} · {view.salon.name}</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--ce2e8f0)', margin: 0 }}>{v2 ? L(vi, 'Trợ lý AI', 'AI assistant') : <>🧠 {L(vi, 'Bộ não AI', 'AI brain')} · {view.salon.name}</>}</h1>
           <p style={{ fontSize: 13, color: 'var(--c94a3b8)', margin: '4px 0 0', lineHeight: 1.5 }}>
-            {L(vi, 'Một bộ não cho hotline, Messenger, Instagram, Zalo và web chat. Sửa ở đây, mọi kênh đổi theo.', 'One brain for the hotline, Messenger, Instagram, Zalo and web chat. Change it here, every channel follows.')}
+            {v2 && ov
+              ? L(vi, `${view.salon.name} · ${ov.pageKind === 'sales' ? 'trang bán hàng' : 'tiệm đặt lịch'} · một nơi cho Messenger, Instagram, Zalo, website và tổng đài.`, `${view.salon.name} · ${ov.pageKind === 'sales' ? 'a page that sells' : 'a salon that books'} · one place for Messenger, Instagram, Zalo, the website and the phone line.`)
+              : L(vi, 'Một bộ não cho hotline, Messenger, Instagram, Zalo và web chat. Sửa ở đây, mọi kênh đổi theo.', 'One brain for the hotline, Messenger, Instagram, Zalo and web chat. Change it here, every channel follows.')}
             {' '}<span style={{ color: 'var(--c64748b)' }}>{brain.version ? L(vi, `Phiên bản ${brain.version}`, `Version ${brain.version}`) : L(vi, 'Chưa lưu lần nào (đang dùng cài đặt cũ)', 'Never saved (reading the old screens)')}{brain.updatedBy ? ` · ${brain.updatedBy}` : ''}</span>
           </p>
         </div>
+        {v2 && ov && (ov.channels.messenger.length > 0 || ov.channels.instagram.length > 0 || ov.channels.zalo.length > 0) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minHeight: 36, padding: '0 12px', borderRadius: 999, fontSize: 13.5, fontWeight: 700, background: ov.aiOn ? 'var(--c064e3b)' : 'var(--wash-amber-3)', color: ov.aiOn ? 'var(--ink-good)' : 'var(--ink-warn)' }}>
+              <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: ov.aiOn ? '#16a34a' : '#d97706' }} />{ov.aiOn ? L(vi, 'AI đang bật', 'The AI is on') : L(vi, 'AI đang tạm dừng', 'The AI is paused')}
+            </span>
+            {canEdit && <button type="button" disabled={aiBusy} onClick={() => void toggleAi()} style={{ ...ghost, minHeight: 44, opacity: aiBusy ? 0.6 : 1 }}>{aiBusy ? '…' : ov.aiOn ? L(vi, 'Tạm dừng AI', 'Pause the AI') : L(vi, 'Bật lại AI', 'Switch the AI back on')}</button>}
+          </div>
+        )}
         {canEdit && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {msg && <span style={{ fontSize: 13, color: msg.startsWith('✓') ? 'var(--ink-good)' : 'var(--ink-bad)' }}>{msg}</span>}
@@ -196,10 +287,15 @@ function Inner() {
       {canEdit && view.oldNotes && <OldNotes token={token} vi={vi} info={view.oldNotes} onDone={load} />}
 
       <div style={{ marginTop: 16 }}>
-        <SubTabs tabs={groupTabs} value={group.id} onChange={(g) => setTab((GROUPS.find((x) => x.id === g) ?? GROUPS[0]).tabs[0])} label={L(vi, 'Các phần của trang AI', 'Sections of the AI page')} />
-        {group.tabs.length > 1 && (
-          <div role="tablist" aria-label={vi ? group.vi : group.en} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-            {group.tabs.map((t) => {
+        {v2 && ov ? (<>
+          <AiTop vi={vi} ov={ov} voice={view.channels.voice} ready={ready} tiles={aiTiles(ov.numbers, ov.pageKind)} onGo={goReady} />
+          <AiStepBar vi={vi} step={step} subs={stepSubs} onPick={(st) => setTab((STEPS.find((x) => x.id === st) ?? STEPS[0]).tabs[0])} />
+        </>) : (
+          <SubTabs tabs={groupTabs} value={group.id} onChange={(g) => setTab((GROUPS.find((x) => x.id === g) ?? GROUPS[0]).tabs[0])} label={L(vi, 'Các phần của trang AI', 'Sections of the AI page')} />
+        )}
+        {activeTabs.length > 1 && (
+          <div role="tablist" aria-label={v2 ? L(vi, 'Các phần của bước này', 'Sections of this step') : (vi ? group.vi : group.en)} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+            {activeTabs.map((t) => {
               const on = tab === t;
               return (
                 <button key={t} type="button" role="tab" aria-selected={on} onClick={() => setTab(t)}
@@ -212,7 +308,7 @@ function Inner() {
         )}
         {(
           <div style={{ minWidth: 0, marginTop: 16 }}>
-            {group.tabs.length > 1 && <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--ce2e8f0)', margin: '0 0 4px' }}>{tabLabel[tab]}</h2>}
+            {activeTabs.length > 1 && <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--ce2e8f0)', margin: '0 0 4px' }}>{tabLabel[tab]}</h2>}
             {tab !== 'home' && tab !== 'learn' && (
             <p style={{ fontSize: 12.5, fontWeight: 700, margin: '0 0 14px', color: tab === 'chat' ? 'var(--c38bdf8)' : tab === 'voice' ? 'var(--cfbbf24)' : 'var(--ca5b4fc)' }}>
               {tab === 'chat' ? L(vi, 'Dùng cho: Messenger · Instagram · Zalo · chat web', 'Used by: Messenger · Instagram · Zalo · web chat')
@@ -224,7 +320,9 @@ function Inner() {
             {tab === 'home' && <Home token={token} vi={vi} view={view} toTeach={toTeach} onGo={setTab} />}
             {tab === 'sim' && <Simulations token={token} vi={vi} canEdit={canEdit} />}
             {tab === 'learn' && <Learn token={token} vi={vi} canEdit={canEdit} onChanged={() => setToTeach((n) => (n == null ? n : Math.max(0, n - 1)))} />}
-            {tab === 'overview' && <Overview token={token} vi={vi} view={view} onGo={setTab} />}
+            {tab === 'overview' && v2 && ov && <AiWatch vi={vi} ov={ov} />}
+            {tab === 'overview' && <Overview token={token} vi={vi} view={view} onGo={setTab} onePage={v2} sales={v2 && ov?.pageKind === 'sales'} />}
+            {tab === 'overview' && v2 && ov?.pageKind === 'booking' && <BotReportBox token={token} vi={vi} />}
             {tab === 'teach' && <AiInstructionsTab token={token} vi={vi} />}
             {tab === 'persona' && <Persona brain={brain} patch={patch} vi={vi} canEdit={canEdit} />}
             {tab === 'knowledge' && <Knowledge brain={brain} patch={patch} vi={vi} canEdit={canEdit} token={token} pageConnected={view.channels.messenger.connected} />}
@@ -469,7 +567,7 @@ function Learn({ token, vi, canEdit, onChanged }: { token: string | null; vi: bo
   );
 }
 
-function Overview({ token, vi, view, onGo }: { token: string | null; vi: boolean; view: View; onGo: (t: Tab) => void }) {
+function Overview({ token, vi, view, onGo, onePage, sales }: { token: string | null; vi: boolean; view: View; onGo: (t: Tab) => void; /** The one-page layout: channels are already on top. */ onePage?: boolean; /** A page that sells has no appointments to count. */ sales?: boolean }) {
   const [h, setH] = useState<Health | null>(null);
   const [cbs, setCbs] = useState<Callback[]>([]);
   const load = useCallback(() => {
@@ -489,7 +587,7 @@ function Overview({ token, vi, view, onGo }: { token: string | null; vi: boolean
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, marginBottom: 14 }}>
         {tile(L(vi, 'Cuộc trò chuyện AI (7 ngày)', 'AI conversations (7 days)'), h?.total ?? '…', Object.entries(h?.byChannel ?? {}).map(([c, n]) => `${n} ${CH_LABEL[c] ?? c}`).join(' · ') || '—')}
-        {tile(L(vi, 'Đặt lịch thành công', 'Booked'), h?.booked ?? '…', L(vi, `${h?.bookedCount ?? 0} lịch`, `${h?.bookedCount ?? 0} appointments`), 'var(--ink-good)')}
+        {!sales && tile(L(vi, 'Đặt lịch thành công', 'Booked'), h?.booked ?? '…', L(vi, `${h?.bookedCount ?? 0} lịch`, `${h?.bookedCount ?? 0} appointments`), 'var(--ink-good)')}
         {tile(L(vi, 'AI kết thúc vì lỗi', 'Ended by an error'), h?.errorEnds ?? '…', L(vi, `${h?.slowTurns ?? 0} lượt trả lời chậm`, `${h?.slowTurns ?? 0} slow turns`), (h?.errorEnds ?? 0) > 0 ? 'var(--ink-bad)' : 'var(--ink-good)')}
         {tile(L(vi, 'Việc gọi lại còn mở', 'Open callbacks'), h?.openCallbacks ?? '…', L(vi, `${h?.refusedBookings ?? 0} lần quy tắc từ chối đặt`, `${h?.refusedBookings ?? 0} bookings refused by rules`), (h?.openCallbacks ?? 0) > 0 ? 'var(--ink-warn)' : undefined)}
       </div>
@@ -520,7 +618,7 @@ function Overview({ token, vi, view, onGo }: { token: string | null; vi: boolean
           ))}
         </Card>
       </div>
-      <Card title={L(vi, 'Các kênh đang nói bằng bộ não này', 'Channels speaking with this brain')}>
+      {!onePage && <Card title={L(vi, 'Các kênh đang nói bằng bộ não này', 'Channels speaking with this brain')}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
           {[
             { k: 'voice', on: view.channels.voice.provisioned && view.channels.voice.enabled, sub: view.channels.voice.number ?? L(vi, 'Chưa có số', 'No number yet'), href: '/salon/voice' },
@@ -536,7 +634,7 @@ function Overview({ token, vi, view, onGo }: { token: string | null; vi: boolean
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}><button type="button" onClick={() => onGo('chat')} style={ghost}>{L(vi, 'Cách trả lời tin nhắn', 'Messages')}</button><button type="button" onClick={() => onGo('voice')} style={ghost}>{L(vi, 'Cách nói trên điện thoại', 'Phone')}</button></div>
-      </Card>
+      </Card>}
     </div>
   );
 }

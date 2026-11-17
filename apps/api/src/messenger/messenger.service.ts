@@ -6217,6 +6217,34 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
   }
 
   /**
+   * What the AI page needs before it draws: is the one-page layout live for
+   * THIS salon (release channel `aiPageV2`), what kind of page it is, whether
+   * the AI answers, and which chat channels are connected. This salon's only.
+   */
+  async aiPageUi(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const [conn, pages, webThread] = await Promise.all([
+      this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null),
+      this.prisma.messengerPage.findMany({ where: { tenantId }, select: { pageId: true, pageName: true, igId: true, igUsername: true } }).catch(() => []),
+      this.prisma.messengerThread.findFirst({ where: { tenantId, channel: 'web' } as never, select: { id: true } }).catch(() => null),
+    ]);
+    const list = pages as unknown as { pageId: string; pageName: string | null; igId: string | null; igUsername: string | null }[];
+    const zalo = list.filter((p) => String(p.pageId).startsWith('zalo:'));
+    const fb = list.filter((p) => !String(p.pageId).startsWith('zalo:') && !isWebPage(p.pageId));
+    return {
+      v2: this.release?.isOn('aiPageV2', tenantId) ?? false,
+      pageKind: (conn as unknown as { botMode?: string } | null)?.botMode === 'sales' ? 'sales' as const : 'booking' as const,
+      aiOn: !!(conn as { enabled?: boolean } | null)?.enabled,
+      channels: {
+        messenger: fb.map((p) => String(p.pageName ?? '').trim()).filter(Boolean).slice(0, 5),
+        instagram: fb.filter((p) => p.igId).map((p) => String(p.igUsername ?? p.pageName ?? '').trim()).filter(Boolean).slice(0, 5),
+        zalo: zalo.map((p) => String(p.pageName ?? '').trim() || 'Zalo OA').slice(0, 5),
+        web: !!webThread,
+      },
+    };
+  }
+
+  /**
    * The person answering corrects what the AI noted about a lead — or writes
    * it down when the AI noted nothing. One lead per conversation; the thread
    * must belong to the caller's salon, and so must the lead that is changed.

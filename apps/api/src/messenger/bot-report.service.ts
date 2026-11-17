@@ -49,6 +49,56 @@ export class BotReportService {
    * correction note instead of to the customer (./correction-guard). Read
    * only; each hit names its salon so support can open that conversation.
    */
+  /**
+   * ONE salon's AI at a glance, for the top of its AI page: how many
+   * conversations, how many the AI carried alone, how many a person took, how
+   * long a customer waits for a reply, how often the owner's own instructions
+   * block a reply, and who is still waiting right now. The same rules as the
+   * platform's fleet report (./ai-fleet) run over THIS salon's threads only —
+   * every query below carries the caller's tenant id.
+   */
+  async overview(user: AuthenticatedUser, days?: number) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new NotFoundException('No tenant context');
+    const d = [7, 30].includes(Number(days)) ? Number(days) : 7;
+    const to = new Date();
+    const from = new Date(to.getTime() - d * 86_400_000);
+    const ins = (this.prisma as unknown as { aiInstruction?: { aggregate: (a: unknown) => Promise<{ _sum: { usedCount: number | null; blockedCount: number | null } }> } }).aiInstruction;
+    const leadsDb = (this.prisma as unknown as { salesLead?: { count: (a: unknown) => Promise<number> } }).salesLead;
+    const [base, threads, sums, leads] = await Promise.all([
+      this.forTenant(tenantId, d),
+      this.prisma.messengerThread.findMany({
+        where: { tenantId, OR: [{ lastCustomerAt: { gte: from } }, { lastMessageAt: { gte: from } }] },
+        select: { id: true, tenantId: true, channel: true, handoff: true, customerId: true, lastMessageAt: true, history: true },
+        take: 2000,
+      }),
+      ins ? ins.aggregate({ where: { tenantId }, _sum: { usedCount: true, blockedCount: true } }).catch(() => null) : Promise.resolve(null),
+      leadsDb ? leadsDb.count({ where: { tenantId, createdAt: { gte: from } } }).catch(() => 0) : Promise.resolve(0),
+    ]);
+    const mine: FleetThread[] = threads.map((t) => ({
+      id: t.id, tenantId: t.tenantId, channel: t.channel, handoff: t.handoff, customerId: t.customerId, lastMessageAt: t.lastMessageAt,
+      history: (Array.isArray(t.history) ? t.history : []) as unknown as StoredTurn[],
+    }));
+    const row = fleetReport({
+      salons: [{ id: tenantId, name: '', slug: '', botOn: true }], threads: mine, bookings: [],
+      instructions: [{ tenantId, used: sums?._sum.usedCount ?? 0, blocked: sums?._sum.blockedCount ?? 0 }],
+      from, to, days: d,
+    }).rows[0];
+    return {
+      days: d,
+      conversations: base.conversations,
+      selfHandled: base.selfHandled, selfHandledRate: base.selfHandledRate,
+      humanTook: row?.humanTook ?? 0,
+      booked: base.booked, leads,
+      botReplies: row?.botReplies ?? 0,
+      medianSec: row?.medianSec ?? null, p90Sec: row?.p90Sec ?? null,
+      blockRate: row?.blockRate ?? null,
+      waitingNow: row?.waiting ?? 0,
+      stoppedAt: base.stoppedAt,
+      gapsOpen: base.unanswered.open,
+    };
+  }
+
   async leakScan(days?: number): Promise<{ days: number; threads: number; hits: (LeakedTurn & { tenantId: string; tenantName: string; threadId: string; channel: string })[]; truncated: boolean }> {
     const d = Math.min(90, Math.max(1, Math.round(Number(days) || 30)));
     const from = new Date(Date.now() - d * 86_400_000);

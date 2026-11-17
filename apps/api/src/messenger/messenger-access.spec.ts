@@ -37,6 +37,8 @@ const STAFF_MAY = [
   // The new Inbox (17/11/2026): which layout this salon sees, and correcting the
   // lead beside a conversation they are answering — both inside their own salon.
   'inboxUi', 'threadLead',
+  // The top of the AI page (which staff may already view): this salon's numbers, nothing to change.
+  'aiOverview',
   // Turning notifications on for their own phone is NOT here: that already
   // lived at /push/* before this work, open to any signed-in user, and building
   // a second copy of it under /messenger was a mistake caught late. One push

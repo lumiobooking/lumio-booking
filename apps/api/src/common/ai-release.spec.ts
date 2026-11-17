@@ -170,6 +170,8 @@ describe('the release service and its endpoint', () => {
       process.env.RENDER_GIT_COMMIT = 'abc1234ffff';
       const svc = gated(null);
       expect(RELEASE_FEATURES.inboxV2.ships).toBe('canary');
+      expect(RELEASE_FEATURES.aiPageV2.ships).toBe('canary');
+      expect(isUiFeature('aiPageV2')).toBe(true);
       expect(isUiFeature('inboxV2')).toBe(true);
       expect(isUiFeature('quickRepair')).toBe(false);
       // Ships to the test accounts only…

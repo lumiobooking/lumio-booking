@@ -47,6 +47,14 @@ export class MessengerController {
     return this.report.report(user, days ? Number(days) : undefined);
   }
 
+  /** The top of the AI page: which layout this salon sees, where the AI answers, and this salon's numbers. */
+  @Roles(...INBOX_ROLES)
+  @Get('ai-overview')
+  async aiOverview(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string) {
+    const [ui, numbers] = await Promise.all([this.svc.aiPageUi(user), this.report.overview(user, days ? Number(days) : undefined)]);
+    return { ...ui, numbers };
+  }
+
   // What the bot could not answer — the owner answers once, the bot knows from then on.
   // Salon admin only (class default); every query is scoped to the caller's salon.
   @Get('knowledge-gaps')

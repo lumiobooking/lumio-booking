@@ -15,6 +15,25 @@ describe('how long the customer waited for each AI reply', () => {
     expect([r.w, r.t, r.s]).toEqual([[1500], [2200], [300]]);
   });
 
+  it('reads what happened INSIDE the working time where a reply carries it, and tolerates older replies that do not', () => {
+    const r = replyTimes([
+      U(0), B(6, 'x', { ms: { w: 1000, t: 3600, s: 500 } }),                                             // before 18/11: no steps
+      U(60), B(65, 'x', { ms: { w: 100, t: 3400, s: 500, p: 300, m: 2000, j: 1000, k: 0, n: 1, r: 0 } }),
+      U(120), B(132, 'x', { ms: { w: 100, t: 9800, s: 500, p: 300, m: 6000, j: 2200, k: 0, n: 2, r: 1 } }), // a draft sent back
+    ], from.getTime(), to.getTime());
+    expect(r.t).toEqual([3600, 3400, 9800]);
+    expect(r.steps).toEqual([{ p: 300, m: 2000, j: 1000, k: 0, n: 1, r: 0 }, { p: 300, m: 6000, j: 2200, k: 0, n: 2, r: 1 }]);
+    const rep = fleetReport({ salons: [{ id: 's1', name: 'S', slug: 's', botOn: true }], threads: [thread('s1', [
+      U(60), B(65, 'x', { ms: { w: 100, t: 3400, s: 500, p: 300, m: 2000, j: 1000, k: 0, n: 1, r: 0 } }),
+      U(120), B(132, 'x', { ms: { w: 100, t: 9800, s: 500, p: 300, m: 6000, j: 2200, k: 0, n: 2, r: 1 } }),
+    ])], bookings: [], instructions: [], from, to, days: 1 });
+    expect(rep.rows[0].steps).toEqual({ prepMs: 300, modelMs: 2000, checkMs: 1000, rewriteRate: 0.5, samples: 2 });
+    // A salon whose replies carry no steps yet says so with null, never with zeros.
+    const old = fleetReport({ salons: [{ id: 's1', name: 'S', slug: 's', botOn: true }], threads: [thread('s1', [U(0), B(6, 'x', { ms: { w: 1000, t: 3600, s: 500 } })])], bookings: [], instructions: [], from, to, days: 1 });
+    expect(old.rows[0].steps).toBeNull();
+    expect(old.rows[0].phases?.thinkMs).toBe(3600);
+  });
+
   it('does not time a second bubble, a nudge, a survey question, a failed send or a person', () => {
     const r = replyTimes([
       U(0), B(10), B(11, 'second bubble'),

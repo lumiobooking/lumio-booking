@@ -66,7 +66,10 @@ import { BookingsService, walkInOnlyMessage } from '../bookings/bookings.service
 import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { mergeBurst, alreadySaid, BURST_MS, MAX_SUPERSEDE, mayDropReply, repeatCount, repeatVerdict, repeatWasAnswered, burstWaitMs, settleMs } from './burst';
+import { mergeBurst, alreadySaid, BURST_MS, MAX_SUPERSEDE, mayDropReply, repeatCount, repeatVerdict, repeatWasAnswered, burstWaitMs, settleMs, MAX_MERGE, holdUntilMs, dropKind, needsPause, ABANDONED } from './burst';
+import { TurnClock } from './turn-timing';
+import { repairCandidate } from './quick-repair';
+import { dryToolResult, type DryRunResult } from './dry-run';
 import { supportsSenderAction, senderActionBody, typingStep, notePresence, TYPING_REFRESH_MS, SEEN_TO_TYPING_MS, type SenderAction } from './presence';
 import { AiReleaseService } from '../common/ai-release.service';
 import { SILENT, HELD, isSilent, outboundVerdict, silentOnCloser, isNoReply, NO_REPLY_RULE, withoutBadSentences } from './outbound-guard';
@@ -126,8 +129,11 @@ type Turn = {
    * message to the moment the AI started on it (the gathering wait), t = the
    * AI working (model, tools, checks), s = handing it to the channel. For the
    * platform's speed report (./bot-report fleet) — never shown to a customer.
+   * Since 18/11/2026 the working time is also split (./turn-timing): p preparing,
+   * m the model writing, j checking the draft, k tools, n model calls, r drafts
+   * written again; and h = a finished reply held until the customer's pause was over.
    */
-  ms?: { w: number; t: number; s: number } | null;
+  ms?: { w: number; t: number; s: number; h?: number; p?: number; m?: number; j?: number; k?: number; n?: number; r?: number } | null;
   /** The one-tap survey (./chat-survey): 'ask' on our question, the rating on the customer's answer. */
   survey?: 'ask' | SurveyRating;
   /**
@@ -1810,6 +1816,8 @@ export class MessengerService implements OnModuleInit {
 
   /** The stronger model's daily allowance, per salon (common/hard-turn). */
   private readonly hardBudget = new HardBudget();
+  /** Test runs (./dry-run) have their own allowance of the stronger model — never the salon's. */
+  private readonly dryBudget = new HardBudget();
 
   /** A brief already written for this thread at this point of the conversation (never across salons: the key carries the tenant). */
   private readonly briefs = new Map<string, { at: number; brief: HandoffBrief }>();
@@ -3772,7 +3780,7 @@ export class MessengerService implements OnModuleInit {
    * next one they send. The alternative — a row per thread in the database,
    * written twice a second while somebody types — costs more than the problem.
    */
-  private readonly bursts = new Map<string, { texts: string[]; ts?: number; running: boolean; images: string[]; media: InboundMedia[]; rids: string[]; /** the newest message was a button tap */ tap?: boolean; /** when the newest message landed here */ lastAt?: number }>();
+  private readonly bursts = new Map<string, { texts: string[]; ts?: number; running: boolean; images: string[]; media: InboundMedia[]; rids: string[]; /** the newest message was a button tap */ tap?: boolean; /** when the newest message landed here */ lastAt?: number; /** when the first message not yet taken by a run landed */ firstAt?: number }>();
 
   private queueReply(
     conn: { tenantId: string; pageToken: string; aiInstruction: string | null; botFacts: unknown },
@@ -3780,6 +3788,8 @@ export class MessengerService implements OnModuleInit {
     meta: { tap?: boolean; channel?: Channel | null; pageId?: string | null } = {},
   ): void {
     const q = this.bursts.get(threadId) ?? { texts: [], ts: eventTs, running: false, images: [], media: [], rids: [] };
+    // The first message a run has not taken yet: think-ahead reads whether it landed inside the customer's pause (./burst dropKind).
+    if (!q.texts.length) q.firstAt = Date.now();
     q.texts.push(text);
     q.tap = Boolean(meta.tap);
     q.lastAt = Date.now();
@@ -3820,15 +3830,26 @@ export class MessengerService implements OnModuleInit {
         await pause(more);
       }
     };
+    // THINK AHEAD (./burst), where it has been released: the AI starts on the
+    // message at once and the finished reply is held until the customer's
+    // pause is over — the wait and the work overlap instead of adding up.
+    // Everywhere else: wait first, then work, exactly as before.
+    const ahead = process.env.THINK_AHEAD !== 'off' && Boolean(this.release?.isOn('thinkAhead', conn.tenantId));
     /** Replies dropped in a row for newer messages (reset by one that is sent). */
     let superseded = 0;
+    /** Think-ahead: drafts dropped in a row because the customer wrote again inside their own pause. */
+    let merges = 0;
     try {
-      await beat();
+      if (!ahead) await beat();
       for (;;) {
         const q = this.bursts.get(threadId);
         // Nothing pending: no await between this check and the finally below,
         // so nothing can be queued into a run that is already leaving.
         if (!q || !q.texts.length) break;
+        // Think-ahead: the pause this burst is owed, counted from its newest message.
+        const holdUntil = ahead
+          ? holdUntilMs(q.lastAt, smart ? burstWaitMs(q.texts, { tap: q.tap, media: Boolean(q.images.length || q.media.length) }) : BURST_MS, Date.now())
+          : 0;
         const texts = q.texts.splice(0, q.texts.length);
         const images = q.images.splice(0, q.images.length).slice(0, 3);
         const media = q.media.splice(0, q.media.length);
@@ -3842,13 +3863,20 @@ export class MessengerService implements OnModuleInit {
         // whole lot ONCE — two questions in a row get one reply, not two that
         // half-repeat each other. Capped, so somebody typing non-stop still
         // gets an answer.
-        const supersede = superseded < MAX_SUPERSEDE ? () => (this.bursts.get(threadId)?.texts.length ?? 0) > 0 : undefined;
+        const supersede = ahead
+          ? () => {
+            const n = this.bursts.get(threadId);
+            if (!n?.texts.length) return false;
+            // Inside the customer's own pause it is the same burst (merged, as the wait did); after it, a supersede.
+            return dropKind(n.firstAt, holdUntil) === 'merge' ? merges < MAX_MERGE : superseded < MAX_SUPERSEDE;
+          }
+          : (superseded < MAX_SUPERSEDE ? () => (this.bursts.get(threadId)?.texts.length ?? 0) > 0 : undefined);
         const out = merged
-          ? await this.replyAndRecord(conn, threadId, senderId, merged, ts, { ...(images.length ? { images } : {}), ...(media.length ? { media } : {}) }, rids, supersede)
+          ? await this.replyAndRecord(conn, threadId, senderId, merged, ts, { ...(images.length ? { images } : {}), ...(media.length ? { media } : {}) }, rids, supersede, ahead ? { until: holdUntil } : undefined)
           : undefined;
         if (out === 'superseded') {
-          superseded += 1;
           const q2 = this.bursts.get(threadId);
+          if (ahead && dropKind(q2?.firstAt, holdUntil) === 'merge') merges += 1; else superseded += 1;
           if (q2) {
             q2.texts.unshift(...texts);
             q2.images.unshift(...images);
@@ -3858,9 +3886,10 @@ export class MessengerService implements OnModuleInit {
           }
         } else {
           superseded = 0;
+          merges = 0;
         }
         if (!this.bursts.get(threadId)?.texts.length) break;
-        await beat();
+        if (!ahead) await beat();
       }
     } finally {
       this.stopTyping(threadId, conn.pageToken, senderId);
@@ -4015,6 +4044,83 @@ export class MessengerService implements OnModuleInit {
     return r ? { ...r, calls: r.calls.map((c) => ({ ...c, error: c.error ? c.error.replace(/access_token=[^&\s"]+/gi, 'access_token=…').slice(0, 160) : null })) } : null;
   }
 
+  /**
+   * THE LIVE AI ON A CONVERSATION THAT EXISTS NOWHERE (./dry-run).
+   *
+   * The same run a customer's message gets — runAgent with this salon's own
+   * prompt, knowledge, tools, gates and owner's instructions, then the last
+   * door and the repeat rule of replyAndRecord — for a scripted conversation.
+   * Nothing is sent and nothing is saved; tools that look, look at THIS
+   * salon's data only (every read below is by this tenantId).
+   *
+   * For the platform's checks before a new behaviour is released
+   * (ai-brain/ai-canary) — never called with a customer's conversation.
+   */
+  async dryRun(tenantId: string, turns: { role: 'user' | 'assistant'; content: string }[], o: { channel?: 'messenger' | 'instagram' | 'zalo' | 'web' } = {}): Promise<DryRunResult> {
+    const clock = new TurnClock();
+    const t0 = Date.now();
+    const none = (state: DryRunResult['state'], error?: string): DryRunResult => ({ reply: '', state, tools: [], guards: [], choices: [], ms: Date.now() - t0, steps: clock.steps(), ...(error ? { error } : {}) });
+    const msgs = (Array.isArray(turns) ? turns : [])
+      .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+      .slice(-30);
+    const last = msgs[msgs.length - 1];
+    if (!tenantId || !last || last.role !== 'user') return none('error', 'no customer message');
+    // The two fixed "no reply" rules that sit in front of the model in replyAndRecord:
+    // somebody who said STOP, and a closing "ok thanks" that needs no answer.
+    const lastBot = [...msgs.slice(0, -1)].reverse().find((m) => m.role === 'assistant')?.content;
+    if (saysStop(last.content) || silentOnCloser(last.content, lastBot)) return none('silent');
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
+    const cx = (conn ?? {}) as { botMode?: string; quotePolicy?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; aiInstruction?: string | null };
+    const sales = cx.botMode === 'sales';
+    // A conversation spaced like a real one, ending now.
+    const prior: Turn[] = msgs.slice(0, -1).map((m, i) => ({ role: m.role, content: m.content, at: new Date(t0 - (msgs.length - i) * 20_000).toISOString() }));
+    const ctx: Parameters<MessengerService['runAgent']>[4] & { toolsRun?: string[] } = {
+      mode: sales ? 'sales' : 'booking',
+      quotePolicy: cx.quotePolicy === 'facts' ? 'facts' : 'sales',
+      // Nobody is e-mailed, nothing is addressed: there is no lead and no recipient.
+      leadEmail: null,
+      closing: cx.closing ?? null, agentName: cx.agentName ?? null, bizIntro: cx.bizIntro ?? null,
+      channel: o.channel ?? 'messenger',
+      // Stand-ins so a tool that checks "can I send here?" goes on to check WHAT it would send; it then sends nothing.
+      senderId: 'dry-run', pageToken: 'dry-run',
+      memory: '', gapDays: 0, lead: null, known: null, crossMemory: '', customerId: null,
+      images: [], media: [], photoNote: null,
+      clock, dryRun: true,
+    };
+    let reply: string;
+    try {
+      const instruction = [
+        this.factsText(await this.factsOf(tenantId, conn), await this.tzOf(tenantId)),
+        cx.aiInstruction || '',
+        sales ? await this.brainRules(tenantId) : '',
+      ].filter(Boolean).join('\n');
+      reply = await this.withDeadline(this.runAgent(tenantId, instruction, prior, last.content, ctx), 55_000, 'agent');
+    } catch (e) {
+      return { ...none('error', String((e as Error)?.message ?? e).replace(/\s+/g, ' ').slice(0, 160)), tools: ctx.toolsRun ?? [], guards: [...new Set(ctx.traceGuards ?? [])] };
+    }
+    // The last door and the repeat rule, as replyAndRecord applies them to a real reply.
+    const ownerList = this.instructions ? await this.instructions.allFor(tenantId).catch(() => []) : [];
+    let door = outboundVerdict(reply, ownerList);
+    if (!door.ok && door.why !== 'silent' && !isSilent(reply)) {
+      const trimmed = withoutBadSentences(reply, ownerList);
+      if (trimmed) { reply = trimmed; door = { ok: true }; }
+    }
+    const state: DryRunResult['state'] = door.ok ? 'reply' : door.why === 'silent' ? 'silent' : 'held';
+    if (state === 'reply' && alreadySaid(prior, reply)) {
+      const prevBot = [...prior].reverse().find((h) => h.role === 'assistant');
+      reply = notRepeatLine(conversationLang([...prior.filter((h) => h.role === 'user').map((h) => String(h.content ?? '')), last.content]) ?? await this.defaultLangOf(tenantId), String(prevBot?.content ?? ''));
+    }
+    return {
+      reply: state === 'reply' ? tidyReply(reply) : '',
+      state,
+      tools: ctx.toolsRun ?? [],
+      guards: [...new Set(ctx.traceGuards ?? [])],
+      choices: ctx.choices ?? [],
+      ms: Date.now() - t0,
+      steps: clock.steps(),
+    };
+  }
+
   // Yield windows are per-tenant settings now (humanActiveMins / graceMins on
   // the connection); 15 and 5 minutes are just the defaults.
   private readonly graceTimers = new Map<string, NodeJS.Timeout>();
@@ -4109,7 +4215,22 @@ export class MessengerService implements OnModuleInit {
      * row gets one reply, not two that half-repeat each other.
      */
     superseded?: () => boolean,
+    /**
+     * Think-ahead (./burst): this run started without waiting, so nothing may
+     * be SENT or DONE before `until` — the end of the pause the customer is
+     * owed. The work happens meanwhile; only the result is held.
+     */
+    ahead?: { until: number },
   ): Promise<void | 'superseded'> {
+    // Where this reply's working time goes, from here to the send (./turn-timing).
+    const clock = new TurnClock();
+    let heldMs = 0;
+    const holdNow = async (): Promise<void> => {
+      const ms = ahead ? ahead.until - Date.now() : 0;
+      if (ms <= 0) return;
+      heldMs += ms;
+      await new Promise<void>((r) => { const t = setTimeout(r, ms); t.unref?.(); });
+    };
     const fresh = await this.prisma.messengerThread.findUnique({ where: { id: threadId } });
     if (!fresh) return;
     // THE BOT DOES NOT ANSWER JUNK.
@@ -4160,6 +4281,7 @@ export class MessengerService implements OnModuleInit {
       const thanks = surveyThanks(rating, sVi);
       const inAtS = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
       if (userAlready) await this.markSurveyAnswer(threadId, ridSet, text, rating).catch(() => undefined);
+      await holdNow();
       const sentS = await this.sendText(conn.pageToken, senderId, thanks, sCh === 'zalo' ? 'zalo' : sCh === 'web' ? 'web' : undefined, conn.tenantId);
       const thanksTurn: Turn = sentS.ok ? { role: 'assistant', content: thanks, at: new Date().toISOString() } : { role: 'assistant', content: thanks, at: new Date().toISOString(), failed: true, sendError: sentS.error ?? null };
       await this.appendTurns(threadId, history, this.threadSummary(fresh), userAlready ? [thanksTurn] : [{ role: 'user', content: text, at: inAtS, survey: rating }, thanksTurn]);
@@ -4273,6 +4395,13 @@ export class MessengerService implements OnModuleInit {
         images: inImages,
         media: attach.media ?? [],
         photoNote,
+        clock,
+        // Think-ahead: a tool that DOES something waits for the customer's pause to end,
+        // and a run the customer has already written past stops where it is (./burst).
+        ...(ahead ? {
+          beforeWrite: async () => { await holdNow(); return !superseded?.(); },
+          abandoned: () => Boolean(superseded?.()),
+        } : {}),
       }), 55_000, 'agent');
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
@@ -4282,6 +4411,18 @@ export class MessengerService implements OnModuleInit {
       agentFailed = true;
       reply = fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), text].join(' '), await this.defaultLangOf(conn.tenantId));
     }
+    // Think-ahead: the run stopped because the customer wrote again before
+    // anything was done — the burst loop answers everything at once.
+    if (reply === ABANDONED) {
+      this.logger.log(`draft abandoned for a newer customer message on thread ${threadId}`);
+      if (!userAlready) {
+        const inAtAb = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+        await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtAb, ...imgTurn }]);
+      }
+      return 'superseded';
+    }
+    // Think-ahead: the reply is ready; the customer's pause decides when it may go.
+    await holdNow();
     // A human may have taken over WHILE we were generating (their echo flips
     // handoff on this thread). Sending now would talk over them — drop the
     // reply, keep only the customer's turn so context survives.
@@ -4301,7 +4442,7 @@ export class MessengerService implements OnModuleInit {
     if (process.env.AUTOMATION_YIELD !== 'off' && userAlready && !isSilent(reply) && mayDropReply((agentCtx as { toolsRun?: string[] } | null)?.toolsRun ?? [])) {
       const nowHist = (Array.isArray((guard as { history?: unknown } | null)?.history) ? (guard as { history: unknown[] }).history : []) as Turn[];
       const auto = automationAfterCustomer(nowHist, (t) => isMetaAdGreeting(t) || isMetaSystemLine(t) || isMetaAiLine(t));
-      if (auto.length && await this.automationAnswers(conn.tenantId, text, auto)) {
+      if (auto.length && await clock.time('check', () => this.automationAnswers(conn.tenantId, text, auto))) {
         this.logger.log(`the Page's automation already answered on thread ${threadId}: the AI waits for the customer's next message`);
         if (!userAlready) {
           const inAtAuto = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
@@ -4502,8 +4643,11 @@ export class MessengerService implements OnModuleInit {
     // timestamp on the customer's message, so it includes the webhook's trip here.
     const tookMs = {
       w: Math.max(0, Math.min(600_000, turnT0 - (eventTs && Number.isFinite(eventTs) ? eventTs : turnT0))),
-      t: Math.max(0, sendT0 - turnT0),
+      // A finished reply held for the customer's pause was not the AI working.
+      t: Math.max(0, sendT0 - turnT0 - heldMs),
       s: Math.max(0, sendDoneAt - sendT0),
+      ...(ahead ? { h: Math.round(heldMs) } : {}),
+      ...clock.steps(),
     };
     const outTurn: Turn = sent.ok ? { role: 'assistant', content: choices.length ? `${reply}\n\n${choicesAsText(choices)}` : reply, at: outAt, ms: tookMs, ...(why ? { why } : {}) } : ({
       role: 'assistant', content: reply, at: outAt, failed: true, sendError: sent.error ?? null,
@@ -4711,8 +4855,23 @@ export class MessengerService implements OnModuleInit {
       choices?: string[];
       /** For "Vì sao AI trả lời vậy?" (./reply-trace): the owner instructions matched to this message, and the guards that rewrote a draft. */
       traceRules?: { id: string; text: string }[];
-      traceGuards?: string[] } = { mode: 'booking', leadEmail: null },
+      traceGuards?: string[];
+      /** Where this reply's working time goes (./turn-timing). Numbers only. */
+      clock?: TurnClock;
+      /** Think-ahead (./burst): awaited before a tool that does something; false = the customer wrote again, stop. */
+      beforeWrite?: () => Promise<boolean>;
+      /** Think-ahead: has the customer written again since this run began? */
+      abandoned?: () => boolean;
+      /** A test run (./dry-run): nothing is sent or saved, and the salon's counters are left alone. */
+      dryRun?: boolean } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
+    const clock = ctx.clock ?? new TurnClock();
+    // A test run counts against its own allowance of the stronger model and
+    // never into "how often was this instruction used" — those are the salon's.
+    const hardBudget = ctx.dryRun ? this.dryBudget : this.hardBudget;
+    const noteUse = (applied: Parameters<AiInstructionsService['noteUse']>[1], blocked: Parameters<AiInstructionsService['noteUse']>[2]): void => {
+      if (!ctx.dryRun) this.instructions?.noteUse(tenantId, applied, blocked);
+    };
     if (!process.env.ANTHROPIC_API_KEY && !openAiEnabled()) {
       // THIS USED TO BE SILENT. A missing key returned the holding line to
       // every customer of every salon and wrote nothing anywhere — the agency
@@ -5382,14 +5541,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // Two-tier brain (common/hard-turn): a complaint, a group, a comparison or a
     // long message runs on the stronger model — only when the platform named
     // one, and within this salon's daily allowance. Otherwise undefined = the everyday model.
-    let turnModel = modelForTurn({ tenantId, reason: hardTurnReason(userText), budget: this.hardBudget });
+    let turnModel = modelForTurn({ tenantId, reason: hardTurnReason(userText), budget: hardBudget });
     if (turnModel) this.logger.log(`hard turn (${hardTurnReason(userText)}) → ${turnModel}`);
     let hardFellBack = false; let hardOff = false;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
+      // Think-ahead: the customer wrote again and nothing has been done yet —
+      // no more model time on a draft that will not be sent.
+      if (loop > 0 && ctx.abandoned?.() && mayDropReply((ctx as { toolsRun?: string[] }).toolsRun ?? [])) return ABANDONED;
       // One door to the model. Anthropic first; when it fails for a reason the
       // account owns — no credit, a dead key, an outage — and an OpenAI key is
       // on the instance, the same request goes there instead. See common/llm.
-      const out = await llmChat({
+      const out = await clock.time('model', () => llmChat({
         system: system as TextBlock[],
         messages: messages as ChatMessage[],
         tools: tools as ToolDef[],
@@ -5397,7 +5559,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         max_tokens: 1400,
         timeoutMs: 30_000,
         ...(turnModel ? { model: turnModel } : {}),
-      });
+      }));
       // Counted whether it worked or not: a failing call still burns a
       // request, and a retry loop that costs money must be visible as one.
       this.usage?.record({
@@ -5452,13 +5614,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const results: unknown[] = [];
         for (const blk of blocks) {
           if (blk.type !== 'tool_use') continue;
+          // Think-ahead: only looking is done early. A tool that DOES something
+          // waits until the customer's pause is over — and does not run at all
+          // when they have written again (nothing done yet, so the run just stops).
+          if (ctx.beforeWrite && needsPause(blk.name) && mayDropReply((ctx as { toolsRun?: string[] }).toolsRun ?? []) && !(await ctx.beforeWrite())) return ABANDONED;
           toolsUsed.add(blk.name || '');
           // Remembered on the context: a reply whose run DID something is never
           // dropped for a newer message (./burst mayDropReply).
           (ctx as { toolsRun?: string[] }).toolsRun = [...((ctx as { toolsRun?: string[] }).toolsRun ?? []), blk.name || ''];
           // The SAME object, not a copy: send_photos and create_booking leave
           // what they did on it, and the caller reads that back afterwards.
-          const out = await this.runTool(tenantId, tz, blk.name || '', blk.input || {}, Object.assign(ctx, { lang: customerLang }));
+          const out = await clock.time('tools', () => this.runTool(tenantId, tz, blk.name || '', blk.input || {}, Object.assign(ctx, { lang: customerLang })));
           toolOuts.push(typeof out === 'string' ? out : JSON.stringify(out));
           results.push({ type: 'tool_result', tool_use_id: blk.id, content: out });
         }
@@ -5466,6 +5632,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         continue;
       }
       let text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      clock.draft();
       // The model chose not to answer (the customer declined, said goodbye,
       // nothing is left to say) — see the NO_REPLY line in the system prompt.
       if (isNoReply(text)) return SILENT;
@@ -5520,7 +5687,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           groundRetried = true;
           ctx.traceGuards?.push('price');
           // A draft a guard sent back is rewritten by the stronger model, when there is one.
-          if (!hardOff) turnModel = turnModel ?? modelForTurn({ tenantId, reason: 'corrected', budget: this.hardBudget });
+          if (!hardOff) turnModel = turnModel ?? modelForTurn({ tenantId, reason: 'corrected', budget: hardBudget });
           this.logger.warn(`Reply blocked (price not in the sources: ${bad.join(', ')}): ${text.slice(0, 140)}`);
           messages.push({ role: 'assistant', content: blocks });
           messages.push({ role: 'user', content: priceCorrection(bad) });
@@ -5692,22 +5859,47 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }
       if (owner && this.instructions && text) {
         const insLang = brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en');
-        const chk = await this.instructions.check(tenantId, { turn: owner, channel: insCh, customer: userText, draft: text, lang: insLang, timeoutMs: 6000 }).catch(() => null);
+        const chk = await clock.time('check', () => this.instructions!.check(tenantId, { turn: owner, channel: insCh, customer: userText, draft: text, lang: insLang, timeoutMs: 6000 }).catch(() => null));
         // The owner said this kind of message gets no reply (a person takes
         // it): nothing is sent — and the staff are told, as for any silence
         // on a question (silentQuestionPush).
         if (chk?.silent) {
-          this.instructions.noteUse(tenantId, chk.applied, []);
+          noteUse(chk.applied, []);
           ctx.traceGuards?.push('instruction');
           this.logger.log(`Silent by the owner's instruction: ${text.slice(0, 120)}`);
           return SILENT;
         }
         if (chk?.broken.length) {
-          this.instructions.noteUse(tenantId, chk.applied, chk.broken);
+          noteUse(chk.applied, chk.broken);
+          // QUICK REPAIR (./quick-repair), where it has been released: the
+          // checker's own smallest edit of this draft goes out — when it is
+          // usable, passes the same fixed gates as any draft, and is addressed
+          // to the customer. Otherwise the old way below: write again, check again.
+          if (!ownerRetried && process.env.QUICK_REPAIR !== 'off' && this.release?.isOn('quickRepair', tenantId)) {
+            const fix = repairCandidate({ draft: text, rewrite: chk.rewrite, broken: chk.broken, sameLanguage: (() => { const l = detectBrainLanguage(chk.rewrite); return !l || l === insLang; })() });
+            const passes = (t: string): boolean => {
+              if (leaksCorrection(t) || isNoReply(t) || alreadySaid(history as never, t)) return false;
+              if (enforcePrice && ungroundedMoney(t, [staticSystem, docs, dynamicSystem, customerWords, ...toolOuts]).length) return false;
+              if (ctx.mode === 'sales') {
+                if (!quotes && statesPrice(t)) return false;
+                if (killsTheLead(t) || guessesGender(customerWords, t) || claimsFreshStart(trimmed || history.length > 2, t)) return false;
+                if (!(quotes && docs) && disclosesBeforeQualifying(customerWords, t, identityKnown)) return false;
+                return true;
+              }
+              if (!mayTalkAsBooked({ bookedNow: Boolean(ctx.booked), upcoming: ctx.known?.upcoming?.length ?? 0, toolsUsed }) && claimsBooked(t)) return false;
+              return !vagueAvailability(t);
+            };
+            if (fix.ok && passes(fix.text) && !(await clock.time('check', () => this.secondReaderHolds(tenantId, fix.text)))) {
+              ctx.traceGuards?.push('instruction');
+              this.logger.warn(`Reply repaired by the checker (owner instruction): ${text.slice(0, 100)} → ${fix.text.slice(0, 100)}`);
+              return withBookingLink(fix.text, ctx.booked?.url);
+            }
+            this.logger.log(`quick repair not used (${fix.ok ? 'a gate or the second reader refused it' : fix.why}) — writing again`);
+          }
           if (!ownerRetried) {
             ownerRetried = true;
             ctx.traceGuards?.push('instruction');
-            if (!hardOff) turnModel = turnModel ?? modelForTurn({ tenantId, reason: 'corrected', budget: this.hardBudget });
+            if (!hardOff) turnModel = turnModel ?? modelForTurn({ tenantId, reason: 'corrected', budget: hardBudget });
             this.logger.warn(`Reply blocked (owner instruction): ${text.slice(0, 140)}`);
             messages.push({ role: 'assistant', content: blocks });
             messages.push({ role: 'user', content: correctionFor(owner.all, chk.broken) });
@@ -5722,7 +5914,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           if (!last || isNoReply(last)) return isNoReply(last) ? SILENT : HELD;
           return withBookingLink(last, ctx.booked?.url);
         } else if (chk?.applied.length) {
-          this.instructions.noteUse(tenantId, chk.applied, []);
+          noteUse(chk.applied, []);
         }
       }
       // A reply written AFTER a correction note is also read by a second, small
@@ -5733,12 +5925,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // aloud ("The customer asked three things… I must say each in full"),
       // the owner's own words go out alone: always safe, always an answer.
       const exact = ownerAnswersOnly(owner?.matches);
-      if (text && exact && !wasCorrected(messages) && text.trim() !== exact && await this.secondReaderHolds(tenantId, text)) {
+      if (text && exact && !wasCorrected(messages) && text.trim() !== exact && await clock.time('check', () => this.secondReaderHolds(tenantId, text))) {
         ctx.traceGuards?.push('meta');
         this.logger.warn(`Reply replaced by the owner's exact answers (it was not addressed to the customer): ${text.slice(0, 160)}`);
         return withBookingLink(exact, ctx.booked?.url);
       }
-      if (text && wasCorrected(messages) && await this.secondReaderHolds(tenantId, text)) {
+      if (text && wasCorrected(messages) && await clock.time('check', () => this.secondReaderHolds(tenantId, text))) {
         ctx.traceGuards?.push('meta');
         this.logger.warn(`Reply held (second reader: not addressed to the customer): ${text.slice(0, 160)}`);
         return HELD;
@@ -6408,6 +6600,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       lang?: ReplyLang | null;
     },
   ): Promise<string> {
+    // A DRY RUN (./dry-run) writes, books and sends nothing: a doing-tool
+    // answers with the words the real one would have answered.
+    const dry = Boolean((ctx as { dryRun?: boolean } | undefined)?.dryRun);
+    if (dry) {
+      const canned = dryToolResult(name, input);
+      if (canned !== null) {
+        // As the real booking does: the run now knows a visit exists, so the reply may say so (./booking-guards).
+        if (name === 'create_booking' && canned.startsWith('SUCCESS') && ctx) ctx.booked = { id: 'test-run', phone: String(input.phone ?? ''), url: '', endMs: Date.now() };
+        return canned;
+      }
+    }
     try {
       if (name === 'request_callback') {
         if (!this.brain) return 'NOTED. Tell the customer the team will get back to them shortly.';
@@ -6441,7 +6644,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           { type: 'postback', title: 'Xem đủ quyền lợi', payload: `${INFO_PREFIX}${c.name}`.slice(0, 900) },
           { type: 'postback', title: 'So với gói khác', payload: `${CMP_PREFIX}${c.name}`.slice(0, 900) },
         ]));
-        await this.sendCards(ctx.pageToken, ctx.senderId, els);
+        if (!dry) await this.sendCards(ctx.pageToken, ctx.senderId, els);
         return `SUCCESS — ${cards.length} card(s) sent: ${cards.map((c) => `${c.name} ${c.price}`).join('; ')}. Now write at most two short lines and ONE question. Do not repeat the card.`;
       }
       if (name === 'get_pricing') {
@@ -6589,7 +6792,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           image_url: images[i],
           buttons: [{ type: 'postback', title: titles[i], payload: packagePayload(f.label) }],
         }));
-        await this.sendCards(ctx.pageToken, ctx.senderId, cards);
+        if (!dry) await this.sendCards(ctx.pageToken, ctx.senderId, cards);
         return `SUCCESS — ${cards.length} package card(s) sent. Now send ONE short line asking which fits (do NOT repeat the package details).`;
       }
       if (name === 'check_availability' && ctx?.mode === 'booking') {
@@ -6880,7 +7083,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const ch = (ctx.channel === 'instagram' || ctx.channel === 'zalo' || ctx.channel === 'web' ? ctx.channel : 'messenger') as Channel;
         let sent = 0;
         for (const url of picked.urls) {
-          const r = await this.sendImage(ctx.pageToken, ctx.senderId, url, ch);
+          const r = dry ? { ok: true } : await this.sendImage(ctx.pageToken, ctx.senderId, url, ch);
           if (r.ok) sent += 1;
         }
         if (!sent) return 'ERROR — the pictures could not be delivered on this channel. Answer in words instead; do not mention pictures.';

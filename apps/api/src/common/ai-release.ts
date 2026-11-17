@@ -27,6 +27,18 @@ export const RELEASE_FEATURES = {
    * the one may be taken away without a deploy to see whether it hides the other.
    */
   seen: { ships: 'canary', vi: 'Dấu "đã xem" ngay khi khách nhắn', en: 'Seen receipt when a customer writes' },
+  /**
+   * The AI starts on a message the moment it lands and holds the finished
+   * reply until the customer's pause is over — the wait and the work overlap
+   * (messenger/burst "think ahead").
+   */
+  thinkAhead: { ships: 'canary', vi: 'AI soạn ngay trong lúc chờ khách nhắn xong', en: 'Think while waiting for the customer to finish' },
+  /**
+   * A draft the owner's instructions block is repaired by the checker's own
+   * smallest edit instead of being written again from the start and checked
+   * a second time (messenger/quick-repair).
+   */
+  quickRepair: { ships: 'canary', vi: 'Sửa nhanh câu bị dặn dò chặn, không viết lại từ đầu', en: 'Quick repair of a blocked draft' },
   /** A short, adaptive pause before answering instead of a fixed six seconds. */
   smartWait: { ships: 'canary', vi: 'Chờ thông minh thay cho chờ cố định 6 giây', en: 'Adaptive wait instead of a fixed six seconds' },
 } as const satisfies Record<string, { ships: ReleaseStage; vi: string; en: string }>;

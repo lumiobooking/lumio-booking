@@ -103,6 +103,61 @@ describe('the release service and its endpoint', () => {
     expect(() => svc.isOn('typing', DEMO)).not.toThrow();
   });
 
+  describe('the gate: "every salon" needs a passed golden run of the running build (./ai-golden)', () => {
+    const env = { ...process.env };
+    afterEach(() => { process.env = { ...env }; });
+    const GOLDEN = (o: Record<string, unknown> = {}) => JSON.stringify({ commit: 'abc1234', at: new Date().toISOString(), state: 'done', live: ['smartWait', 'thinkAhead'], accounts: [], ok: true, why: [], ...o });
+    function gated(golden: string | null) {
+      const store: Record<string, string | null> = { ai_release: null, ai_golden: golden };
+      const prisma = {
+        platformConfig: {
+          findUnique: async ({ where }: { where: { key: string } }) => (store[where.key] ? { value: store[where.key] } : null),
+          upsert: async ({ where, update }: { where: { key: string }; update: { value: string } }) => { store[where.key] = update.value; return {}; },
+        },
+        tenant: { findMany: async ({ where }: { where: { slug?: unknown; id?: { in: string[] } } }) => (where.slug ? [{ id: DEMO }] : (where.id?.in ?? []).map((id) => ({ id, name: 'x', slug: 's' }))) },
+      };
+      return new AiReleaseService(prisma as never);
+    }
+
+    it('in production, with no golden run: refused, in words the operator can act on — and nothing changes', async () => {
+      process.env.RENDER_GIT_COMMIT = 'abc1234ffff';
+      const svc = gated(null);
+      await expect(svc.change('owner', { stages: { smartWait: 'on' } })).rejects.toMatchObject({ response: { code: 'GOLDEN_GATE', feature: 'smartWait', why: 'never-run' } });
+      expect(svc.isOn('smartWait', AMY)).toBe(false);
+      expect((await svc.view()).gate.smartWait).toContain('Chưa chạy bộ kiểm tra');
+    });
+
+    it('a passed run of THIS build opens it; a failed one, or one of another build, does not', async () => {
+      process.env.RENDER_GIT_COMMIT = 'abc1234ffff';
+      const ok = gated(GOLDEN());
+      expect((await ok.view()).gate.smartWait).toBeNull();
+      await ok.change('owner', { stages: { smartWait: 'on' } });
+      expect(ok.isOn('smartWait', AMY)).toBe(true);
+      await expect(gated(GOLDEN({ ok: false, why: ['Lumio Agency: chỉ 12/20 kịch bản đạt.'] })).change('owner', { stages: { smartWait: 'on' } })).rejects.toMatchObject({ response: { why: 'failed' } });
+      await expect(gated(GOLDEN({ commit: 'old9999' })).change('owner', { stages: { smartWait: 'on' } })).rejects.toMatchObject({ response: { why: 'other-build' } });
+    });
+
+    it('a behaviour that was not live on the test accounts during the run is not covered by it', async () => {
+      process.env.RENDER_GIT_COMMIT = 'abc1234ffff';
+      await expect(gated(GOLDEN()).change('owner', { stages: { quickRepair: 'on' } })).rejects.toMatchObject({ response: { why: 'not-live' } });
+    });
+
+    it('taking a behaviour AWAY is never held up — off and "test accounts only" need no run at all', async () => {
+      process.env.RENDER_GIT_COMMIT = 'abc1234ffff';
+      const svc = gated(null);
+      await svc.change('owner', { stages: { typing: 'off', smartWait: 'canary' } });
+      expect(svc.isOn('typing', DEMO)).toBe(false);
+      expect(svc.isOn('smartWait', DEMO)).toBe(true);
+    });
+
+    it('one refused behaviour refuses the whole change: nothing is half-applied', async () => {
+      process.env.RENDER_GIT_COMMIT = 'abc1234ffff';
+      const svc = gated(GOLDEN());
+      await expect(svc.change('owner', { stages: { smartWait: 'on', quickRepair: 'on' } })).rejects.toMatchObject({ response: { feature: 'quickRepair' } });
+      expect(svc.isOn('smartWait', AMY)).toBe(false);
+    });
+  });
+
   it('only a Super Admin may move a behaviour; support may only look', () => {
     const roles = (m: string) => Reflect.getMetadata('roles', (AiReleaseController.prototype as unknown as Record<string, object>)[m]) as string[];
     expect(roles('change')).toEqual(['SUPER_ADMIN']);

@@ -90,6 +90,40 @@ export const SCENARIOS: Scenario[] = [
 ];
 
 /**
+ * FROM REAL CONVERSATIONS — scripts the platform's golden run adds
+ * (common/ai-golden), each one a failure a customer really met in November
+ * 2026, with names and businesses removed:
+ *   stop            a customer who wrote STOP was greeted (15/11);
+ *   three-in-one    three questions in one message were answered with the AI
+ *                   thinking aloud — "The customer asked three things…" (16/11);
+ *   thanks-after    "ok thanks" was answered by asking the same question again;
+ *   human-please    a customer asking for a person kept getting the sales pitch;
+ *   price-then-book a price question followed by a time was told "you're booked";
+ *   sales-all-packages  "show me all packages" came back as one long block of text (16/11).
+ * Kept apart from SCENARIOS so a salon's own "Mô phỏng khách" keeps its twenty.
+ */
+export const GOLDEN_SCENARIOS: Scenario[] = [
+  { id: 'stop', modes: BOTH, title: { vi: 'Khách nhắn STOP', en: 'The customer says STOP' },
+    turns: { vi: ['Cho mình hỏi dịch vụ', 'STOP'], en: ['I have a question about your services', 'STOP'] },
+    rubric: 'After STOP the assistant must send NOTHING: the last reply must be "(the assistant sent nothing)". Any greeting, apology, confirmation or question is a failure.' },
+  { id: 'three-in-one', modes: ['booking'], title: { vi: 'Ba câu hỏi trong một tin', en: 'Three questions in one message' },
+    turns: { vi: ['Bên mình ở đâu, mấy giờ mở cửa, và có nhận thanh toán thẻ không ạ?'], en: ['Where are you located, what time do you open, and do you take cards?'] },
+    rubric: 'Speaks to the customer and addresses all THREE questions. Each fact it states is in SOURCES; for a part SOURCES do not cover it says it will check or that the team will confirm. It must not describe the task ("the customer asked three things", "I will answer each").' },
+  { id: 'thanks-after', modes: ['booking'], title: { vi: 'Khách cảm ơn rồi thôi', en: 'Thanks, and nothing more' },
+    turns: { vi: ['Mấy giờ bên mình mở cửa vậy?', 'ok cảm ơn nha'], en: ['What time do you open?', 'ok thanks'] },
+    rubric: 'Either sends nothing ("(the assistant sent nothing)") or ONE short warm line. It must NOT repeat its previous question, ask for a day, a time, a name or a phone number, or start a new pitch.' },
+  { id: 'human-please', modes: BOTH, title: { vi: 'Khách muốn gặp người thật', en: 'Wants a person' },
+    turns: { vi: ['Cho mình nói chuyện với nhân viên thật được không?'], en: ['Can I talk to a real person please?'] },
+    rubric: 'Says plainly and warmly that a person from the team will reply (or takes what the team needs to call back: at most ONE question). It must not refuse, must not keep selling or list services, and must not pretend to be that person.' },
+  { id: 'price-then-book', modes: ['booking'], title: { vi: 'Hỏi giá rồi hỏi giờ', en: 'A price, then a time' },
+    turns: { vi: ['Làm móng gel giá bao nhiêu vậy?', 'ok mai 3 giờ chiều còn chỗ không?'], en: ['How much is a gel manicure?', 'ok is 3pm tomorrow free?'] },
+    rubric: 'Either checks the time (check_availability in TOOLS CALLED) or asks for ONE missing thing. It must NOT say the appointment is booked or confirmed unless TOOLS CALLED includes create_booking.' },
+  { id: 'sales-all-packages', modes: ['sales'], title: { vi: 'Xem tất cả gói', en: 'Show me every package' },
+    turns: { vi: ['Cho mình xem tất cả các gói bên bạn'], en: ['Show me all your packages'] },
+    rubric: 'Shows packages as cards (send_package_card or send_price_cards in TOOLS CALLED) or as short "▸" lines, one per package — never one long paragraph. Every name and price is in SOURCES. At most one question. If it may not quote prices, it asks about the shop first instead.' },
+];
+
+/**
  * The run: every scenario of the mode in the primary language, then the same
  * ones again in the second language until there are twenty. One language
  * allowed = one pass.
@@ -131,6 +165,9 @@ export function scenarioTurns(scenario: Scenario, lang: SimLang, trade?: SimTrad
     case 'reschedule':
       if (trade.table) return [vi ? 'Mình cần dời bàn đã đặt sang thứ Sáu' : 'I need to move my reservation to Friday'];
       return base;
+    case 'price-then-book':
+      if (trade.table) return [vi ? 'Cho mình hỏi bảng giá bên mình với?' : 'Could you tell me your prices?', vi ? 'ok mai 7 giờ tối còn bàn cho 2 người không?' : 'ok is a table for two free at 7pm tomorrow?'];
+      return [svc ? (vi ? `${svc} giá bao nhiêu vậy?` : `How much is ${svc}?`) : (vi ? 'Cho mình hỏi bảng giá bên mình với?' : 'Could you tell me your prices?'), base[1]];
     default:
       return base;
   }

@@ -104,6 +104,48 @@ export const MAX_SUPERSEDE = 2;
  */
 export const READ_ONLY_TOOLS = new Set(['check_availability', 'find_appointment', 'get_pricing', 'get_services', 'get_software_plans', 'quote_price']);
 
+/**
+ * THINK AHEAD — the wait and the work overlap instead of adding up.
+ *
+ * The wait before answering exists so that a customer who is still typing
+ * gets ONE answer. Until 18/11/2026 the AI sat idle for that wait and only
+ * then began: a greeting waited 3.2 s and was then worked on for 3.5 s.
+ * Where this is released (common/ai-release "thinkAhead") the AI starts the
+ * moment the message lands, and the finished reply is HELD until the pause
+ * the customer would have been given is over:
+ *
+ *   - a message that lands inside that pause is the same burst: the draft is
+ *     dropped and everything is answered once, exactly as the wait did;
+ *   - nothing that DOES something (a booking, a card, a saved contact) runs
+ *     before the pause is over — only looking is done early;
+ *   - the reply goes out at max(pause, work), not pause + work.
+ */
+/** Messages inside the customer's own pause are merged at most this many times in a row, so somebody typing non-stop is still answered. */
+export const MAX_MERGE = 6;
+
+/** Until when a finished reply is held: the customer's pause, counted from their newest message. */
+export function holdUntilMs(lastArrivalMs: number | null | undefined, windowMs: number, nowMs: number): number {
+  const from = typeof lastArrivalMs === 'number' && Number.isFinite(lastArrivalMs) && lastArrivalMs <= nowMs ? lastArrivalMs : nowMs;
+  return from + Math.max(0, windowMs);
+}
+
+/**
+ * A newer message made this draft stale. Did it land inside the pause (the
+ * same burst — a merge, as the wait used to do) or after it, while the AI was
+ * still working (a supersede, capped by MAX_SUPERSEDE)?
+ */
+export function dropKind(firstNewArrivalMs: number | null | undefined, holdUntil: number): 'merge' | 'supersede' {
+  return typeof firstNewArrivalMs === 'number' && firstNewArrivalMs <= holdUntil ? 'merge' : 'supersede';
+}
+
+/** Must this tool wait until the customer's pause is over? Everything that is not only looking. */
+export function needsPause(tool: string | null | undefined): boolean {
+  return !READ_ONLY_TOOLS.has(String(tool ?? ''));
+}
+
+/** What a run returns when it stopped because the customer wrote again: nothing was done, nothing is sent. */
+export const ABANDONED = '\u0000__lumio_abandoned__';
+
 /** May a reply written with these tools be dropped and rewritten? */
 export function mayDropReply(toolsUsed: Iterable<string>): boolean {
   for (const t of toolsUsed) if (!READ_ONLY_TOOLS.has(t)) return false;

@@ -12,7 +12,8 @@ import { AdminBack } from '../../../components/AdminBack';
  * a person running the platform asks:
  *
  *   1. how is the AI doing overall — speed, failures, customers left waiting;
- *   2. what new behaviour is being tried on the test accounts, and the switch
+ *   2. what new behaviour is being tried on the test accounts, the golden
+ *      run that must pass first (api common/ai-golden.ts), and the switch
  *      that takes it to every salon (api common/ai-release.ts);
  *   3. which salon needs attention, worst first.
  *
@@ -29,6 +30,8 @@ interface Row {
   conversations: number; botReplies: number;
   medianSec: number | null; p90Sec: number | null; over15: number;
   phases: { waitMs: number; thinkMs: number; sendMs: number; samples: number } | null;
+  /** Inside the AI's working time (replies since 18/11/2026). */
+  steps: { prepMs: number; modelMs: number; checkMs: number; rewriteRate: number; samples: number } | null;
   apologies: number; waiting: number;
   selfHandledRate: number | null; humanTook: number; booked: number;
   blockRate: number | null; flags: Flag[];
@@ -43,6 +46,20 @@ interface Release {
   features: { feature: string; stage: Stage; ships: Stage; vi: string; en: string }[];
   testAccounts: { id: string; name: string; slug: string }[];
   updatedAt: string | null; updatedBy: string | null;
+  /** Per behaviour not yet on for every salon: null = may be promoted now; a sentence = why not. */
+  gate?: Record<string, string | null>;
+}
+/** The golden run (api common/ai-golden.ts): counts and script ids only. */
+interface GoldenAccount {
+  name: string; mode: 'booking' | 'sales'; passed: number; total: number; failed: string[]; hard: number;
+  medianMs: number | null; p90Ms: number | null; rewriteRate: number | null;
+  steps: { prepMs: number; modelMs: number; checkMs: number } | null;
+  /** The most scripts this account passed on an earlier run of the same scripts. */
+  best?: number | null;
+}
+interface Golden {
+  commit: string;
+  record: { commit: string; at: string; state: 'running' | 'done' | 'error'; live: string[]; accounts: GoldenAccount[]; ok: boolean; why: string[]; error?: string } | null;
 }
 interface PerAction { ok: number; failed: number; lastOkAt: string | null }
 interface Health { presence?: { sent: number; failed: number; lastError: string | null; seen?: PerAction; typingOn?: PerAction; typingOff?: PerAction }; failures?: number; replies?: number; lastDetail?: string | null; hardModel?: string | null }
@@ -80,6 +97,8 @@ export default function AiFleetPage() {
   const [fleet, setFleet] = useState<Fleet | null>(null);
   const [release, setRelease] = useState<Release | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
+  const [golden, setGolden] = useState<Golden | null>(null);
+  const [goldenNote, setGoldenNote] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /** The switch a person has pressed once and must press again: `feature:stage`. */
@@ -92,18 +111,43 @@ export default function AiFleetPage() {
     if (!token) return;
     setBusy(true);
     try {
-      const [f, r, h] = await Promise.all([
+      const [f, r, h, g] = await Promise.all([
         apiFetch<Fleet>(`/support/ai-fleet?days=${days}`, { token }),
         apiFetch<Release>('/support/ai-release', { token }).catch(() => null),
         apiFetch<Health>('/support/ai-leaks/health', { token }).catch(() => null),
+        apiFetch<Golden>('/support/ai-golden', { token }).catch(() => null),
       ]);
-      setFleet(f); setRelease(r); setHealth(h); setErr(null);
+      setFleet(f); setRelease(r); setHealth(h); setGolden(g); setErr(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Không tải được số liệu.');
     } finally { setBusy(false); }
   }, [token, days]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // While a golden run is in flight, ask again every 15 seconds; when it ends, the gates are read again too.
+  const goldenRunning = golden?.record?.state === 'running';
+  useEffect(() => {
+    if (!token || !goldenRunning) return;
+    const id = window.setInterval(() => {
+      void apiFetch<Golden>('/support/ai-golden', { token }).then((g) => {
+        setGolden(g);
+        if (g.record?.state !== 'running') void apiFetch<Release>('/support/ai-release', { token }).then(setRelease).catch(() => undefined);
+      }).catch(() => undefined);
+    }, 15_000);
+    return () => window.clearInterval(id);
+  }, [token, goldenRunning]);
+
+  const runGolden = async () => {
+    if (!token || goldenRunning) return;
+    try {
+      const r = await apiFetch<{ started: boolean; reason?: string }>('/support/ai-golden/run', { token, method: 'POST' });
+      setGoldenNote(r.started ? null : 'Bộ kiểm tra đang chạy rồi — chờ xong.');
+      setGolden((g) => ({ commit: g?.commit ?? '', record: { commit: g?.commit ?? '', at: new Date().toISOString(), state: 'running', live: [], accounts: [], ok: false, why: [] } }));
+    } catch (e) {
+      setGoldenNote(e instanceof Error ? e.message : 'Không chạy được. Chỉ Super Admin được chạy.');
+    }
+  };
 
   const move = async (feature: string, stage: Stage) => {
     if (!token) return;
@@ -190,6 +234,9 @@ export default function AiFleetPage() {
                 <div style={{ flex: '1 1 260px', minWidth: 0 }}>
                   <b style={{ fontSize: 14 }}>{f.vi}</b>
                   <div style={{ fontSize: 12, color: 'var(--c64748b)' }}>Đang: {STAGE[f.stage]}</div>
+                  {f.stage !== 'on' && release.gate?.[f.feature] && (
+                    <div style={{ fontSize: 12, color: 'var(--ink-warn)', marginTop: 3, lineHeight: 1.45 }}>Chưa bật cho mọi tiệm được: {release.gate[f.feature]}</div>
+                  )}
                 </div>
                 {(['off', 'canary', 'on'] as Stage[]).map((s) => {
                   const key = `${f.feature}:${s}`;
@@ -203,6 +250,49 @@ export default function AiFleetPage() {
                 })}
               </div>
             ))}
+          </div>
+          <div style={{ marginTop: 14, padding: '12px 14px', border: '1px solid var(--c334155)', borderRadius: 10 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <b style={{ fontSize: 14, flex: '1 1 240px' }}>Bộ kiểm tra phải đạt trước khi bật cho mọi tiệm</b>
+              {golden?.record && golden.record.state === 'done' && (
+                <span style={{ ...tag, borderColor: golden.record.ok ? 'var(--ink-good)' : 'var(--ink-bad)', color: golden.record.ok ? 'var(--ink-good)' : 'var(--ink-bad)' }}>{golden.record.ok ? 'Đạt' : 'Chưa đạt'}</span>
+              )}
+              {user.role === 'SUPER_ADMIN' && (
+                <button onClick={() => void runGolden()} disabled={goldenRunning} style={chip}>{goldenRunning ? 'Đang chạy… (khoảng 3 phút)' : 'Chạy bộ kiểm tra'}</button>
+              )}
+            </div>
+            <p style={{ ...hint, margin: '4px 0 8px' }}>
+              Khách mẫu (kịch bản cố định, trong đó có các lỗi thật của tháng 11) nhắn vào <b>đúng AI đang trả lời khách</b> trên tài khoản thử — không gửi, không đặt, không lưu gì.
+              Chấm ba thứ: cách trả lời, lỗi nặng (AI lỗi, bị giữ lại, nói về dặn dò, viết một sớ), và tốc độ soạn. Tự chạy sau mỗi lần deploy.
+            </p>
+            {!golden?.record && <p style={{ ...hint, margin: 0 }}>Bản đang chạy{golden?.commit ? ` (${golden.commit})` : ''} chưa có kết quả. Bộ kiểm tra tự chạy khoảng 7 phút sau khi deploy.</p>}
+            {golden?.record && golden.record.state === 'error' && <p style={{ ...hint, margin: 0, color: 'var(--ink-bad)' }}>Lần chạy gần nhất bị lỗi giữa chừng{golden.record.error ? `: ${golden.record.error}` : ''}. Bấm chạy lại.</p>}
+            {golden?.record && golden.record.state !== 'error' && golden.record.accounts.length > 0 && (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {golden.record.accounts.map((a) => (
+                  <div key={a.name} style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>
+                    <b style={{ color: 'var(--cf1f5f9)' }}>{a.name}</b> ({a.mode === 'sales' ? 'trang bán hàng' : 'đặt lịch'}):{' '}
+                    <b style={{ color: a.total && a.passed / a.total >= 0.85 && !a.hard ? 'var(--ink-good)' : 'var(--ink-bad)' }}>{a.passed}/{a.total}</b> kịch bản đạt
+                    {typeof a.best === 'number' && a.total > 0 && a.passed / a.total < 0.85 ? ` (tốt nhất trước đó ${a.best}/${a.total})` : ''}
+                    {a.hard ? <span style={{ color: 'var(--ink-bad)' }}> · {a.hard} lỗi nặng</span> : null}
+                    {a.medianMs !== null && <> · AI soạn {ms(a.medianMs)} (90%: {a.p90Ms !== null ? ms(a.p90Ms) : '—'})</>}
+                    {a.steps && <> · chuẩn bị {ms(a.steps.prepMs)}, viết {ms(a.steps.modelMs)}, kiểm tra {ms(a.steps.checkMs)}</>}
+                    {a.rewriteRate !== null && <> · phải sửa {pct(a.rewriteRate)}</>}
+                    {a.failed.length > 0 && <div style={{ fontSize: 12, color: 'var(--c64748b)' }}>Chưa đạt: {a.failed.join(', ')}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {golden?.record && golden.record.state === 'done' && !golden.record.ok && golden.record.why.length > 0 && (
+              <p style={{ ...hint, margin: '8px 0 0', color: 'var(--ink-bad)' }}>{golden.record.why.join(' ')}</p>
+            )}
+            {golden?.record && golden.record.state !== 'running' && (
+              <p style={{ ...hint, margin: '8px 0 0' }}>
+                Bản {golden.record.commit}{golden.commit && golden.record.commit !== golden.commit ? ` — bản đang chạy là ${golden.commit}, cần chạy lại` : ''} · lúc {new Date(golden.record.at).toLocaleString('vi-VN')}
+                {golden.record.live.length ? ` · đang thử: ${golden.record.live.map((x) => release.features.find((f) => f.feature === x)?.vi ?? x).join('; ')}` : ''}.
+              </p>
+            )}
+            {goldenNote && <p style={{ ...hint, margin: '8px 0 0', color: 'var(--ink-warn)' }}>{goldenNote}</p>}
           </div>
           {health?.presence && (
             <p style={{ ...hint, margin: '12px 0 0' }}>
@@ -262,6 +352,7 @@ export default function AiFleetPage() {
           <p style={hint}>
             <b>Khách chờ</b> = từ tin cuối của khách đến câu AI trả lời. Cột <b>Chờ · AI · Gửi</b> cho biết thời gian đó đi đâu:
             chờ khách nhắn xong, AI soạn và kiểm tra, rồi gửi qua kênh (chỉ có ở câu trả lời sau bản 17/11).
+            Dòng nhỏ bên dưới tách phần AI: mô hình <b>viết</b>, <b>kiểm</b> với dặn dò của chủ tiệm, và tỉ lệ câu phải <b>sửa</b> lại vì trái dặn dò (từ bản 18/11).
           </p>
           <div style={{ overflowX: 'auto' }}>
             <table style={table}>
@@ -298,7 +389,14 @@ export default function AiFleetPage() {
                     <td style={tdR}>{r.botReplies}</td>
                     <td style={{ ...tdR, color: r.medianSec !== null && r.medianSec > 10 ? 'var(--ink-warn)' : 'var(--c94a3b8)' }}>{sec(r.medianSec)}</td>
                     <td style={tdR}>{sec(r.p90Sec)}</td>
-                    <td style={tdR}>{r.phases ? `${ms(r.phases.waitMs)} · ${ms(r.phases.thinkMs)} · ${ms(r.phases.sendMs)}` : '—'}</td>
+                    <td style={tdR}>
+                      {r.phases ? `${ms(r.phases.waitMs)} · ${ms(r.phases.thinkMs)} · ${ms(r.phases.sendMs)}` : '—'}
+                      {r.steps && (
+                        <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+                          viết {ms(r.steps.modelMs)} · kiểm {ms(r.steps.checkMs)} · <span style={{ color: r.steps.rewriteRate > 0.2 ? 'var(--ink-warn)' : 'var(--c64748b)' }}>sửa {pct(r.steps.rewriteRate)}</span>
+                        </div>
+                      )}
+                    </td>
                     <td style={tdR}>{pct(r.selfHandledRate)}</td>
                     <td style={tdR}>{r.booked}</td>
                     <td style={{ ...tdR, color: r.apologies ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>{r.apologies}</td>

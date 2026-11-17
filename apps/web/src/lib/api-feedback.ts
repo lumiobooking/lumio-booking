@@ -31,6 +31,8 @@ const SILENT_WRITES: RegExp[] = [
   // Support's test of the typing dots: nothing is saved, and the person who
   // pressed it is looking at a phone — the screen says what is happening.
   /\/typing-test$/,
+  // Starting the platform's golden run: the screen itself says it is running.
+  /\/ai-golden\/run$/,
 ];
 
 export type WriteKind = 'silent' | 'announce';

@@ -21,6 +21,7 @@ describe('which taps earn a receipt', () => {
     ['POST', '/display/pair'],                // customer kiosk pairing
     ['POST', '/display/checkin/tk1'],         // customer check-in: has its own thank-you screen
     ['POST', '/support/ai-fleet/typing-test'], // support's test of the typing dots: nothing is saved
+    ['POST', '/support/ai-golden/run'],        // starting the golden run: the screen says it is running
   ])('%s %s stays silent', (m, p) => {
     expect(writeKind(m, p)).toBe('silent');
   });

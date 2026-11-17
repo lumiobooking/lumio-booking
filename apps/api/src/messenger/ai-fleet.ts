@@ -18,8 +18,9 @@
  */
 import { botReport, type ReportBooking, type ReportThread } from './bot-report';
 import { isFallbackLine } from './agent-fallback';
+import { stepsOf, type StepTimes } from './turn-timing';
 
-type FleetTurn = { role?: string; content?: unknown; at?: string; manual?: boolean; nudge?: boolean; failed?: boolean; survey?: unknown; ms?: { w?: number; t?: number; s?: number } | null };
+type FleetTurn = { role?: string; content?: unknown; at?: string; manual?: boolean; nudge?: boolean; failed?: boolean; survey?: unknown; ms?: { w?: number; t?: number; s?: number; h?: number } | null };
 
 const MAX_REPLY_SEC = 600;
 const WAITING_MIN = 30;
@@ -35,9 +36,9 @@ export function pctl(values: number[], p: number): number | null {
  * last message to the reply, in seconds. A second bubble, a survey question,
  * a follow-up nudge and anything a person typed are not replies to time.
  */
-export function replyTimes(history: unknown, fromMs: number, toMs: number): { sec: number[]; w: number[]; t: number[]; s: number[]; apologies: number } {
+export function replyTimes(history: unknown, fromMs: number, toMs: number): { sec: number[]; w: number[]; t: number[]; s: number[]; steps: StepTimes[]; apologies: number } {
   const turns = (Array.isArray(history) ? history : []) as FleetTurn[];
-  const out = { sec: [] as number[], w: [] as number[], t: [] as number[], s: [] as number[], apologies: 0 };
+  const out = { sec: [] as number[], w: [] as number[], t: [] as number[], s: [] as number[], steps: [] as StepTimes[], apologies: 0 };
   for (let i = 1; i < turns.length; i++) {
     const b = turns[i]; const u = turns[i - 1];
     if (!b || b.role !== 'assistant' || b.manual || b.nudge || b.failed || b.survey === 'ask') continue;
@@ -51,7 +52,11 @@ export function replyTimes(history: unknown, fromMs: number, toMs: number): { se
     out.sec.push(Math.round(sec * 10) / 10);
     const ms = b.ms;
     if (ms && [ms.w, ms.t, ms.s].every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0)) {
-      out.w.push(ms.w as number); out.t.push(ms.t as number); out.s.push(ms.s as number);
+      // Not working = the wait before the AI began, plus (think-ahead) a finished reply held for the customer's pause.
+      out.w.push((ms.w as number) + (typeof ms.h === 'number' && Number.isFinite(ms.h) && ms.h > 0 ? ms.h : 0)); out.t.push(ms.t as number); out.s.push(ms.s as number);
+      // Inside the working time (replies since 18/11/2026 carry it; older ones do not).
+      const st = stepsOf(ms);
+      if (st) out.steps.push(st);
     }
   }
   return out;
@@ -76,6 +81,12 @@ export interface FleetRow {
   medianSec: number | null; p90Sec: number | null; over15: number;
   /** Median milliseconds per phase, where the reply carried them: waiting to start, the AI working, sending. */
   phases: { waitMs: number; thinkMs: number; sendMs: number; samples: number } | null;
+  /**
+   * Inside the working time, where replies carried it (./turn-timing): median
+   * milliseconds preparing, the model writing, checking the draft; and the
+   * share of replies whose first draft was sent back to be written again.
+   */
+  steps: { prepMs: number; modelMs: number; checkMs: number; rewriteRate: number; samples: number } | null;
   apologies: number; waiting: number;
   selfHandledRate: number | null; humanTook: number; booked: number;
   /** Share of the owner's-instruction checks that blocked a reply (all time), or null with fewer than 20 checks. */
@@ -109,11 +120,11 @@ export function fleetReport(o: {
   const all: number[] = []; let selfAll = 0;
   const rows: FleetRow[] = o.salons.map((s) => {
     const mine = threadsOf.get(s.id) ?? [];
-    const sec: number[] = []; const w: number[] = []; const t: number[] = []; const snd: number[] = [];
+    const sec: number[] = []; const w: number[] = []; const t: number[] = []; const snd: number[] = []; const steps: StepTimes[] = [];
     let apologies = 0; let waiting = 0;
     for (const th of mine) {
       const r = replyTimes(th.history, fromMs, toMs);
-      sec.push(...r.sec); w.push(...r.w); t.push(...r.t); snd.push(...r.s); apologies += r.apologies;
+      sec.push(...r.sec); w.push(...r.w); t.push(...r.t); snd.push(...r.s); steps.push(...r.steps); apologies += r.apologies;
       if (stillWaiting(th.history, fromMs, toMs)) waiting += 1;
     }
     const rep = botReport({ threads: mine, bookings: bookingsOf.get(s.id) ?? [], gapsOpen: 0, gapsNew: 0, from: o.from, to: o.to });
@@ -133,6 +144,10 @@ export function fleetReport(o: {
       conversations: rep.conversations, botReplies: sec.length,
       medianSec, p90Sec: pctl(sec, 0.9), over15: sec.filter((x) => x > 15).length,
       phases: w.length ? { waitMs: pctl(w, 0.5) as number, thinkMs: pctl(t, 0.5) as number, sendMs: pctl(snd, 0.5) as number, samples: w.length } : null,
+      steps: steps.length ? {
+        prepMs: pctl(steps.map((x) => x.p), 0.5) as number, modelMs: pctl(steps.map((x) => x.m), 0.5) as number, checkMs: pctl(steps.map((x) => x.j), 0.5) as number,
+        rewriteRate: steps.filter((x) => x.r > 0).length / steps.length, samples: steps.length,
+      } : null,
       apologies, waiting,
       selfHandledRate: rep.selfHandledRate, humanTook: rep.stoppedAt.human, booked: rep.booked,
       blockRate, flags,

@@ -270,6 +270,37 @@ describe('Kiểm tra AI — the knowledge test belongs to one salon', () => {
       expect(db.setting.rows.filter((x: Row) => x.key === 'ai_brain_sim').map((x: Row) => x.tenantId)).toEqual(['ta']);
     } finally { global.fetch = realFetch; }
   });
+  it('the platform\'s golden run: another answerer (the live assistant), extra scripts, and NOTHING kept as the salon\'s own result', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test';
+    const realFetch = global.fetch;
+    const bodies: string[] = [];
+    global.fetch = (async (_url: string, init?: { body?: string }) => {
+      const body = String(init?.body ?? '');
+      bodies.push(body);
+      const say = (text: string) => new Response(JSON.stringify({ stop_reason: 'end_turn', content: [{ type: 'text', text }] }), { status: 200 });
+      if (body.includes('You grade a business')) return say(JSON.stringify(Array.from({ length: (body.match(/CASE \d+/g) ?? []).length }, (_, i) => ({ i, pass: true, why: 'Tốt' }))));
+      return say('THE SANDBOX ANSWERED');
+    }) as never;
+    try {
+      const { svc, db } = build();
+      const asked: number[] = [];
+      const extra = [{ id: 'stop', modes: ['booking' as const, 'sales' as const], title: { vi: 'STOP', en: 'STOP' }, turns: { vi: ['Cho mình hỏi', 'STOP'], en: ['A question', 'STOP'] }, rubric: 'After STOP the assistant must send NOTHING.' }];
+      const run = await svc.runSimulations(owner('ta'), 'vi', {
+        answer: async (messages) => { asked.push(messages.length); return { reply: 'TỪ AI THẬT', tools: ['check_availability'] }; },
+        store: false, extra,
+      });
+      expect(run.items.every((i) => i.reply === 'TỪ AI THẬT')).toBe(true);   // every script was answered by the caller's answerer …
+      expect(bodies.some((b) => b.includes('THE SANDBOX ANSWERED'))).toBe(false);
+      expect(bodies.filter((b) => !b.includes('You grade a business')).length).toBe(0); // … and the sandbox was never asked
+      expect(run.items.some((i) => i.id === 'stop')).toBe(true);              // the extra script rode along
+      expect(asked.length).toBeGreaterThan(run.items.length);                 // multi-turn scripts: one answer per turn
+      // The grader saw the tools the answerer reported.
+      expect(bodies.find((b) => b.includes('You grade a business'))).toContain('check_availability');
+      // Nothing of this is the salon's own result.
+      expect(await svc.lastSimulation(owner('ta'))).toBeNull();
+      expect(db.setting.rows.filter((x: Row) => x.key === 'ai_brain_sim')).toEqual([]);
+    } finally { global.fetch = realFetch; }
+  });
   it('refuses when there is nothing to test', async () => {
     process.env.ANTHROPIC_API_KEY = 'test';
     const { svc } = build();

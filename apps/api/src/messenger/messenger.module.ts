@@ -1,4 +1,5 @@
 import { AiDigestService } from './ai-digest.service';
+import { AiGoldenController, AiGoldenService } from './ai-golden.service';
 import { SupportAiLeaksController, SupportAiFleetController } from './support-ai-leaks.controller';
 import { OAuthGate } from '../common/oauth-gate.service';
 import { Module } from '@nestjs/common';
@@ -24,8 +25,8 @@ import { KnowledgeGapsService } from './knowledge-gaps.service';
 
 @Module({
   imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule],
-  controllers: [SupportAiLeaksController, SupportAiFleetController, MessengerController, ChatTurnsController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
-  providers: [OAuthGate, InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService, ChatFollowUpScheduler, KnowledgeGapsService, BotReportService, AiDigestService],
+  controllers: [SupportAiLeaksController, SupportAiFleetController, AiGoldenController, MessengerController, ChatTurnsController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
+  providers: [OAuthGate, InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService, ChatFollowUpScheduler, KnowledgeGapsService, BotReportService, AiDigestService, AiGoldenService],
   exports: [InboxEventsService, MessengerService, ChatTurnsService],
 })
 export class MessengerModule {}

@@ -292,7 +292,16 @@ export class AiBrainService {
    * own menu, notes and documents, and keep the result — with what passed
    * last time and fails now.
    */
-  async runSimulations(user: AuthenticatedUser, uiLang?: string): Promise<SimRun> {
+  async runSimulations(
+    user: AuthenticatedUser, uiLang?: string,
+    /**
+     * `answer`: who answers the scripted customer instead of the sandbox — the
+     * platform's golden run passes the LIVE assistant (messenger/dry-run).
+     * `store: false`: the result is the caller's, not the salon's — it is not
+     * kept as the salon's last simulation and not written to its audit log.
+     */
+    opts: { answer?: (messages: { role: 'user' | 'assistant'; content: string }[]) => Promise<{ reply: string; tools: string[] }>; store?: boolean; /** scripts added after the salon's own twenty, in its first language (the golden run's real-conversation scripts) */ extra?: Scenario[] } = {},
+  ): Promise<SimRun> {
     if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can test the AI');
     const tenantId = this.tenantId(user);
     const t0 = Date.now();
@@ -303,6 +312,7 @@ export class AiBrainService {
     const primary = brain.languages.primary === 'vi' || brain.languages.primary === 'en' ? brain.languages.primary as SimLang : null;
     const langs: SimLang[] = [...(primary ? [primary] : []), ...allowed.filter((l) => l !== primary)];
     const picked: { scenario: Scenario; lang: string }[] = pickScenarios(mode, langs);
+    for (const scenario of opts.extra ?? []) if (scenario.modes.includes(mode)) picked.push({ scenario, lang: langs[0] ?? 'en' });
     // The scripted customers ask about THIS trade — a restaurant is not asked for a gel manicure.
     const trade = mode === 'booking' ? await this.simTrade(tenantId) : null;
     // A salon that also serves Spanish, Chinese, Korean, French or Japanese: the same
@@ -328,9 +338,15 @@ export class AiBrainService {
         let reply = ''; const tools = new Set<string>();
         for (const t of turns) {
           messages.push({ role: 'user', content: t });
-          const r = await this.sandbox(user, { messages, channel: 'chat' }).catch((e) => ({ reply: `(lỗi: ${String((e as Error)?.message ?? e).slice(0, 80)})`, trace: [] as string[] }));
-          reply = String((r as { reply?: string }).reply ?? '');
-          for (const name of toolsFromTrace((r as { trace?: unknown }).trace)) tools.add(name);
+          if (opts.answer) {
+            const a = await opts.answer(messages.map((m) => ({ ...m }))).catch((e) => ({ reply: `(lỗi: ${String((e as Error)?.message ?? e).slice(0, 80)})`, tools: [] as string[] }));
+            reply = String(a.reply ?? '');
+            for (const name of a.tools ?? []) tools.add(name);
+          } else {
+            const r = await this.sandbox(user, { messages, channel: 'chat' }).catch((e) => ({ reply: `(lỗi: ${String((e as Error)?.message ?? e).slice(0, 80)})`, trace: [] as string[] }));
+            reply = String((r as { reply?: string }).reply ?? '');
+            for (const name of toolsFromTrace((r as { trace?: unknown }).trace)) tools.add(name);
+          }
           messages.push({ role: 'assistant', content: reply || '…' });
         }
         answers[i] = { customer: turns, reply, tools: [...tools], rubric: scenario.rubric, lang: lang as SimLang };
@@ -361,6 +377,7 @@ export class AiBrainService {
     });
     const prev = await this.lastSimulation(user).catch(() => null);
     const run: SimRun = { at: new Date().toISOString(), ms: Date.now() - t0, total: items.length, passed: items.filter((x) => x.pass).length, mode, items, regressions: regressionsOf(prev, items), fp: await this.knowledgeFingerprint(tenantId).catch(() => undefined) };
+    if (opts.store === false) return run;
     await this.db.setting.upsert({
       where: { tenantId_key: { tenantId, key: SIM_KEY } },
       update: { value: run as never },

@@ -74,6 +74,28 @@ describe('the release service and its endpoint', () => {
     expect(audit[0].action).toBe('platform.ai_release_changed');
   });
 
+  it('"seen" and the dots are two switches: one can be taken away and the other stays', async () => {
+    const { svc, ctl } = build();
+    await svc.view();
+    expect(svc.isOn('seen', DEMO)).toBe(true);
+    expect(svc.isOn('typing', DEMO)).toBe(true);
+    await ctl.change({ userId: 'u1', email: 'owner@x.test', role: 'SUPER_ADMIN', tenantId: null } as never, { stages: { seen: 'off' } });
+    expect(svc.isOn('seen', DEMO)).toBe(false);
+    expect(svc.isOn('typing', DEMO)).toBe(true);
+    expect(svc.isOn('typing', AMY)).toBe(false);
+  });
+
+  it('knows which salons are test accounts — the platform\'s own and the extra ones — and a paying salon is never one', async () => {
+    const EXTRA = '33333333-3333-4333-8333-333333333333';
+    const { svc } = build(JSON.stringify({ stages: { typing: 'on' }, canary: [EXTRA] }));
+    await svc.view();
+    expect(svc.isTestAccount(DEMO)).toBe(true);
+    expect(svc.isTestAccount(EXTRA.toUpperCase())).toBe(true);
+    expect(svc.isTestAccount(AMY)).toBe(false); // even with the behaviour promoted to every salon
+    expect(svc.isTestAccount(null)).toBe(false);
+    expect(svc.testAccountIds().sort()).toEqual([DEMO, EXTRA]);
+  });
+
   it('a database failure never breaks a reply: features stay at the stage they ship in', async () => {
     const { svc } = build(null, true);
     await svc.view().catch(() => undefined);

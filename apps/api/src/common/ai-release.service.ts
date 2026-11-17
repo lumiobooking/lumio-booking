@@ -29,6 +29,20 @@ export class AiReleaseService implements OnModuleInit {
     return featureOn(this.state, feature, tenantId, this.tests);
   }
 
+  /** One of the platform's own test accounts (or an extra one support listed)? For tools that must never touch a paying salon. */
+  isTestAccount(tenantId: string | null | undefined): boolean {
+    if (!tenantId) return false;
+    if (Date.now() - this.readAt > FRESH_MS) void this.refresh();
+    const id = tenantId.toLowerCase();
+    return this.tests.has(id) || this.state.canary.includes(id);
+  }
+
+  /** The test accounts' ids — for tools that look for a conversation among them and nowhere else. */
+  testAccountIds(): string[] {
+    if (Date.now() - this.readAt > FRESH_MS) void this.refresh();
+    return [...new Set([...this.tests, ...this.state.canary])];
+  }
+
   private refresh(): Promise<void> {
     if (this.reading) return this.reading;
     this.reading = (async () => {

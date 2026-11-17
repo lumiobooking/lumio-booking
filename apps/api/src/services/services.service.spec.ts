@@ -38,6 +38,8 @@ function makePrismaFake(seed: FakeService[]) {
       updateMany: jest.fn(async () => ({ count: 1 })),
     },
     staffMember: { count: jest.fn(async () => 0) },
+    // create() reads the salon's own currency from its booking rules (tenant-scoped key).
+    setting: { findUnique: jest.fn(async () => null) },
     // The fake had no $transaction at all, so every method that batches writes
     // — create, and now reorder — threw "not a function" and the suite carried
     // a permanent red. Both call shapes are supported: an array of promises and

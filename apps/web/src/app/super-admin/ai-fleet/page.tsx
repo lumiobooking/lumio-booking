@@ -44,7 +44,22 @@ interface Release {
   testAccounts: { id: string; name: string; slug: string }[];
   updatedAt: string | null; updatedBy: string | null;
 }
-interface Health { presence?: { sent: number; failed: number; lastError: string | null }; failures?: number; replies?: number; lastDetail?: string | null; hardModel?: string | null }
+interface PerAction { ok: number; failed: number; lastOkAt: string | null }
+interface Health { presence?: { sent: number; failed: number; lastError: string | null; seen?: PerAction; typingOn?: PerAction; typingOff?: PerAction }; failures?: number; replies?: number; lastDetail?: string | null; hardModel?: string | null }
+/** Support's test of the typing dots (api MessengerService.typingTestStart). */
+interface DotsStart { started: boolean; reason?: string; account?: string | null; channel?: string; seconds?: number; lastCustomerAt?: string | null }
+interface DotsRun { running: boolean; startedAt: string; endedAt: string | null; account: string | null; channel: string; seenFirst: boolean; seconds: number; calls: { action: string; ok: boolean; status: number | null; error: string | null; at: string }[] }
+const DOTS_REFUSED: Record<string, string> = {
+  'no-recent-thread': 'Chưa có ai nhắn vào trang thử trong 30 phút qua. Anh nhắn một tin vào trang thử rồi bấm lại.',
+  busy: 'Đang chạy một lần thử — chờ xong rồi bấm lại.',
+  'no-test-account': 'Chưa có tài khoản thử nào.',
+  'not-a-test-account': 'Chỉ thử được trên tài khoản thử, không thử trên tiệm của khách.',
+  'channel-has-no-typing': 'Kênh này không có dấu “đang soạn” (chỉ Messenger và Instagram có).',
+  'no-token': 'Trang thử chưa kết nối Facebook.',
+  'no-thread': 'Không tìm thấy cuộc trò chuyện.',
+};
+const CHANNEL_VI: Record<string, string> = { messenger: 'Messenger', instagram: 'Instagram' };
+const clock = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleTimeString('vi-VN') : '—');
 
 const FLAG: Record<Flag, { vi: string; color: string }> = {
   slow: { vi: 'Trả lời chậm', color: 'var(--ink-warn)' },
@@ -70,6 +85,8 @@ export default function AiFleetPage() {
   /** The switch a person has pressed once and must press again: `feature:stage`. */
   const [arming, setArming] = useState<string | null>(null);
   const [onlyFlagged, setOnlyFlagged] = useState(false);
+  /** The dots test: what was started, and what Meta answered once it ended. */
+  const [dots, setDots] = useState<{ phase: 'idle' | 'running' | 'done'; start?: DotsStart; run?: DotsRun | null; note?: string }>({ phase: 'idle' });
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -99,6 +116,23 @@ export default function AiFleetPage() {
       setErr(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Không đổi được. Chỉ Super Admin được đổi.');
+    }
+  };
+
+  const tryDots = async (seenFirst: boolean) => {
+    if (!token || dots.phase === 'running') return;
+    try {
+      const start = await apiFetch<DotsStart>('/support/ai-fleet/typing-test', { token, method: 'POST', body: { seenFirst, seconds: 12 } });
+      if (!start.started) { setDots({ phase: 'idle', note: DOTS_REFUSED[start.reason ?? ''] ?? 'Không thử được lúc này.' }); return; }
+      setDots({ phase: 'running', start });
+      // The dots end by themselves; then ask what Meta answered to each call.
+      window.setTimeout(() => {
+        void apiFetch<{ last: DotsRun | null }>('/support/ai-fleet/typing-test', { token })
+          .then((r) => setDots({ phase: 'done', start, run: r.last }))
+          .catch(() => setDots({ phase: 'done', start, run: null }));
+      }, ((start.seconds ?? 12) + 3) * 1000);
+    } catch (e) {
+      setDots({ phase: 'idle', note: e instanceof Error ? e.message : 'Không thử được. Chỉ Super Admin được thử.' });
     }
   };
 
@@ -174,7 +208,46 @@ export default function AiFleetPage() {
             <p style={{ ...hint, margin: '12px 0 0' }}>
               Dấu “đã xem / đang soạn” gửi tới Meta từ lúc máy chủ khởi động: <b>{health.presence.sent}</b> lần thành công, <b>{health.presence.failed}</b> lần lỗi
               {health.presence.lastError ? ` — lỗi gần nhất: ${health.presence.lastError}` : ''}.
+              {health.presence.typingOn && health.presence.seen && (
+                <> Trong đó: “đã xem” <b>{health.presence.seen.ok}</b> (gần nhất {clock(health.presence.seen.lastOkAt)}),
+                  “đang soạn” <b>{health.presence.typingOn.ok}</b> (gần nhất {clock(health.presence.typingOn.lastOkAt)}),
+                  tắt <b>{health.presence.typingOff?.ok ?? 0}</b>.</>
+              )}
             </p>
+          )}
+          {user.role === 'SUPER_ADMIN' && (
+            <div style={{ marginTop: 14, padding: '12px 14px', border: '1px dashed var(--c334155)', borderRadius: 10 }}>
+              <b style={{ fontSize: 14 }}>Thử ba dấu chấm “đang soạn”</b>
+              <p style={{ ...hint, margin: '4px 0 10px' }}>
+                Máy chủ chỉ biết Meta đã nhận lệnh; điện thoại có vẽ ba dấu chấm hay không thì phải nhìn mới biết.
+                Cách thử: <b>1)</b> mở Messenger trên điện thoại, nhắn một tin vào trang thử
+                {release.testAccounts.length ? ` (${release.testAccounts.map((a) => a.name).join(' hoặc ')})` : ''};
+                <b> 2)</b> chờ AI trả lời xong; <b>3)</b> bấm một nút dưới đây rồi nhìn điện thoại 12 giây.
+                Không có tin nhắn nào được gửi, và chỉ chạy trên tài khoản thử.
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => void tryDots(false)} disabled={dots.phase === 'running'} style={chip}>Chỉ hiện ba dấu chấm</button>
+                <button onClick={() => void tryDots(true)} disabled={dots.phase === 'running'} style={chip}>“Đã xem” rồi ba dấu chấm</button>
+              </div>
+              {dots.note && dots.phase === 'idle' && <p style={{ ...hint, margin: '10px 0 0', color: 'var(--ink-warn)' }}>{dots.note}</p>}
+              {dots.phase === 'running' && dots.start && (
+                <p style={{ ...hint, margin: '10px 0 0', color: 'var(--ink-link)' }}>
+                  Đang hiện ba dấu chấm trong {dots.start.seconds} giây trên cuộc trò chuyện khách vừa nhắn lúc {clock(dots.start.lastCustomerAt)}
+                  {' '}({dots.start.account ?? 'tài khoản thử'} · {CHANNEL_VI[dots.start.channel ?? ''] ?? dots.start.channel}) — anh nhìn điện thoại ngay bây giờ.
+                </p>
+              )}
+              {dots.phase === 'done' && (
+                <p style={{ ...hint, margin: '10px 0 0' }}>
+                  {dots.run
+                    ? <>Xong. Meta đã nhận <b>{dots.run.calls.filter((c) => c.ok).length}/{dots.run.calls.length}</b> lệnh
+                        ({dots.run.calls.map((c) => `${c.action === 'mark_seen' ? 'đã xem' : c.action === 'typing_on' ? 'đang soạn' : 'tắt'} ${clock(c.at)}${c.ok ? '' : ' ✕'}`).join(' · ')}).
+                        {dots.run.calls.some((c) => !c.ok)
+                          ? <span style={{ color: 'var(--ink-bad)' }}> Meta từ chối: {dots.run.calls.find((c) => !c.ok)?.error ?? 'không rõ lý do'}.</span>
+                          : ' Nếu Meta nhận đủ mà điện thoại vẫn không hiện ba dấu chấm, lỗi không nằm ở lệnh gửi — thử lại bằng một tài khoản Facebook khác (không phải quản trị viên trang) rồi báo kết quả.'}</>
+                    : 'Xong, nhưng không đọc được kết quả. Bấm ↻ Tải lại rồi thử lại.'}
+                </p>
+              )}
+            </div>
           )}
           {release.updatedAt && <p style={{ ...hint, margin: '6px 0 0' }}>Đổi lần cuối: {new Date(release.updatedAt).toLocaleString('vi-VN')} bởi {release.updatedBy ?? '—'}.</p>}
         </div>

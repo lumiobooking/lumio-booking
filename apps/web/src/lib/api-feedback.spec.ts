@@ -20,6 +20,7 @@ describe('which taps earn a receipt', () => {
     ['POST', '/auth/login'],                  // has its own full-page outcome
     ['POST', '/display/pair'],                // customer kiosk pairing
     ['POST', '/display/checkin/tk1'],         // customer check-in: has its own thank-you screen
+    ['POST', '/support/ai-fleet/typing-test'], // support's test of the typing dots: nothing is saved
   ])('%s %s stays silent', (m, p) => {
     expect(writeKind(m, p)).toBe('silent');
   });

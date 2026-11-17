@@ -124,7 +124,7 @@ describe('the fleet report: service and endpoint', () => {
       auditLog: { create: async ({ data }: { data: Record<string, unknown> }) => { audit.push(data); return {}; } },
     };
     const svc = new BotReportService(prisma as never);
-    return { svc, ctl: new SupportAiFleetController(svc, prisma as never), audit };
+    return { svc, ctl: new SupportAiFleetController(svc, prisma as never, {} as never), audit };
   }
 
   it('lists the salons that have a channel, counts the rest, and audits the look', async () => {

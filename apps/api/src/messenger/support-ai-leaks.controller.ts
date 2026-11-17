@@ -1,4 +1,4 @@
-import { Controller, Get, Logger, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Logger, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BotReportService } from './bot-report.service';
 import { sharedAiHealth } from './ai-health';
 import { presenceStats } from './presence';
+import { MessengerService } from './messenger.service';
 
 /**
  * Platform check, never a salon's screen: did the AI ever send a customer a
@@ -41,7 +42,12 @@ export class SupportAiLeaksController {
   health() {
     const h = sharedAiHealth();
     // "Seen" + typing dots sent to Meta since this server started (./presence): proof the calls arrive.
-    const presence = () => { const p = presenceStats(); return { sent: p.sent, failed: p.failed, lastError: p.lastError, lastOkAt: p.lastOkAt ? new Date(p.lastOkAt).toISOString() : null, lastFailAt: p.lastFailAt ? new Date(p.lastFailAt).toISOString() : null }; };
+    const iso = (n: number | null) => (n ? new Date(n).toISOString() : null);
+    const presence = () => {
+      const p = presenceStats();
+      const per = (a: 'mark_seen' | 'typing_on' | 'typing_off') => ({ ok: p.byAction[a].ok, failed: p.byAction[a].failed, lastOkAt: iso(p.byAction[a].lastOkAt) });
+      return { sent: p.sent, failed: p.failed, lastError: p.lastError, lastOkAt: iso(p.lastOkAt), lastFailAt: iso(p.lastFailAt), seen: per('mark_seen'), typingOn: per('typing_on'), typingOff: per('typing_off') };
+    };
     return { streak: h.streak, replies: h.okCount, failures: h.failCount, lastKind: h.lastKind, lastDetail: h.lastDetail, lastOkAt: h.lastOkAt ? new Date(h.lastOkAt).toISOString() : null, lastFailAt: h.lastFailAt ? new Date(h.lastFailAt).toISOString() : null, hardModel: String(process.env.ANTHROPIC_HARD_MODEL ?? '').trim() || null, presence: presence() };
   }
 }
@@ -55,7 +61,33 @@ export class SupportAiLeaksController {
 @Controller('support/ai-fleet')
 @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
 export class SupportAiFleetController {
-  constructor(private readonly reports: BotReportService, private readonly prisma: PrismaService) {}
+  constructor(private readonly reports: BotReportService, private readonly prisma: PrismaService, private readonly messenger: MessengerService) {}
+
+  /**
+   * Show the typing dots on ONE conversation of a TEST ACCOUNT for a few
+   * seconds, sending no message (MessengerService.typingTestStart). Super
+   * Admin only; refused for any salon that is not a test account; audited
+   * against that account. It answers at once — the person pressing it is
+   * looking at a phone, not at this screen — and the GET below says what
+   * Meta answered.
+   */
+  @Post('typing-test')
+  @HttpCode(200)
+  @Roles(UserRole.SUPER_ADMIN)
+  async typingTest(@CurrentUser() user: AuthenticatedUser, @Body() body: { threadId?: string; seconds?: number; seenFirst?: boolean }) {
+    const threadId = typeof body?.threadId === 'string' && body.threadId.trim() ? body.threadId.trim().slice(0, 80) : undefined;
+    const { tenantId, ...out } = await this.messenger.typingTestStart({ threadId, seconds: body?.seconds, seenFirst: Boolean(body?.seenFirst) });
+    if (tenantId) {
+      await this.prisma.auditLog.create({ data: { tenantId, userId: user.userId ?? null, action: 'support.typing_test', resourceType: 'messenger_thread', resourceId: threadId ?? 'latest', metadata: { started: out.started, reason: out.reason ?? null, seenFirst: Boolean(body?.seenFirst) } } }).catch(() => undefined);
+    }
+    return out;
+  }
+
+  @Get('typing-test')
+  @Roles(UserRole.SUPER_ADMIN)
+  typingTestLast() {
+    return { last: this.messenger.typingTestLast() };
+  }
 
   @Get()
   async fleet(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string) {

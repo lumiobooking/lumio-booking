@@ -67,7 +67,7 @@ import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { mergeBurst, alreadySaid, BURST_MS, MAX_SUPERSEDE, mayDropReply, repeatCount, repeatVerdict, repeatWasAnswered, burstWaitMs, settleMs } from './burst';
-import { supportsSenderAction, senderActionBody, typingStep, notePresence, TYPING_REFRESH_MS, type SenderAction } from './presence';
+import { supportsSenderAction, senderActionBody, typingStep, notePresence, TYPING_REFRESH_MS, SEEN_TO_TYPING_MS, type SenderAction } from './presence';
 import { AiReleaseService } from '../common/ai-release.service';
 import { SILENT, HELD, isSilent, outboundVerdict, silentOnCloser, isNoReply, NO_REPLY_RULE, withoutBadSentences } from './outbound-guard';
 import { mayAnswerMirrored, rescueVerdict } from './rescue-stuck';
@@ -196,6 +196,12 @@ export function factLiveOn(f: BotFact, day: string): boolean {
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
+/** The dots test only touches a conversation its customer wrote in this recently. */
+const TYPING_TEST_RECENT_MS = 30 * 60_000;
+export interface TypingTestRun {
+  running: boolean; startedAt: string; endedAt: string | null; account: string | null; channel: string; seenFirst: boolean; seconds: number;
+  calls: { action: SenderAction; ok: boolean; status: number | null; error: string | null; at: string }[];
+}
 // Short-term memory. Twelve was six exchanges — a sales chat about packages
 // passes that before anyone says a price, and everything older then depended
 // on a distiller that could silently fail. Twenty costs a few hundred cached
@@ -3867,10 +3873,11 @@ export class MessengerService implements OnModuleInit {
   }
 
   /** Thread → the typing dots now showing there, and the order their calls go out in (./presence). */
-  private readonly typing = new Map<string, { timer: NodeJS.Timeout; startedAt: number; chain: Promise<void> }>();
+  private readonly typing = new Map<string, { timer: NodeJS.Timeout; startedAt: number; chain: Promise<void>; /** a typing_on has gone out */ on: boolean }>();
 
-  /** One sender action to Meta. Never throws and nothing waits on it: a failure here is never the customer's problem. */
-  private async senderAction(pageToken: string, recipientId: string, action: SenderAction): Promise<void> {
+  /** One sender action to Meta, and what Meta said. Never throws: a failure here is never the customer's problem. */
+  private async senderActionRaw(pageToken: string, recipientId: string, action: SenderAction): Promise<{ action: SenderAction; ok: boolean; status: number | null; error: string | null; at: string }> {
+    const at = new Date().toISOString();
     try {
       const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
         method: 'POST',
@@ -3878,21 +3885,33 @@ export class MessengerService implements OnModuleInit {
         body: JSON.stringify(senderActionBody(recipientId, action)),
         signal: AbortSignal.timeout(5_000),
       });
-      if (res.ok) { notePresence(true); return; }
-      const body = await res.text().catch(() => '');
-      notePresence(false, `${action} ${res.status}: ${body.slice(0, 140)}`);
+      if (res.ok) { notePresence(true, null, Date.now(), action); return { action, ok: true, status: res.status, error: null, at }; }
+      const body = (await res.text().catch(() => '')).slice(0, 200);
+      notePresence(false, `${action} ${res.status}: ${body.slice(0, 140)}`, Date.now(), action);
+      return { action, ok: false, status: res.status, error: body, at };
     } catch (e) {
-      notePresence(false, `${action}: ${String((e as Error)?.message ?? e).slice(0, 140)}`);
+      const msg = String((e as Error)?.message ?? e).slice(0, 140);
+      notePresence(false, `${action}: ${msg}`, Date.now(), action);
+      return { action, ok: false, status: null, error: msg, at };
     }
+  }
+  private async senderAction(pageToken: string, recipientId: string, action: SenderAction): Promise<void> {
+    await this.senderActionRaw(pageToken, recipientId, action);
   }
 
   /**
-   * The customer's message is marked seen and the dots appear, now, and are
-   * renewed while the AI works. Only where the behaviour is released, only on
-   * Messenger and Instagram, and never for somebody who asked us to stop.
+   * The customer's message is marked seen at once; the dots follow a moment
+   * later (as a person reads, then types — and never in the same instant as
+   * the read receipt, see ./presence SEEN_TO_TYPING_MS) and are renewed while
+   * the AI works. Only where the behaviour is released, only on Messenger and
+   * Instagram, and never for somebody who asked us to stop.
    */
   private startTyping(tenantId: string, threadId: string, pageToken: string, recipientId: string, channel: Channel | null, pageId: string | null, text: string): void {
-    if (process.env.TYPING_INDICATOR === 'off' || !this.release?.isOn('typing', tenantId)) return;
+    if (process.env.TYPING_INDICATOR === 'off' || !this.release) return;
+    // Two switches (common/ai-release): the read receipt and the dots can be released, or taken away, apart.
+    const wantDots = this.release.isOn('typing', tenantId);
+    const wantSeen = this.release.isOn('seen', tenantId);
+    if (!wantDots && !wantSeen) return;
     if (!pageToken || !recipientId || this.typing.has(threadId) || saysStop(text)) return;
     void (async () => {
       // The rescue paths do not know the channel; the thread does.
@@ -3903,16 +3922,22 @@ export class MessengerService implements OnModuleInit {
       }
       if (!supportsSenderAction(ch, pg) || this.typing.has(threadId) || !this.bursts.get(threadId)?.running) return;
       const startedAt = Date.now();
-      const entry = { startedAt, chain: Promise.resolve() as Promise<void>, timer: null as unknown as NodeJS.Timeout };
-      entry.chain = this.senderAction(pageToken, recipientId, 'mark_seen').then(() => this.senderAction(pageToken, recipientId, 'typing_on'));
+      const entry = { startedAt, chain: Promise.resolve() as Promise<void>, timer: null as unknown as NodeJS.Timeout, on: false };
+      // Registered BEFORE anything is sent: the dots only go out for the entry that is still the live one.
+      this.typing.set(threadId, entry);
+      const live = () => this.typing.get(threadId) === entry;
+      const dots = async () => { if (!wantDots || !live()) return; entry.on = true; await this.senderAction(pageToken, recipientId, 'typing_on'); };
+      entry.chain = wantSeen
+        ? this.senderAction(pageToken, recipientId, 'mark_seen')
+          .then(() => (wantDots ? new Promise<void>((r) => { const t = setTimeout(r, SEEN_TO_TYPING_MS); t.unref?.(); }) : undefined))
+          .then(dots)
+        : dots();
       entry.timer = setInterval(() => {
-        const cur = this.typing.get(threadId);
-        if (cur !== entry) return;
+        if (!live()) return;
         if (typingStep(startedAt, Date.now()) === 'stop') { this.stopTyping(threadId, pageToken, recipientId); return; }
-        entry.chain = entry.chain.then(() => this.senderAction(pageToken, recipientId, 'typing_on'));
+        entry.chain = entry.chain.then(dots);
       }, TYPING_REFRESH_MS);
       entry.timer.unref?.();
-      this.typing.set(threadId, entry);
     })().catch(() => undefined);
   }
 
@@ -3922,7 +3947,72 @@ export class MessengerService implements OnModuleInit {
     if (!entry) return;
     clearInterval(entry.timer);
     this.typing.delete(threadId);
-    void entry.chain.then(() => this.senderAction(pageToken, recipientId, 'typing_off')).catch(() => undefined);
+    // Dots that never went on need no "off".
+    void entry.chain.then(() => (entry.on ? this.senderAction(pageToken, recipientId, 'typing_off') : undefined)).catch(() => undefined);
+  }
+
+  /**
+   * SUPPORT'S TEST of the dots, on a test account only (common/ai-release):
+   * shows "typing…" on one conversation for a few seconds and sends NO
+   * message, then keeps what Meta answered to each call. It exists because on
+   * 17/11/2026 Meta accepted every call and the dots still did not show — and
+   * whether a phone draws them cannot be read from a server, only watched.
+   *
+   * With no thread named it takes the conversation a customer wrote in most
+   * recently on a test account (the tester writes "test" to the test Page,
+   * then presses the button), and only within the last half hour — never an
+   * old conversation with somebody who is not expecting anything.
+   */
+  private typingTestRun: TypingTestRun | null = null;
+  async typingTestStart(o: { threadId?: string; seconds?: number; seenFirst?: boolean } = {}): Promise<{ started: boolean; reason?: string; tenantId?: string; account?: string | null; channel?: string; seconds?: number; lastCustomerAt?: string | null }> {
+    if (this.typingTestRun?.running) return { started: false, reason: 'busy' };
+    const tests = this.release?.testAccountIds() ?? [];
+    if (!tests.length) return { started: false, reason: 'no-test-account' };
+    const pick = { id: true, tenantId: true, pageId: true, senderId: true, channel: true, lastCustomerAt: true } as const;
+    type Picked = { id: string; tenantId: string; pageId: string; senderId: string; channel?: string | null; lastCustomerAt?: Date | null };
+    const thread = (o.threadId
+      ? await this.prisma.messengerThread.findUnique({ where: { id: o.threadId }, select: pick }).catch(() => null)
+      : await this.prisma.messengerThread.findFirst({
+        // Tenant-scoped to the test accounts, and never the website chat or Zalo.
+        where: { tenantId: { in: tests }, lastCustomerAt: { gte: new Date(Date.now() - TYPING_TEST_RECENT_MS) }, NOT: [{ pageId: { startsWith: 'web:' } }, { pageId: { startsWith: 'zalo:' } }] },
+        orderBy: { lastCustomerAt: 'desc' }, select: pick,
+      }).catch(() => null)) as Picked | null;
+    if (!thread) return { started: false, reason: o.threadId ? 'no-thread' : 'no-recent-thread' };
+    // Never a paying salon's customer: only conversations of the platform's own test accounts.
+    if (!this.release?.isTestAccount(thread.tenantId)) return { started: false, reason: 'not-a-test-account' };
+    const channel = String(thread.channel ?? 'messenger');
+    if (!supportsSenderAction(channel, thread.pageId)) return { started: false, reason: 'channel-has-no-typing', tenantId: thread.tenantId, channel };
+    const page = await this.prisma.messengerPage.findUnique({ where: { pageId: thread.pageId }, select: { pageToken: true, tenantId: true } }).catch(() => null);
+    // A Page row that belongs to another salon is never borrowed.
+    const own = page && page.tenantId === thread.tenantId ? page.pageToken : null;
+    const conn = own ? null : await this.prisma.messengerConnection.findUnique({ where: { tenantId: thread.tenantId }, select: { pageToken: true, pageId: true } }).catch(() => null);
+    const token = own || (conn && conn.pageId === thread.pageId ? conn.pageToken : null);
+    if (!token) return { started: false, reason: 'no-token', tenantId: thread.tenantId, channel };
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: thread.tenantId }, select: { name: true } }).catch(() => null);
+    const seconds = Math.min(30, Math.max(3, Math.round(Number(o.seconds) || 12)));
+    const run: TypingTestRun = { running: true, startedAt: new Date().toISOString(), endedAt: null, account: tenant?.name ?? null, channel, seenFirst: Boolean(o.seenFirst), seconds, calls: [] };
+    this.typingTestRun = run;
+    const pause = (ms: number) => new Promise<void>((r) => { const t = setTimeout(r, ms); t.unref?.(); });
+    void (async () => {
+      try {
+        if (run.seenFirst) { run.calls.push(await this.senderActionRaw(token, thread.senderId, 'mark_seen')); await pause(SEEN_TO_TYPING_MS); }
+        const until = Date.now() + seconds * 1000;
+        for (;;) {
+          run.calls.push(await this.senderActionRaw(token, thread.senderId, 'typing_on'));
+          const left = until - Date.now();
+          if (left <= 0) break;
+          await pause(Math.min(left, TYPING_REFRESH_MS));
+          if (Date.now() >= until) break;
+        }
+        run.calls.push(await this.senderActionRaw(token, thread.senderId, 'typing_off'));
+      } finally { run.running = false; run.endedAt = new Date().toISOString(); }
+    })().catch(() => undefined);
+    return { started: true, tenantId: thread.tenantId, account: run.account, channel, seconds, lastCustomerAt: thread.lastCustomerAt ? new Date(thread.lastCustomerAt).toISOString() : null };
+  }
+  /** The last test and what Meta answered to each call. No token, no customer. */
+  typingTestLast(): TypingTestRun | null {
+    const r = this.typingTestRun;
+    return r ? { ...r, calls: r.calls.map((c) => ({ ...c, error: c.error ? c.error.replace(/access_token=[^&\s"]+/gi, 'access_token=…').slice(0, 160) : null })) } : null;
   }
 
   // Yield windows are per-tenant settings now (humanActiveMins / graceMins on

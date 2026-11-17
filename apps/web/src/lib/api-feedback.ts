@@ -28,6 +28,9 @@ const SILENT_WRITES: RegExp[] = [
   // "✓ Saved" pill in the owner's language is back-office noise on a page a
   // customer is touching, and each of them has its own full-screen outcome.
   /^\/display\//,
+  // Support's test of the typing dots: nothing is saved, and the person who
+  // pressed it is looking at a phone — the screen says what is happening.
+  /\/typing-test$/,
 ];
 
 export type WriteKind = 'silent' | 'announce';

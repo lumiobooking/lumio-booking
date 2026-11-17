@@ -20,8 +20,15 @@
 
 export type SenderAction = 'mark_seen' | 'typing_on' | 'typing_off';
 
-/** Renew the dots this often while the AI works (Meta clears them after ~20 s). */
-export const TYPING_REFRESH_MS = 8_000;
+/** Renew the dots this often while the AI works (Meta clears them by itself after a while). */
+export const TYPING_REFRESH_MS = 6_000;
+/**
+ * "Seen" first, the dots a moment later — as a person reads, then starts to
+ * type. On 17/11/2026 both were sent in the same instant: Meta accepted both,
+ * the customer saw "Seen" on phone and desktop, and the dots never appeared.
+ * The read receipt and the typing signal are no longer sent back to back.
+ */
+export const SEEN_TO_TYPING_MS = 800;
 /** Never show dots longer than this for one reply. */
 export const TYPING_MAX_MS = 60_000;
 
@@ -42,12 +49,32 @@ export function typingStep(startedAtMs: number, nowMs: number): 'renew' | 'stop'
   return nowMs - startedAtMs >= TYPING_MAX_MS ? 'stop' : 'renew';
 }
 
-/** Platform counters, so support can see the calls reach Meta without the server's logs. No salon's data. */
-export interface PresenceStats { sent: number; failed: number; lastOkAt: number | null; lastFailAt: number | null; lastError: string | null }
-const stats: PresenceStats = { sent: 0, failed: 0, lastOkAt: null, lastFailAt: null, lastError: null };
-export function notePresence(ok: boolean, error?: string | null, nowMs = Date.now()): void {
-  if (ok) { stats.sent += 1; stats.lastOkAt = nowMs; return; }
-  stats.failed += 1; stats.lastFailAt = nowMs; stats.lastError = String(error ?? '').replace(/access_token=[^&\s"]+/gi, 'access_token=…').slice(0, 200) || null;
+/**
+ * Platform counters, so support can see the calls reach Meta — and in what
+ * order — without the server's logs. No salon's data, no token.
+ */
+export interface PresenceStats {
+  sent: number; failed: number; lastOkAt: number | null; lastFailAt: number | null; lastError: string | null;
+  /** Per action: how many Meta accepted or refused, and when the last accepted one went out. */
+  byAction: Record<SenderAction, { ok: number; failed: number; lastOkAt: number | null }>;
 }
-export function presenceStats(): PresenceStats { return { ...stats }; }
-export function resetPresenceStats(): void { stats.sent = 0; stats.failed = 0; stats.lastOkAt = null; stats.lastFailAt = null; stats.lastError = null; }
+const fresh = (): PresenceStats => ({
+  sent: 0, failed: 0, lastOkAt: null, lastFailAt: null, lastError: null,
+  byAction: { mark_seen: { ok: 0, failed: 0, lastOkAt: null }, typing_on: { ok: 0, failed: 0, lastOkAt: null }, typing_off: { ok: 0, failed: 0, lastOkAt: null } },
+});
+let stats: PresenceStats = fresh();
+export function notePresence(ok: boolean, error?: string | null, nowMs = Date.now(), action?: SenderAction): void {
+  const per = action ? stats.byAction[action] : null;
+  if (ok) {
+    stats.sent += 1; stats.lastOkAt = nowMs;
+    if (per) { per.ok += 1; per.lastOkAt = nowMs; }
+    return;
+  }
+  stats.failed += 1; stats.lastFailAt = nowMs;
+  if (per) per.failed += 1;
+  stats.lastError = String(error ?? '').replace(/access_token=[^&\s"]+/gi, 'access_token=…').slice(0, 200) || null;
+}
+export function presenceStats(): PresenceStats {
+  return { ...stats, byAction: { mark_seen: { ...stats.byAction.mark_seen }, typing_on: { ...stats.byAction.typing_on }, typing_off: { ...stats.byAction.typing_off } } };
+}
+export function resetPresenceStats(): void { stats = fresh(); }

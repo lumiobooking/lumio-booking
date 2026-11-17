@@ -19,8 +19,14 @@ export type ReleaseStage = 'off' | 'canary' | 'on';
 
 /** Every behaviour that is released in stages, with the stage it SHIPS in. */
 export const RELEASE_FEATURES = {
-  /** "Seen" + the typing dots on Messenger and Instagram while the AI writes. */
-  typing: { ships: 'canary', vi: 'Dấu "đã xem" và "đang soạn tin" khi AI trả lời', en: 'Seen + typing indicator while the AI writes' },
+  /** The typing dots on Messenger and Instagram while the AI writes. */
+  typing: { ships: 'canary', vi: 'Ba dấu chấm "đang soạn tin" khi AI trả lời', en: 'Typing indicator while the AI writes' },
+  /**
+   * The "Seen" receipt the moment a customer writes. Its own switch since
+   * 17/11/2026: with both sent, a customer saw "Seen" and never the dots, and
+   * the one may be taken away without a deploy to see whether it hides the other.
+   */
+  seen: { ships: 'canary', vi: 'Dấu "đã xem" ngay khi khách nhắn', en: 'Seen receipt when a customer writes' },
   /** A short, adaptive pause before answering instead of a fixed six seconds. */
   smartWait: { ships: 'canary', vi: 'Chờ thông minh thay cho chờ cố định 6 giây', en: 'Adaptive wait instead of a fixed six seconds' },
 } as const satisfies Record<string, { ships: ReleaseStage; vi: string; en: string }>;

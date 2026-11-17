@@ -1,12 +1,12 @@
 /**
- * The customer sees "seen" and the typing dots at once, and the wait before
+ * The customer sees "seen" at once and the typing dots a moment later, and the wait before
  * the AI answers is sized by what they sent — both only where the behaviour
  * has been released (common/ai-release): a salon that is not a test account
  * keeps the fixed six seconds and no dots until promotion.
  */
 jest.mock('@prisma/client', () => ({ ...jest.requireActual('@prisma/client'), AppointmentStatus: { CANCELLED: 'CANCELLED' } }));
 import { MessengerService } from './messenger.service';
-import { resetPresenceStats, presenceStats } from './presence';
+import { resetPresenceStats, presenceStats, SEEN_TO_TYPING_MS } from './presence';
 
 type Row = Record<string, unknown>;
 type Svc = {
@@ -14,9 +14,11 @@ type Svc = {
   replyAndRecord: jest.Mock;
 };
 
-function build(on: { typing?: boolean; smartWait?: boolean } | null) {
+function build(given: { typing?: boolean; seen?: boolean; smartWait?: boolean } | null) {
   const prisma = { messengerThread: { findUnique: async () => ({ channel: 'messenger', pageId: 'P1' }) } };
-  const release = on ? { isOn: (f: 'typing' | 'smartWait', tenantId: string) => tenantId === 'test-salon' && Boolean(on[f]) } : undefined;
+  // "Seen" follows the dots unless a test moves its own switch.
+  const on = given ? { seen: given.typing, ...given } : null;
+  const release = on ? { isOn: (f: 'typing' | 'seen' | 'smartWait', tenantId: string) => tenantId === 'test-salon' && Boolean(on[f]) } : undefined;
   const s = new MessengerService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never,
     undefined, undefined, undefined, undefined, undefined, undefined, release as never) as unknown as Svc;
   s.replyAndRecord = jest.fn(async () => undefined);
@@ -36,19 +38,55 @@ describe('"seen", the typing dots and the adaptive wait', () => {
   });
   afterEach(() => { jest.useRealTimers(); global.fetch = realFetch; });
 
-  it('test account: seen + dots at once, a tap answered in a fraction of a second, dots ended after', async () => {
+  it('test account: "seen" at once, the dots a moment later (never the same instant), ended when the reply is out', async () => {
     const s = build({ typing: true, smartWait: true });
+    // The AI takes two seconds over this one.
+    s.replyAndRecord = jest.fn(() => new Promise<void>((r) => { setTimeout(r, 2000); }));
     s.queueReply(conn('test-salon'), 'th1', 'PSID1', 'Xem tất cả gói', Date.now(), {}, undefined, { tap: true, channel: 'messenger', pageId: 'P1' });
     await jest.advanceTimersByTimeAsync(50);
-    expect(actions(fetchMock)).toEqual(['mark_seen', 'typing_on']);
+    expect(actions(fetchMock)).toEqual(['mark_seen']);
     expect(String(fetchMock.mock.calls[0][0])).toContain('/me/messages');
     expect(JSON.parse(String((fetchMock.mock.calls[0][1] as { body: string }).body))).toEqual({ recipient: { id: 'PSID1' }, sender_action: 'mark_seen' });
-    expect(s.replyAndRecord).not.toHaveBeenCalled();
-    await jest.advanceTimersByTimeAsync(400);
-    expect(s.replyAndRecord).toHaveBeenCalledTimes(1);
-    await jest.advanceTimersByTimeAsync(50);
+    await jest.advanceTimersByTimeAsync(SEEN_TO_TYPING_MS - 100);
+    expect(actions(fetchMock)).toEqual(['mark_seen']); // 17/11: back to back, the dots never showed
+    await jest.advanceTimersByTimeAsync(150);
+    expect(actions(fetchMock)).toEqual(['mark_seen', 'typing_on']);
+    expect(s.replyAndRecord).toHaveBeenCalledTimes(1); // a tap is not kept waiting for the dots
+    await jest.advanceTimersByTimeAsync(2000);
     expect(actions(fetchMock)).toEqual(['mark_seen', 'typing_on', 'typing_off']);
     expect(presenceStats().sent).toBe(3);
+    expect(presenceStats().byAction.typing_on.ok).toBe(1);
+  });
+
+  it('a reply that is out before the dots were due: "seen" only — no dots after the answer, and no "off" for dots never shown', async () => {
+    const s = build({ typing: true, smartWait: true });
+    s.queueReply(conn('test-salon'), 'th1b', 'PSID1', 'Xem tất cả gói', Date.now(), {}, undefined, { tap: true, channel: 'messenger', pageId: 'P1' });
+    await jest.advanceTimersByTimeAsync(450);
+    expect(s.replyAndRecord).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(actions(fetchMock)).toEqual(['mark_seen']);
+  });
+
+  it('the "seen" switch taken away: the dots at once and no read receipt — to see whether the one hides the other', async () => {
+    const s = build({ typing: true, seen: false, smartWait: true });
+    s.replyAndRecord = jest.fn(() => new Promise<void>((r) => { setTimeout(r, 2000); }));
+    s.queueReply(conn('test-salon'), 'th1c', 'PSID1', 'giá gói marketing', Date.now(), {}, undefined, { channel: 'messenger', pageId: 'P1' });
+    await jest.advanceTimersByTimeAsync(50);
+    expect(actions(fetchMock)).toEqual(['typing_on']);
+    await jest.advanceTimersByTimeAsync(4000);
+    expect(actions(fetchMock)).toEqual(['typing_on', 'typing_off']);
+  });
+
+  it('the dots switch taken away: the read receipt alone, nothing renewed and nothing to turn off', async () => {
+    const s = build({ typing: false, seen: true, smartWait: true });
+    let done: () => void = () => undefined;
+    s.replyAndRecord = jest.fn(() => new Promise<void>((r) => { done = r; }));
+    s.queueReply(conn('test-salon'), 'th1d', 'PSID1', 'giá gói marketing', Date.now(), {}, undefined, { channel: 'messenger', pageId: 'P1' });
+    await jest.advanceTimersByTimeAsync(20_000);
+    expect(actions(fetchMock)).toEqual(['mark_seen']);
+    done();
+    await jest.advanceTimersByTimeAsync(100);
+    expect(actions(fetchMock)).toEqual(['mark_seen']);
   });
 
   it('test account: a whole question waits about a second, not six', async () => {
@@ -121,7 +159,7 @@ describe('"seen", the typing dots and the adaptive wait', () => {
     s.replyAndRecord = jest.fn(() => new Promise<void>((r) => { done = r; }));
     s.queueReply(conn('test-salon'), 'th8', 'PSID8', 'giá gói marketing', Date.now(), {}, undefined, { channel: 'messenger', pageId: 'P1' });
     await jest.advanceTimersByTimeAsync(17_500);
-    expect(actions(fetchMock).filter((a) => a === 'typing_on').length).toBe(3); // at once, then every 8 s
+    expect(actions(fetchMock).filter((a) => a === 'typing_on').length).toBe(3); // 0.8 s after "seen", then at 6 s and 12 s
     await jest.advanceTimersByTimeAsync(60_000);
     expect(actions(fetchMock).at(-1)).toBe('typing_off');
     const n = fetchMock.mock.calls.length;

@@ -23,7 +23,7 @@ import {
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow, customerWroteLast, DEFAULT_ACTIVE_MINS } from './thread-ownership';
-import { chatStateBlock } from './conversation-state';
+import { chatStateBlock, partsBlock } from './conversation-state';
 import { AI_NOTE_AUTHOR, aiWhyCurrent, aiWhyFor, aiWhyNote, isAiWhyNote, readAiWhy, type AiWhy } from './ai-why';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
@@ -5575,7 +5575,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       : '';
     const crossMemoryBlock = ctx.crossMemory ? `\n${ctx.crossMemory}` : '';
     // Where the conversation stands, read from its own turns by code (./conversation-state).
-    const stateBlock = (this.release?.isOn('chatState', tenantId) ?? false) ? chatStateBlock(history as never, { gapDays: ctx.gapDays ?? 0 }) : '';
+    const stateBlock = (this.release?.isOn('chatState', tenantId) ?? false) ? chatStateBlock(history as never, { gapDays: ctx.gapDays ?? 0 }) + partsBlock(userText) : '';
     const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + stateBlock + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang)) + NO_REPLY_RULE
       // LAST, so it is the freshest thing the model has read: the words the owner forbids, by name.
       + (wordRulesOn && owner ? (() => { const b = wordsBlock(owner.all, insCh, brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en')); return b ? `\n${b}` : ''; })() : '')

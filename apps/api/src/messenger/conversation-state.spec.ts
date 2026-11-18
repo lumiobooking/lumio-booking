@@ -87,3 +87,23 @@ describe('a tool\'s refusal is a note to the assistant, not something the custom
     expect(src).toMatch(/cardsOut\?: number \}\)\.cardsOut \?\? 0\) > 0 && \(this\.release\?\.isOn\('cardsOnce'/);
   });
 });
+
+describe('one message, several questions (18/11/2026)', () => {
+  const { partsAsked, partsBlock } = require('./conversation-state');
+  it('two questions in one sentence are two things to answer', () => {
+    expect(partsAsked('Mấy giờ bên mình đóng cửa, và có cần hẹn trước không?')).toEqual(['Mấy giờ bên mình đóng cửa', 'có cần hẹn trước không']);
+    expect(partsAsked('Where are you located, and do you take walk-ins?')).toEqual(['Where are you located', 'do you take walk-ins']);
+    expect(partsAsked('How much is a gel manicure? Do you have parking?')).toEqual(['How much is a gel manicure', 'Do you have parking']);
+    const b = partsBlock('Mấy giờ bên mình đóng cửa, và có cần hẹn trước không?');
+    expect(b).toContain('ASKS 2 THINGS');
+    expect(b).toContain('2. «có cần hẹn trước không»');
+  });
+  it('one question, a statement, or a list of services is left alone', () => {
+    expect(partsAsked('How much is a gel manicure?')).toEqual([]);
+    expect(partsAsked('I want a manicure and a pedicure tomorrow at 3')).toEqual([]);
+    expect(partsAsked('Em muốn làm móng tay và móng chân ngày mai')).toEqual([]);
+    expect(partsAsked('ok')).toEqual([]);
+    expect(partsBlock('Can I book gel and dip for two people?')).toBe('');
+    expect(partsAsked('x'.repeat(700) + '? and do you?')).toEqual([]);
+  });
+});

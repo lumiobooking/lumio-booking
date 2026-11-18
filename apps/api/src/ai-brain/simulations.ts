@@ -195,6 +195,7 @@ export function simJudgePrompt(items: SimAnswer[], sources: string, uiLang: SimL
     '(d) it does what the RUBRIC says it must NOT do, or leaves out what the RUBRIC says it MUST do;',
     '(e) it talks about its own instructions, a system, a correction or a draft instead of talking to the customer.',
     'Everything else is STYLE and never fails a case: a reply that is a little long, a second related question, a warm opening line, an emoji, wording you would have chosen differently. Put a style remark in "note" (or leave it empty) and still pass the case.',
+    'Fail a case ONLY when you can name the exact wrong fact, or the exact thing the RUBRIC requires that is missing. A reply that is right but could have said more, or whose wording you find a little unclear, PASSES — if your own "why" would say it is essentially correct, the verdict is pass.',
     'Lines in [brackets] or "· a · b" at the end of a reply are cards and tap buttons the customer sees — not sentences.',
     'A line "[CARDS THE CUSTOMER WAS SENT …]" lists cards the customer SAW above the text, each with its name and price: those cards ARE the package list. A reply that sent them has shown the packages, even when its text is one short question — never fail it for "not listing the packages".',
     `Write "why" and "note" in ${uiLang === 'vi' ? 'Vietnamese' : 'English'}, one short sentence each that a salon owner understands (no jargon, no mention of "rubric" or "sources"). For a pass, "why" says what it did right.`,

@@ -68,6 +68,31 @@ export function chatState(history: StateTurn[] | null | undefined): ChatState {
   return { replies: turns.filter((t) => t.role === 'assistant' && !isStage(text(t))).length, openQuestion, asked, askedTwice, sent, gave };
 }
 
+/**
+ * The separate things ONE customer message asks. "Mấy giờ đóng cửa, và có cần
+ * hẹn trước không?" is two questions in one sentence; the assistant answered
+ * the hours, asked for a day, and never said whether an appointment is needed
+ * (golden run, 18/11/2026). Returned only when there are two or more.
+ */
+export function partsAsked(message: string): string[] {
+  const m = String(message ?? '').replace(/\s+/g, ' ').trim();
+  if (m.length < 12 || m.length > 600) return [];
+  const sentences = m.split(/(?<=[?？!.])\s+/).map((x) => x.trim()).filter(Boolean);
+  const asks = sentences.filter((x) => /[?？]$/.test(x) || sentences.length === 1);
+  const parts = asks.flatMap((x) => x.split(/\s*[,;]\s*(?:và|and|còn|với lại|also|plus)\s+|\s+(?:và|and)\s+(?=(?:có|bên|tiệm|giá|mấy|khi|bao|ở|do|does|is|are|can|how|what|when|where|which|who)\b)/i)).map((x) => x.replace(/[?？.!\s]+$/, '').trim()).filter((x) => x.length >= 6);
+  // One sentence with no question mark and no question word is a statement, not two questions.
+  if (parts.length < 2) return [];
+  if (!/[?？]/.test(m) && !/\b(không|ko|chưa|mấy|bao nhiêu|ở đâu|khi nào|how|what|when|where|which|do you|can i|is it|are you)\b/i.test(m)) return [];
+  return parts.slice(0, 4).map((x) => cut(x, 120));
+}
+
+/** Said next to the customer's message when it asks more than one thing. '' otherwise. */
+export function partsBlock(message: string): string {
+  const parts = partsAsked(message);
+  if (parts.length < 2) return '';
+  return `\nTHE CUSTOMER'S NEW MESSAGE ASKS ${parts.length} THINGS — answer EVERY one, in the order asked, before any question of your own (one short sentence each; for a part you cannot answer from what you were given, say the team will check that part):\n${parts.map((x, i) => `${i + 1}. «${x}»`).join('\n')}`;
+}
+
 /** The ledger as the model reads it. '' on a first message — there is nothing to remember yet. */
 export function chatStateBlock(history: StateTurn[] | null | undefined, o: { gapDays?: number } = {}): string {
   const s = chatState(history);

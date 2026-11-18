@@ -298,7 +298,7 @@ export function isDocRule(i: Pick<Instruction, 'id'>): boolean {
  * in a reply against the document (price watch), by code.
  */
 export function needsTheDocument(text: string): boolean {
-  return /b[ảa]ng (gi[áa]|d[ưu][ớo]i|tr[êe]n|n[àa]y)|đ[úu]ng nh[ưu] b[ảa]ng|ngo[àa]i b[ảa]ng|d[ưu][ớo]i đ[âa]y|b[êe]n d[ưu][ớo]i|[ởo] tr[êe]n|n[ếe]u c[óo] ghi|\/th[áa]ng|price (list|table)|table (below|above)|listed (below|above|here)|as (listed|written|shown)|\bbelow\b|\babove\b|per month|\/month|\/mo\b/i.test(String(text ?? ''));
+  return /b[ảa]ng (gi[áa]|d[ưu][ớo]i|tr[êe]n|n[àa]y)|đ[úu]ng nh[ưu] b[ảa]ng|ngo[àa]i b[ảa]ng|d[ưu][ớo]i đ[âa]y|b[êe]n d[ưu][ớo]i|[ởo] tr[êe]n|n[ếe]u c[óo] ghi|\/th[áa]ng|price (list|table)|table (below|above)|listed (below|above|here)|as (listed|written|shown)|\bbelow\b|\babove\b|per month|\/month|\/mo\b|(^|[^\p{L}])(g[óo]i|gi[áa]|h[ạa]ng m[ụu]c)([^\p{L}]|$)|\b(package|plan|price|pricing|tier)s?\b/iu.test(String(text ?? ''));
 }
 
 export function toCheck(all: Instruction[], channel: InstructionChannel, matches: Match[]): Instruction[] {
@@ -563,7 +563,7 @@ export function wordRulesFor(all: Instruction[], channel: InstructionChannel, la
 export function wordsBlock(all: Instruction[], channel: InstructionChannel, lang: string): string {
   const words = [...new Set(wordRulesFor(all, channel, lang).flatMap((x) => x.rule.avoid))];
   if (!words.length) return '';
-  return `WORDS YOU MUST NOT WRITE (the owner's rule — every reply is checked for them by the system before it is sent): ${words.map((w) => `«${w}»`).join(', ')}. Not on their own and not inside a longer phrase. Read your reply once before you finish: if one of them is there, say it the way the owner's instruction asks instead.`;
+  return `WORDS YOU MUST NOT WRITE (the owner's rule — every reply is checked for them by the system before it is sent): ${words.map((w) => `«${w}»`).join(', ')}. Not on their own and not inside a longer phrase. Read your reply once before you finish: if one of them is there, say it the way the owner's instruction asks instead.${words.some((w) => w.toLowerCase() === 'mình') ? ' «mình» is forbidden in EVERY sense — also when it means the customer or their shop: never «tiệm mình», «bên mình», «chỗ mình», «của mình». The customer\'s shop is «tiệm anh/chị»; your own side is «bên em».' : ''}`;
 }
 
 /** Ask once: which exact words does this instruction forbid, and is that ALL it asks? The owner's words are data between fences. */

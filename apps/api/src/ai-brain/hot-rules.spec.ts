@@ -171,3 +171,18 @@ describe('the check itself', () => {
     expect(bad.broken.map((i) => i.id)).toEqual(['p']);
   });
 });
+
+describe('rt180 — what the golden run on rt179 still showed', () => {
+  const { needsTheDocument, wordsBlock } = require('./instructions');
+  it('a document rule about what a package contains needs the document too; a behaviour rule does not', () => {
+    expect(needsTheDocument('Gói không ghi một kênh hay hạng mục nào thì gói đó không bao gồm kênh đó.')).toBe(true);
+    expect(needsTheDocument('Never promise a package the plan does not include.')).toBe(true);
+    expect(needsTheDocument('Khách hỏi khuyến mãi → mời khách để lại số điện thoại để tư vấn viên gọi lại.')).toBe(false);
+    expect(needsTheDocument('Khách muốn gặp người → xin số điện thoại.')).toBe(false);
+  });
+  it('"mình" is named in the phrases it hides in', () => {
+    const all = [ins({ meaning: withWordTag('x', { avoid: ['mình', 'bạn'], lang: 'vi', only: false }) })];
+    expect(wordsBlock(all, 'messenger', 'vi')).toContain('«tiệm mình»');
+    expect(wordsBlock([ins({ meaning: withWordTag('x', { avoid: ['Yelp'], lang: 'any', only: true }) })], 'messenger', 'vi')).not.toContain('tiệm mình');
+  });
+});

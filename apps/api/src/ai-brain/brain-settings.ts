@@ -45,6 +45,8 @@ export interface AiBrain {
   handoff: {
     transferNumber: string; silenceRetries: number; staffQuietMins: number;
     notifyOwnerPush: boolean; notifyDeskPush: boolean; notifyOwnerSms: boolean;
+    /** Situations the owner wants a PERSON to take (ids from HANDOFF_SITUATIONS). [] = the AI decides, as before. */
+    when: string[];
   };
   channels: {
     voice: { greeting: string; extra: string };
@@ -65,7 +67,7 @@ export function defaultBrain(market?: string | null): AiBrain {
     languages: { primary: vn ? 'vi' : 'en', allowed: ['en', 'vi'], voiceOpening: 'auto' },
     knowledge: { facts: [], rules: '' },
     booking: { canBook: true, allowGroup: true, maxParty: 6, canReschedule: true, canCancel: false, askExtras: true, whenFull: 'offer-nearest' },
-    handoff: { transferNumber: '', silenceRetries: 3, staffQuietMins: 120, notifyOwnerPush: true, notifyDeskPush: true, notifyOwnerSms: false },
+    handoff: { transferNumber: '', silenceRetries: 3, staffQuietMins: 120, notifyOwnerPush: true, notifyDeskPush: true, notifyOwnerSms: false, when: [] },
     channels: { voice: { greeting: '', extra: '' }, chat: { greeting: '', extra: '', sendPhotos: true, nudgeHours: 2, yieldMins: 0 } },
     version: 0,
     updatedAt: null,
@@ -80,6 +82,26 @@ const int = (v: unknown, d: number, lo: number, hi: number) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : d;
 };
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+
+/**
+ * "KHI NÀO CHUYỂN CHO NGƯỜI" (18/11/2026). Until now the AI alone decided what
+ * was beyond it, and an owner who wanted every complaint or every refund in a
+ * person's hands had to write a free-text instruction and hope. These are the
+ * situations owners actually name; each salon ticks its own (handoff.when).
+ * `ai` is what the model is told — the screen's wording lives in the web app.
+ */
+export const HANDOFF_SITUATIONS: Record<string, { ai: string }> = {
+  complaint: { ai: 'A complaint: the customer is unhappy with a service, a result, the wait or how they were treated.' },
+  refund: { ai: 'A refund, a redo free of charge, or compensation is asked for.' },
+  discount: { ai: 'Bargaining: the customer asks for a lower price or an extra discount beyond the published promotions.' },
+  person: { ai: 'The customer asks to talk to a person, the owner or the manager.' },
+  health: { ai: 'A health question: an allergy, a skin, nail or eye condition, an infection, pregnancy, medication — anything where the right answer depends on their body.' },
+  group: { ai: 'A large group, a party or an event booking.' },
+  custom: { ai: 'A custom design or a price for a photo they sent ("how much for this?").' },
+  lastminute: { ai: 'Changing or cancelling an appointment that starts within the next two hours, or a late arrival.' },
+  payment: { ai: 'A payment problem: a wrong charge, a deposit, a gift card that does not work.' },
+  business: { ai: 'Not a customer: a job application, a supplier, an advertising or partnership offer.' },
+};
 const day = (v: unknown): string | null => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 const oneOf = <T extends string>(v: unknown, list: readonly T[], d: T): T => ((list as readonly string[]).includes(String(v)) ? (v as T) : d);
 
@@ -134,6 +156,7 @@ export function sanitizeBrain(raw: unknown, base: AiBrain): AiBrain {
       notifyOwnerPush: bool(h.notifyOwnerPush, base.handoff.notifyOwnerPush),
       notifyDeskPush: bool(h.notifyDeskPush, base.handoff.notifyDeskPush),
       notifyOwnerSms: bool(h.notifyOwnerSms, base.handoff.notifyOwnerSms),
+      when: Array.isArray(h.when) ? [...new Set(h.when.filter((x): x is string => typeof x === 'string' && Object.prototype.hasOwnProperty.call(HANDOFF_SITUATIONS, x)))].slice(0, 12) : base.handoff.when,
     },
     channels: {
       voice: { greeting: 'greeting' in cv ? str(cv.greeting, 300) : base.channels.voice.greeting, extra: 'extra' in cv ? str(cv.extra, 1500) : base.channels.voice.extra },
@@ -228,11 +251,16 @@ export function brainPromptBlocks(brain: AiBrain, ctx: PromptCtx): {
     !b.askExtras ? 'Do not ask about optional add-ons unless the customer brings them up.' : '',
   ].filter(Boolean).join('\n');
 
+  // "Khi nào chuyển cho người": the situations THIS salon's owner ticked. Nothing ticked = nothing added.
+  const picked = (brain.handoff.when ?? []).filter((id) => Object.prototype.hasOwnProperty.call(HANDOFF_SITUATIONS, id));
+  const handoffWhen = picked.length
+    ? `\nTHE OWNER WANTS A PERSON TO TAKE THESE — do not try to settle them yourself. When the customer's message is one of them: say in one short, warm line that someone from the team will reply personally${ctx.channel === 'voice' ? '' : ' (no promise of a time)'}, call request_callback with what they said, and stop there. Answer any OTHER question in the same message normally.\n${picked.map((id) => `- ${HANDOFF_SITUATIONS[id].ai}`).join('\n')}`
+    : '';
   const handoffNote = ctx.channel === 'voice'
     ? (brain.handoff.transferNumber ? 'A real person can be reached by transfer.' : 'Nobody can be transferred to right now: when you cannot help, call request_callback and promise a call back.')
     : 'When you cannot answer from what you were given, say the team will get back to them and call request_callback with the question.';
 
-  return { persona, facts, rules, booking, handoffNote, language: languageRule(ctx.lang, brain.languages.allowed) };
+  return { persona, facts, rules, booking, handoffNote: handoffNote + handoffWhen, language: languageRule(ctx.lang, brain.languages.allowed) };
 }
 
 /** The language rule for one reply: this customer's language, named plainly, both directions. */

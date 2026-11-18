@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Optional, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { UserRole } from '@prisma/client';
 import { MessengerService } from './messenger.service';
@@ -6,6 +6,8 @@ import { InboxEventsService } from './inbox-events.service';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
 import { AiDigestService } from './ai-digest.service';
 import { BotReportService } from './bot-report.service';
+import { UploadsService } from '../uploads/uploads.service';
+import { resolveTenantScope } from '../common/tenant/tenant-context';
 import { HandoffDto, LeadStatusDto, ThreadLeadDto, RenameThreadDto, SendTestDto, SuggestGreetingDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -38,6 +40,8 @@ export class MessengerController {
     private readonly gaps: KnowledgeGapsService,
     private readonly report: BotReportService,
     private readonly digest: AiDigestService,
+    // The salon's own upload folder, for a photo a person sends from the Inbox. Optional so a storage problem never takes the Inbox down.
+    @Optional() private readonly uploads?: UploadsService,
   ) {}
 
   // How the bot is doing: conversations → bookings, where the rest stopped, next steps.
@@ -387,6 +391,27 @@ export class MessengerController {
   @Get('activity')
   activity(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.activity(user);
+  }
+
+  /**
+   * A photo from the reply box. The picture is stored in the CALLER'S salon
+   * folder first (the tenant comes from the signed-in user, never the body),
+   * then sent on the thread — which the service looks up inside that same salon.
+   */
+  @Roles(...INBOX_ROLES)
+  @Post('threads/:id/photo')
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('messengerAi')
+  async sendPhoto(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { dataUrl?: unknown }) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    if (!this.uploads) throw new BadRequestException('STORAGE_NOT_CONFIGURED');
+    const dataUrl = typeof dto?.dataUrl === 'string' ? dto.dataUrl : '';
+    if (!/^data:image\/(png|jpe?g|webp);base64,/.test(dataUrl)) throw new BadRequestException('Chỉ gửi được ảnh JPG, PNG hoặc WebP.');
+    // Is this conversation ours? Asked BEFORE anything is stored, so a wrong id leaves no file behind.
+    await this.svc.assertOwnThread(user, id);
+    const url = await this.uploads.uploadDataUrl(tenantId, dataUrl);
+    return this.svc.sendManualPhoto(user, id, url);
   }
 
   @Roles(...INBOX_ROLES)

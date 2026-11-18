@@ -2733,6 +2733,93 @@ export class MessengerService implements OnModuleInit {
     return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: sentAtIso, channel: ch };
   }
 
+  /** 404 unless this conversation belongs to the caller's salon. */
+  async assertOwnThread(user: AuthenticatedUser, threadId: string): Promise<void> {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.messengerThread.findFirst({ where: { id: String(threadId ?? ''), tenantId }, select: { id: true } });
+    if (!row) throw new NotFoundException('Thread not found');
+  }
+
+  /**
+   * A PERSON sends a photo from the Inbox (18/11/2026). Until now the reply
+   * box was text only: a receptionist asked "which design?" had to pick up
+   * her own phone and answer from the Page app — outside Lumio, where the AI
+   * and the rest of the team could not see it.
+   *
+   * `url` is a public https address the caller has just stored in THIS
+   * salon's own upload folder (the controller does that; nothing a browser
+   * names is fetched). Everything else is sendManual's rules, unchanged: the
+   * thread is looked up inside the caller's salon, Meta's 24-hour / 7-day
+   * window is decided here from the database, a person's reply takes the
+   * conversation from the AI, and the send is audited.
+   */
+  async sendManualPhoto(user: AuthenticatedUser, threadId: string, url: string) {
+    const tenantId = this.tenantId(user);
+    if (!/^https:\/\/[^\s"'<>]+$/i.test(String(url ?? ''))) throw new BadRequestException('Not a photo address.');
+    const thread = await this.prisma.messengerThread.findFirst({ where: { id: String(threadId ?? ''), tenantId } });
+    if (!thread) throw new NotFoundException('Thread not found');
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+    const by = await this.staffNameOf(user);
+    const channel = String((thread as unknown as { channel?: string }).channel ?? '');
+    const web = channel === 'web' || isWebPage(thread.pageId);
+    const stage = '[Đã gửi 1 ảnh]';
+    const record = async (extra: Record<string, unknown>, sent: boolean) => {
+      const at = new Date().toISOString();
+      const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+      const turn = { role: 'assistant', content: stage, manual: true, at, images: [url], ...(by ? { by } : {}), ...extra } as unknown as Turn;
+      await this.prisma.messengerThread.updateMany({
+        where: { id: thread.id, tenantId },
+        data: {
+          history: this.windowOf(thread.id, [...hist, turn], (thread as unknown as { summary?: string | null }).summary ?? null) as unknown as Prisma.InputJsonValue,
+          ...(sent ? { lastText: stage, lastMessageAt: new Date(), readAt: new Date(), handoff: true, handoffAt: new Date() } : {}),
+        } as never,
+      });
+      return at;
+    };
+    if (web) {
+      const at = await record({}, true);
+      await this.audit(tenantId, 'messenger.manual_photo');
+      this.events.publish(tenantId, 'message');
+      return { ok: true as const, at, channel: 'web', url };
+    }
+    if (!conn?.pageId || !conn?.pageToken) throw new BadRequestException('Connect a Facebook Page first.');
+    const pg = await this.prisma.messengerPage.findFirst({ where: { tenantId, pageId: thread.pageId } });
+    const sendToken = pg?.pageToken || conn.pageToken;
+    if (channel === 'zalo') {
+      const zr = await sendZaloImage(sendToken, thread.senderId, url);
+      const at = await record(zr.ok ? {} : { failed: true }, zr.ok);
+      if (!zr.ok) throw new BadRequestException(zr.error || 'Zalo từ chối ảnh (có thể đã quá cửa sổ trả lời).');
+      await this.audit(tenantId, 'messenger.manual_photo');
+      this.events.publish(tenantId, 'message');
+      return { ok: true as const, at, channel: 'zalo', url };
+    }
+    // The same window as a typed reply — decided by the server, from the database.
+    const now = new Date();
+    const ownerView = ownershipOf(thread as never, { now });
+    const win = windowState(customerLastWroteAt((thread as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt, thread.history), ownerView.state === 'human' ? 'human' : 'bot', now);
+    if (!win.canSend || !win.body) {
+      const code = win.code ?? 'window_closed';
+      this.logger.warn(`human_agent_block code=${code} conversation_id=${thread.id} age_hours=${win.ageHours ?? 'unknown'} staff_id=${user.userId ?? 'unknown'} kind=photo`);
+      throw new ForbiddenException({ statusCode: 403, code, error: 'Forbidden', message: blockMessage(code), daysLeft: win.daysLeft });
+    }
+    const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(sendToken)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ recipient: { id: thread.senderId }, ...win.body, message: { attachment: { type: 'image', payload: { url, is_reusable: false } } } }),
+      signal: AbortSignal.timeout(20_000),
+    }).catch((e) => ({ ok: false, json: async () => ({ error: { message: String((e as Error)?.message ?? e) } }) }) as unknown as Response);
+    const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: { message?: string } };
+    this.rememberSentMid(out.message_id);
+    if (!res.ok || out.error) {
+      await record({ failed: true, sendError: String(out.error?.message ?? '').slice(0, 200) || null }, false).catch(() => undefined);
+      throw new BadRequestException(out.error?.message || 'Facebook rejected the photo (the messaging window may have closed).');
+    }
+    const at = await record({ messageId: out.message_id || null }, true);
+    await this.audit(tenantId, 'messenger.manual_photo');
+    this.events.publish(tenantId, 'message');
+    return { ok: true as const, at, channel: channel === 'instagram' ? 'instagram' : 'messenger', url };
+  }
+
   /**
    * Meta only delivers a webhook field when BOTH levels subscribe to it: the
    * APP-level subscription (App Dashboard) and the page-level subscribed_apps.

@@ -84,7 +84,7 @@ interface Brain {
   languages: { primary: Lang; allowed: Lang[]; voiceOpening: 'auto' | 'menu' | 'single' };
   knowledge: { facts: { label: string; value: string; on: boolean; from?: string; until?: string }[]; rules: string };
   booking: { canBook: boolean; allowGroup: boolean; maxParty: number; canReschedule: boolean; canCancel: boolean; askExtras: boolean; whenFull: 'offer-nearest' | 'say-full' | 'waitlist' };
-  handoff: { transferNumber: string; silenceRetries: number; staffQuietMins: number; notifyOwnerPush: boolean; notifyDeskPush: boolean; notifyOwnerSms: boolean };
+  handoff: { transferNumber: string; silenceRetries: number; staffQuietMins: number; notifyOwnerPush: boolean; notifyDeskPush: boolean; notifyOwnerSms: boolean; when?: string[] };
   channels: { voice: { greeting: string; extra: string }; chat: { greeting: string; extra: string; sendPhotos: boolean; nudgeHours: number; yieldMins: number } };
   version: number; updatedAt: string | null; updatedBy: string | null;
 }
@@ -1059,10 +1059,38 @@ function ChatSection({ brain, patch, vi, canEdit, view, token }: { brain: Brain;
           </label>
         </div>
       </Card>
+      <Card title={L(vi, 'Khi nào chuyển cho người', 'When to hand over to a person')} hint={L(vi, 'Đánh dấu những việc tiệm muốn người thật trả lời. Gặp các việc này AI chỉ nhắn một câu ngắn là sẽ có người của tiệm trả lời, rồi báo cho tiệm. Không đánh dấu gì: AI tự quyết như trước.', 'Tick what you want a person to answer. For these the AI sends one short line saying someone will reply, and alerts you. Nothing ticked: the AI decides, as before.')}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 4 }}>
+          {HANDOFF_WHEN.map((w) => {
+            const on = (brain.handoff.when ?? []).includes(w.id);
+            return (
+              <label key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, fontSize: 14, color: 'var(--ce2e8f0)', cursor: canEdit ? 'pointer' : 'default' }}>
+                <input type="checkbox" checked={on} disabled={!canEdit} style={{ width: 18, height: 18, flexShrink: 0 }}
+                  onChange={() => setH('when', on ? (brain.handoff.when ?? []).filter((x) => x !== w.id) : [...(brain.handoff.when ?? []), w.id])} />
+                <span>{L(vi, w.vi, w.en)}</span>
+              </label>
+            );
+          })}
+        </div>
+      </Card>
       <FollowUpBox token={token} vi={vi} />
     </div>
   );
 }
+
+/** The situations an owner can hand to a person — same ids as the server's HANDOFF_SITUATIONS (ai-brain/brain-settings). */
+const HANDOFF_WHEN: { id: string; vi: string; en: string }[] = [
+  { id: 'complaint', vi: 'Khách phàn nàn, không hài lòng', en: 'A complaint' },
+  { id: 'refund', vi: 'Xin hoàn tiền, làm lại miễn phí, đền bù', en: 'A refund, free redo or compensation' },
+  { id: 'discount', vi: 'Mặc cả, xin giảm giá thêm', en: 'Bargaining for a lower price' },
+  { id: 'person', vi: 'Khách muốn gặp người thật, gặp chủ', en: 'Asks for a person or the owner' },
+  { id: 'health', vi: 'Dị ứng, bệnh da/móng/mắt, mang thai', en: 'Allergy, skin/nail/eye condition, pregnancy' },
+  { id: 'group', vi: 'Nhóm đông, tiệc, sự kiện', en: 'A large group, party or event' },
+  { id: 'custom', vi: 'Mẫu riêng, hỏi giá theo ảnh khách gửi', en: 'Custom design or a price for a photo' },
+  { id: 'lastminute', vi: 'Đổi/huỷ lịch sát giờ, đến trễ', en: 'Last-minute change, cancellation or late arrival' },
+  { id: 'payment', vi: 'Trục trặc thanh toán, tiền cọc, thẻ quà tặng', en: 'A payment, deposit or gift-card problem' },
+  { id: 'business', vi: 'Xin việc, chào hàng, mời hợp tác', en: 'Job applications, suppliers, offers' },
+];
 
 // ---------------------------------------------------------------- hotline only
 

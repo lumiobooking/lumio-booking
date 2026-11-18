@@ -967,6 +967,28 @@ export function InboxView() {
     } finally { setBusy(false); }
   }
 
+  /**
+   * A photo from the reply box. Shrunk in the browser first (a phone photo is
+   * 4–12 MB; the customer needs 1600 px), then stored and sent by the server,
+   * which decides — not this screen — whether this conversation may be written to.
+   */
+  const photoRef = useRef<HTMLInputElement | null>(null);
+  async function sendPhoto(file: File | null | undefined) {
+    if (!file || !detail || !token) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { setErr(vi ? 'Chỉ gửi được ảnh JPG, PNG hoặc WebP.' : 'Only JPG, PNG or WebP photos can be sent.'); return; }
+    setBusy(true);
+    setErr(null);
+    try {
+      const dataUrl = await shrinkPhoto(file);
+      await apiFetch(`/messenger/threads/${detail.id}/photo`, { method: 'POST', token, body: { dataUrl } });
+      await Promise.all([loadList(), loadThread(detail.id)]);
+    } catch (e) {
+      const m = String(e);
+      setErr(/STORAGE_NOT_CONFIGURED/.test(m) ? (vi ? 'Chưa gửi được ảnh: hệ thống chưa cài nơi lưu ảnh. Báo Lumio hỗ trợ.' : 'Photo not sent: file storage is not set up. Contact Lumio support.') : m);
+      await loadThread(detail.id, false).catch(() => undefined);
+    } finally { setBusy(false); if (photoRef.current) photoRef.current.value = ''; }
+  }
+
   const sources = sourcesFrom(rows);
   // Whether the Page chip on each row is worth its width.
   //
@@ -1814,6 +1836,16 @@ export function InboxView() {
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+              {!noteMode && (
+                <>
+                  <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={(e) => void sendPhoto(e.target.files?.[0])} />
+                  <button type="button" disabled={notice.blocked || busy} onClick={() => photoRef.current?.click()}
+                    aria-label={vi ? 'Gửi ảnh cho khách' : 'Send a photo to the customer'} title={vi ? 'Gửi ảnh cho khách' : 'Send a photo to the customer'}
+                    style={{ width: 48, height: 48, borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c0b1220)', color: 'var(--ccbd5e1)', flexShrink: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: (notice.blocked || busy) ? 0.5 : 1 }}>
+                    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="8.5" cy="10" r="1.6" /><path d="M21 16l-5-5-8 8" /></svg>
+                  </button>
+                </>
+              )}
               <label style={{ flex: '1 1 auto', minWidth: 0, display: 'block' }}>
                 <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>{noteMode ? (vi ? 'Ghi chú nội bộ' : 'Internal note') : (vi ? 'Nội dung trả lời' : 'Reply')}</span>
                 {noteMode ? (
@@ -2760,3 +2792,25 @@ function channelLetter(raw: unknown): string {
 // White text on a coloured (never themed) ground: the ground is a channel's
 // brand hue or the accent, so light mode does not flip it.
 const onHue = (bg: string): React.CSSProperties => ({ background: bg, color: '#fff' });
+
+/** A phone photo made small enough to send: longest side 1600 px, JPEG. Falls back to the file as it is when the browser cannot draw it. */
+async function shrinkPhoto(file: File): Promise<string> {
+  const asDataUrl = (b: Blob) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(new Error('read')); r.readAsDataURL(b); });
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(bmp.width * k));
+    c.height = Math.max(1, Math.round(bmp.height * k));
+    const g = c.getContext('2d');
+    if (!g) throw new Error('canvas');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/jpeg', 0.86));
+    if (!blob) throw new Error('blob');
+    return await asDataUrl(blob);
+  } catch {
+    return asDataUrl(file);
+  }
+}

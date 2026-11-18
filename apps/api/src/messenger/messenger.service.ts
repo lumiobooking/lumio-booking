@@ -23,6 +23,7 @@ import {
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow, customerWroteLast, DEFAULT_ACTIVE_MINS } from './thread-ownership';
+import { AI_NOTE_AUTHOR, aiWhyCurrent, aiWhyFor, aiWhyNote, isAiWhyNote, readAiWhy, type AiWhy } from './ai-why';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
@@ -42,7 +43,7 @@ import {
 } from './ai-health';
 import { chat as llmChat, openAiEnabled, type ChatMessage, type ToolDef, type TextBlock } from '../common/llm';
 import { AiInstructionsService, instructionChannel } from '../ai-brain/instructions.service';
-import { correctionFor, lastResort, wordsBlock } from '../ai-brain/instructions';
+import { correctionFor, hotBlock, labelOf, lastResort, wordsBlock } from '../ai-brain/instructions';
 import { questionAnswered } from './knowledge-gaps';
 import { detectLanguage as detectBrainLanguage } from '../ai-brain/brain-rules';
 import { withBookingLink } from './booking-link';
@@ -2026,7 +2027,13 @@ export class MessengerService implements OnModuleInit {
       // "Bot is replying" over a conversation no bot will touch.
       botOff: !(conn as { enabled?: boolean } | null)?.enabled && String(row.channel ?? '') !== 'web',
       labels: ((row as unknown as { threadLabels?: { label: { id: string; name: string; color: string } }[] }).threadLabels ?? []).map((t) => t.label),
-      notes,
+      // The staff's own notes; the AI's "why I did not answer" is its own field (./ai-why).
+      notes: (notes as { text?: string; authorName?: string }[]).filter((n) => !isAiWhyNote(n)),
+      aiWhy: (() => {
+        const n = (notes as { text?: string; authorName?: string; createdAt?: Date }[]).find((x) => isAiWhyNote(x));
+        const code = readAiWhy(n);
+        return code && aiWhyCurrent(n?.createdAt, (row as { lastCustomerAt?: Date | null }).lastCustomerAt, customerWroteLast(row as never)) ? { code, at: n!.createdAt } : null;
+      })(),
       canned,
       pageName: pg?.pageName ?? null,
       bookingUrl: await this.bookingUrlOf(tenantId),
@@ -2231,7 +2238,22 @@ export class MessengerService implements OnModuleInit {
       take: 50,
       select: { id: true, text: true, authorName: true, createdAt: true },
     } as never).catch(() => []);
-    return rows;
+    return (rows as { text?: string; authorName?: string }[]).filter((n) => !isAiWhyNote(n));
+  }
+
+  /**
+   * The AI sent nothing: why, kept on the conversation for whoever opens it
+   * (./ai-why). ONE such note per conversation — the newest reason replaces
+   * the last. This salon's thread only; never awaited by the customer's turn,
+   * never fatal.
+   */
+  private noteWhy(tenantId: string, threadId: string, code: AiWhy): void {
+    void Promise.resolve().then(async () => {
+      const own = await this.prisma.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { id: true } });
+      if (!own) return;
+      await this.prisma.messengerNote.deleteMany({ where: { tenantId, threadId, authorName: AI_NOTE_AUTHOR, text: { startsWith: '[[AI_WHY ' } } } as never);
+      await this.prisma.messengerNote.create({ data: { tenantId, threadId, authorId: null, authorName: AI_NOTE_AUTHOR, text: aiWhyNote(code) } } as never);
+    }).catch(() => undefined);
   }
 
   async deleteNote(user: AuthenticatedUser, threadId: string, noteId: string) {
@@ -4137,6 +4159,7 @@ export class MessengerService implements OnModuleInit {
       found: (ctx as { toolFound?: string[] }).toolFound ?? [],
       cards: (ctx as { dryCards?: DryCard[] }).dryCards ?? [],
       guards: [...new Set(ctx.traceGuards ?? [])],
+      blocked: (ctx as { dryBlocked?: string[] }).dryBlocked ?? [],
       choices: ctx.choices ?? [],
       ms: Date.now() - t0,
       steps: clock.steps(),
@@ -4509,6 +4532,8 @@ export class MessengerService implements OnModuleInit {
         }
         if (door.why === 'silent') {
           this.logger.log(`bot chose silence on thread ${threadId}`);
+          const silentAsked = needsAnswer(text) || String([...history].reverse().find((h) => h.role === 'assistant')?.content ?? '').includes('?');
+          if (silentAsked) this.noteWhy(conn.tenantId, threadId, aiWhyFor({ outcome: 'silent', guards: (agentCtx as { traceGuards?: string[] } | null)?.traceGuards }));
           // Silence on a QUESTION is a customer left waiting: tell a person.
           // (Booking requests are silent on purpose at some salons — the owner
           // answers those; the push is how the owner knows to.)
@@ -4524,6 +4549,7 @@ export class MessengerService implements OnModuleInit {
         }
         this.logger.warn(`reply held back (${door.why}) on thread ${threadId}: ${String(reply).slice(0, 140)}`);
         await this.audit(conn.tenantId, 'messenger.reply_held').catch(() => undefined);
+        this.noteWhy(conn.tenantId, threadId, agentFailed ? 'failed' : aiWhyFor({ outcome: 'held', guards: (agentCtx as { traceGuards?: string[] } | null)?.traceGuards, doorWhy: door.why }));
         const who = (fresh as unknown as { senderName?: string | null }).senderName ?? null;
         const vi = conversationLang([...history.filter((h) => h.role === 'user').map((h) => String(h.content ?? '')), text]) !== 'en';
         void this.push.sendToTenant(conn.tenantId, heldPush(who, vi)).catch(() => undefined);
@@ -4548,6 +4574,7 @@ export class MessengerService implements OnModuleInit {
     // asked a perfectly clear question (Lumio Agency, 16/11/2026).
     if (agentFailed && alreadySaid(history, reply)) {
       this.logger.warn(`agent failed again on thread ${threadId}; the apology was already sent — staying quiet`);
+      this.noteWhy(conn.tenantId, threadId, 'failed');
       if (!userAlready) {
         const inAtAgain = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
         await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtAgain, ...imgTurn }]);
@@ -5461,7 +5488,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const crossMemoryBlock = ctx.crossMemory ? `\n${ctx.crossMemory}` : '';
     const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang)) + NO_REPLY_RULE
       // LAST, so it is the freshest thing the model has read: the words the owner forbids, by name.
-      + (wordRulesOn && owner ? (() => { const b = wordsBlock(owner.all, insCh, brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en')); return b ? `\n${b}` : ''; })() : '');
+      + (wordRulesOn && owner ? (() => { const b = wordsBlock(owner.all, insCh, brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en')); return b ? `\n${b}` : ''; })() : '')
+      // And the instructions this salon's drafts break most often, once more (ai-brain/instructions hotRules).
+      + (owner && this.instructions && (this.release?.isOn('hotRules', tenantId) ?? false) ? (() => { const b = hotBlock(owner.all, insCh, brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en'), wordRulesOn); return b ? `\n${b}` : ''; })() : '');
     // The business's own documents (Học từ link) — sales page and booking page alike (read above).
     const system = [
       { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
@@ -5909,6 +5938,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         }
         if (chk?.broken.length) {
           noteUse(chk.applied, chk.broken);
+          // A dry run says WHICH instruction stopped WHICH draft — "blocked by an instruction" alone
+          // left a 41% rewrite rate on the golden run that nobody could explain (18/11/2026).
+          if (ctx.dryRun) (ctx as { dryBlocked?: string[] }).dryBlocked = [...((ctx as { dryBlocked?: string[] }).dryBlocked ?? []), ...chk.broken.map((i) => `${labelOf(owner.all, i)} ${i.text.replace(/\s+/g, ' ').slice(0, 80)} ⇐ ${text.replace(/\s+/g, ' ').slice(0, 160)}`)].slice(-6);
           // QUICK REPAIR (./quick-repair), where it has been released: the
           // checker's own smallest edit of this draft goes out — when it is
           // usable, passes the same fixed gates as any draft, and is addressed

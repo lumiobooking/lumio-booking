@@ -113,6 +113,6 @@ describe('a failed script is kept WITH what was said (17/11/2026)', () => {
   });
 
   it('survives garbage: missing fields become empty, never a crash', () => {
-    expect(fail({ id: 'x', lang: 'vi' })).toEqual({ id: 'x', lang: 'vi', why: '', hard: [], ms: 0, state: 'unknown', customer: [], reply: '', rewrites: 0, tools: [] });
+    expect(fail({ id: 'x', lang: 'vi' })).toEqual({ id: 'x', lang: 'vi', why: '', hard: [], ms: 0, state: 'unknown', customer: [], reply: '', rewrites: 0, tools: [], guards: [], blocked: [] });
   });
 });

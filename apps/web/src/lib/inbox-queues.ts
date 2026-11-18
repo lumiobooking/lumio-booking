@@ -151,3 +151,19 @@ export function inboxSections(rows: InboxRow[], queue: InboxQueue, meId: string 
   const flat = queueRows(rows, queue, meId, now);
   return flat.length ? [{ key: 'rest', rows: flat }] : [];
 }
+
+/**
+ * Why the AI sent nothing on this conversation (the server keeps the reason
+ * as a code — api messenger/ai-why). Said to the person about to answer, in
+ * their language; an unknown code says nothing rather than something wrong.
+ */
+export function aiWhyText(code: string | null | undefined, vi: boolean): string | null {
+  switch (code) {
+    case 'silent_rule': return vi ? 'AI không trả lời vì dặn dò của tiệm nói loại tin này để người trả lời' : 'The AI stayed silent: your instructions say a person answers this kind of message';
+    case 'silent_choice': return vi ? 'AI không trả lời vì thấy tin này cần người của tiệm trả lời' : 'The AI stayed silent: it judged this message needs a person';
+    case 'held_rule': return vi ? 'AI đã soạn câu trả lời nhưng câu đó trái dặn dò của tiệm nên không gửi' : 'The AI wrote a reply, but it went against your instructions, so it was not sent';
+    case 'held_safety': return vi ? 'AI đã soạn câu trả lời nhưng không chắc là đúng nên không gửi' : 'The AI wrote a reply but was not sure it was right, so it was not sent';
+    case 'failed': return vi ? 'AI gặp lỗi khi trả lời tin này' : 'The AI hit an error on this message';
+    default: return null;
+  }
+}

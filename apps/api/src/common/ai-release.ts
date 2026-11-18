@@ -50,6 +50,13 @@ export const RELEASE_FEATURES = {
    */
   wordRules: { ships: 'canary', vi: 'Dặn dò “không dùng từ …” được kiểm bằng mã, không gọi AI chấm mỗi câu', en: 'Word-only instructions are checked by code, not a judging call' },
   /**
+   * ĐỢT 2 (18/11/2026): the few instructions a salon's drafts break most often
+   * (counted, not guessed) are said once more as the LAST lines of the prompt,
+   * so the first draft obeys them instead of being blocked and written again
+   * (ai-brain/instructions hotRules).
+   */
+  hotRules: { ships: 'canary', vi: 'Dặn dò hay bị AI làm sai được nhắc lại ngay trước khi viết, để đúng từ câu đầu', en: 'The most-broken instructions are repeated right before writing' },
+  /**
    * The Inbox redrawn around WHO MUST ACT (17/11/2026): "needs a reply" and
    * "the AI has it" instead of read/unread, a taller transcript, a customer
    * panel that follows the kind of page. A SCREEN, not an AI behaviour: the

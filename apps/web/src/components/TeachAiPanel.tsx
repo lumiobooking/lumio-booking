@@ -27,6 +27,8 @@ export interface InstructionRow {
   id: string; kind: InsKind; text: string; triggers: string[]; mode: InsMode; channels: InsChannel[]; on: boolean;
   reason: string | null; sourceKind: string | null; sourceId: string | null; sourceQuestion: string | null; sourceReply: string | null;
   usedCount: number; blockedCount: number; lastUsedAt: string | null; createdBy: string | null; updatedBy: string | null; createdAt: string; updatedAt: string | null;
+  /** Checked by looking for these words (no judging model) — null when the judge reads it. */
+  words?: { avoid: string[]; only: boolean; lang: string } | null;
   /** How the AI understood the note, in the owner's language ("AI sẽ …"); null until it has been read. */
   meaningNote?: string | null;
 }

@@ -76,6 +76,8 @@ export interface DryRunResult {
   found: string[];
   /** Guards that changed or held a draft ("Vì sao AI trả lời vậy?"). */
   guards: string[];
+  /** Drafts an owner's instruction stopped: "label rule ⇐ the draft" — the salon's own words, shown only to its own people and to support. */
+  blocked?: string[];
   /** Tap buttons under the reply. */
   choices: string[];
   /** Package / price cards the run would have sent. */

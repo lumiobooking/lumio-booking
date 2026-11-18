@@ -1305,6 +1305,7 @@ export function salonToday(tz?: string | null, now: Date = new Date()): string {
 /** What a dry run of the live assistant hands back (messenger/dry-run DryRunResult) — only the fields the test screens read. */
 export interface LiveTry {
   reply: string; state: string; tools: string[]; found?: string[]; guards: string[]; choices: string[];
+  blocked?: string[];
   cards?: { name: string; price: string; tag?: string; points?: string[] }[];
   ms: number; steps?: { r?: number }; error?: string;
 }
@@ -1322,6 +1323,7 @@ export function liveTryView(r: LiveTry, lang: string) {
   for (const f of r.found ?? []) trace.push(f.slice(0, 200));
   for (const t of r.tools) if (!(r.found ?? []).some((f) => f.startsWith(`${t}:`))) trace.push(`${t}: ok`);
   for (const g of r.guards) trace.push(`[check] ${g}`);
+  for (const b of r.blocked ?? []) trace.push(`[blocked] ${b.slice(0, 260)}`);
   if ((r.steps?.r ?? 0) > 0) trace.push(vi ? `[rewritten] bản nháp bị viết lại ${r.steps?.r} lần trước khi gửi` : `[rewritten] the draft was written again ${r.steps?.r} time(s)`);
   const quiet = (line: string) => ({ reply: line, text: line, choices: [] as string[], cards: [] as typeof cards, lang, trace, ms: r.ms, check: null, live: true });
   if (r.state === 'silent') { trace.push('[silent] the assistant chose not to reply'); return quiet(vi ? '(AI không trả lời: tin này không cần trả lời, hoặc khách yêu cầu dừng.)' : '(No reply: this message needs no answer, or the customer asked to stop.)'); }

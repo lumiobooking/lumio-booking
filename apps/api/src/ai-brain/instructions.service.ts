@@ -94,7 +94,7 @@ export class AiInstructionsService {
       triggers: Array.isArray(r.triggers) ? r.triggers.map(String) : [],
       mode: r.mode === 'verbatim' ? 'verbatim' : 'meaning',
       channels: Array.isArray(r.channels) ? r.channels.filter((c: unknown) => (CHANNELS as unknown[]).includes(c)) : [],
-      on: r.on !== false, usedCount: Number(r.usedCount) || 0,
+      on: r.on !== false, usedCount: Number(r.usedCount) || 0, blockedCount: Number(r.blockedCount) || 0,
     };
     // A meaning written for other words is never applied to these.
     base.meaning = fresh(r) ? String(r.meaning) : null;
@@ -374,6 +374,8 @@ export class AiInstructionsService {
       usedCount: Number(r.usedCount) || 0, blockedCount: Number(r.blockedCount) || 0, lastUsedAt: r.lastUsedAt ?? null,
       // The owner reads back how the AI understood the note.
       meaningNote: fresh(r) ? (r.meaningNote ?? null) : null,
+      // How it is checked: by looking for these words (word rules), or by the judging model (null).
+      words: (() => { const w = fresh(r) ? wordRuleOf(r.meaning) : null; return w && w !== 'none' ? { avoid: w.avoid, only: w.only, lang: w.lang } : null; })(),
       createdBy: r.createdBy ?? null, updatedBy: r.updatedBy ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt ?? null,
     };
   }

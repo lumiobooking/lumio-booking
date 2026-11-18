@@ -62,6 +62,9 @@ export interface GoldenFail {
   /** Drafts written again or repaired on the way to this reply. */
   rewrites: number;
   tools: string[];
+  /** Checks that changed or held a draft, and the instruction that stopped which draft (dry run `blocked`). */
+  guards?: string[];
+  blocked?: string[];
 }
 /** At most this many are kept per account — the record is one small row of platform state. */
 export const GOLDEN_MAX_FAILS = 12;
@@ -73,6 +76,8 @@ export function goldenFail(o: Partial<GoldenFail> & { id: string; lang: string }
     customer: (Array.isArray(o.customer) ? o.customer : []).slice(0, 6).map((c) => cut(c, 200)),
     reply: cut(o.reply, 900), rewrites: Math.max(0, Math.round(Number(o.rewrites) || 0)),
     tools: (Array.isArray(o.tools) ? o.tools : []).slice(0, 8).map((t) => cut(t, 40)),
+    guards: (Array.isArray(o.guards) ? o.guards : []).slice(0, 8).map((t) => cut(t, 40)),
+    blocked: (Array.isArray(o.blocked) ? o.blocked : []).slice(0, 3).map((t) => cut(t, 260)),
   };
 }
 
@@ -91,6 +96,8 @@ export interface GoldenAccount {
   best?: number | null;
   /** The scripts that did not pass, with the customer's lines and the reply. */
   fails?: GoldenFail[];
+  /** Across ALL replies of the run (passed ones too): what sent a draft back, most frequent first. */
+  rewriteWhy?: { what: string; n: number; sample?: string }[];
 }
 export interface GoldenRecord {
   commit: string; at: string; state: 'running' | 'done' | 'error';
@@ -119,7 +126,7 @@ export function pctlMs(values: number[], p: number): number | null {
 }
 
 /** One account's numbers, from its graded items and the step times of its replies. */
-export function accountResult(o: { name: string; mode: 'booking' | 'sales'; items: GoldenItem[]; steps: { p: number; m: number; j: number; r: number }[]; best?: number | null; fails?: GoldenFail[] }): GoldenAccount {
+export function accountResult(o: { name: string; mode: 'booking' | 'sales'; items: GoldenItem[]; steps: { p: number; m: number; j: number; r: number }[]; best?: number | null; fails?: GoldenFail[]; rewriteWhy?: { what: string; n: number; sample?: string }[] }): GoldenAccount {
   const bad = o.items.filter((i) => !i.pass || i.hard.length);
   const times = o.items.map((i) => i.ms).filter((n) => n > 0);
   return {
@@ -132,6 +139,7 @@ export function accountResult(o: { name: string; mode: 'booking' | 'sales'; item
     steps: o.steps.length ? { prepMs: pctlMs(o.steps.map((s) => s.p), 0.5) as number, modelMs: pctlMs(o.steps.map((s) => s.m), 0.5) as number, checkMs: pctlMs(o.steps.map((s) => s.j), 0.5) as number } : null,
     best: typeof o.best === 'number' && Number.isFinite(o.best) ? o.best : null,
     ...(o.fails && o.fails.length ? { fails: o.fails.slice(0, GOLDEN_MAX_FAILS).map(goldenFail) } : {}),
+    ...(o.rewriteWhy && o.rewriteWhy.length ? { rewriteWhy: o.rewriteWhy.slice(0, 8).map((w) => ({ what: cut(w.what, 110), n: Math.max(0, Math.round(Number(w.n) || 0)), ...(w.sample ? { sample: cut(w.sample, 180) } : {}) })) } : {}),
   };
 }
 
@@ -184,4 +192,23 @@ export function promotionGate(o: { record: GoldenRecord | null; commit: string; 
   if (!Number.isFinite(age) || age > GOLDEN_FRESH_MS) return { ok: false, why: 'stale', vi: 'Bộ kiểm tra đã chạy hơn 24 giờ trước. Chạy lại rồi bật.' };
   if (!r.live.includes(o.feature)) return { ok: false, why: 'not-live', vi: 'Lúc chạy bộ kiểm tra, tính năng này chưa bật trên tài khoản thử. Chuyển sang “Chỉ tài khoản thử”, chạy lại bộ kiểm tra, rồi mới bật cho mọi tiệm.' };
   return { ok: true };
+}
+
+/**
+ * What sent drafts back, counted over every reply of a run: each owner's
+ * instruction that stopped a draft (with one draft it stopped), then the other
+ * checks by name. `runs`: the dry runs that were rewritten at least once.
+ */
+export function rewriteReasons(runs: { guards?: string[]; blocked?: string[] }[]): { what: string; n: number; sample?: string }[] {
+  const by = new Map<string, { what: string; n: number; sample?: string }>();
+  const add = (what: string, sample?: string) => { const x = by.get(what) ?? { what, n: 0, sample }; x.n += 1; by.set(what, x); };
+  for (const r of runs) {
+    const rules = new Set<string>();
+    for (const b of r.blocked ?? []) {
+      const [rule, draft] = String(b).split(' ⇐ ');
+      if (rule && !rules.has(rule)) { rules.add(rule); add(`dặn dò ${rule}`, draft); }
+    }
+    for (const g of new Set(r.guards ?? [])) if (g !== 'instruction' || !rules.size) add(`kiểm tra: ${g}`);
+  }
+  return [...by.values()].sort((a, b) => b.n - a.n);
 }

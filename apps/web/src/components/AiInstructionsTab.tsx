@@ -258,6 +258,7 @@ function InstructionCard({ i, vi, canEdit, chans, busy, confirming, onToggle, on
         <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>
           {L(vi, `Đã làm theo ${i.usedCount} lần`, `Followed ${i.usedCount}×`)}
           {i.blockedCount ? <b style={{ color: 'var(--ink-warn)' }}>{L(vi, ` · chặn ${i.blockedCount} câu sai`, ` · stopped ${i.blockedCount} wrong`)}</b> : null}
+          {i.words?.avoid?.length ? <span title={L(vi, 'Hệ thống tự tìm các từ này trong mỗi câu trước khi gửi', 'The system looks for these words in every reply before it is sent')}>{L(vi, ` · từ bị cấm: ${i.words.avoid.map((w) => `“${w}”`).join(', ')}`, ` · forbidden words: ${i.words.avoid.map((w) => `“${w}”`).join(', ')}`)}</span> : null}
           {' · '}{L(vi, src.vi, src.en)}{i.createdAt ? `, ${new Date(i.createdAt).toLocaleDateString(vi ? 'vi-VN' : 'en-US')}` : ''}
         </span>
       </div>

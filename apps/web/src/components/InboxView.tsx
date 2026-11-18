@@ -44,7 +44,7 @@ import {
 import { ind } from '../lib/ui-industry';
 import { TeachAiPanel, canTeachAi, type InsChannel } from './TeachAiPanel';
 import { NudgeTextPanel } from './NudgeTextPanel';
-import { inboxSections, pileLabel, pileOf, queueCounts, waitText, type InboxQueue, type PileTone } from '../lib/inbox-queues';
+import { inboxSections, pileLabel, pileOf, queueCounts, waitText, aiWhyText, type InboxQueue, type PileTone } from '../lib/inbox-queues';
 
 /**
  * Avatar with the channel mark tucked into its corner, coloured by PAGE.
@@ -369,6 +369,8 @@ interface ThreadDetail extends InboxRow {
    *  endpoint, different colour. Three walls, because this is the one mistake
    *  in an inbox nobody can take back. */
   notes?: { id: string; text: string; authorName: string; createdAt: string }[];
+  /** Why the AI sent nothing on the customer's last message (server: messenger/ai-why). */
+  aiWhy?: { code: string; at: string } | null;
 }
 
 /** The badge colours for a follow-up. Overdue is the only red on this screen —
@@ -1854,10 +1856,12 @@ export function InboxView() {
         // ONE strip under the header: who the customer is waiting on, and the AI's
         // summary for the person about to answer. (The old layout spent two bars on this.)
         const owes = pile.pile === 'needs' ? pileLabel(detail, vi) : null;
+        const whyAi = owes ? aiWhyText(detail.aiWhy?.code, vi) : null;
         const summaryStrip = v2 && !isSpamRow(detail) && (owes || (briefHere && (briefHere.loading || briefHere.data))) && (
           <div style={{ flexShrink: 0, boxSizing: 'border-box', padding: narrow ? '9px 14px' : '9px 18px', background: owes ? 'var(--wash-amber-3)' : 'var(--c1e1b4b)', borderBottom: '1px solid var(--line)', fontSize: 13, lineHeight: 1.45, color: 'var(--ce2e8f0)', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span title={briefHere?.data ? [briefHere.data.want, briefHere.data.done, briefHere.data.missing].filter(Boolean).join(' · ') : undefined} style={{ flex: '1 1 200px', minWidth: 0, overflowWrap: 'anywhere', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
               {owes && <strong style={{ color: owes.tone === 'bad' ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>{owes.text}</strong>}
+              {whyAi && <span style={{ color: 'var(--ccbd5e1)' }}> · {whyAi}</span>}
               {briefHere?.loading && <span style={{ color: 'var(--c94a3b8)' }}>{owes ? ' — ' : ''}{vi ? 'AI đang đọc cuộc trò chuyện…' : 'the AI is reading the conversation…'}</span>}
               {briefHere?.data && <>{owes ? ' — ' : ''}<strong style={{ color: owes ? 'var(--ce2e8f0)' : 'var(--ca5b4fc)' }}>{vi ? 'AI tóm tắt:' : 'AI summary:'}</strong> {[briefHere.data.want, briefHere.data.done, briefHere.data.missing && (vi ? `còn thiếu ${briefHere.data.missing}` : `still open: ${briefHere.data.missing}`)].filter(Boolean).join(' · ')}</>}
             </span>

@@ -115,3 +115,16 @@ describe('how a wait is said', () => {
     expect(waitText(m as number, true)).toBe(text);
   });
 });
+
+describe('why the AI did not answer', () => {
+  it('each known reason has a sentence in both languages; an unknown code says nothing', () => {
+    const { aiWhyText } = require('./inbox-queues');
+    for (const c of ['silent_rule', 'silent_choice', 'held_rule', 'held_safety', 'failed']) {
+      expect(aiWhyText(c, true)).toMatch(/^AI /);
+      expect(aiWhyText(c, false)).toMatch(/^The AI /);
+      expect(aiWhyText(c, true)).not.toMatch(/\bem\b/);
+    }
+    expect(aiWhyText('something_new', true)).toBeNull();
+    expect(aiWhyText(null, false)).toBeNull();
+  });
+});

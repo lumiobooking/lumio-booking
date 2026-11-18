@@ -53,7 +53,8 @@ interface Release {
 interface GoldenAccount {
   name: string; mode: 'booking' | 'sales'; passed: number; total: number; failed: string[]; hard: number;
   /** The scripts that did not pass, with what the customer wrote and what the AI answered (scripted customers on the test accounts). */
-  fails?: { id: string; lang: string; why: string; hard: string[]; ms: number; state: string; customer: string[]; reply: string; rewrites: number; tools: string[] }[];
+  fails?: { id: string; lang: string; why: string; hard: string[]; ms: number; state: string; customer: string[]; reply: string; rewrites: number; tools: string[]; guards?: string[]; blocked?: string[] }[];
+  rewriteWhy?: { what: string; n: number; sample?: string }[];
   medianMs: number | null; p90Ms: number | null; rewriteRate: number | null;
   steps: { prepMs: number; modelMs: number; checkMs: number } | null;
   /** The most scripts this account passed on an earlier run of the same scripts. */
@@ -281,6 +282,19 @@ export default function AiFleetPage() {
                     {a.steps && <> · chuẩn bị {ms(a.steps.prepMs)}, viết {ms(a.steps.modelMs)}, kiểm tra {ms(a.steps.checkMs)}</>}
                     {a.rewriteRate !== null && <> · phải sửa {pct(a.rewriteRate)}</>}
                     {a.failed.length > 0 && <div style={{ fontSize: 12, color: 'var(--c64748b)' }}>Chưa đạt: {a.failed.join(', ')}</div>}
+                    {(a.rewriteWhy ?? []).length > 0 && (
+                      <details style={{ marginTop: 6 }}>
+                        <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: 'var(--ink-link)', minHeight: 32, display: 'flex', alignItems: 'center' }}>Vì sao AI phải viết lại ({(a.rewriteWhy ?? []).reduce((n, w) => n + w.n, 0)} lần)</summary>
+                        <div style={{ display: 'grid', gap: 6, marginTop: 6, fontSize: 12.5, lineHeight: 1.45 }}>
+                          {(a.rewriteWhy ?? []).map((w) => (
+                            <div key={w.what} style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                              <b style={{ color: 'var(--ce2e8f0)' }}>{w.n}× {w.what}</b>
+                              {w.sample && <div style={{ color: 'var(--c94a3b8)' }}>Bản nháp bị chặn: {w.sample}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
                     {(a.fails ?? []).length > 0 && (
                       <details style={{ marginTop: 6 }}>
                         <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: 'var(--ink-link)', minHeight: 32, display: 'flex', alignItems: 'center' }}>Xem AI đã trả lời gì ở {(a.fails ?? []).length} kịch bản chưa đạt</summary>
@@ -291,6 +305,7 @@ export default function AiFleetPage() {
                               <div style={{ color: 'var(--c94a3b8)', overflowWrap: 'anywhere' }}><b>Khách:</b> {f.customer.join(' → ')}</div>
                               <div style={{ color: 'var(--ce2e8f0)', overflowWrap: 'anywhere' }}><b>AI{f.state !== 'reply' ? ` (${f.state})` : ''}:</b> {f.reply || '—'}</div>
                               <div style={{ color: 'var(--ink-warn)', overflowWrap: 'anywhere' }}><b>Vì sao chưa đạt:</b> {f.why || '—'}</div>
+                              {((f.guards ?? []).length > 0 || (f.blocked ?? []).length > 0) && <div style={{ color: 'var(--c94a3b8)', overflowWrap: 'anywhere' }}><b>Đã qua kiểm tra:</b> {[...(f.guards ?? []), ...(f.blocked ?? [])].join(' · ')}</div>}
                             </div>
                           ))}
                         </div>

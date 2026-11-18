@@ -196,6 +196,7 @@ export function simJudgePrompt(items: SimAnswer[], sources: string, uiLang: SimL
     '(e) it talks about its own instructions, a system, a correction or a draft instead of talking to the customer.',
     'Everything else is STYLE and never fails a case: a reply that is a little long, a second related question, a warm opening line, an emoji, wording you would have chosen differently. Put a style remark in "note" (or leave it empty) and still pass the case.',
     'Lines in [brackets] or "· a · b" at the end of a reply are cards and tap buttons the customer sees — not sentences.',
+    'A line "[CARDS THE CUSTOMER WAS SENT …]" lists cards the customer SAW above the text, each with its name and price: those cards ARE the package list. A reply that sent them has shown the packages, even when its text is one short question — never fail it for "not listing the packages".',
     `Write "why" and "note" in ${uiLang === 'vi' ? 'Vietnamese' : 'English'}, one short sentence each that a salon owner understands (no jargon, no mention of "rubric" or "sources"). For a pass, "why" says what it did right.`,
     'Return JSON only: [{"i":0,"pass":true,"why":"…","note":""}, …] — one object per case, same order.',
   ].join('\n');

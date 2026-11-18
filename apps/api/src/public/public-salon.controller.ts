@@ -23,6 +23,7 @@ import { seoTrade } from './seo-trade';
 import { appliesOn, dateRulesFor, programFor } from '../settings/promo-channel';
 import { partyGuests } from './party-guests';
 import { PictureCache, decodeRaster, pictureVersion, publicPicture } from './public-images';
+import { pageContact, type ListingAddress } from './listing-contact';
 
 const pictures = new PictureCache();
 
@@ -225,12 +226,18 @@ export class PublicSalonController {
     // The booking page never uses the customer-display welcome image; strip it so
     // a salon's large (~1.5MB) hero photo does not bloat every booking page load.
     const { welcomeImageUrl: _welcomeImg, ...brandingPublic } = brand as typeof brand & { welcomeImageUrl?: string };
+    // Nothing typed in Settings: fall back to THIS salon's own cached Google listing (./listing-contact).
+    // Read only when there is a gap; the row is the tenant's own setting, never another salon's.
+    const typed = { address: (extra as { address?: string })?.address ?? null, phone: tenant.contactPhone };
+    const listing = typed.address?.trim() && typed.phone?.trim() ? null
+      : await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId: tenant.id, key: 'gbp_profile' } } }).then((r) => (r?.value ?? null) as { address?: ListingAddress | null; phone?: string | null } | null).catch(() => null);
+    const contact = pageContact(typed, listing);
     return {
       name: tenant.name,
       slug: tenant.slug,
       businessType: tenant.businessType,
-      contactPhone: tenant.contactPhone,
-      address: (extra as { address?: string })?.address || null,
+      contactPhone: contact.phone,
+      address: contact.address,
       // Which language the CUSTOMER should read this page in. It comes from the
       // salon's country, never from the visitor's browser: a Vietnamese shop
       // serves Vietnamese customers, and an American shop must keep showing the

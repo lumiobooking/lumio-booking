@@ -5050,7 +5050,7 @@ export class MessengerService implements OnModuleInit {
     );
     // Empty for a nail salon (its prompt is unchanged); for every other trade,
     // the words and the model of THAT trade. See common/business-persona.
-    const tradeRule = ctx.mode === 'sales' ? '' : tradeVoiceRule(persona, tradeVoice);
+    const tradeRule = ctx.mode === 'sales' ? '' : tradeVoiceRule(persona, tradeVoice, { steps: this.release?.isOn('tradeSteps', tenantId) ?? false });
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';
     // WHAT LANGUAGE IS THE CUSTOMER WRITING IN? Read from their own messages,

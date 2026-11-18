@@ -64,6 +64,13 @@ export const RELEASE_FEATURES = {
    */
   chatState: { ships: 'canary', vi: 'AI được nhắc: đã hỏi gì, khách đã trả lời gì, đã gửi gì — không chào lại, không hỏi lại', en: 'A ledger of what was already asked, told and sent in this chat' },
   /**
+   * ĐỢT 2 (18/11/2026): how a booking goes in each trade — a lash studio asks
+   * "new set or fill?", a colourist asks what the hair is now, a spa checks two
+   * therapists for two guests (common/business-persona TRADE_STEPS). A nail
+   * salon's prompt does not change.
+   */
+  tradeSteps: { ships: 'canary', vi: 'Quy trình đặt lịch riêng từng ngành: mi & mày, tóc, spa, massage', en: 'Booking steps per trade: lash & brow, hair, spa, massage' },
+  /**
    * The Inbox redrawn around WHO MUST ACT (17/11/2026): "needs a reply" and
    * "the AI has it" instead of read/unread, a taller transcript, a customer
    * panel that follows the kind of page. A SCREEN, not an AI behaviour: the

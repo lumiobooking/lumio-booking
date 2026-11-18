@@ -312,6 +312,24 @@ const VOICE_WORDS: Record<Exclude<VoiceKey, 'NAIL'>, VoiceWords> = {
   SERVICE: { staffEn: 'team member', staffVi: 'nhân viên', venueVi: 'bên em', customerEn: 'customer', extra: '' },
 };
 
+/**
+ * HOW A BOOKING GOES, TRADE BY TRADE (Đợt 2, 18/11/2026). The prompt was
+ * written for nail salons, where "which service, which day, which tech" is
+ * the whole job. A lash studio's first question is a different one (new set
+ * or fill, and how long since the last), a colourist's is what the hair is
+ * now — and an assistant that does not ask it books the wrong length of
+ * visit. Only what is true of the TRADE is said here; every name, price and
+ * duration still comes from the business's own menu. Released in stages
+ * (`tradeSteps`), so no business's prompt changes until it is switched on.
+ */
+const TRADE_STEPS: Partial<Record<VoiceKey, string>> = {
+  LASH: 'what decides the service is whether it is a NEW full set or a FILL (refill) — ask that one thing first when the customer only says "lashes". For a fill, ask roughly how long since their last appointment and whether the set was done here: the menu says which fill applies after how many weeks, and when it does not say, or the lashes were done elsewhere, say the team will confirm which service applies — never decide it yourself. Brows are separate services (shaping, wax or thread, tint, lamination…): ask which, by the names on the menu. Never promise how long a set lasts, and never advise on an allergy, irritation, an eye condition or pregnancy — a person from the team answers those.',
+  BEAUTY: 'ask which service by the name on the menu; when one name covers several lengths or levels, ask which before offering a time. Skin reactions, allergies and medical questions go to a person from the team.',
+  HAIR: 'what decides the visit is cut, colour or treatment. For a cut, ask nothing more than the menu needs (length, wash and style when the menu separates them). For colour, lightening or a chemical service, ask what the hair is like NOW and what they want — a photo helps — because the time and the price depend on it: give the menu\'s "from" price as a starting price, say the stylist confirms after seeing the hair, and never promise a colour result or that one visit is enough.',
+  SPA: 'ask which treatment and how long (the lengths on the menu). Two people at the same time need two therapists free together: check that before offering the time. Never give medical advice; pregnancy, an injury, a recent operation or a skin condition go to a person from the team before anything is booked.',
+  MASSAGE: 'ask which massage and how long (the lengths on the menu). Two people at the same time need two therapists free together: check that before offering the time. Never give medical advice; pregnancy, an injury or a recent operation go to a person from the team before anything is booked.',
+};
+
 /** What the place is called in Vietnamese ("tiệm" for a nail salon, "phòng khám" for a clinic). */
 export function venueViFor(voice: VoiceKey): string {
   return voice === 'NAIL' ? 'tiệm' : VOICE_WORDS[voice].venueVi;
@@ -321,7 +339,7 @@ export function venueViFor(voice: VoiceKey): string {
  * The rule that makes a prompt written for nail salons speak for this trade.
  * EMPTY for a nail salon: its prompt does not change by one character.
  */
-export function tradeVoiceRule(persona: BusinessPersona, voice: VoiceKey): string {
+export function tradeVoiceRule(persona: BusinessPersona, voice: VoiceKey, o: { steps?: boolean } = {}): string {
   if (voice === 'NAIL') return '';
   const w = VOICE_WORDS[voice];
   const what = persona.identity.replace(/^an? /, '').toUpperCase();
@@ -332,5 +350,6 @@ export function tradeVoiceRule(persona: BusinessPersona, voice: VoiceKey): strin
     `- To the ${w.customerEn}, call this place "the ${persona.venueNoun}" (Vietnamese: "${w.venueVi}")${w.staffEn ? `, and the person who looks after them "${w.staffEn}" (Vietnamese: "${w.staffVi}")` : ''}. Write the way ${persona.identity} really talks to its ${w.customerEn}s.`,
     `- READ THIS BUSINESS'S OWN DATA EXACTLY. What it offers is what its menu, notes and documents below say — the names, prices and durations as written there, nothing else. If the ${w.customerEn} asks for something that is not listed, say you will check with the team; never assume it from what another kind of business would offer. The same for how long a result lasts, how long a visit takes, a distance or a drive time: say it only when it is written there.`,
     ...(w.extra ? [`- ${w.extra}`] : []),
+    ...(o.steps && TRADE_STEPS[voice] ? [`- HOW A BOOKING GOES IN THIS TRADE: ${TRADE_STEPS[voice]}`] : []),
   ].join('\n');
 }

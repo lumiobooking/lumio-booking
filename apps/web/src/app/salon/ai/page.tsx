@@ -554,6 +554,23 @@ function Learn({ token, vi, canEdit, onChanged }: { token: string | null; vi: bo
           {t?.at && <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8 }}>{L(vi, `Tìm thấy ở lần Kiểm tra AI ${fmtWhen(t.at, vi)}. Chạy lại ở Kiến thức › Học từ link để cập nhật.`, `Found by the AI check of ${fmtWhen(t.at, vi)}. Run it again under Knowledge › Learn from links to refresh.`)}</div>}
         </div>
       )}
+      {(t?.ruleConflicts ?? []).length > 0 && (
+        <div style={{ ...ui.card, borderColor: 'var(--ink-warn)', marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{L(vi, `${(t?.ruleConflicts ?? []).length} chỗ dặn dò đang mâu thuẫn`, `${(t?.ruleConflicts ?? []).length} instructions that conflict`)}</div>
+          <p style={{ fontSize: 12.5, color: 'var(--c94a3b8)', margin: '6px 0 10px', lineHeight: 1.5 }}>
+            {L(vi, 'Hai dặn dò không thể cùng làm theo thì AI bị chặn rồi viết lại, khách chờ lâu hơn. Mở thẻ Dặn dò, sửa hoặc tắt một trong hai, rồi chạy lại Kiểm tra AI.', 'When two instructions cannot both be followed, the AI is blocked and writes again, and the customer waits longer. Open Instructions, edit or switch off one of the two, then run the AI check again.')}
+          </p>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {(t?.ruleConflicts ?? []).map((c, i) => (
+              <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '8px 10px', display: 'grid', gap: 4, fontSize: 13.5, lineHeight: 1.45, minWidth: 0 }}>
+                <div style={{ color: 'var(--ce2e8f0)', overflowWrap: 'anywhere' }}><b style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{L(vi, 'DẶN DÒ', 'INSTRUCTION')} </b>{c.a}</div>
+                <div style={{ color: 'var(--ce2e8f0)', overflowWrap: 'anywhere' }}><b style={{ fontSize: 11, color: c.b ? 'var(--c94a3b8)' : 'var(--ink-good)' }}>{c.b ? L(vi, 'DẶN DÒ KHÁC', 'ANOTHER INSTRUCTION') : L(vi, 'TÀI LIỆU (LINK)', 'THE DOCUMENT (LINK)')} </b>{c.b || c.doc}</div>
+                {c.why && <div style={{ color: 'var(--ink-warn)', fontSize: 12.5, overflowWrap: 'anywhere' }}>{c.why}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {note && <div role="status" style={{ ...ui.banner, marginBottom: 12 }}>{note}</div>}
       <p style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', margin: '0 0 12px', lineHeight: 1.5 }}>
         {L(vi, 'Mở một câu, bấm “AI soạn giúp” để AI soạn từ câu nhân viên đã trả lời hoặc từ ghi chú, tài liệu của tiệm. Đọc lại rồi bấm “Lưu cho bot”: AI biết ngay từ tin nhắn kế tiếp.',
@@ -693,7 +710,7 @@ function Persona({ brain, patch, vi, canEdit }: { brain: Brain; patch: (fn: (b: 
 // ---------------------------------------------------------------- Học từ link
 
 interface LinkSource { id: string; url: string; label: string; on: boolean; preview: string; chars: number; fetchedAt: string | null; error: string | null; errorAt: string | null; summary?: { lines: number; sections: string[] }; rules?: string[] }
-interface KTest { at: string; ms: number; score: number; total: number; passed: number; lang: 'vi' | 'en'; items: { q: string; expect: string; kind: string; reply: string; pass: boolean; why: string }[]; conflicts: { old: string; doc: string; why: string; label?: string; off?: boolean }[] }
+interface KTest { at: string; ms: number; score: number; total: number; passed: number; lang: 'vi' | 'en'; items: { q: string; expect: string; kind: string; reply: string; pass: boolean; why: string }[]; conflicts: { old: string; doc: string; why: string; label?: string; off?: boolean }[]; ruleConflicts?: { a: string; b: string; doc: string; why: string }[] }
 
 /**
  * "Kiểm tra AI": questions written from the salon's own documents, answered by

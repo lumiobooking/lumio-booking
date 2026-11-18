@@ -28,7 +28,7 @@ import { ungroundedMoney } from '../messenger/price-grounding';
 import { CORRECTION_RULE, leaksCorrection, stripLeak, ownerAnswersOnly, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from '../messenger/correction-guard';
 import { SIM_KEY, SIM_OTHER_LANGS, scenarioTurns, type SimTrade, mergeGrades, parseSimTranslation, pickScenarios, simFingerprint, simTranslatePrompt, type Scenario, regressionsOf, simJudgePrompt, simRunFrom, toolsFromTrace, type SimAnswer, type SimItem, type SimLang, type SimRun } from './simulations';
 import { MAX_SOURCES, SOURCES_KEY, STALE_MS, cleanSourceUrl, docRules, docSummary, docText, docsBlock, sourcesFrom, type KnowledgeSource } from './knowledge-sources';
-import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
+import { TEST_COUNT, TEST_KEY, conflictPrompt, jsonArray, judgePrompt, materialLang, questionPrompt, ruleConflictPrompt, ruleConflictsFrom, type RuleConflict, type Conflict, type KnowledgeTest, type TestItem, type TestQuestion } from './knowledge-test';
 import { browserHeaders } from '../common/browser-headers';
 import { randomUUID } from 'crypto';
 
@@ -457,6 +457,13 @@ export class AiBrainService {
     const lang = materialLang([...sources.map((x) => x.text), notes].join('\n'));
 
     const qp = questionPrompt(docs || material, lang, TEST_COUNT);
+    // The owner's own typed instructions of THIS salon that are switched on (document rules are part of `docs`).
+    const ruleList = this.instructions
+      ? (await this.instructions.allFor(tenantId).catch((): Instruction[] => [])).filter((i) => i.on).slice(0, 60).map((i, k) => ({ n: k + 1, text: `${i.kind === 'never' ? 'NEVER' : i.kind === 'always' ? 'ALWAYS' : `When asked about ${i.triggers.slice(0, 3).join(' / ')} answer`}: ${i.text}` }))
+      : [];
+    const ruleConflictsP: Promise<RuleConflict[]> = ruleList.length >= 2 || (ruleList.length && docs)
+      ? (async () => { const rp = ruleConflictPrompt(ruleList, docs, lang); return ruleConflictsFrom(jsonArray(await this.ask(rp.system, rp.user, 2000)), ruleList); })().catch(() => [])
+      : Promise.resolve([]);
     const [qText, conflicts] = await Promise.all([
       this.ask(qp.system, qp.user, 4000),
       docs && notes
@@ -492,7 +499,7 @@ export class AiBrainService {
     const result: KnowledgeTest = {
       at: new Date().toISOString(), ms: Date.now() - t0, total: items.length, passed,
       score: Math.round((passed / Math.max(1, items.length)) * 100), items,
-      conflicts: conflicts.filter((c) => c && c.old).map(named).slice(0, 20), lang,
+      conflicts: conflicts.filter((c) => c && c.old).map(named).slice(0, 20), ruleConflicts: await ruleConflictsP, lang,
     };
     await this.db.setting.upsert({
       where: { tenantId_key: { tenantId, key: TEST_KEY } },

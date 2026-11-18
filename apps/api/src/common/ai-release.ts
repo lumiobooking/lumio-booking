@@ -41,6 +41,8 @@ export const RELEASE_FEATURES = {
   quickRepair: { ships: 'canary', vi: 'Sửa nhanh câu bị dặn dò chặn, không viết lại từ đầu', en: 'Quick repair of a blocked draft' },
   /** A short, adaptive pause before answering instead of a fixed six seconds. */
   smartWait: { ships: 'canary', vi: 'Chờ thông minh thay cho chờ cố định 6 giây', en: 'Adaptive wait instead of a fixed six seconds' },
+  /** After price cards go out, the text under them does not type the same packages out again (messenger/reply-style afterCardsText). */
+  cardsOnce: { ships: 'canary', vi: 'Đã gửi thẻ gói thì không gõ lại cả danh sách gói bên dưới', en: 'After price cards, the list is not typed out again' },
   /**
    * The Inbox redrawn around WHO MUST ACT (17/11/2026): "needs a reply" and
    * "the AI has it" instead of read/unread, a taller transcript, a customer
@@ -56,6 +58,16 @@ export const RELEASE_FEATURES = {
    * the ones that existed; this is where they live. A screen, like the Inbox.
    */
   aiPageV2: { ships: 'canary', ui: true, vi: 'Trang Trợ lý AI một trang: Dạy · Thử · Bật · Theo dõi', en: 'One-page AI assistant: teach · try · switch on · watch' },
+  /**
+   * ĐỢT 2, STEP 1 (17/11/2026): "Thử AI" and the salon's sample customers are
+   * answered by the SAME assistant that answers real customers (a dry run of
+   * the live pipeline — nothing sent, nothing written), not by the reduced
+   * copy the test screens had. On 16–17/11 the copy passed 16/16 on a page
+   * whose live assistant failed the same scripts: a test that cannot fail the
+   * way production fails proves nothing. A test tool, not a customer-facing
+   * behaviour — so, like a screen, the golden run does not gate it.
+   */
+  liveTry: { ships: 'canary', ui: true, vi: '“Thử AI” và bộ khách mẫu chạy bằng đúng AI đang trả lời khách thật', en: '“Try the AI” and sample customers run on the live assistant' },
 } as const satisfies Record<string, { ships: ReleaseStage; vi: string; en: string; ui?: boolean }>;
 
 export type ReleaseFeature = keyof typeof RELEASE_FEATURES;

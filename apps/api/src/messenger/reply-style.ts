@@ -177,3 +177,55 @@ export function cardTapLine(payload: string): string | null {
  */
 export const SALES_NOT_READY_RULE = `NOT READY: when they say they want to think about it, are only looking, or will get back to you ("để mình suy nghĩ thêm", "để xem đã", "I'll think about it", "let me get back to you") — do NOT ask for their name, phone, shop or a time, and do not pitch again. One warm line that they can message any time, and stop. If they come back, pick up where you left off.`;
 
+/**
+ * THE CARDS ALREADY SAID IT (17/11/2026).
+ *
+ * Asked "show me all your packages", the sales assistant sent the price cards
+ * — and then typed every package out again underneath: 140 words under a row
+ * of cards that say the same thing. The tool's result tells the model not to;
+ * it does anyway about one time in three, and the golden run marks it a wall.
+ * So the repeat is taken out in code: when cards went out in this run, the
+ * text keeps what is NOT a list (the hello, the one question) and loses the
+ * "▸ name: price …" lines. If no question is left, ours is asked.
+ */
+export function afterCardsText(text: string, lang: string): string {
+  const raw = String(text ?? '').trim();
+  const bullets = (raw.match(/▸/g) ?? []).length;
+  const wordCount = raw.split(/\s+/).filter(Boolean).length;
+  if (bullets < 2 && wordCount <= 60) return raw; // already short: leave the model's own words alone
+  const kept: string[] = [];
+  for (const line of raw.split('\n')) {
+    const cut = line.indexOf('▸');
+    const part = (cut >= 0 ? line.slice(0, cut) : line).trim();
+    if (!part) continue;
+    // "Here are our packages:" introduces a list that is no longer there.
+    const sentences = part.split(/(?<=[.!?…])\s+/).map((x) => x.trim()).filter((x) => x && !/[:：]$/.test(x));
+    kept.push(...sentences);
+  }
+  // A question that was typed after the last bullet on the same line went with it — keep a trailing question if there is one.
+  const tailQ = /([^.!?▸\n]*\?)\s*$/.exec(raw)?.[1]?.trim();
+  if (tailQ && !kept.includes(tailQ) && tailQ.split(/\s+/).length <= 30) kept.push(tailQ);
+  let out = kept;
+  if (out.join(' ').split(/\s+/).filter(Boolean).length > 60) out = [out[0], ...out.slice(1).filter((x) => x.endsWith('?')).slice(-1)];
+  const ask = lang === 'vi' ? 'Anh/chị thấy gói nào hợp với tiệm mình nhất ạ?' : 'Which of these fits your shop best?';
+  if (!out.some((x) => x.endsWith('?'))) out = [...out, ask];
+  return out.join(' ').trim() || ask;
+}
+
+/**
+ * "Dạ, we're at 5900 Balcones Drive…" (golden run, 17/11/2026): an English
+ * reply that opens with a Vietnamese particle. The model carries it over from
+ * the salon's Vietnamese notes. Taken off only when the customer is not
+ * writing Vietnamese AND the sentence it opens has no Vietnamese in it — a
+ * Vietnamese reply to a customer whose language was guessed wrong keeps it.
+ */
+export function dropStrayParticle(text: string, lang: string | null | undefined): string {
+  const t = String(text ?? '');
+  if (!t || lang === 'vi') return t;
+  const m = /^\s*(?:Dạ vâng|Dạ|Vâng)[,!.]?\s+(?=\S)/u.exec(t);
+  if (!m) return t;
+  const rest = t.slice(m[0].length);
+  const first = rest.split(/[.!?\n]/)[0] ?? '';
+  if (/[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]/i.test(first)) return t;
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}

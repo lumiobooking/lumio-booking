@@ -44,6 +44,8 @@ export class AiGoldenService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
+    // "Thử AI" and the salon's own sample customers ask the LIVE assistant where `liveTry` is on (ai-brain useLiveAnswer).
+    this.brain.useLiveAnswer?.(async (tenantId, messages) => (this.release.isOn('liveTry', tenantId) ? this.messenger.dryRun(tenantId, messages) : null));
     if (process.env.NODE_ENV !== 'production' || String(process.env.AI_GOLDEN ?? '').toLowerCase() === 'off') return;
     // After the deploy has settled and after the canary (4 min) — never in the first customers' way.
     this.timer = setTimeout(() => void this.run({ auto: true }).catch((e) => this.logger.warn(`golden run failed: ${String((e as Error)?.message ?? e).slice(0, 160)}`)), 7 * 60_000);

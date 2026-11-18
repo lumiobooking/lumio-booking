@@ -51,3 +51,59 @@ describe('the approved layout survives an owner-instruction correction (Lumio Ag
     expect(cf([rule], [rule])).toContain('in the same layout');
   });
 });
+
+describe('the cards already said it — the text under them does not repeat the list (17/11/2026)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { afterCardsText } = require('./reply-style') as typeof import('./reply-style');
+  const WALL = [
+    "Hi, I'm Trang from Lumio. Here are our packages, quoted from our current price list.",
+    'Monthly marketing packages:',
+    '▸ Social Care: $45/month, 10 posts + 1 short video a month on Facebook and Instagram, plus a free audit',
+    '▸ Boost: $179/month, 12 posts + 4 videos a month on Facebook, Instagram and TikTok, with the Lumio Booking system included',
+    '▸ Growth: $279/month, adds Google Maps posts, 20 new Google photos a month, and AI Messenger',
+    '▸ Scale: $379/month, adds a website, email marketing and a monthly strategy call',
+    'Which of these matters most to your salon right now?',
+  ].join('\n');
+
+  it('the golden-run case: 100+ words of packages become the hello and the one question', () => {
+    const out = afterCardsText(WALL, 'en');
+    expect(out).toBe("Hi, I'm Trang from Lumio. Here are our packages, quoted from our current price list. Which of these matters most to your salon right now?");
+    expect(out).not.toContain('▸');
+    expect(out).not.toContain('$');
+  });
+
+  it('the same reply typed as one paragraph (bullets inline) is handled too', () => {
+    const out = afterCardsText(WALL.replace(/\n/g, ' '), 'en');
+    expect(out).not.toContain('▸');
+    expect(out.endsWith('Which of these matters most to your salon right now?')).toBe(true);
+  });
+
+  it('asks our own question when the model left none, in the customer\'s language', () => {
+    expect(afterCardsText('Dạ đây là các gói bên em:\n▸ Boost: $179/tháng\n▸ Growth: $279/tháng', 'vi')).toBe('Anh/chị thấy gói nào hợp với tiệm mình nhất ạ?');
+    expect(afterCardsText('Our packages:\n▸ Boost: $179\n▸ Growth: $279', 'en')).toBe('Which of these fits your shop best?');
+  });
+
+  it('a reply that is already short is the model\'s own and is not touched', () => {
+    const short = 'Em gửi anh/chị các gói ở trên ạ. Anh/chị quan tâm gói nào nhất ạ?';
+    expect(afterCardsText(short, 'vi')).toBe(short);
+    expect(afterCardsText('', 'en')).toBe('');
+  });
+});
+
+describe('an English reply does not open with "Dạ," (17/11/2026)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { dropStrayParticle } = require('./reply-style') as typeof import('./reply-style');
+  it('the golden-run case', () => {
+    expect(dropStrayParticle("Dạ, we're at 5900 Balcones Drive 🙂 We're open every day.", 'en')).toBe("We're at 5900 Balcones Drive 🙂 We're open every day.");
+    expect(dropStrayParticle('Dạ vâng, sure — what time works?', 'en')).toBe('Sure — what time works?');
+  });
+  it('a Vietnamese customer keeps it, and so does a Vietnamese reply to a customer whose language was guessed wrong', () => {
+    expect(dropStrayParticle('Dạ, tiệm mở cửa từ 9 giờ ạ.', 'vi')).toBe('Dạ, tiệm mở cửa từ 9 giờ ạ.');
+    expect(dropStrayParticle('Dạ, tiệm mở cửa từ 9 giờ ạ.', 'en')).toBe('Dạ, tiệm mở cửa từ 9 giờ ạ.');
+  });
+  it('leaves everything else alone', () => {
+    expect(dropStrayParticle('Hi! We open at 9.', 'en')).toBe('Hi! We open at 9.');
+    expect(dropStrayParticle('', 'en')).toBe('');
+    expect(dropStrayParticle('Dạ', 'en')).toBe('Dạ');
+  });
+});

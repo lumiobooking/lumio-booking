@@ -78,6 +78,44 @@ export class AiBrainService {
 
   private get db(): Row { return this.prisma as unknown as Row; }
 
+  /**
+   * Opening hours, address, website, phone — what the live assistant is told
+   * from the salon's SETTINGS, not its notes. The grader of the sample
+   * customers must hold the same facts: on 17/11/2026 "We close at 6:00 PM"
+   * was failed as invented three times in one run, on a salon whose settings
+   * say exactly that. This salon's settings only, read under its own id.
+   */
+  private async businessInfo(tenantId: string): Promise<string> {
+    const lines: string[] = [];
+    const ampm = (mins: number) => { const h = Math.floor(mins / 60); const m = mins % 60; return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+    const st = this.settings as unknown as { getBookingRules?: (id: string) => Promise<{ businessHours?: ({ closed?: boolean; openMinutes: number; closeMinutes: number } | null)[] }>; getCompanyExtra?: (id: string) => Promise<{ address?: string; website?: string } | null> } | undefined;
+    try {
+      const rules = await st?.getBookingRules?.(tenantId);
+      const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const hrs = (rules?.businessHours ?? []).map((h, i) => (!h || h.closed ? `${names[i]}: Closed` : `${names[i]}: ${ampm(h.openMinutes)} – ${ampm(h.closeMinutes)}`));
+      const ordered = [1, 2, 3, 4, 5, 6, 0].map((i) => hrs[i]).filter(Boolean);
+      if (ordered.length) lines.push('Opening hours:', ...ordered);
+    } catch { /* best-effort */ }
+    try {
+      const extra = await st?.getCompanyExtra?.(tenantId);
+      if (extra?.address) lines.push(`Address: ${extra.address}`);
+      if (extra?.website) lines.push(`Website: ${extra.website}`);
+    } catch { /* best-effort */ }
+    const t: Row | null = await this.db.tenant.findUnique({ where: { id: tenantId }, select: { contactPhone: true, contactEmail: true } }).catch(() => null);
+    if (t?.contactPhone) lines.push(`Phone: ${t.contactPhone}`);
+    if (t?.contactEmail) lines.push(`Email: ${t.contactEmail}`);
+    return lines.join('\n');
+  }
+
+  /**
+   * THE LIVE ASSISTANT, FOR TESTS (release channel `liveTry`). Registered by
+   * the Messenger side (ai-golden.service) — this module cannot import that
+   * one without a circle. The hook answers null when the switch is not on for
+   * the salon, and the reduced sandbox below answers as it always did.
+   */
+  private liveAnswer: ((tenantId: string, messages: { role: 'user' | 'assistant'; content: string }[]) => Promise<LiveTry | null>) | null = null;
+  useLiveAnswer(fn: (tenantId: string, messages: { role: 'user' | 'assistant'; content: string }[]) => Promise<LiveTry | null>): void { this.liveAnswer = fn; }
+
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
     if (!id) throw new NotFoundException('No tenant context');
@@ -347,6 +385,8 @@ export class AiBrainService {
             const r = await this.sandbox(user, { messages, channel: 'chat' }).catch((e) => ({ reply: `(lỗi: ${String((e as Error)?.message ?? e).slice(0, 80)})`, trace: [] as string[] }));
             reply = String((r as { reply?: string }).reply ?? '');
             for (const name of toolsFromTrace((r as { trace?: unknown }).trace)) tools.add(name);
+            // Answered by the live assistant (`liveTry`): what its tools returned is a source for the grader too.
+            if ((r as { live?: boolean }).live) for (const line of ((r as { trace?: string[] }).trace ?? [])) if (/^[a-z_]+: /.test(line) && !/: ok$/.test(line)) found.push(line);
           }
           messages.push({ role: 'assistant', content: reply || '…' });
         }
@@ -354,13 +394,14 @@ export class AiBrainService {
       }
     }));
 
-    const [docs, notes, menu] = await Promise.all([
+    const [docs, notes, menu, info] = await Promise.all([
       this.docsFor(tenantId).catch(() => ''),
       this.oldNotes(tenantId).catch(() => ''),
       this.menuLines(tenantId).catch(() => ''),
+      this.businessInfo(tenantId).catch(() => ''),
     ]);
     const { blocks } = await this.promptBlocks(tenantId, 'chat', 'en');
-    const sources = [menu ? `MENU:\n${menu}` : '', blocks.facts ? `NOTES:\n${blocks.facts}` : '', notes ? `OLDER NOTES:\n${notes}` : '', blocks.rules ? `OWNER RULES:\n${blocks.rules}` : '', docs].filter(Boolean).join('\n\n');
+    const sources = [info ? `BUSINESS INFO (opening hours, address, phone — from the business's own settings):\n${info}` : '', menu ? `MENU:\n${menu}` : '', blocks.facts ? `NOTES:\n${blocks.facts}` : '', notes ? `OLDER NOTES:\n${notes}` : '', blocks.rules ? `OWNER RULES:\n${blocks.rules}` : '', docs].filter(Boolean).join('\n\n');
     const ui: SimLang = uiLang === 'en' ? 'en' : 'vi';
     const jp = simJudgePrompt(answers, sources, ui);
     // Graded twice, independently: a script fails only when BOTH gradings fail it.
@@ -1001,6 +1042,13 @@ export class AiBrainService {
     const msgs = (Array.isArray(dto.messages) ? dto.messages : []).filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string').slice(-30);
     if (!msgs.length || msgs[msgs.length - 1].role !== 'user') throw new BadRequestException('Send the customer\'s message');
     const channel = dto.channel === 'voice' ? 'voice' : 'chat';
+    // The real assistant answers, where that is switched on — a chat test only,
+    // and never the "try this instruction before saving" preview, which must
+    // run with instructions that are not saved yet.
+    if (channel === 'chat' && !opts.instructions && !dto.customerId && this.liveAnswer) {
+      const live = await this.liveAnswer(tenantId, msgs.map((m) => ({ role: m.role, content: m.content }))).catch(() => null);
+      if (live) return liveTryView(live, conversationLanguage(msgs.filter((m) => m.role === 'user').map((m) => m.content), ['vi', 'en'], 'vi'));
+    }
     const { brain, blocks: pre } = await this.promptBlocks(tenantId, channel, 'en');
     const lang = conversationLanguage(msgs.filter((m) => m.role === 'user').map((m) => m.content), brain.languages.allowed, brain.languages.primary);
     const { blocks } = await this.promptBlocks(tenantId, channel, lang);
@@ -1252,4 +1300,37 @@ export function salonToday(tz?: string | null, now: Date = new Date()): string {
   } catch {
     return now.toISOString().slice(0, 10);
   }
+}
+
+/** What a dry run of the live assistant hands back (messenger/dry-run DryRunResult) — only the fields the test screens read. */
+export interface LiveTry {
+  reply: string; state: string; tools: string[]; found?: string[]; guards: string[]; choices: string[];
+  cards?: { name: string; price: string; tag?: string; points?: string[] }[];
+  ms: number; steps?: { r?: number }; error?: string;
+}
+
+/**
+ * A live dry run, in the shape "Thử AI" has always drawn: the text, the cards
+ * and tap buttons apart, and a trace a person can read — which tools ran and
+ * what they returned, which checks changed the draft, and what the real
+ * channel would have done when it sends nothing.
+ */
+export function liveTryView(r: LiveTry, lang: string) {
+  const vi = lang === 'vi';
+  const cards = r.cards ?? [];
+  const trace: string[] = [vi ? '[live] đúng AI đang trả lời khách thật — không gửi cho ai, không lưu gì' : '[live] the assistant that answers real customers — nothing sent, nothing saved'];
+  for (const f of r.found ?? []) trace.push(f.slice(0, 200));
+  for (const t of r.tools) if (!(r.found ?? []).some((f) => f.startsWith(`${t}:`))) trace.push(`${t}: ok`);
+  for (const g of r.guards) trace.push(`[check] ${g}`);
+  if ((r.steps?.r ?? 0) > 0) trace.push(vi ? `[rewritten] bản nháp bị viết lại ${r.steps?.r} lần trước khi gửi` : `[rewritten] the draft was written again ${r.steps?.r} time(s)`);
+  const quiet = (line: string) => ({ reply: line, text: line, choices: [] as string[], cards: [] as typeof cards, lang, trace, ms: r.ms, check: null, live: true });
+  if (r.state === 'silent') { trace.push('[silent] the assistant chose not to reply'); return quiet(vi ? '(AI không trả lời: tin này không cần trả lời, hoặc khách yêu cầu dừng.)' : '(No reply: this message needs no answer, or the customer asked to stop.)'); }
+  if (r.state === 'held') { trace.push('[held] not sent, the staff are told'); return quiet(vi ? '(Câu trả lời bị giữ lại, không gửi cho khách. Nhân viên được báo để trả lời.)' : '(Held, not sent. Your staff are alerted to answer.)'); }
+  if (r.state !== 'reply') { trace.push(`[error] ${r.error ?? 'failed'}`); return quiet(vi ? `(AI gặp lỗi: ${r.error ?? 'không rõ'})` : `(The AI failed: ${r.error ?? 'unknown'})`); }
+  const reply = [
+    cards.length ? cards.map((c) => `[${c.name} · ${c.price}${c.tag ? ` · ${c.tag}` : ''}${c.points?.length ? ` · ${c.points.join(' · ')}` : ''}]`).join('\n') : '',
+    r.reply,
+    r.choices.length ? r.choices.map((c) => `▸ ${c}`).join('   ') : '',
+  ].filter(Boolean).join('\n\n');
+  return { reply, text: r.reply, choices: r.choices, cards, lang, trace, ms: r.ms, check: null, live: true };
 }

@@ -284,6 +284,12 @@ describe('Kiểm tra AI — the knowledge test belongs to one salon', () => {
     try {
       const { svc, db } = build();
       const asked: number[] = [];
+      // The salon's hours and address live in its SETTINGS, not its notes — the grader must hold them too (17/11/2026).
+      const infoFor: string[] = [];
+      (svc as unknown as { settings: unknown }).settings = {
+        getBookingRules: async (id: string) => { infoFor.push(id); return { businessHours: [{ closed: true, openMinutes: 0, closeMinutes: 0 }, ...Array.from({ length: 6 }, () => ({ openMinutes: 540, closeMinutes: 1080 }))] }; },
+        getCompanyExtra: async (id: string) => { infoFor.push(id); return { address: '12 Main St, Houston' }; },
+      };
       const extra = [{ id: 'stop', modes: ['booking' as const, 'sales' as const], title: { vi: 'STOP', en: 'STOP' }, turns: { vi: ['Cho mình hỏi', 'STOP'], en: ['A question', 'STOP'] }, rubric: 'After STOP the assistant must send NOTHING.' }];
       const run = await svc.runSimulations(owner('ta'), 'vi', {
         answer: async (messages) => { asked.push(messages.length); return { reply: 'TỪ AI THẬT', tools: ['check_availability'] }; },
@@ -294,6 +300,14 @@ describe('Kiểm tra AI — the knowledge test belongs to one salon', () => {
       expect(bodies.filter((b) => !b.includes('You grade a business')).length).toBe(0); // … and the sandbox was never asked
       expect(run.items.some((i) => i.id === 'stop')).toBe(true);              // the extra script rode along
       expect(asked.length).toBeGreaterThan(run.items.length);                 // multi-turn scripts: one answer per turn
+      // The grader was given the salon's own opening hours and address — read under ITS id only.
+      const graded = String(bodies.find((b) => b.includes('You grade a business')));
+      expect(graded).toContain('BUSINESS INFO');
+      expect(graded).toContain('Monday: 9:00 AM – 6:00 PM');
+      expect(graded).toContain('Sunday: Closed');
+      expect(graded).toContain('Address: 12 Main St, Houston');
+      expect(infoFor.length).toBeGreaterThan(0);
+      expect(infoFor.every((id) => id === 'ta')).toBe(true);
       // The grader saw the tools the answerer reported.
       expect(bodies.find((b) => b.includes('You grade a business'))).toContain('check_availability');
       // Nothing of this is the salon's own result.

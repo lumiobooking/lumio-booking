@@ -13,7 +13,7 @@ import { SURVEY_KEY, shouldAskSurvey, surveyAnswer, surveyAsk, surveyBadPush, su
 import { HardBudget, hardTurnReason, modelForTurn } from '../common/hard-turn';
 import { CORRECTION_RULE, leaksCorrection, stripLeak, ownerAnswersOnly, secondReaderPrompt, secondReaderSaysLeak, wasCorrected } from './correction-guard';
 import { buildTrace, traceFrom, type ReplyTrace, type TraceCandidate } from './reply-trace';
-import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX, SALES_NOT_READY_RULE } from './reply-style';
+import { REPLY_STYLE_RULE, SALES_FLOW_RULE, afterCardsText, dropStrayParticle, tidyReply, splitBubbles, cleanChoices, quickRepliesFor, choicesAsText, cleanCards, cardElement, cardText, cardTapLine, INFO_PREFIX, CMP_PREFIX, SALES_NOT_READY_RULE } from './reply-style';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
 import { isUnknownReply } from './knowledge-gaps';
 import { dayKeyTz } from '../common/salon-time';
@@ -202,6 +202,8 @@ export function factLiveOn(f: BotFact, day: string): boolean {
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
+/** A card a dry run would have sent (./dry-run DryRunResult.cards). */
+type DryCard = { name: string; price: string; tag?: string; points?: string[] };
 /** A lead's stage. QUOTED and CLOSING (17/11/2026) are the two steps a sale spends most of its life in. */
 const LEAD_STATUSES = ['NEW', 'CONTACTED', 'QUOTED', 'CLOSING', 'WON', 'LOST'];
 /** The dots test only touches a conversation its customer wrote in this recently. */
@@ -4077,7 +4079,7 @@ export class MessengerService implements OnModuleInit {
   async dryRun(tenantId: string, turns: { role: 'user' | 'assistant'; content: string }[], o: { channel?: 'messenger' | 'instagram' | 'zalo' | 'web' } = {}): Promise<DryRunResult> {
     const clock = new TurnClock();
     const t0 = Date.now();
-    const none = (state: DryRunResult['state'], error?: string): DryRunResult => ({ reply: '', state, tools: [], found: [], guards: [], choices: [], ms: Date.now() - t0, steps: clock.steps(), ...(error ? { error } : {}) });
+    const none = (state: DryRunResult['state'], error?: string): DryRunResult => ({ reply: '', state, tools: [], found: [], cards: [], guards: [], choices: [], ms: Date.now() - t0, steps: clock.steps(), ...(error ? { error } : {}) });
     const msgs = (Array.isArray(turns) ? turns : [])
       .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
       .slice(-30);
@@ -4133,6 +4135,7 @@ export class MessengerService implements OnModuleInit {
       state,
       tools: ctx.toolsRun ?? [],
       found: (ctx as { toolFound?: string[] }).toolFound ?? [],
+      cards: (ctx as { dryCards?: DryCard[] }).dryCards ?? [],
       guards: [...new Set(ctx.traceGuards ?? [])],
       choices: ctx.choices ?? [],
       ms: Date.now() - t0,
@@ -5659,6 +5662,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // nothing is left to say) — see the NO_REPLY line in the system prompt.
       if (isNoReply(text)) return SILENT;
 
+      // An English (or other) reply does not open with "Dạ," (./reply-style dropStrayParticle).
+      text = dropStrayParticle(text, customerLang);
+      // Price cards went out in this run: the text under them does not type the same packages out again (./reply-style afterCardsText).
+      if (ctx.mode === 'sales' && text && (toolsUsed.has('send_price_cards') || toolsUsed.has('send_package_card')) && (this.release?.isOn('cardsOnce', tenantId) ?? false)) {
+        const trimmed = afterCardsText(text, customerLang ?? 'en');
+        if (trimmed !== text) { (ctx.traceGuards ??= []).push('cards-not-repeated'); text = trimmed; }
+      }
+
       // The gate. Only sales mode: a booking bot saying "we don't do that
       // service" is correct, a sales bot saying it has just lost a customer.
       // Answering something else is not as costly as a refusal, but it is the
@@ -6758,6 +6769,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           { type: 'postback', title: 'Xem đủ quyền lợi', payload: `${INFO_PREFIX}${c.name}`.slice(0, 900) },
           { type: 'postback', title: 'So với gói khác', payload: `${CMP_PREFIX}${c.name}`.slice(0, 900) },
         ]));
+        if (dry) (ctx as { dryCards?: DryCard[] }).dryCards = [...((ctx as { dryCards?: DryCard[] }).dryCards ?? []), ...cards].slice(0, 10);
         if (!dry) await this.sendCards(ctx.pageToken, ctx.senderId, els);
         return `SUCCESS — ${cards.length} card(s) sent: ${cards.map((c) => `${c.name} ${c.price}`).join('; ')}. Now write at most two short lines and ONE question. Do not repeat the card.`;
       }
@@ -6906,6 +6918,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           image_url: images[i],
           buttons: [{ type: 'postback', title: titles[i], payload: packagePayload(f.label) }],
         }));
+        if (dry) (ctx as { dryCards?: DryCard[] }).dryCards = [...((ctx as { dryCards?: DryCard[] }).dryCards ?? []), ...cards.map((c) => ({ name: c.title, price: c.subtitle }))].slice(0, 10);
         if (!dry) await this.sendCards(ctx.pageToken, ctx.senderId, cards);
         return `SUCCESS — ${cards.length} package card(s) sent. Now send ONE short line asking which fits (do NOT repeat the package details).`;
       }

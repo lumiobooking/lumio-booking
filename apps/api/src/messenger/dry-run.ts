@@ -78,6 +78,8 @@ export interface DryRunResult {
   guards: string[];
   /** Tap buttons under the reply. */
   choices: string[];
+  /** Package / price cards the run would have sent. */
+  cards: { name: string; price: string; tag?: string; points?: string[] }[];
   /** Milliseconds the AI worked, and where they went (./turn-timing). */
   ms: number;
   steps: { p: number; m: number; j: number; k: number; n: number; r: number };

@@ -44,6 +44,12 @@ export const RELEASE_FEATURES = {
   /** After price cards go out, the text under them does not type the same packages out again (messenger/reply-style afterCardsText). */
   cardsOnce: { ships: 'canary', vi: 'Đã gửi thẻ gói thì không gõ lại cả danh sách gói bên dưới', en: 'After price cards, the list is not typed out again' },
   /**
+   * ĐỢT 2 (18/11/2026): an owner's instruction that only forbids words ("never
+   * say 'mình'", "leave Yelp out") is checked by looking for the words, not by
+   * a judging model on every reply (ai-brain/instructions word rules).
+   */
+  wordRules: { ships: 'canary', vi: 'Dặn dò “không dùng từ …” được kiểm bằng mã, không gọi AI chấm mỗi câu', en: 'Word-only instructions are checked by code, not a judging call' },
+  /**
    * The Inbox redrawn around WHO MUST ACT (17/11/2026): "needs a reply" and
    * "the AI has it" instead of read/unread, a taller transcript, a customer
    * panel that follows the kind of page. A SCREEN, not an AI behaviour: the

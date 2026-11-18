@@ -130,17 +130,26 @@ export class AiGoldenService implements OnModuleInit, OnModuleDestroy {
       all.push(r);
       lastOf.set(key(messages.filter((m) => m.role === 'user').map((m) => m.content)), r);
       // What the grader reads: the reply as the customer would have seen it, or plainly that there was none.
-      const shown = r.state === 'reply' ? [r.reply, r.choices.length ? `[buttons: ${r.choices.join(' | ')}]` : ''].filter(Boolean).join('\n')
+      // Cards are part of what the customer saw: a reply that sent the price cards and then asked one
+      // question was graded "showed no packages" (18/11/2026) because the grader was only given the text.
+      const cards = (r.cards ?? []).length ? `[CARDS THE CUSTOMER WAS SENT, above the text: ${(r.cards ?? []).map((c) => `${c.name} — ${c.price}`).join(' ; ')}]` : '';
+      const shown = r.state === 'reply' ? [cards, r.reply, r.choices.length ? `[buttons: ${r.choices.join(' | ')}]` : ''].filter(Boolean).join('\n')
         : r.state === 'silent' ? '(the assistant sent nothing)'
           : r.state === 'held' ? '(the reply was held back for a person)'
             : `(lỗi: ${r.error ?? 'the assistant failed'})`;
       return { reply: shown, tools: r.tools, found: r.found };
     };
     try {
-      const sim = await this.brain.runSimulations(actor, 'vi', { answer, store: false, extra: GOLDEN_SCENARIOS });
+      // What the live assistant is TOLD about this business (menu with sale prices, promotions, hours, team):
+      // the grader must hold the same facts, or it fails correct answers as invented.
+      const told = await Promise.resolve().then(() => this.messenger.liveKnowledge(salon.id)).catch(() => '');
+      const sim = await this.brain.runSimulations(actor, 'vi', { answer, store: false, extra: GOLDEN_SCENARIOS, sources: told });
       const items: GoldenItem[] = sim.items.map((it) => {
         const dry = lastOf.get(key(it.customer));
-        return { id: it.id, lang: it.lang, pass: it.pass, why: String(it.why ?? '').slice(0, 200), ms: dry?.ms ?? 0, hard: dry ? hardFaults({ state: dry.state, reply: dry.reply }) : ['error'] };
+        // "STOP" has one right outcome and code can see it: nothing was sent. On 18/11/2026 the grading
+        // model wrote "sent nothing after STOP, as required" and marked the same script failed.
+        const pass = it.id === 'stop' && dry ? dry.state === 'silent' : it.pass;
+        return { id: it.id, lang: it.lang, pass, why: String(it.why ?? '').slice(0, 200), ms: dry?.ms ?? 0, hard: dry ? hardFaults({ state: dry.state, reply: dry.reply }) : ['error'] };
       });
       // What was actually said, for every script that did not pass (./ai-golden GoldenFail).
       const fails = sim.items.map((it, i) => ({ it, item: items[i], dry: lastOf.get(key(it.customer)) }))

@@ -11,6 +11,7 @@ import { LANG_NAME, type Lang } from './brain-settings';
 import {
   CHANNELS, MAX_PER_SALON, cleanInstruction, instructionsBlock, interpretPrompt, judgePrompt, keepsWords, labelOf, mostlyApproved, matchInstructions,
   matchedBlock, meaningKey, needsMeaning, parseInterpret, parseJudge, toCheck,
+  findWords, parseWords, stripWordTag, withWordTag, wordRuleOf, wordsPrompt,
   type Instruction, type InstructionChannel, type InstructionInput, type Interpretation, type Match,
 } from './instructions';
 
@@ -168,6 +169,54 @@ export class AiInstructionsService {
     }).catch(() => undefined).finally(() => this.filling.delete(tenantId));
   }
 
+  private readonly wording = new Set<string>();
+  /**
+   * WORD RULES (instructions.ts): for this salon's live rules whose forbidden
+   * words were never worked out, work them out — in the background, a few at a
+   * time, one small call each, once. Called only where the release channel has
+   * word rules on. Every write names the row AND the salon.
+   */
+  ensureWords(tenantId: string): void {
+    if (process.env.JEST_WORKER_ID !== undefined || process.env.NODE_ENV === 'test') return;
+    void this.fillWords(tenantId).catch(() => undefined);
+  }
+
+  /** The work behind ensureWords — awaited by tests, never by a conversation. Returns how many rows were tagged. */
+  async fillWords(tenantId: string): Promise<number> {
+    if (this.wording.has(tenantId) || !(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY)) return 0;
+    this.wording.add(tenantId);
+    let done = 0;
+    try {
+      const rows: Row[] = await Promise.resolve()
+        .then(() => this.db.aiInstruction.findMany({ where: { tenantId, on: true }, orderBy: { createdAt: 'asc' }, take: MAX_PER_SALON }))
+        .catch(() => []);
+      const now = Date.now();
+      const due = (rows ?? []).filter((r) => r.tenantId === tenantId && r.on !== false && r.kind !== 'answer' && fresh(r) && wordRuleOf(r.meaning) === null).filter((r) => {
+        const k = `w:${r.id}:${r.meaningKey}`;
+        if ((this.tried.get(k) ?? 0) > now - 6 * 3600_000) return false;
+        this.tried.set(k, now);
+        return true;
+      });
+      for (const r of due.slice(0, 5)) {
+        const p = wordsPrompt({ kind: r.kind, text: String(r.text ?? ''), meaning: String(r.meaning ?? '') });
+        const out = await llmChat({ system: p.system, messages: [{ role: 'user', content: p.user }], max_tokens: 200, timeoutMs: 9000 }).catch(() => null);
+        if (!out || !out.ok) continue;
+        this.usage?.record({
+          feature: 'messenger', tenantId, model: out.reply.usage?.model ?? 'unknown',
+          input: out.reply.usage?.input ?? 0, output: out.reply.usage?.output ?? 0,
+          cacheRead: out.reply.usage?.cacheRead ?? 0, cacheWrite: out.reply.usage?.cacheWrite ?? 0, failed: false,
+        });
+        const rule = parseWords(out.reply.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' '));
+        if (!rule) continue;
+        // The meaning's key is untouched: the tag rides beside the same meaning, for the same words.
+        await this.db.aiInstruction.updateMany({ where: { id: r.id, tenantId }, data: { meaning: withWordTag(String(r.meaning ?? ''), rule.avoid.length ? rule : null) } });
+        done += 1;
+      }
+      if (done) this.invalidate(tenantId);
+    } finally { this.wording.delete(tenantId); }
+    return done;
+  }
+
   /**
    * What the owner means by these words — the rule the assistants follow and
    * the sentence the owner reads back ("AI sẽ …"). Null when no model answers
@@ -236,7 +285,7 @@ export class AiInstructionsService {
    * language is checked by its words, here; everything else by one short
    * judging call. A judge that is slow or unreadable never blocks a reply.
    */
-  async check(tenantId: string, o: { turn: TurnInstructions; channel: InstructionChannel; customer: string; draft: string; lang: Lang; timeoutMs?: number }): Promise<CheckResult> {
+  async check(tenantId: string, o: { turn: TurnInstructions; channel: InstructionChannel; customer: string; draft: string; lang: Lang; timeoutMs?: number; /** word rules are live for this salon (release channel) */ words?: boolean }): Promise<CheckResult> {
     const draft = String(o.draft ?? '').trim();
     if (!draft) return NONE;
     const check = toCheck(o.turn.all, o.channel, o.turn.matches);
@@ -246,12 +295,25 @@ export class AiInstructionsService {
     for (const m of o.turn.matches) applied.set(m.ins.id, m.ins);
     // Word-for-word answers, same language: no model needed.
     const needJudge: Instruction[] = [];
+    const wordBroken: { ins: Instruction; avoid: string[] }[] = [];
     // The owner's exact answers the draft really says: pre-approved text.
     const approved: string[] = [];
     for (const i of check) {
       if (i.kind === 'answer' && i.mode === 'verbatim') {
         const l = detectLanguage(i.text);
         if (!l || l === o.lang) { if (!keepsWords(draft, i.text)) broken.set(i.id, i); else approved.push(i.text); continue; }
+      }
+      // A rule that only forbids words: look for the words. No model reads the draft for it —
+      // a clean draft obeys it; a draft with one of them is broken, and the judge below is asked only to mend it.
+      if (o.words && i.kind !== 'answer') {
+        const w = wordRuleOf(i.meaning);
+        if (w && w !== 'none' && w.only) {
+          if (w.lang !== 'any' && w.lang !== o.lang) continue; // wording of another language: not about this reply
+          applied.set(i.id, i);
+          if (!findWords(draft, w.avoid).length) continue;
+          broken.set(i.id, i);
+          wordBroken.push({ ins: i, avoid: w.avoid });
+        }
       }
       needJudge.push(i);
     }
@@ -286,6 +348,8 @@ export class AiInstructionsService {
         this.log.warn(`instruction check skipped (${out.status ?? 'network'})`);
       }
     }
+    // A rewrite that still contains a forbidden word mends nothing: it is not offered.
+    if (rewrite && wordBroken.some((x) => findWords(rewrite, x.avoid).length)) rewrite = '';
     return { broken: [...broken.values()], applied: [...applied.values()], rewrite: broken.size ? rewrite : '' };
   }
 

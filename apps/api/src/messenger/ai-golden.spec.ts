@@ -71,6 +71,8 @@ describe('the golden run itself', () => {
       auditLog: { create: async () => ({}) },
     };
     const messenger = {
+      // What the live assistant is told about the business — handed to the grader, per account.
+      liveKnowledge: jest.fn(async (tenantId: string) => `KNOWLEDGE OF ${tenantId}: Monday 9:00 AM – 6:00 PM`),
       dryRun: jest.fn(async (tenantId: string, messages: Row[]) => {
         dryCalls.push({ tenantId, n: messages.length });
         const last = String(messages[messages.length - 1].content);

@@ -338,7 +338,7 @@ export class AiBrainService {
      * `store: false`: the result is the caller's, not the salon's — it is not
      * kept as the salon's last simulation and not written to its audit log.
      */
-    opts: { answer?: (messages: { role: 'user' | 'assistant'; content: string }[]) => Promise<{ reply: string; tools: string[]; /** what the tools returned, for the grader */ found?: string[] }>; store?: boolean; /** scripts added after the salon's own twenty, in its first language (the golden run's real-conversation scripts) */ extra?: Scenario[] } = {},
+    opts: { answer?: (messages: { role: 'user' | 'assistant'; content: string }[]) => Promise<{ reply: string; tools: string[]; /** what the tools returned, for the grader */ found?: string[] }>; store?: boolean; /** more facts the grader may trust: what the answerer itself is told about the business */ sources?: string; /** scripts added after the salon's own twenty, in its first language (the golden run's real-conversation scripts) */ extra?: Scenario[] } = {},
   ): Promise<SimRun> {
     if (!this.canEdit(user)) throw new ForbiddenException('Only the owner or a manager can test the AI');
     const tenantId = this.tenantId(user);
@@ -401,7 +401,7 @@ export class AiBrainService {
       this.businessInfo(tenantId).catch(() => ''),
     ]);
     const { blocks } = await this.promptBlocks(tenantId, 'chat', 'en');
-    const sources = [info ? `BUSINESS INFO (opening hours, address, phone — from the business's own settings):\n${info}` : '', menu ? `MENU:\n${menu}` : '', blocks.facts ? `NOTES:\n${blocks.facts}` : '', notes ? `OLDER NOTES:\n${notes}` : '', blocks.rules ? `OWNER RULES:\n${blocks.rules}` : '', docs].filter(Boolean).join('\n\n');
+    const sources = [opts.sources ? `WHAT THE ASSISTANT IS TOLD ABOUT THE BUSINESS (its services with regular and sale prices, promotions, opening hours, team — from the business's own records):\n${String(opts.sources).slice(0, 9000)}` : '', info ? `BUSINESS INFO (opening hours, address, phone — from the business's own settings):\n${info}` : '', menu ? `MENU:\n${menu}` : '', blocks.facts ? `NOTES:\n${blocks.facts}` : '', notes ? `OLDER NOTES:\n${notes}` : '', blocks.rules ? `OWNER RULES:\n${blocks.rules}` : '', docs].filter(Boolean).join('\n\n');
     const ui: SimLang = uiLang === 'en' ? 'en' : 'vi';
     const jp = simJudgePrompt(answers, sources, ui);
     // Graded twice, independently: a script fails only when BOTH gradings fail it.

@@ -42,7 +42,7 @@ import {
 } from './ai-health';
 import { chat as llmChat, openAiEnabled, type ChatMessage, type ToolDef, type TextBlock } from '../common/llm';
 import { AiInstructionsService, instructionChannel } from '../ai-brain/instructions.service';
-import { correctionFor, lastResort } from '../ai-brain/instructions';
+import { correctionFor, lastResort, wordsBlock } from '../ai-brain/instructions';
 import { questionAnswered } from './knowledge-gaps';
 import { detectLanguage as detectBrainLanguage } from '../ai-brain/brain-rules';
 import { withBookingLink } from './booking-link';
@@ -4991,6 +4991,9 @@ export class MessengerService implements OnModuleInit {
       : null;
     ctx.traceRules = (owner?.matches ?? []).map((m) => ({ id: m.ins.id, text: m.ins.text }));
     ctx.traceGuards = [];
+    // Word rules (ai-brain/instructions): where released, a rule that only forbids words is checked by code.
+    const wordRulesOn = !!owner && !!this.instructions && (this.release?.isOn('wordRules', tenantId) ?? false);
+    if (wordRulesOn) this.instructions!.ensureWords(tenantId);
 
     // WHERE this chat is happening. It said "Facebook Messenger" to everyone,
     // including a customer typing into the salon's own website and one writing
@@ -5456,7 +5459,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         + (ctx.mode === 'sales' ? '\nWhen a photo shows their shop and they confirm (or simply carry on), call save_lead with salonName, city and phone taken from the photo — use their Facebook name as the name if they have not typed one.' : '')
       : '';
     const crossMemoryBlock = ctx.crossMemory ? `\n${ctx.crossMemory}` : '';
-    const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang)) + NO_REPLY_RULE;
+    const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang)) + NO_REPLY_RULE
+      // LAST, so it is the freshest thing the model has read: the words the owner forbids, by name.
+      + (wordRulesOn && owner ? (() => { const b = wordsBlock(owner.all, insCh, brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en')); return b ? `\n${b}` : ''; })() : '');
     // The business's own documents (Học từ link) — sales page and booking page alike (read above).
     const system = [
       { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
@@ -5892,7 +5897,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }
       if (owner && this.instructions && text) {
         const insLang = brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en');
-        const chk = await clock.time('check', () => this.instructions!.check(tenantId, { turn: owner, channel: insCh, customer: userText, draft: text, lang: insLang, timeoutMs: 6000 }).catch(() => null));
+        const chk = await clock.time('check', () => this.instructions!.check(tenantId, { turn: owner, channel: insCh, customer: userText, draft: text, lang: insLang, timeoutMs: 6000, words: wordRulesOn }).catch(() => null));
         // The owner said this kind of message gets no reply (a person takes
         // it): nothing is sent — and the staff are told, as for any silence
         // on a question (silentQuestionPush).
@@ -6481,6 +6486,16 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     } catch {
       return 'en-US';
     }
+  }
+
+  /**
+   * What the live assistant is told about ONE business — its services with
+   * prices and sale prices, promotions, opening hours, team. For whoever grades
+   * a dry run of it (ai-golden): read under this salon's id only.
+   */
+  async liveKnowledge(tenantId: string): Promise<string> {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { contactPhone: true, contactEmail: true } }).catch(() => null);
+    return this.systemKnowledge(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
   }
 
   private async systemKnowledge(tenantId: string, phone: string | null, email: string | null): Promise<string> {

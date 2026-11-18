@@ -207,7 +207,7 @@ export function afterCardsText(text: string, lang: string): string {
   if (tailQ && !kept.includes(tailQ) && tailQ.split(/\s+/).length <= 30) kept.push(tailQ);
   let out = kept;
   if (out.join(' ').split(/\s+/).filter(Boolean).length > 60) out = [out[0], ...out.slice(1).filter((x) => x.endsWith('?')).slice(-1)];
-  const ask = lang === 'vi' ? 'Anh/chị thấy gói nào hợp với tiệm mình nhất ạ?' : 'Which of these fits your shop best?';
+  const ask = lang === 'vi' ? 'Anh/chị thấy gói nào hợp với tiệm anh/chị nhất ạ?' : 'Which of these fits your shop best?';
   if (!out.some((x) => x.endsWith('?'))) out = [...out, ask];
   return out.join(' ').trim() || ask;
 }

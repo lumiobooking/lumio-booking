@@ -79,7 +79,7 @@ describe('the cards already said it — the text under them does not repeat the 
   });
 
   it('asks our own question when the model left none, in the customer\'s language', () => {
-    expect(afterCardsText('Dạ đây là các gói bên em:\n▸ Boost: $179/tháng\n▸ Growth: $279/tháng', 'vi')).toBe('Anh/chị thấy gói nào hợp với tiệm mình nhất ạ?');
+    expect(afterCardsText('Dạ đây là các gói bên em:\n▸ Boost: $179/tháng\n▸ Growth: $279/tháng', 'vi')).toBe('Anh/chị thấy gói nào hợp với tiệm anh/chị nhất ạ?');
     expect(afterCardsText('Our packages:\n▸ Boost: $179\n▸ Growth: $279', 'en')).toBe('Which of these fits your shop best?');
   });
 

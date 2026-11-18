@@ -109,3 +109,65 @@ describe('what sent drafts back, counted over a golden run', () => {
     expect(rewriteReasons([])).toEqual([]);
   });
 });
+
+describe('rules the judging call cannot judge (18/11/2026)', () => {
+  const { isDocRule, needsTheDocument, toCheck, judgePrompt, wordsAreAll } = require('./instructions');
+  const doc = (n: number, text: string): Instruction => ({ id: `doc-rule-${n}`, kind: 'always', text, triggers: [], mode: 'meaning', channels: [], on: true, usedCount: 0, meaning: null });
+
+  it('a document\'s rule that points at the document is not sent to a judge that never sees it', () => {
+    const all = [
+      doc(1, 'Chỉ báo giá, khối lượng và quyền lợi đúng như bảng dưới. Không tự đặt ra giá, giảm giá.'),
+      doc(2, 'Câu hỏi ngoài bảng giá (gói riêng, giảm giá thêm, hợp đồng, kết quả cam kết) → mời để lại số điện thoại.'),
+      doc(3, 'Giá tính theo tháng nếu có ghi "/tháng"; gói thiết kế website trả một lần.'),
+      doc(4, 'Khách hỏi khuyến mãi → mời khách để lại số điện thoại để tư vấn viên gọi lại.'),
+      ins({ id: 'own', text: 'Never quote below the listed price.' }),
+    ];
+    expect(all.slice(0, 3).every((i) => needsTheDocument(i.text))).toBe(true);
+    expect(needsTheDocument(all[3].text)).toBe(false);
+    // The owner's OWN typed rule is always judged, whatever its words; so is a self-contained document rule.
+    expect(toCheck(all, 'messenger', []).map((i: Instruction) => i.id)).toEqual(['doc-rule-4', 'own']);
+    expect(isDocRule({ id: 'doc-rule-12' })).toBe(true);
+    expect(isDocRule({ id: 'doc-rule-x' })).toBe(false);
+  });
+
+  it('the judge is told it has not been shown the document', () => {
+    const all = [doc(4, 'Khách hỏi khuyến mãi → mời khách để lại số điện thoại.'), ins({ id: 'own', text: 'Always greet warmly.' })];
+    const p = judgePrompt({ all, check: all, customer: 'hi', draft: 'Hello!', langName: 'English', voice: false }).user;
+    expect(p.split('\n').find((l: string) => l.startsWith('[R1]'))).toContain('which you are NOT shown');
+    expect(p.split('\n').find((l: string) => l.startsWith('[R2]'))).not.toContain('NOT shown');
+  });
+
+  it('a short rule about one language\'s wording is checked by its words alone, even when the reader said "not only"', () => {
+    expect(wordsAreAll({ avoid: ['mình', 'bạn'], lang: 'vi', only: false }, 'Không được xưng hô mình mà luôn luôn phải xưng hô là anh chị, và bên em')).toBe(true);
+    expect(wordsAreAll({ avoid: ['Yelp'], lang: 'any', only: false }, 'bỏ Yeld khỏi câu trả lời')).toBe(false);
+    expect(wordsAreAll({ avoid: ['Yelp'], lang: 'any', only: true }, 'bỏ Yeld')).toBe(true);
+    expect(wordsAreAll({ avoid: ['mình'], lang: 'vi', only: false }, 'x'.repeat(141))).toBe(false);
+    expect(wordsAreAll({ avoid: [], lang: 'vi', only: false }, 'luôn nói dạ')).toBe(false);
+  });
+});
+
+describe('the check itself', () => {
+  const mk = () => {
+    const svc = new AiInstructionsService({ aiInstruction: { findMany: async () => [], updateMany: async () => ({ count: 0 }) } } as never, {} as never);
+    return svc;
+  };
+  const rule = ins({ id: 'p', text: 'Không được xưng hô mình mà luôn luôn phải xưng hô là anh chị, và bên em', usedCount: 0, blockedCount: 0, meaning: withWordTag('Never say "mình" or "bạn".', { avoid: ['mình', 'bạn'], lang: 'vi', only: false }) });
+  const turn = { all: [rule], block: '', matches: [], matched: '' };
+
+  it('an English reply is never held to a Vietnamese pronoun rule — no judging call at all', async () => {
+    const before = { a: process.env.ANTHROPIC_API_KEY, o: process.env.OPENAI_API_KEY };
+    delete process.env.ANTHROPIC_API_KEY; delete process.env.OPENAI_API_KEY;
+    const r = await mk().check('salon-a', { turn: turn as never, channel: 'messenger', customer: 'How much?', draft: 'The software starts at $29/month.', lang: 'en', words: true });
+    expect(r.broken).toEqual([]);
+    expect(r.applied).toEqual([]);
+    if (before.a) process.env.ANTHROPIC_API_KEY = before.a; if (before.o) process.env.OPENAI_API_KEY = before.o;
+  });
+
+  it('a Vietnamese reply: clean passes by code, "mình" is caught by code', async () => {
+    const clean = await mk().check('salon-a', { turn: turn as never, channel: 'messenger', customer: 'giá?', draft: 'Dạ bên em có gói từ $29 ạ, anh/chị cần gói nào ạ?', lang: 'vi', words: true });
+    expect(clean.broken).toEqual([]);
+    expect(clean.applied.map((i) => i.id)).toEqual(['p']);
+    const bad = await mk().check('salon-a', { turn: turn as never, channel: 'messenger', customer: 'giá?', draft: 'Dạ tiệm mình cần gói nào ạ?', lang: 'vi', words: true });
+    expect(bad.broken.map((i) => i.id)).toEqual(['p']);
+  });
+});

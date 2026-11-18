@@ -11,7 +11,7 @@ import { LANG_NAME, type Lang } from './brain-settings';
 import {
   CHANNELS, MAX_PER_SALON, cleanInstruction, instructionsBlock, interpretPrompt, judgePrompt, keepsWords, labelOf, mostlyApproved, matchInstructions,
   matchedBlock, meaningKey, needsMeaning, parseInterpret, parseJudge, toCheck,
-  findWords, parseWords, stripWordTag, withWordTag, wordRuleOf, wordsPrompt,
+  findWords, parseWords, stripWordTag, withWordTag, wordRuleOf, wordsAreAll, wordsPrompt,
   type Instruction, type InstructionChannel, type InstructionInput, type Interpretation, type Match,
 } from './instructions';
 
@@ -307,8 +307,9 @@ export class AiInstructionsService {
       // a clean draft obeys it; a draft with one of them is broken, and the judge below is asked only to mend it.
       if (o.words && i.kind !== 'answer') {
         const w = wordRuleOf(i.meaning);
-        if (w && w !== 'none' && w.only) {
-          if (w.lang !== 'any' && w.lang !== o.lang) continue; // wording of another language: not about this reply
+        // The wording of another language is not about this reply — whatever else the rule was read as.
+        if (w && w !== 'none' && w.avoid.length && w.lang !== 'any' && w.lang !== o.lang) continue;
+        if (w && w !== 'none' && wordsAreAll(w, i.text)) {
           applied.set(i.id, i);
           if (!findWords(draft, w.avoid).length) continue;
           broken.set(i.id, i);

@@ -21,7 +21,7 @@ import {
 export const AI_LEGACY_MERGED_KEY = 'ai_legacy_merged';
 import { END_REASON_LABEL, SLOW_TURN_MS, asLang, conversationLanguage, detectLanguage, type EndReason } from './brain-rules';
 import { AiInstructionsService, instructionChannel } from './instructions.service';
-import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, needsMeaning, type Instruction, type InstructionChannel } from './instructions';
+import { checkingLine, cleanInstruction, correctionFor, lastResort, meaningKey, needsMeaning, stripWordTag, type Instruction, type InstructionChannel } from './instructions';
 import { agentModel, forModel } from '../common/ai-model';
 import { REPLY_STYLE_RULE, SALES_FLOW_RULE, tidyReply, cleanChoices, choicesAsText, cleanCards, cardText, type PackageCard, SALES_NOT_READY_RULE } from '../messenger/reply-style';
 import { ungroundedMoney } from '../messenger/price-grounding';
@@ -459,7 +459,7 @@ export class AiBrainService {
     const qp = questionPrompt(docs || material, lang, TEST_COUNT);
     // The owner's own typed instructions of THIS salon that are switched on (document rules are part of `docs`).
     const ruleList = this.instructions
-      ? (await this.instructions.allFor(tenantId).catch((): Instruction[] => [])).filter((i) => i.on).slice(0, 60).map((i, k) => ({ n: k + 1, text: `${i.kind === 'never' ? 'NEVER' : i.kind === 'always' ? 'ALWAYS' : `When asked about ${i.triggers.slice(0, 3).join(' / ')} answer`}: ${i.text}` }))
+      ? (await this.instructions.allFor(tenantId).catch((): Instruction[] => [])).filter((i) => i.on).slice(0, 60).map((i, k) => ({ n: k + 1, text: `${i.kind === 'never' ? 'NEVER' : i.kind === 'always' ? 'ALWAYS' : `When asked about ${i.triggers.slice(0, 3).join(' / ')} answer`}: ${i.text}${i.meaning && stripWordTag(i.meaning) ? ` (the assistant was told this means: ${stripWordTag(i.meaning).slice(0, 300)})` : ''}` }))
       : [];
     const ruleConflictsP: Promise<RuleConflict[]> = ruleList.length >= 2 || (ruleList.length && docs)
       ? (async () => { const rp = ruleConflictPrompt(ruleList, docs, lang); return ruleConflictsFrom(jsonArray(await this.ask(rp.system, rp.user, 2000)), ruleList); })().catch(() => [])

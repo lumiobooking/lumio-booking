@@ -63,3 +63,12 @@ describe('instructions that cannot both be obeyed (18/11/2026)', () => {
     expect(ruleConflictsFrom('nonsense' as never, rules)).toEqual([]);
   });
 });
+
+describe('reading an owner\'s correction (18/11/2026)', () => {
+  it('the reply being corrected is context, never a source of facts for the rule', () => {
+    const { interpretPrompt } = require('./instructions');
+    const p = interpretPrompt({ kind: 'always', text: 'bỏ Yeld khỏi câu trả lời', triggers: [], sourceQuestion: 'gói social care gồm gì', sourceReply: 'Đăng bài trên Facebook, Instagram, TikTok, Shorts, Yelp và audit miễn phí', ownerLang: 'vi' });
+    expect(p.user).toContain('NOT approved by the owner');
+    expect(p.user).toContain('never copy a list, a price, a channel');
+  });
+});

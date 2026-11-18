@@ -25,7 +25,7 @@ describe('what a doing-tool says in a test run', () => {
     expect(dryToolResult('create_booking', { phone: '512-000-0000' })).toMatch(/^SUCCESS\. Appointment created/);
     expect(dryToolResult('create_booking', { phone: '512-000-0000' })).toContain('TEST RUN');
     expect(dryToolResult('create_booking', {})).toBe('ERROR: A phone number is required to book.'); // the real refusal, so the AI asks for it
-    expect(dryToolResult('save_lead', {})).toMatch(/^ERROR/);
+    expect(dryToolResult('save_lead', {})).toMatch(/^NOT SAVED/);
     expect(dryToolResult('save_lead', { name: 'An' })).toMatch(/^SUCCESS/);
     expect(dryToolResult('cancel_appointment', {})).toMatch(/^SUCCESS/);
     expect(dryToolResult('request_callback', {})).toMatch(/^NOTED/);

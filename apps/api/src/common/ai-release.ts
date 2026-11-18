@@ -57,6 +57,13 @@ export const RELEASE_FEATURES = {
    */
   hotRules: { ships: 'canary', vi: 'Dặn dò hay bị AI làm sai được nhắc lại ngay trước khi viết, để đúng từ câu đầu', en: 'The most-broken instructions are repeated right before writing' },
   /**
+   * ĐỢT 2 (18/11/2026): what the AI has already asked, been told and sent in
+   * this chat is read out of the transcript by code and put in front of it as
+   * a short ledger, so it does not greet twice or ask the same thing again
+   * (messenger/conversation-state).
+   */
+  chatState: { ships: 'canary', vi: 'AI được nhắc: đã hỏi gì, khách đã trả lời gì, đã gửi gì — không chào lại, không hỏi lại', en: 'A ledger of what was already asked, told and sent in this chat' },
+  /**
    * The Inbox redrawn around WHO MUST ACT (17/11/2026): "needs a reply" and
    * "the AI has it" instead of read/unread, a taller transcript, a customer
    * panel that follows the kind of page. A SCREEN, not an AI behaviour: the

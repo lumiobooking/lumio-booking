@@ -23,6 +23,7 @@ import {
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow, customerWroteLast, DEFAULT_ACTIVE_MINS } from './thread-ownership';
+import { chatStateBlock } from './conversation-state';
 import { AI_NOTE_AUTHOR, aiWhyCurrent, aiWhyFor, aiWhyNote, isAiWhyNote, readAiWhy, type AiWhy } from './ai-why';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
@@ -70,7 +71,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { mergeBurst, alreadySaid, BURST_MS, MAX_SUPERSEDE, mayDropReply, repeatCount, repeatVerdict, repeatWasAnswered, burstWaitMs, settleMs, MAX_MERGE, holdUntilMs, dropKind, needsPause, ABANDONED } from './burst';
 import { TurnClock } from './turn-timing';
 import { repairCandidate } from './quick-repair';
-import { dryToolResult, type DryRunResult } from './dry-run';
+import { dryToolResult, LEAD_NEEDS_NAME, type DryRunResult } from './dry-run';
 import { supportsSenderAction, senderActionBody, typingStep, notePresence, TYPING_REFRESH_MS, SEEN_TO_TYPING_MS, type SenderAction } from './presence';
 import { AiReleaseService } from '../common/ai-release.service';
 import { SILENT, HELD, isSilent, outboundVerdict, silentOnCloser, isCloser, isNoReply, NO_REPLY_RULE, withoutBadSentences } from './outbound-guard';
@@ -5486,7 +5487,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         + (ctx.mode === 'sales' ? '\nWhen a photo shows their shop and they confirm (or simply carry on), call save_lead with salonName, city and phone taken from the photo — use their Facebook name as the name if they have not typed one.' : '')
       : '';
     const crossMemoryBlock = ctx.crossMemory ? `\n${ctx.crossMemory}` : '';
-    const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang)) + NO_REPLY_RULE
+    // Where the conversation stands, read from its own turns by code (./conversation-state).
+    const stateBlock = (this.release?.isOn('chatState', tenantId) ?? false) ? chatStateBlock(history as never, { gapDays: ctx.gapDays ?? 0 }) : '';
+    const dynamicSystem = clockLine + memoryBlock + crossMemoryBlock + gapNote + stateBlock + photoBlock + dossier + mediaRule + (owner?.matched ? `\n${owner.matched}` : '') + (brainOut ? `\n${brainOut.blocks.language}` : replyLangRule(customerLang)) + NO_REPLY_RULE
       // LAST, so it is the freshest thing the model has read: the words the owner forbids, by name.
       + (wordRulesOn && owner ? (() => { const b = wordsBlock(owner.all, insCh, brainOut?.lang ?? (customerLang === 'vi' ? 'vi' : 'en')); return b ? `\n${b}` : ''; })() : '')
       // And the instructions this salon's drafts break most often, once more (ai-brain/instructions hotRules).
@@ -5699,7 +5702,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // An English (or other) reply does not open with "Dạ," (./reply-style dropStrayParticle).
       text = dropStrayParticle(text, customerLang);
       // Price cards went out in this run: the text under them does not type the same packages out again (./reply-style afterCardsText).
-      if (ctx.mode === 'sales' && text && (toolsUsed.has('send_price_cards') || toolsUsed.has('send_package_card')) && (this.release?.isOn('cardsOnce', tenantId) ?? false)) {
+      // Only when cards really went out: a card tool that was CALLED and refused ("CARDS OFF", a price not in the
+      // documents) sent nothing — trimming the text then left "Here are our packages. Which fits?" with no packages (18/11/2026).
+      if (ctx.mode === 'sales' && text && ((ctx as { cardsOut?: number }).cardsOut ?? 0) > 0 && (this.release?.isOn('cardsOnce', tenantId) ?? false)) {
         const trimmed = afterCardsText(text, customerLang ?? 'en');
         if (trimmed !== text) { (ctx.traceGuards ??= []).push('cards-not-repeated'); text = trimmed; }
       }
@@ -6026,7 +6031,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const rawPhone = String(input.phone || '').trim().replace(/[^\d+]/g, '');
     const hasPhone = rawPhone.replace(/\D/g, '').length >= 8;
     if (!name) {
-      return 'ERROR: a name is required before saving.';
+      // Said to the MODEL. It used to answer this line as if the customer had said it: an upset customer of two
+      // months was told "That's fine, I'll wait for your details" (golden run, 18/11/2026).
+      return LEAD_NEEDS_NAME;
     }
     // A lead who refuses to hand over a number is still a lead: we know their
     // shop and we are standing in a live thread with them. Rejecting the save
@@ -6817,6 +6824,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           { type: 'postback', title: 'So với gói khác', payload: `${CMP_PREFIX}${c.name}`.slice(0, 900) },
         ]));
         if (dry) (ctx as { dryCards?: DryCard[] }).dryCards = [...((ctx as { dryCards?: DryCard[] }).dryCards ?? []), ...cards].slice(0, 10);
+        (ctx as { cardsOut?: number }).cardsOut = ((ctx as { cardsOut?: number }).cardsOut ?? 0) + cards.length;
         if (!dry) await this.sendCards(ctx.pageToken, ctx.senderId, els);
         return `SUCCESS — ${cards.length} card(s) sent: ${cards.map((c) => `${c.name} ${c.price}`).join('; ')}. Now write at most two short lines and ONE question. Do not repeat the card.`;
       }
@@ -6966,6 +6974,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           buttons: [{ type: 'postback', title: titles[i], payload: packagePayload(f.label) }],
         }));
         if (dry) (ctx as { dryCards?: DryCard[] }).dryCards = [...((ctx as { dryCards?: DryCard[] }).dryCards ?? []), ...cards.map((c) => ({ name: c.title, price: c.subtitle }))].slice(0, 10);
+        (ctx as { cardsOut?: number }).cardsOut = ((ctx as { cardsOut?: number }).cardsOut ?? 0) + cards.length;
         if (!dry) await this.sendCards(ctx.pageToken, ctx.senderId, cards);
         return `SUCCESS — ${cards.length} package card(s) sent. Now send ONE short line asking which fits (do NOT repeat the package details).`;
       }

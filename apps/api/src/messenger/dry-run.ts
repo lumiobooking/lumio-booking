@@ -36,6 +36,14 @@ const has = (v: unknown) => String(v ?? '').trim().length > 0;
  * code (looking tools, the harmless ones, the ones that guard themselves).
  * The wording follows the real tools' answers so the model reacts the same way.
  */
+/**
+ * What save_lead tells the MODEL when there is no name yet. The model used to
+ * answer the old one-line error as if the customer had said it: an upset
+ * customer of two months was told "That's fine, I'll wait for your details"
+ * (golden run, 18/11/2026). The same words live and dry.
+ */
+export const LEAD_NEEDS_NAME = 'NOT SAVED — the customer has not given a name yet. This line is a note from the system to you; the customer did not say it and cannot see it, so do not answer it (never "that\'s fine", "no problem", "I\'ll wait"). Reply to the customer\'s LAST message as they wrote it — if they are upset or complaining, say sorry sincerely first and say a person from the team will look into it — then ask for their name and the best phone number in one short question.';
+
 export function dryToolResult(name: string, input: Record<string, unknown>): string | null {
   if (HARMLESS.has(name) || SELF_GUARDED.has(name)) return null;
   switch (name) {
@@ -51,7 +59,7 @@ export function dryToolResult(name: string, input: Record<string, unknown>): str
     case 'save_birthday':
       return 'SUCCESS. Birthday saved — thank the customer warmly and wish them a great day.';
     case 'save_lead':
-      if (!has(input.name)) return 'ERROR: a name is required before saving.';
+      if (!has(input.name)) return LEAD_NEEDS_NAME;
       return 'SUCCESS. Lead saved — the team has been told. Thank them in one line and say someone will be in touch.';
     case 'request_callback':
       return 'NOTED for the salon. Tell the customer in ONE line that the team will get back to them shortly, then carry on with anything else they need.';

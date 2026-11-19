@@ -16,7 +16,7 @@ import { ui } from '../lib/ui';
 type Member = { group: 'A' | 'B'; weight: number; sources: string[] };
 export type Team = { members: Record<string, Member>; adGroupFirst: boolean; staffSeeAll: boolean; staffCanTake: boolean; maskPhones: boolean; adCostCents: number; nightReport: boolean };
 type Source = { key: string; label: string };
-type Score = { userId: string; name: string; received: number; answered: number; medianSec: number | null; onTimePct: number | null; lost: number; notOpened?: number; notReplied?: number; skipped?: number; withCustomer: number };
+type Score = { userId: string; name: string; received: number; answered: number; medianSec: number | null; onTimePct: number | null; lost: number; notOpened?: number; notReplied?: number; skipped?: number; withCustomer: number; booked?: number };
 type MissRow = { at: string; threadId: string; customer: string; fromAd: boolean; personId: string | null; person: string; why: 'not-opened' | 'not-replied' | 'skipped'; heldMins: number | null; to: string | null };
 type MissLog = { days: number; canSeeAll: boolean; waitedTooLong: number | null; totals: { personId: string; person: string; total: number; notOpened: number; notReplied: number; skipped: number; fromAd: number }[]; rows: MissRow[] };
 const whyText = (w: MissRow['why'], vi: boolean) => (w === 'not-opened' ? (vi ? 'Không mở' : 'Not opened') : w === 'skipped' ? (vi ? 'Bấm bỏ qua' : 'Skipped') : (vi ? 'Mở nhưng không trả lời' : 'Opened, no reply'));
@@ -25,7 +25,7 @@ type Board = { days: number; adCustomers: number; adWaiting: number; adLimitMins
 
 const secText = (s: number | null) => (s == null ? '—' : s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
 
-export function TurnTeamPanel({ token, vi, agents, canEdit, weighted }: { token: string | null; vi: boolean; agents: { userId: string; name: string }[]; canEdit: boolean; weighted: boolean }) {
+export function TurnTeamPanel({ token, vi, agents, canEdit, weighted, statsOnly = false }: { token: string | null; vi: boolean; agents: { userId: string; name: string }[]; canEdit: boolean; weighted: boolean; /** rt219: only the scoreboard and the turns let go (the "Hiệu quả nhân viên" tab). */ statsOnly?: boolean }) {
   const T = (v: string, e: string) => (vi ? v : e);
   const [team, setTeam] = useState<Team | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
@@ -59,15 +59,16 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted }: { token:
     if (!token || !canEdit) return;
     try { const r = await apiFetch<{ team: Team; sources: Source[] }>('/messenger/turns/team', { method: 'POST', token, body: next }); setTeam(r.team); setMsg(T('Đã lưu', 'Saved')); } catch (e) { setMsg(String(e)); }
   };
-  if (!team) return <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{msg ?? T('Đang tải…', 'Loading…')}</div>;
-  const mem = (id: string): Member => team.members[id] ?? { group: 'A', weight: 1, sources: [] };
-  const setMem = (id: string, patch: Partial<Member>) => void save({ ...team, members: { ...team.members, [id]: { ...mem(id), ...patch } } });
+  if (!team && !statsOnly) return <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{msg ?? T('Đang tải…', 'Loading…')}</div>;
+  const mem = (id: string): Member => team?.members[id] ?? { group: 'A', weight: 1, sources: [] };
+  const setMem = (id: string, patch: Partial<Member>) => { if (team) void save({ ...team, members: { ...team.members, [id]: { ...mem(id), ...patch } } }); };
   const row: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ccbd5e1)', flexWrap: 'wrap' };
   const chip = (on: boolean): CSSProperties => ({ height: 26, padding: '0 9px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, cursor: canEdit ? 'pointer' : 'default', fontFamily: 'inherit', border: on ? '1px solid #4f46e5' : '1px solid var(--line-strong)', background: on ? '#4f46e5' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)' });
   const totalW = agents.reduce((s, a) => s + (mem(a.userId).weight || 0), 0) || 1;
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
+      {!statsOnly && team && <>
       {/* Team: group, share, Pages */}
       <div>
         <div style={ui.label}>{T('Nhóm, tỉ lệ và trang mỗi người nhận', 'Group, share and Pages per person')}</div>
@@ -125,6 +126,7 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted }: { token:
         {msg && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>{msg}</div>}
       </div>
 
+      </>}
       {/* Scoreboard */}
       <div>
         <div style={{ ...row, justifyContent: 'space-between' }}>
@@ -140,9 +142,9 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted }: { token:
           </div>
         )}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 720, fontSize: 12.5 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 800, fontSize: 12.5 }}>
             <thead><tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
-              {[T('Nhân viên', 'Person'), T('Nhận', 'Turns'), T('Trả lời đầu', 'First answer'), T('Đúng hạn', 'On time'), T('Bỏ turn', 'Let go'), T('Không mở', 'Not opened'), T('Không trả lời', 'No reply'), T('Bấm bỏ qua', 'Skipped'), T('Có SĐT/khách', 'With customer')].map((h) => <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', fontWeight: 700 }}>{h}</th>)}
+              {[T('Nhân viên', 'Person'), T('Nhận', 'Turns'), T('Trả lời đầu', 'First answer'), T('Đúng hạn', 'On time'), T('Bỏ turn', 'Let go'), T('Không mở', 'Not opened'), T('Không trả lời', 'No reply'), T('Bấm bỏ qua', 'Skipped'), T('Có SĐT/khách', 'With customer'), T('Đã đặt lịch', 'Booked')].map((h) => <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', fontWeight: 700 }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {(board?.scores ?? []).map((s) => (
@@ -156,9 +158,10 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted }: { token:
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', color: s.notReplied ? 'var(--ink-bad)' : undefined }}>{s.notReplied ?? 0}</td>
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>{s.skipped ?? 0}</td>
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>{s.withCustomer}{s.received ? ` (${Math.round((s.withCustomer * 100) / s.received)}%)` : ''}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', color: s.booked ? 'var(--ink-good)' : undefined, fontWeight: s.booked ? 700 : 400 }}>{s.booked ?? 0}{s.received && s.booked ? ` (${Math.round((s.booked * 100) / s.received)}%)` : ''}</td>
                 </tr>
               ))}
-              {board && !board.scores.length && <tr><td colSpan={9} style={{ padding: 10, color: 'var(--c94a3b8)' }}>{T('Chưa có turn nào trong khoảng này.', 'No turns in this period yet.')}</td></tr>}
+              {board && !board.scores.length && <tr><td colSpan={10} style={{ padding: 10, color: 'var(--c94a3b8)' }}>{T('Chưa có turn nào trong khoảng này.', 'No turns in this period yet.')}</td></tr>}
             </tbody>
           </table>
         </div>

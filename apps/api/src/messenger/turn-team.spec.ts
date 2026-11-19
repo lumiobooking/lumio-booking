@@ -106,3 +106,24 @@ describe('chia turn đợt 2 — one salon at a time', () => {
     await expect(s.saveTeam({ userId: 'lan', role: 'STAFF', tenantId: 'A' } as never, {})).rejects.toThrow();
   });
 });
+
+describe('rt219 — customers who booked count for the person who held them', () => {
+  it('booked is counted per person from the conversations they held', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { scoreboard } = require('./turn-team') as typeof import('./turn-team');
+    const at = (m: number) => new Date(Date.UTC(2026, 10, 19, 10, m));
+    const logs = [
+      { threadId: 't1', userId: 'lan', fromUserId: null, reason: 'round-robin', createdAt: at(0) },
+      { threadId: 't2', userId: 'lan', fromUserId: null, reason: 'round-robin', createdAt: at(1) },
+      { threadId: 't3', userId: 'bao', fromUserId: null, reason: 'round-robin', createdAt: at(2) },
+    ];
+    const facts = new Map([
+      ['t1', { id: 't1', adId: null, adAt: null, customerId: 'c1', booked: true }],
+      ['t2', { id: 't2', adId: null, adAt: null, customerId: 'c2', booked: false }],
+      ['t3', { id: 't3', adId: null, adAt: null, customerId: null }],
+    ]);
+    const s = scoreboard(logs as never, facts, () => 5);
+    expect(s.find((x) => x.userId === 'lan')).toMatchObject({ received: 2, withCustomer: 2, booked: 1 });
+    expect(s.find((x) => x.userId === 'bao')).toMatchObject({ booked: 0 });
+  });
+});

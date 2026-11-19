@@ -114,7 +114,7 @@ export function maskPhone(p: string | null | undefined): string | null {
 // ---------------------------------------------------------------- scoreboard
 
 export type LogRow = { threadId: string; userId: string | null; fromUserId: string | null; reason: string; createdAt: Date };
-export type ThreadFacts = { id: string; adId: string | null; adAt: Date | null; customerId: string | null };
+export type ThreadFacts = { id: string; adId: string | null; adAt: Date | null; customerId: string | null; booked?: boolean };
 
 export type AgentScore = {
   userId: string;
@@ -132,6 +132,8 @@ export type AgentScore = {
   skipped: number;
   /** Conversations they held that now have a customer record (phone saved / booked). */
   withCustomer: number;
+  /** rt219: of those, customers who booked (an appointment made in the period, not cancelled). */
+  booked: number;
 };
 
 const isTurn = (r: string) => r !== 'unassign' && r !== 'first-reply' && r !== 'backlog' && r !== 'opened' && r !== 'prospect' && r !== 'customer-back'; // rt211: old customers given out to follow up are not live turns
@@ -146,7 +148,7 @@ export function scoreboard(logs: LogRow[], threads: Map<string, ThreadFacts>, li
   const by = new Map<string, AgentScore & { secs: number[]; onTime: number; heldThreads: Set<string> }>();
   const get = (id: string) => {
     let s = by.get(id);
-    if (!s) { s = { userId: id, received: 0, answered: 0, medianSec: null, onTimePct: null, lost: 0, notOpened: 0, notReplied: 0, skipped: 0, withCustomer: 0, secs: [], onTime: 0, heldThreads: new Set() }; by.set(id, s); }
+    if (!s) { s = { userId: id, received: 0, answered: 0, medianSec: null, onTimePct: null, lost: 0, notOpened: 0, notReplied: 0, skipped: 0, withCustomer: 0, booked: 0, secs: [], onTime: 0, heldThreads: new Set() }; by.set(id, s); }
     return s;
   };
   const open = new Map<string, { userId: string; at: number }>(); // per thread: the turn in progress
@@ -180,11 +182,12 @@ export function scoreboard(logs: LogRow[], threads: Map<string, ThreadFacts>, li
     const secs = [...s.secs].sort((a, b) => a - b);
     const med = secs.length ? secs[Math.floor((secs.length - 1) / 2)] : null;
     let withCustomer = 0;
-    for (const id of s.heldThreads) if (threads.get(id)?.customerId) withCustomer += 1;
+    let booked = 0;
+    for (const id of s.heldThreads) { const f = threads.get(id); if (f?.customerId) withCustomer += 1; if (f?.booked) booked += 1; }
     return {
       userId: s.userId, received: s.received, answered: s.answered, medianSec: med,
       onTimePct: s.received ? Math.round((s.onTime * 100) / s.received) : null,
-      lost: s.lost, notOpened: s.notOpened, notReplied: s.notReplied, skipped: s.skipped, withCustomer,
+      lost: s.lost, notOpened: s.notOpened, notReplied: s.notReplied, skipped: s.skipped, withCustomer, booked,
     };
   }).sort((a, b) => b.received - a.received);
 }

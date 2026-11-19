@@ -672,6 +672,10 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const logs = await this.db.chatAssignmentLog?.findMany({ where: { tenantId, createdAt: { gte: since } }, select: { threadId: true, userId: true, fromUserId: true, reason: true, createdAt: true }, orderBy: { createdAt: 'asc' }, take: 5000 }).catch(() => []) as LogRow[] ?? [];
     const threadIds = Array.from(new Set(logs.map((l) => l.threadId)));
     const rows = threadIds.length ? await this.db.messengerThread.findMany({ where: { tenantId, id: { in: threadIds } }, select: { id: true, adId: true, adAt: true, customerId: true } }).catch(() => []) as ThreadFacts[] : [];
+    // rt219: which of those customers booked in the period (not cancelled) — the result that counts.
+    const custIds = [...new Set(rows.map((t) => t.customerId).filter(Boolean) as string[])];
+    const bookedCust = custIds.length ? new Set((await this.db.appointment?.groupBy({ by: ['customerId'], where: { tenantId, customerId: { in: custIds }, createdAt: { gte: since }, status: { notIn: ['CANCELLED', 'REJECTED'] } } }).catch(() => []) ?? []).map((r: { customerId: string }) => r.customerId)) : new Set<string>();
+    for (const t of rows) t.booked = !!t.customerId && bookedCust.has(t.customerId);
     const facts = new Map(rows.map((t) => [t.id, t]));
     const limit = (t: ThreadFacts | undefined) => (t ? unrepliedMinsFor(t, set, now) : set.reassignUnrepliedMins);
     const scores = scoreboard(logs, facts, limit);

@@ -1173,21 +1173,37 @@ export function InboxView() {
   // then 200). Only the drawing is held back: the list draws 200 rows and
   // draws more as it is scrolled, so a shop with thousands stays smooth.
   const moreRef = useRef<HTMLDivElement | null>(null);
+  const drawCapRef = useRef(200);
   const loadMoreRef = useRef(loadMore);
   loadMoreRef.current = loadMore;
   const MAX_ROWS = 10000;
+  // rt219 — "khi nhân viên vào hệ thống không load nội dung cũ, chỉ load nội
+  // dung mới để tránh chậm và treo". Only the owner on a computer pulls the
+  // whole history in the background (for exact counts). A team member, and
+  // anyone on a phone, gets the newest 100 and the next page only when they
+  // scroll to the end — the old conversations stay on the server until asked
+  // for, and the search still looks through all of them.
+  const bulk = mayEditNudge && !narrow;
   const canMore = loaded && paged.length >= 100 && paged.length < MAX_ROWS && moreState === 'idle' && !prospectMode;
   useEffect(() => {
-    if (!canMore) return;
+    if (!canMore || !bulk) return;
     const t = window.setTimeout(() => void loadMoreRef.current(), 250);
     return () => window.clearTimeout(t);
-  }, [canMore, paged.length]);
+  }, [canMore, bulk, paged.length]);
+  const canMoreRef = useRef(false);
+  canMoreRef.current = canMore && !bulk && drawCapRef.current >= rows.length;
   const [drawCap, setDrawCap] = useState(200);
+  drawCapRef.current = drawCap;
   useEffect(() => { setDrawCap(200); }, [queue, filter, query, prospectMode, source, labelId]);
   useEffect(() => {
     const el = moreRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) setDrawCap((c) => c + 200); }, { rootMargin: '600px 0px' });
+    const io = new IntersectionObserver((ents) => {
+      if (!ents.some((e) => e.isIntersecting)) return;
+      setDrawCap((c) => c + 200);
+      // Scrolled to the end of what is here: the next page (phones and staff).
+      if (canMoreRef.current) void loadMoreRef.current();
+    }, { rootMargin: '600px 0px' });
     io.observe(el);
     return () => io.disconnect();
   }, [drawCap]);
@@ -1823,7 +1839,9 @@ export function InboxView() {
                 ? (vi ? `Đã tìm trong toàn bộ ${total!.toLocaleString('vi-VN')} hội thoại` : `Searched all ${total} conversations`)
                 : moreState === 'end' || paged.length >= (total ?? 0)
                   ? (vi ? `Đủ ${total!.toLocaleString('vi-VN')} hội thoại` : `All ${total} conversations`)
-                  : (vi ? `Đang tải… ${Math.min(paged.length, total!).toLocaleString('vi-VN')} / ${total!.toLocaleString('vi-VN')} hội thoại` : `Loading… ${Math.min(paged.length, total!)} of ${total}`)}
+                  : !bulk
+                    ? (vi ? `Đang hiện ${Math.min(paged.length, total!).toLocaleString('vi-VN')} tin mới nhất / ${total!.toLocaleString('vi-VN')} — kéo xuống để xem cũ hơn, hoặc gõ tìm` : `Newest ${Math.min(paged.length, total!)} of ${total} — scroll for older, or search`)
+                    : (vi ? `Đang tải… ${Math.min(paged.length, total!).toLocaleString('vi-VN')} / ${total!.toLocaleString('vi-VN')} hội thoại` : `Loading… ${Math.min(paged.length, total!)} of ${total}`)}
           </span>
         )}
         <div ref={moreRef} aria-hidden style={{ height: 1, flexShrink: 0 }} />

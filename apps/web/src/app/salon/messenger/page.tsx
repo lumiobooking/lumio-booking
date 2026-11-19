@@ -13,6 +13,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { ChatTurnsPanel } from '../../../components/ChatTurnsPanel';
 import { ProspectsBoard } from '../../../components/ProspectsBoard';
+import { TeamStats } from '../../../components/TeamStats';
 import { useLang } from '../../../lib/i18n';
 import { AiNotesBox } from '../../../components/AiNotesBox';
 import { FollowUpBox } from '../../../components/FollowUpBox';
@@ -697,6 +698,7 @@ function Inner() {
     { key: 'overview', label: L('Tổng quan', 'Overview'), count: 0, tone: 'idle' },
     { key: 'reply', label: salesBot ? L('Cách trả lời', 'How it replies') : L('Chế độ trả lời', 'Reply mode'), count: 0, tone: 'idle' },
     { key: 'turns', label: L('Chia turn', 'Chat turns'), count: 0, tone: 'idle' },
+    { key: 'team', label: L('Hiệu quả nhân viên', 'Team performance'), count: 0, tone: 'idle' },
     ...(salesBot ? [{ key: 'know' as TabKey, label: L('Kiến thức', 'Knowledge'), count: gapsOpen, tone: 'warn' as Tone }] : []),
     // rt218: always there — every salon has customers who left a phone or an email.
     { key: 'leads' as TabKey, label: L('Khách tiềm năng', 'Prospects'), count: newLeads, tone: 'ok' as Tone },
@@ -1298,6 +1300,15 @@ function Inner() {
         </div>
       )}
 
+      {/* rt219: "xem thống kê và báo cáo hiệu quả làm việc của nhân viên ở đâu" — its own tab. */}
+      {tab === 'team' && (
+        <div style={{ ...ui.card }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ce2e8f0)', marginBottom: 4 }}>📊 {L('Hiệu quả làm việc của nhân viên', 'Team performance')}</div>
+          <p style={{ fontSize: 12.5, color: 'var(--c94a3b8)', margin: '0 0 12px', lineHeight: 1.55 }}>{L('Mỗi người nhận bao nhiêu khách, trả lời nhanh cỡ nào, bao nhiêu khách để lại số và đặt lịch, và từng lần bỏ turn / không trả lời khách. Bấm tên khách để mở cuộc trò chuyện.', 'Turns, first-answer time, customers who left a number and booked, and every turn let go.')}</p>
+          <TeamStats token={token} vi={lang === 'vi'} />
+        </div>
+      )}
+
       {tab === 'leads' && (
         <>
       <div style={{ ...ui.card }}>
@@ -1759,8 +1770,8 @@ const fbBtn: React.CSSProperties = {
 
 // ---- the status strip and the tabs ------------------------------------------
 
-type TabKey = 'overview' | 'reply' | 'turns' | 'know' | 'leads' | 'log' | 'connect';
-const TAB_KEYS: TabKey[] = ['overview', 'reply', 'turns', 'know', 'leads', 'log', 'connect'];
+type TabKey = 'overview' | 'reply' | 'turns' | 'team' | 'know' | 'leads' | 'log' | 'connect';
+const TAB_KEYS: TabKey[] = ['overview', 'reply', 'turns', 'team', 'know', 'leads', 'log', 'connect'];
 type Tone = 'ok' | 'warn' | 'bad' | 'idle';
 
 function toneStyle(tone: Tone): React.CSSProperties {

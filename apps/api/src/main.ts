@@ -1,4 +1,5 @@
 import { partnerLinkHost } from './google-book/partner-host';
+import { timingMiddleware } from './health/request-timing';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -35,6 +36,9 @@ async function bootstrap() {
   if (config.get<string>('NODE_ENV') !== 'development' && !config.get<string>('JWT_SECRET')) {
     throw new Error('JWT_SECRET must be set outside development');
   }
+
+  // rt222: time every request (route pattern only) so /api/health can say which ones are slow.
+  app.use(timingMiddleware as never);
 
   // Baseline security headers (dependency-free equivalent of the headers helmet
   // would set for a JSON API). No CSP/CORP — this API serves JSON to a

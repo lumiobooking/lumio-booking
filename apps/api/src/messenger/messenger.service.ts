@@ -1977,6 +1977,10 @@ export class MessengerService implements OnModuleInit {
    * to the database; the rows handed to the caller are already on their way out
    * and are not waiting for this.
    */
+  /** rt222: when each nameless conversation / each Page's name list was last asked of Meta. */
+  private readonly nameTried = new Map<string, number>();
+  private readonly pageNamesAt = new Map<string, number>();
+
   private async backfillSenderNames(
     rows: Array<{ id: string; senderId: string | null; senderName: string | null; pageId: string; channel: string }>,
     conn: { pageToken?: string } | null,
@@ -1993,7 +1997,14 @@ export class MessengerService implements OnModuleInit {
       // and infers these as `any`, so an implicit-any here compiles locally and
       // fails the real build. That has already cost one deploy.
       type Nameless = { id: string; senderId: string | null; senderName: string | null; pageId: string; channel: string };
-      const nameless = (rows as unknown as Nameless[]).filter((r) => !r.senderName && r.senderId);
+      // rt222: each nameless conversation is asked about at most once an hour,
+      // each Page's name list at most once per 10 minutes. It used to run on
+      // EVERY list load while any row stayed nameless (a deleted Facebook
+      // user never gets a name) — a Graph sweep per refresh, every few seconds.
+      const nowMs = Date.now();
+      const nameless = (rows as unknown as Nameless[]).filter((r) => !r.senderName && r.senderId && nowMs - (this.nameTried.get(r.id) ?? 0) > 3600_000);
+      for (const r of nameless) this.nameTried.set(r.id, nowMs);
+      if (this.nameTried.size > 20_000) this.nameTried.clear();
       // Zalo rows are named by their own profile API, one call each — Graph
       // knows nothing about an OA's users, and asking it would only fail slowly.
       for (const r of nameless.filter((x) => x.channel === 'zalo').slice(0, 10)) {
@@ -2012,6 +2023,8 @@ export class MessengerService implements OnModuleInit {
           if (pid) byPage.set(pid, r.channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER');
         }
         for (const [pid, platform] of byPage) {
+          if (nowMs - (this.pageNamesAt.get(pid) ?? 0) < 600_000) continue;
+          this.pageNamesAt.set(pid, nowMs);
           const pg = await this.prisma.messengerPage.findUnique({ where: { pageId: pid }, select: { pageToken: true } }).catch(() => null);
           const tok = pg?.pageToken || (conn as { pageToken?: string } | null)?.pageToken;
           if (!tok) continue;

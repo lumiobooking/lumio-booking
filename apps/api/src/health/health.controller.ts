@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { timingReport } from './request-timing';
 import { PrismaService } from '../prisma/prisma.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { aiHealthReport, sharedAiHealth } from '../messenger/ai-health';
@@ -99,6 +100,8 @@ export class HealthController {
        */
       ai: aiHealthReport(sharedAiHealth(), Boolean(process.env.ANTHROPIC_API_KEY)),
       startedAt: START_TIME,
+      // rt222: which routes were slow in the last 10 minutes, and whether the process itself stalled.
+      perf: timingReport(),
       timestamp: new Date().toISOString(),
     };
   }

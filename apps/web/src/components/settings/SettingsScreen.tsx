@@ -19,6 +19,7 @@ import type { ReceiptDesign } from '../../lib/receipt';
 import { ind } from '../../lib/ui-industry';
 import { CartTemplatePicker } from '../CartTemplatePicker';
 import { VietQrSetup } from './VietQrSetup';
+import { BankFeedBox } from './BankFeedBox';
 import { bankLabel } from '../../lib/vietqr';
 import { isZeroDecimalCurrency } from '../../lib/money';
 
@@ -608,6 +609,7 @@ function previewPrice(amount: number, currency: string, symbol: string, position
 
 function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const { lang } = useLang();
+  const { token } = useAuth();
   // The salon's own country, not the browser's language: an owner reading the
   // English labels in Hanoi still runs a Vietnamese salon.
   const isVN = marketIsVN(data.market);
@@ -666,7 +668,17 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         defaultOpen={isVN && !data.pos?.bankAccount}
       >
         {isVN
-          ? <VietQrSetup key={data.pos?.bankAccount ? `${data.pos.bankAccount.bin}-${data.pos.bankAccount.accountNo}` : 'none'} shopName={data.company?.name ?? ''} pos={data.pos} methods={(data.pos?.resolvedPaymentMethods ?? []).filter((m) => m !== 'CASH' && m !== 'CARD')} vi={lang === 'vi'} onSave={onSave} />
+          ? (
+            <>
+              <VietQrSetup key={data.pos?.bankAccount ? `${data.pos.bankAccount.bin}-${data.pos.bankAccount.accountNo}` : 'none'} shopName={data.company?.name ?? ''} pos={data.pos} methods={(data.pos?.resolvedPaymentMethods ?? []).filter((m) => m !== 'CASH' && m !== 'CARD')} vi={lang === 'vi'} onSave={onSave} />
+              <div style={{ marginTop: 14 }}>
+                <BankFeedBox vi={lang === 'vi'} token={token ?? null} />
+                <p style={{ margin: '6px 2px 0', fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+                  {lang === 'vi' ? 'Nối rồi thì tiền khách chuyển với mã bill (LM…) hiện ngay trên quầy thu ngân, và tiền cọc với mã gửi trong chat (LB…) hiện cạnh cuộc trò chuyện trong Hộp thư.' : 'Once connected, transfers with a bill code (LM…) show on the till, and chat deposit codes (LB…) show beside the conversation in the Inbox.'}
+                </p>
+              </div>
+            </>
+          )
           : <BankTransferConfig data={data} onSave={onSave} />}
       </Panel>
     </>

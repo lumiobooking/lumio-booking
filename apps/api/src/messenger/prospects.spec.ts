@@ -178,3 +178,59 @@ describe('rt216 — the list of turns let go: per salon, staff see only their ow
     expect(r.waitedTooLong).toBeNull();
   });
 });
+
+describe('rt217 — the one who follows up owns the customer', () => {
+  function world(holder: string | null, holderReplied = false) {
+    const t = { id: 't1', tenantId: 'A', assignedUserId: holder, assignedAt: new Date(Date.now() - 3600_000) as Date | null, assignHops: 0 };
+    const logs: Record<string, unknown>[] = [];
+    const prisma = {
+      messengerThread: {
+        updateMany: jest.fn(async ({ where, data }: { where: { id: string; tenantId: string; assignedUserId?: string | null }; data: Record<string, unknown> }) => {
+          if (where.id !== t.id || where.tenantId !== t.tenantId || (where.assignedUserId !== undefined && where.assignedUserId !== t.assignedUserId)) return { count: 0 };
+          Object.assign(t, data); return { count: 1 };
+        }),
+        findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) => (where.id === t.id && where.tenantId === t.tenantId ? t : null)),
+      },
+      chatAssignmentLog: {
+        findFirst: jest.fn(async () => (holderReplied ? { id: 'x' } : null)),
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => { logs.push(data); return {}; }),
+      },
+    };
+    return { svc: new ChatTurnsService(prisma as never, { publish: jest.fn() } as never), t, logs };
+  }
+
+  it('replying to a customer nobody holds makes them yours as a follow-up (no timer passes it on)', async () => {
+    const { svc, t } = world(null);
+    await svc.claimIfFree('A', 't1', 'nhi', 'STAFF');
+    expect(t).toMatchObject({ assignedUserId: 'nhi', assignHops: 99 });
+  });
+
+  it('following up a customer the holder never answered moves it to you', async () => {
+    const { svc, t, logs } = world('trang', false);
+    await svc.claimIfFree('A', 't1', 'nhi', 'STAFF');
+    expect(t).toMatchObject({ assignedUserId: 'nhi', assignHops: 99 });
+    expect(logs[0]).toMatchObject({ reason: 'took-by-reply', fromUserId: 'trang', userId: 'nhi' });
+  });
+
+  it('a customer the holder is working stays theirs; the owner helping out takes nothing; another salon touches nothing', async () => {
+    const a = world('trang', true);
+    await a.svc.claimIfFree('A', 't1', 'nhi', 'STAFF');
+    expect(a.t.assignedUserId).toBe('trang');
+    const b = world('trang', false);
+    await b.svc.claimIfFree('A', 't1', 'owner', 'SALON_ADMIN');
+    expect(b.t.assignedUserId).toBe('trang');
+    const c = world('trang', false);
+    await c.svc.claimIfFree('B', 't1', 'bao', 'STAFF');
+    expect(c.t.assignedUserId).toBe('trang');
+  });
+
+  it('a follow-up becomes a live turn again only when the customer writes back', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { reassignDue } = require('./chat-assignment') as typeof import('./chat-assignment');
+    const old = new Date(Date.now() - 3600_000);
+    const R = { unreadMins: 3, unrepliedMins: 5, maxHops: 3 };
+    expect(reassignDue({ status: 'open', assignedUserId: 'nhi', assignedAt: old, assignHops: 99 }, R)).toBeNull();
+    // Someone who answered obviously opened it.
+    expect(reassignDue({ status: 'open', assignedUserId: 'nhi', assignedAt: old, assignHops: 0, handoffAt: new Date() }, R)).toBeNull();
+  });
+});

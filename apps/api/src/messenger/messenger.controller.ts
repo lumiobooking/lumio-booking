@@ -282,8 +282,8 @@ export class MessengerController {
 
   @Roles(...INBOX_ROLES)
   @Get('threads')
-  threads(@CurrentUser() user: AuthenticatedUser, @Query('before') before?: string, @Query('take') take?: string, @Query('q') q?: string, @Query('prospects') prospects?: string, @Query('days') days?: string) {
-    return this.svc.listThreads(user, { before: before || undefined, take: take ? Number(take) : undefined, q: q ? String(q).slice(0, 120) : undefined, prospects: prospects === '1', days: days ? Number(days) : undefined });
+  threads(@CurrentUser() user: AuthenticatedUser, @Query('before') before?: string, @Query('take') take?: string, @Query('q') q?: string, @Query('prospects') prospects?: string, @Query('days') days?: string, @Query('beforeId') beforeId?: string) {
+    return this.svc.listThreads(user, { before: before || undefined, beforeId: beforeId ? String(beforeId).slice(0, 64) : undefined, take: take ? Number(take) : undefined, q: q ? String(q).slice(0, 120) : undefined, prospects: prospects === '1', days: days ? Number(days) : undefined });
   }
 
   /** rt215 — the owner gives every unheld prospect (left a phone, never booked) to the team. */

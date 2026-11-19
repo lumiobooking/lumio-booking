@@ -376,11 +376,37 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
    * next customer line does not go to someone else). Never moves one that
    * someone holds. Never throws.
    */
-  async claimIfFree(tenantId: string, threadId: string, userId: string): Promise<void> {
+  async claimIfFree(tenantId: string, threadId: string, userId: string, role?: string): Promise<void> {
     try {
-      const r = await this.db.messengerThread.updateMany({ where: { id: threadId, tenantId, assignedUserId: null }, data: { assignedUserId: userId, assignedAt: new Date(), assignHops: 0, handoffAt: new Date() } as never });
-      // handoffAt with it: they have just answered, so the turn is not "unanswered" and is never passed on for it.
-      if (r.count) await this.db.chatAssignmentLog?.create({ data: { tenantId, threadId, userId, byUserId: userId, reason: 'took-by-reply' } }).catch(() => undefined);
+      // rt217 — "khi nhân viên chủ động follow up thì khách đó là của họ, trừ
+      // khi khách nhắn lại mà họ không trả lời thì mới vào vòng chia". A reply
+      // makes the conversation the replier's as a FOLLOW-UP (assignHops 99):
+      // no timer passes it on while they are working it. When the customer
+      // writes back, noteCustomer starts a live turn with the clock — and only
+      // then, if they do not answer, it goes round the team.
+      const now = new Date();
+      const r = await this.db.messengerThread.updateMany({ where: { id: threadId, tenantId, assignedUserId: null }, data: { assignedUserId: userId, assignedAt: now, assignHops: 99, handoffAt: now } as never });
+      if (r.count) {
+        await this.db.chatAssignmentLog?.create({ data: { tenantId, threadId, userId, byUserId: userId, reason: 'took-by-reply' } }).catch(() => undefined);
+        return;
+      }
+      // Held by someone else. A team member (not the owner helping out) who
+      // follows up a customer the holder has not answered on this turn takes
+      // it over: they did the work. One the holder IS working stays theirs.
+      if (role && role !== 'STAFF') return;
+      const t = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { assignedUserId: true, assignedAt: true } }) as { assignedUserId: string | null; assignedAt: Date | null } | null;
+      if (!t?.assignedUserId || t.assignedUserId === userId) {
+        // Their own: a reply on a follow-up keeps it a follow-up (nothing to do).
+        return;
+      }
+      const worked = await this.db.chatAssignmentLog?.findFirst({ where: { tenantId, threadId, userId: t.assignedUserId, reason: 'first-reply', ...(t.assignedAt ? { createdAt: { gte: t.assignedAt } } : {}) }, select: { id: true } }).catch(() => null);
+      if (worked) return;
+      const holder = t.assignedUserId;
+      const moved = await this.db.messengerThread.updateMany({ where: { id: threadId, tenantId, assignedUserId: holder, assignedAt: t.assignedAt }, data: { assignedUserId: userId, assignedAt: now, assignHops: 99, handoffAt: now } as never });
+      if (moved.count) {
+        await this.db.chatAssignmentLog?.create({ data: { tenantId, threadId, userId, fromUserId: holder, byUserId: userId, reason: 'took-by-reply' } }).catch(() => undefined);
+        this.events.publish(tenantId, 'thread');
+      }
     } catch { /* never break a reply */ }
   }
 

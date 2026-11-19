@@ -1763,7 +1763,7 @@ export class MessengerService implements OnModuleInit {
     return { total };
   }
 
-  async listThreads(user: AuthenticatedUser, opts: { before?: string; take?: number; q?: string; prospects?: boolean; days?: number } = {}) {
+  async listThreads(user: AuthenticatedUser, opts: { before?: string; beforeId?: string; take?: number; q?: string; prospects?: boolean; days?: number } = {}) {
     const tenantId = this.tenantId(user);
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
     const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? DEFAULT_ACTIVE_MINS;
@@ -1786,8 +1786,22 @@ export class MessengerService implements OnModuleInit {
     const rows = await this.prisma.messengerThread.findMany({
       where: found
         ? { tenantId, id: { in: found }, ...(ownOnly ? { OR: [{ assignedUserId: user.userId }, { assignedUserId: null }] } : {}) }
-        : { tenantId, ...(ownOnly ? { OR: [{ assignedUserId: user.userId }, { assignedUserId: null }] } : {}), ...(before && !Number.isNaN(before.getTime()) ? { updatedAt: { lt: before } } : {}) },
-      orderBy: { updatedAt: 'desc' }, take: prospects ? 300 : take,
+        : {
+          tenantId,
+          AND: [
+            ...(ownOnly ? [{ OR: [{ assignedUserId: user.userId }, { assignedUserId: null }] }] : []),
+            // rt217: the cursor is (updatedAt, id). By time alone, conversations
+            // stamped in the same instant (the bulk pull of old Meta chats
+            // writes hundreds at once) fell between two pages and the list
+            // stopped at 100 / 200.
+            ...(before && !Number.isNaN(before.getTime())
+              ? [opts.beforeId
+                ? { OR: [{ updatedAt: { lt: before } }, { updatedAt: before, id: { lt: String(opts.beforeId) } }] }
+                : { updatedAt: { lt: before } }]
+              : []),
+          ],
+        },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: prospects ? 300 : take,
       select: {
         id: true, senderId: true, senderName: true, lastText: true, handoff: true, pageId: true,
         updatedAt: true, channel: true,
@@ -2767,7 +2781,7 @@ export class MessengerService implements OnModuleInit {
           handoff: true, handoffAt: new Date(),
         } as never,
       });
-      await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId, user.supportSession ? 'SUPPORT' : String(user.role)); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, messageId: null, recipientId: thread.senderId, at: wAt, channel: 'web' };
     }
@@ -2792,7 +2806,7 @@ export class MessengerService implements OnModuleInit {
         } as never,
       }).catch(() => undefined);
       if (!zr.ok) throw new BadRequestException(zr.error || 'Zalo từ chối tin nhắn (có thể đã quá cửa sổ trả lời).');
-      await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId, user.supportSession ? 'SUPPORT' : String(user.role)); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, messageId: null, recipientId: thread.senderId, at: zAt, channel: 'zalo' };
     }
@@ -2916,7 +2930,7 @@ export class MessengerService implements OnModuleInit {
       where: { id: thread.id, tenantId },
       data: { handoff: true, handoffAt: new Date() } as never,
     }).catch(() => undefined);
-    await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+    await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId, user.supportSession ? 'SUPPORT' : String(user.role)); void this.turns?.noteReply(tenantId, thread.id, user.userId);
     const ch = ((thread as unknown as { channel?: string }).channel === 'instagram') ? 'instagram' : 'messenger';
     return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: sentAtIso, channel: ch };
   }
@@ -2993,7 +3007,7 @@ export class MessengerService implements OnModuleInit {
     };
     if (web) {
       const at = await record({}, true);
-      await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId, user.supportSession ? 'SUPPORT' : String(user.role)); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, at, channel: 'web', url };
     }
@@ -3004,7 +3018,7 @@ export class MessengerService implements OnModuleInit {
       const zr = await sendZaloImage(sendToken, thread.senderId, url);
       const at = await record(zr.ok ? {} : { failed: true }, zr.ok);
       if (!zr.ok) throw new BadRequestException(zr.error || 'Zalo từ chối ảnh (có thể đã quá cửa sổ trả lời).');
-      await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId, user.supportSession ? 'SUPPORT' : String(user.role)); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, at, channel: 'zalo', url };
     }
@@ -3030,7 +3044,7 @@ export class MessengerService implements OnModuleInit {
       throw new BadRequestException(out.error?.message || 'Facebook rejected the photo (the messaging window may have closed).');
     }
     const at = await record({ messageId: out.message_id || null }, true);
-    await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+    await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId, user.supportSession ? 'SUPPORT' : String(user.role)); void this.turns?.noteReply(tenantId, thread.id, user.userId);
     this.events.publish(tenantId, 'message');
     return { ok: true as const, at, channel: channel === 'instagram' ? 'instagram' : 'messenger', url };
   }

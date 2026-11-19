@@ -1077,14 +1077,15 @@ export function InboxView() {
   /** The next hundred conversations older than the oldest one on screen. */
   async function loadMore() {
     if (!token || moreState === 'loading') return;
-    const oldest = paged.reduce<string | null>((m, r) => (!m || r.updatedAt < m ? r.updatedAt : m), null);
+    // rt217: the cursor is the oldest row by (time, id) — see the server's listThreads.
+    const oldest = paged.reduce<InboxRow | null>((m, r) => (!m || r.updatedAt < m.updatedAt || (r.updatedAt === m.updatedAt && r.id < m.id) ? r : m), null);
     if (!oldest) return;
     setMoreState('loading');
     try {
-      const r = await apiFetch<InboxRow[]>(`/messenger/threads?before=${encodeURIComponent(oldest)}&take=100`, { token });
+      const r = await apiFetch<InboxRow[]>(`/messenger/threads?before=${encodeURIComponent(oldest.updatedAt)}&beforeId=${encodeURIComponent(oldest.id)}&take=200`, { token });
       const page = Array.isArray(r) ? r : [];
       setOlder((cur) => { const seen = new Set(cur.map((x) => x.id)); return [...cur, ...page.filter((x) => !seen.has(x.id))]; });
-      setMoreState(page.length < 100 ? 'end' : 'idle');
+      setMoreState(page.length < 200 ? 'end' : 'idle');
     } catch (e) { setErr(String(e)); setMoreState('idle'); }
   }
 
@@ -1155,17 +1156,30 @@ export function InboxView() {
     } catch (e) { setProspectMsg(String(e).replace(/^Error:\s*/, '')); } finally { setBusy(false); }
   }
 
+  // rt217 — "vẫn kẹt ở con số 100 và 200". The rest now loads by itself in
+  // the background, 200 at a time, until every conversation is here (the
+  // counts on the left are counted from what is loaded, so they were 100,
+  // then 200). Only the drawing is held back: the list draws 200 rows and
+  // draws more as it is scrolled, so a shop with thousands stays smooth.
   const moreRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef(loadMore);
   loadMoreRef.current = loadMore;
-  const canMore = loaded && paged.length >= 100 && moreState === 'idle' && !query.trim() && !prospectMode;
+  const MAX_ROWS = 10000;
+  const canMore = loaded && paged.length >= 100 && paged.length < MAX_ROWS && moreState === 'idle' && !prospectMode;
+  useEffect(() => {
+    if (!canMore) return;
+    const t = window.setTimeout(() => void loadMoreRef.current(), 250);
+    return () => window.clearTimeout(t);
+  }, [canMore, paged.length]);
+  const [drawCap, setDrawCap] = useState(200);
+  useEffect(() => { setDrawCap(200); }, [queue, filter, query, prospectMode, source, labelId]);
   useEffect(() => {
     const el = moreRef.current;
-    if (!el || !canMore || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) void loadMoreRef.current(); }, { rootMargin: '400px 0px' });
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) setDrawCap((c) => c + 200); }, { rootMargin: '600px 0px' });
     io.observe(el);
     return () => io.disconnect();
-  }, [canMore, paged.length]);
+  }, [drawCap]);
 
   /** Clear every unread mark in the shop, then repaint from the server. */
   async function markAllRead() {
@@ -1491,7 +1505,7 @@ export function InboxView() {
       ))}
       {queueItem('mine', railCount(counts.mine))}
       {queueItem('done', railCount(counts.done))}
-      {queueItem('all', railCount(counts.all))}
+      {queueItem('all', railCount(!prospectMode && !query.trim() && source === 'any' && total != null ? Math.max(counts.all, total) : counts.all))}
       {(counts.spam > 0 || queue === 'spam') && queueItem('spam', railCount(counts.spam))}
       </>) : (<>
             {sectionHead(vi ? 'Hộp thư' : 'Inbox')}
@@ -1769,19 +1783,19 @@ export function InboxView() {
         {loaded && queue === 'needs' && sorted.length > 0 && !sections.some((x) => x.key === 'needs') && (
           <span style={{ margin: narrow ? '4px 0 6px' : '10px 12px 2px', padding: '9px 12px', borderRadius: 10, background: 'var(--c064e3b)', color: 'var(--ink-good)', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{vi ? 'Không ai đang chờ người trả lời.' : 'Nobody is waiting for a person.'}</span>
         )}
-        {sections.map((sec) => (
+        {(() => { let left = drawCap; return sections.map((sec) => { const take = Math.max(0, Math.min(sec.rows.length, left)); left -= take; return { ...sec, shown: sec.rows.slice(0, take) }; }); })().map((sec) => (
           <Fragment key={sec.key}>
             {sec.key === 'needs' && sectionHead(vi ? `Cần trả lời · chờ lâu nhất ở trên` : `Needs a reply · longest wait first`, 'warn')}
             {sec.key === 'ai' && sectionHead(vi ? 'AI đang lo · không cần làm gì' : 'The AI has these · nothing to do')}
             {sec.key === 'rest' && (queue === 'all' ? sectionHead(vi ? `Đã trả lời / đã xong · ${sec.rows.length}` : `Answered / done · ${sec.rows.length}`) : sectionHead(`${queueName(queue)} · ${sec.rows.length}`))}
-            {sec.rows.map(rowView)}
+            {sec.shown.map(rowView)}
           </Fragment>
         ))}
         </>) : (<>
                 {waitingRows.length > 0 && sectionHead(vi ? `Đang chờ người thật · ${waitingRows.length}` : `Waiting for a person · ${waitingRows.length}`, 'warn')}
-        {waitingRows.map(rowView)}
+        {waitingRows.slice(0, drawCap).map(rowView)}
         {restRows.length > 0 && filter !== 'waiting' && sectionHead(waitingRows.length ? (vi ? `Còn lại · ${restRows.length}` : `Everything else · ${restRows.length}`) : (vi ? `${restRows.length} hội thoại` : `${restRows.length} conversations`))}
-        {filter !== 'waiting' && restRows.map(rowView)}
+        {filter !== 'waiting' && restRows.slice(0, Math.max(0, drawCap - waitingRows.length)).map(rowView)}
         </>)}
         {loaded && !prospectMode && (total !== null || searching) && (
           <span style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--c64748b)', padding: '6px 0 2px' }}>
@@ -1789,7 +1803,9 @@ export function InboxView() {
               ? (vi ? 'Đang tìm trong toàn bộ hội thoại…' : 'Searching every conversation…')
               : query.trim()
                 ? (vi ? `Đã tìm trong toàn bộ ${total!.toLocaleString('vi-VN')} hội thoại` : `Searched all ${total} conversations`)
-                : (vi ? `Đang hiện ${Math.min(paged.length, total!).toLocaleString('vi-VN')} / ${total!.toLocaleString('vi-VN')} hội thoại` : `Showing ${Math.min(paged.length, total!)} of ${total}`)}
+                : moreState === 'end' || paged.length >= (total ?? 0)
+                  ? (vi ? `Đủ ${total!.toLocaleString('vi-VN')} hội thoại` : `All ${total} conversations`)
+                  : (vi ? `Đang tải… ${Math.min(paged.length, total!).toLocaleString('vi-VN')} / ${total!.toLocaleString('vi-VN')} hội thoại` : `Loading… ${Math.min(paged.length, total!)} of ${total}`)}
           </span>
         )}
         <div ref={moreRef} aria-hidden style={{ height: 1, flexShrink: 0 }} />

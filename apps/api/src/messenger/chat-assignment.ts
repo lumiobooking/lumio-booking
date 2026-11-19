@@ -246,7 +246,8 @@ export function reassignDue(t: {
   if (!Number.isFinite(at)) return null;
   const age = now.getTime() - at;
   const after = (v: Date | string | null | undefined) => (v ? new Date(v).getTime() >= at : false);
-  if (rules.unreadMins > 0 && age >= rules.unreadMins * 60_000 && !after(t.readAt)) return 'reassign-unread';
+  // rt217: someone who already answered obviously opened it.
+  if (rules.unreadMins > 0 && age >= rules.unreadMins * 60_000 && !after(t.readAt) && !after(t.handoffAt)) return 'reassign-unread';
   if (rules.unrepliedMins > 0 && age >= rules.unrepliedMins * 60_000 && !after(t.handoffAt)) return 'reassign-unreplied';
   return null;
 }

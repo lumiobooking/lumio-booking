@@ -38,6 +38,9 @@ export default function SignupPage() {
     const p = new URLSearchParams(window.location.search);
     if (p.get('interval') === 'year') setInterval('year');
     if (p.get('canceled')) setCanceled(true);
+    // Coming from the sign-in card's “+” (salon name and email typed there).
+    const salon = (p.get('salon') ?? '').slice(0, 120); const mail = (p.get('email') ?? '').slice(0, 200);
+    if (salon || mail) setForm((f) => ({ ...f, salonName: salon || f.salonName, email: mail || f.email }));
     const wantPlan = p.get('plan');
     fetch(`${API_URL}/public/plans`).then((r) => r.json()).then((d: PublicPlan[]) => {
       if (!Array.isArray(d)) return;

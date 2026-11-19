@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
 import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 import { UserRole } from '@prisma/client';
@@ -11,7 +11,7 @@ import { StaffAlertsService } from './staff-alerts.service';
 
 export class ChatTurnSettingsDto {
   @IsOptional() @IsIn(['off', 'round-robin']) mode?: 'off' | 'round-robin';
-  @IsOptional() @IsIn(['strict', 'least-busy']) rotation?: 'strict' | 'least-busy';
+  @IsOptional() @IsIn(['strict', 'least-busy', 'weighted']) rotation?: 'strict' | 'least-busy' | 'weighted';
   @IsOptional() @IsBoolean() botFirst?: boolean;
   @IsOptional() @IsBoolean() needStatus?: boolean;
   @IsOptional() @IsBoolean() needShift?: boolean;
@@ -61,6 +61,26 @@ export class ChatTurnsController {
   @Post('turns/messenger/unlink')
   messengerUnlink(@CurrentUser() user: AuthenticatedUser) {
     return this.alerts.unlink(user);
+  }
+
+  /** Groups, weights, Pages per person and the Inbox permissions (đợt 2). Reading: the team; saving: the owner. */
+  @Get('turns/team')
+  team(@CurrentUser() user: AuthenticatedUser) {
+    return this.turns.team(user);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('messengerAi')
+  @Post('turns/team')
+  saveTeam(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) {
+    return this.turns.saveTeam(user, dto);
+  }
+
+  /** The scoreboard (đợt 3): the owner sees everyone, staff only their own row. */
+  @Get('turns/scoreboard')
+  scoreboard(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string) {
+    return this.turns.scoreboardView(user, Number(days) || 1);
   }
 
   @Get('turns')

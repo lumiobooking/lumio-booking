@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 import { ind } from '../lib/ui-industry';
+import { TurnTeamPanel } from './TurnTeamPanel';
 
 /**
  * Chat turns ("chia turn") — the salon admin's rules for handing each new
@@ -15,7 +16,7 @@ import { ind } from '../lib/ui-industry';
 
 export interface TurnSettings {
   mode: 'off' | 'round-robin';
-  rotation: 'strict' | 'least-busy';
+  rotation: 'strict' | 'least-busy' | 'weighted';
   botFirst: boolean;
   needStatus: boolean;
   needShift: boolean;
@@ -147,6 +148,7 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
               <select value={s.rotation} disabled={!edit || busy} onChange={(e) => void save({ rotation: e.target.value as TurnSettings['rotation'] })} style={ui.input}>
                 <option value="strict">{T('Xoay vòng lần lượt A → B → C', 'Strict turns A → B → C')}</option>
                 <option value="least-busy">{T('Ai ít hội thoại nhất nhận trước', 'Whoever holds the fewest')}</option>
+                <option value="weighted">{T('Theo tỉ lệ % từng người', 'By each person’s share (%)')}</option>
               </select>
             </div>
             <div>
@@ -235,6 +237,9 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
               <p style={{ fontSize: 11.5, color: 'var(--c64748b)', margin: '6px 0 0' }}>{T('Đang chia cho tất cả mọi người. Bỏ tick một người để chọn danh sách riêng và sắp thứ tự lượt.', 'Everyone takes turns. Untick someone to pick your own list and set the order.')}</p>
             )}
           </div>
+
+          {/* 5b. Team, permissions, scoreboard (đợt 2 + 3) */}
+          <TurnTeamPanel token={token} vi={vi} agents={view.agents.map((a) => ({ userId: a.userId, name: a.name }))} canEdit={edit} weighted={s.rotation === 'weighted'} />
 
           {/* 6. The last turns */}
           {view.recent.length > 0 && (

@@ -7,6 +7,7 @@ import { InboxEventsService } from './inbox-events.service';
 import { isOnDuty, isOnShift, pickAgent, reassignDue, type PickReason } from './chat-assignment';
 import { StaffAlertsService } from './staff-alerts.service';
 import { escalationDue, isAdThread, unrepliedMinsFor, windowOpen } from './staff-alerts';
+import { DEFAULT_TEAM, REPORT_SENT_KEY, TEAM_KEY, adWaits, cleanTeam, nightText, pickWeighted, poolsFor, scoreboard, sourceOf, type LogRow, type TeamConfig, type ThreadFacts } from './turn-team';
 
 /**
  * Chat turns ("chia turn") — who in the salon follows up which conversation.
@@ -24,7 +25,7 @@ import { escalationDue, isAdThread, unrepliedMinsFor, windowOpen } from './staff
 
 export interface TurnSettings {
   mode: 'off' | 'round-robin';
-  rotation: 'strict' | 'least-busy';
+  rotation: 'strict' | 'least-busy' | 'weighted';
   botFirst: boolean;
   needStatus: boolean;
   needShift: boolean;
@@ -49,7 +50,7 @@ export function settingsOf(c: ConnRow): TurnSettings {
   const b = (k: string, d: boolean) => (typeof c?.[k] === 'boolean' ? (c[k] as boolean) : d);
   return {
     mode: c?.chatAssignMode === 'round-robin' ? 'round-robin' : 'off',
-    rotation: c?.chatRotation === 'least-busy' ? 'least-busy' : 'strict',
+    rotation: c?.chatRotation === 'least-busy' ? 'least-busy' : c?.chatRotation === 'weighted' ? 'weighted' : 'strict',
     botFirst: b('chatBotFirst', true),
     needStatus: b('chatNeedStatus', true),
     needShift: b('chatNeedShift', true),
@@ -151,7 +152,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const open = await this.db.messengerThread.groupBy({ by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null } }, _count: true }).catch(() => []) as { assignedUserId: string; _count: number }[];
     const openBy = new Map(open.map((r) => [r.assignedUserId, Number(r._count) || 0]));
     const since = new Date(Date.now() - 24 * 3600_000);
-    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { not: 'unassign' } }, _count: true }).catch(() => []) ?? [];
+    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: ['unassign', 'first-reply'] } }, _count: true }).catch(() => []) ?? [];
     const turnsBy = new Map<string, number>(logs.map((r: { userId: string; _count: number }) => [r.userId, Number(r._count) || 0]));
     const clock = await this.salonClock(tenantId);
     const now = new Date();
@@ -200,6 +201,10 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       const all = await this.agents(tenantId, set);
       const pool = all.filter((a) => a.inRotation);
       if (!pool.length) return null;
+      // Đợt 2: which Pages each person takes, group A first for ad customers, weights.
+      const team = await this.teamOf(tenantId);
+      const th = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { pageId: true, channel: true, adId: true, adAt: true } }).catch(() => null) as { pageId?: string | null; channel?: string | null; adId?: string | null; adAt?: Date | null } | null;
+      const pools = poolsFor(pool.map((a) => ({ userId: a.userId, onShift: a.onDuty, openThreads: a.openThreads, turnsToday: a.turnsToday })), team, { source: sourceOf(th?.pageId, th?.channel), fromAd: !!th && isAdThread(th, new Date()) });
 
       let usualUserId: string | null = null;
       if (set.preferUsualTech && customerId) {
@@ -211,13 +216,29 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         usualUserId = last?.assignedStaff?.userId ?? null;
       }
 
-      const pick = pickAgent({
-        rules: { mode: 'round-robin', rotation: set.rotation, maxOpenPerAgent: set.maxOpenPerAgent, preferUsualTech: set.preferUsualTech },
-        agents: pool.map((a) => ({ userId: a.userId, name: a.name, onShift: a.onDuty, openThreads: a.openThreads })),
-        usualUserId,
-        lastAssignedUserId: (conn?.chatLastAssignedId as string | null) ?? null,
-        excludeUserId: opts.excludeUserId ?? null,
-      });
+      let pick: { userId: string | null; reason: PickReason } = { userId: null, reason: 'nobody-on-shift' };
+      for (const cand of pools) {
+        const ids = new Set(cand.map((c) => c.userId));
+        const sub = pool.filter((a) => ids.has(a.userId));
+        if (!sub.length) continue;
+        // The usual technician still wins inside the pool, whatever the rotation.
+        const usual = set.preferUsualTech && usualUserId ? sub.find((a) => a.userId === usualUserId && a.onDuty && a.userId !== opts.excludeUserId && (set.maxOpenPerAgent <= 0 || a.openThreads < set.maxOpenPerAgent)) : null;
+        if (usual) { pick = { userId: usual.userId, reason: 'usual-technician' }; break; }
+        if (set.rotation === 'weighted') {
+          const id = pickWeighted(cand, team, set.maxOpenPerAgent, opts.excludeUserId ?? null);
+          if (id) { pick = { userId: id, reason: 'round-robin' }; break; }
+          continue;
+        }
+        const p = pickAgent({
+          rules: { mode: 'round-robin', rotation: set.rotation, maxOpenPerAgent: set.maxOpenPerAgent, preferUsualTech: false },
+          agents: sub.map((a) => ({ userId: a.userId, name: a.name, onShift: a.onDuty, openThreads: a.openThreads })),
+          usualUserId: null,
+          lastAssignedUserId: (conn?.chatLastAssignedId as string | null) ?? null,
+          excludeUserId: opts.excludeUserId ?? null,
+        });
+        if (p.userId) { pick = p; break; }
+        pick = p;
+      }
       if (!pick.userId) return null;
       await this.recordTurn(tenantId, threadId, pick.userId, opts.reason && opts.reason !== 'new' ? opts.reason : pick.reason, opts.excludeUserId ?? null, null, pick.reason === 'usual-technician' ? false : true);
       return pick.userId;
@@ -253,6 +274,92 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     void this.staff?.notifyTurn(tenantId, userId, threadId, { hop, fromAd, mins }).catch(() => undefined);
   }
 
+  // ---------------------------------------------------------------- team (đợt 2) ----
+
+  async teamOf(tenantId: string): Promise<TeamConfig> {
+    const row = await Promise.resolve().then(() => this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: TEAM_KEY } } })).catch(() => null);
+    return row ? cleanTeam(row.value) : DEFAULT_TEAM;
+  }
+
+  /** The Pages / Instagram accounts a person can be limited to, by name. */
+  private async sources(tenantId: string): Promise<{ key: string; label: string }[]> {
+    const pages = await Promise.resolve().then(() => this.prisma.messengerPage.findMany({ where: { tenantId }, select: { pageId: true, pageName: true, igId: true, igUsername: true } })).catch(() => [] as { pageId: string; pageName: string | null; igId: string | null; igUsername: string | null }[]);
+    const out: { key: string; label: string }[] = [];
+    for (const p of pages) {
+      out.push({ key: sourceOf(p.pageId, 'messenger'), label: `${p.pageName || p.pageId} · Messenger` });
+      if (p.igId) out.push({ key: sourceOf(p.pageId, 'instagram'), label: `${p.igUsername ? '@' + p.igUsername : p.pageName || p.pageId} · Instagram` });
+    }
+    return out;
+  }
+
+  async team(user: AuthenticatedUser) {
+    const tenantId = this.tenantOf(user);
+    return { team: await this.teamOf(tenantId), sources: await this.sources(tenantId) };
+  }
+
+  async saveTeam(user: AuthenticatedUser, raw: unknown) {
+    const tenantId = this.tenantOf(user);
+    if (!(user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN)) throw new ForbiddenException('Only the salon admin can change the team.');
+    // Only people of THIS salon may be put in its team.
+    const ids = await this.prisma.user.findMany({ where: { tenantId }, select: { id: true } }).catch(() => []);
+    const team = cleanTeam(raw, new Set(ids.map((u) => u.id)));
+    await this.prisma.setting.upsert({ where: { tenantId_key: { tenantId, key: TEAM_KEY } }, create: { tenantId, key: TEAM_KEY, value: team as never }, update: { value: team as never } });
+    await this.db.auditLog?.create({ data: { tenantId, userId: user.userId, action: 'messenger.turn_team_updated', resourceType: 'tenant', resourceId: tenantId } }).catch(() => undefined);
+    return this.team(user);
+  }
+
+  /**
+   * A person answered: the first answer on a turn they hold is logged, so the
+   * scoreboard can time it. Never throws.
+   */
+  async noteReply(tenantId: string, threadId: string, userId: string): Promise<void> {
+    try {
+      const t = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { assignedUserId: true, assignedAt: true } }) as { assignedUserId: string | null; assignedAt: Date | null } | null;
+      if (!t?.assignedUserId || t.assignedUserId !== userId || !t.assignedAt) return;
+      const seen = await this.db.chatAssignmentLog?.findFirst({ where: { tenantId, threadId, userId, reason: 'first-reply', createdAt: { gte: t.assignedAt } }, select: { id: true } });
+      if (seen) return;
+      await this.db.chatAssignmentLog?.create({ data: { tenantId, threadId, userId, reason: 'first-reply' } });
+    } catch { /* never break a reply */ }
+  }
+
+  /**
+   * The scoreboard for the last `days` days. The owner sees everyone; a member
+   * of staff sees only their own row.
+   */
+  async scoreboardView(user: AuthenticatedUser, daysRaw?: number) {
+    const tenantId = this.tenantOf(user);
+    const isAdmin = user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN;
+    const days = daysRaw === 7 || daysRaw === 30 ? daysRaw : 1;
+    const out = await this.computeScores(tenantId, days, new Date());
+    return { ...out, scores: isAdmin ? out.scores : out.scores.filter((s) => s.userId === user.userId), canSeeAll: isAdmin };
+  }
+
+  private async computeScores(tenantId: string, days: number, now: Date) {
+    const since = new Date(now.getTime() - days * 24 * 3600_000);
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as ConnRow;
+    const set = settingsOf(conn);
+    const team = await this.teamOf(tenantId);
+    const logs = await this.db.chatAssignmentLog?.findMany({ where: { tenantId, createdAt: { gte: since } }, select: { threadId: true, userId: true, fromUserId: true, reason: true, createdAt: true }, orderBy: { createdAt: 'asc' }, take: 5000 }).catch(() => []) as LogRow[] ?? [];
+    const threadIds = Array.from(new Set(logs.map((l) => l.threadId)));
+    const rows = threadIds.length ? await this.db.messengerThread.findMany({ where: { tenantId, id: { in: threadIds } }, select: { id: true, adId: true, adAt: true, customerId: true } }).catch(() => []) as ThreadFacts[] : [];
+    const facts = new Map(rows.map((t) => [t.id, t]));
+    const limit = (t: ThreadFacts | undefined) => (t ? unrepliedMinsFor(t, set, now) : set.reassignUnrepliedMins);
+    const scores = scoreboard(logs, facts, limit);
+    const users = await this.prisma.user.findMany({ where: { tenantId, id: { in: scores.map((s) => s.userId) } }, select: { id: true, firstName: true, lastName: true, email: true } }).catch(() => []);
+    const name = new Map(users.map((u) => [u.id, [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email]));
+    // Ad customers of the period and when each first got a human answer.
+    const adThreads = await this.db.messengerThread.findMany({ where: { tenantId, adAt: { gte: since } }, select: { id: true, adId: true, adAt: true, customerId: true }, take: 2000 }).catch(() => []) as ThreadFacts[];
+    const first = new Map<string, Date>();
+    for (const l of logs) if (l.reason === 'first-reply' && !first.has(l.threadId)) first.set(l.threadId, l.createdAt);
+    const adLimit = set.reassignAdMins > 0 ? set.reassignAdMins : set.reassignUnrepliedMins;
+    const adWaiting = adWaits(adThreads, first, adLimit, now);
+    return {
+      days, adCustomers: adThreads.length, adWaiting, adLimitMins: adLimit,
+      adMoneyCents: team.adCostCents > 0 ? adWaiting * team.adCostCents : null,
+      scores: scores.map((s) => ({ ...s, name: name.get(s.userId) ?? '—' })),
+    };
+  }
+
   // ---------------------------------------------------------------- API ----
 
   async view(user: AuthenticatedUser) {
@@ -265,7 +372,8 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       select: { id: true, threadId: true, userId: true, fromUserId: true, reason: true, createdAt: true, thread: { select: { senderName: true } } },
     }).catch(() => []) ?? [];
     const me = agents.find((a) => a.userId === user.userId) ?? null;
-    return { settings, agents, me, recent, canEdit: user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN };
+    const team = await this.teamOf(tenantId);
+    return { settings, agents, me, recent, team, sources: await this.sources(tenantId), canEdit: user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN };
   }
 
   async updateSettings(user: AuthenticatedUser, dto: Record<string, unknown>) {
@@ -277,7 +385,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     if (!conn) throw new BadRequestException('Connect a chat channel first.');
     const data: Record<string, unknown> = {};
     if (dto.mode === 'off' || dto.mode === 'round-robin') data.chatAssignMode = dto.mode;
-    if (dto.rotation === 'strict' || dto.rotation === 'least-busy') data.chatRotation = dto.rotation;
+    if (dto.rotation === 'strict' || dto.rotation === 'least-busy' || dto.rotation === 'weighted') data.chatRotation = dto.rotation;
     for (const [k, col] of [['botFirst', 'chatBotFirst'], ['needStatus', 'chatNeedStatus'], ['needShift', 'chatNeedShift'], ['needOnline', 'chatNeedOnline'], ['preferUsualTech', 'chatPreferUsualTech']] as const) {
       if (typeof dto[k] === 'boolean') data[col] = dto[k];
     }
@@ -333,7 +441,9 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     if (!thread) throw new NotFoundException('Thread not found');
     const isAdmin = user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN;
     if (!isAdmin && thread.assignedUserId && thread.assignedUserId !== user.userId) {
-      throw new ForbiddenException('This conversation belongs to someone else. Ask the salon admin to move it.');
+      // The salon may let staff TAKE a conversation (to themselves only), never move it elsewhere.
+      const team = await this.teamOf(tenantId);
+      if (!(team.staffCanTake && toUserId === user.userId)) throw new ForbiddenException('This conversation belongs to someone else. Ask the salon admin to move it.');
     }
     if (toUserId) {
       const target = await this.prisma.user.findFirst({ where: { id: toUserId, tenantId, isActive: true, role: { in: INBOX_ROLES as unknown as UserRole[] } }, select: { id: true } });
@@ -361,13 +471,14 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     let moved = 0;
     try {
       const conns = await this.db.messengerConnection.findMany({
-        where: { chatAssignMode: 'round-robin', OR: [{ chatReassignUnreadMins: { gt: 0 } }, { chatReassignUnrepliedMins: { gt: 0 } }, { chatReassignAdMins: { gt: 0 } }, { chatEscalateMins: { gt: 0 } }] },
+        where: { chatAssignMode: 'round-robin' },
         take: 500,
       }).catch(() => []) as Record<string, unknown>[];
       for (const c of conns) {
         const tenantId = String(c.tenantId);
         const set = settingsOf(c);
         if (set.escalateMins > 0) await this.escalate(tenantId, set, now).catch((e) => this.logger.warn(`escalation failed: ${String(e).slice(0, 120)}`));
+        await this.nightReport(tenantId, now).catch((e) => this.logger.warn(`turn report failed: ${String(e).slice(0, 120)}`));
         const mins = [set.reassignUnreadMins, set.reassignUnrepliedMins, set.reassignAdMins].filter((m) => m > 0);
         if (!mins.length) continue;
         const shortest = Math.min(...mins);
@@ -403,6 +514,26 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       this.ticking = false;
     }
     return moved;
+  }
+
+  /** 21:00 salon time, once a day, when the owner asked for it: today's scoreboard on their phone. */
+  private async nightReport(tenantId: string, now: Date): Promise<void> {
+    const team = await this.teamOf(tenantId);
+    if (!team.nightReport) return;
+    const clock = await this.salonClock(tenantId);
+    if (!clock || clock.minutes < 21 * 60) return;
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: t?.timezone || 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+    const sent = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: REPORT_SENT_KEY } } }).catch(() => null);
+    if ((sent?.value as { day?: string } | null)?.day === day) return;
+    await this.prisma.setting.upsert({ where: { tenantId_key: { tenantId, key: REPORT_SENT_KEY } }, create: { tenantId, key: REPORT_SENT_KEY, value: { day } }, update: { value: { day } } });
+    const sc = await this.computeScores(tenantId, 1, now);
+    if (!sc.scores.length && !sc.adWaiting) return;
+    const money = sc.adMoneyCents != null ? new Intl.NumberFormat('vi-VN').format(sc.adMoneyCents) : null;
+    const text = nightText({ scores: sc.scores, adWaiting: sc.adWaiting, money });
+    const owners = await this.prisma.user.findMany({ where: { tenantId, isActive: true, role: UserRole.SALON_ADMIN }, select: { id: true } }).catch(() => []);
+    for (const o of owners) void this.push?.sendToUser(tenantId, o.id, { title: 'Báo cáo chia turn hôm nay', body: text.split('\n').slice(1, 4).join(' · '), url: '/salon/messenger?tab=turns', tag: `turn-report-${day}` }).catch(() => undefined);
+    void this.staff?.notifyEscalation(tenantId, owners.map((o) => o.id), text).catch(() => 0);
   }
 
   /**

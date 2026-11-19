@@ -61,6 +61,7 @@ import { PhotoLibraryService, sentUrls } from './photo-library.service';
 import { ChatPayService } from './chat-pay.service';
 import { StaffAlertsService } from './staff-alerts.service';
 import { adIdOf, isAdThread, parseStaffCommand, turnDueAt } from './staff-alerts';
+import { maskPhone } from './turn-team';
 import { isKind as isPhotoKind, toolAnswer as photoToolAnswer, wordsOf as wordsOfPhoto, type PhotoKind } from './photo-library';
 import { PushService } from '../push/push.service';
 import { pushPayload } from '../notifications/push-payload';
@@ -1661,8 +1662,10 @@ export class MessengerService implements OnModuleInit {
     // the person scrolls cannot shift the page under them.
     const take = Math.min(200, Math.max(1, Math.floor(Number(opts.take) || 100)));
     const before = opts.before ? new Date(opts.before) : null;
+    const listTeam = this.turns ? await this.turns.teamOf(tenantId).catch(() => null) : null;
+    const ownOnly = String(user.role) === 'STAFF' && !user.supportSession && listTeam && !listTeam.staffSeeAll;
     const rows = await this.prisma.messengerThread.findMany({
-      where: { tenantId, ...(before && !Number.isNaN(before.getTime()) ? { updatedAt: { lt: before } } : {}) },
+      where: { tenantId, ...(ownOnly ? { OR: [{ assignedUserId: user.userId }, { assignedUserId: null }] } : {}), ...(before && !Number.isNaN(before.getTime()) ? { updatedAt: { lt: before } } : {}) },
       orderBy: { updatedAt: 'desc' }, take,
       select: {
         id: true, senderId: true, senderName: true, lastText: true, handoff: true, pageId: true,
@@ -1908,6 +1911,12 @@ export class MessengerService implements OnModuleInit {
       } as never,
     }) as unknown as (Record<string, unknown> & { history?: unknown; customerId?: string | null }) | null;
     if (!row) throw new NotFoundException('Thread not found');
+    // Đợt 2 permissions: a salon may keep staff to their own and nobody's conversations.
+    const team = this.turns ? await this.turns.teamOf(tenantId).catch(() => null) : null;
+    const staffOnly = String(user.role) === 'STAFF' && !user.supportSession;
+    if (staffOnly && team && !team.staffSeeAll && (row as { assignedUserId?: string | null }).assignedUserId && (row as { assignedUserId?: string | null }).assignedUserId !== user.userId) {
+      throw new ForbiddenException('This conversation belongs to someone else.');
+    }
 
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
     const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? DEFAULT_ACTIVE_MINS;
@@ -1966,6 +1975,8 @@ export class MessengerService implements OnModuleInit {
         const appts = (c.appointments ?? []) as { startTime: Date; assignedStaff?: { firstName?: string } | null }[];
         customer = {
           ...c,
+          // Staff see "•••• 0142" when the salon asked for it (đợt 2).
+          ...(staffOnly && team?.maskPhones ? { phone: maskPhone((c as { phone?: string | null }).phone), email: null } : {}),
           visits: appts.length,
           // The next appointment in the future, which is the one a person
           // answering a message actually needs on screen.
@@ -2605,7 +2616,7 @@ export class MessengerService implements OnModuleInit {
           handoff: true, handoffAt: new Date(),
         } as never,
       });
-      await this.audit(tenantId, 'messenger.manual_send');
+      await this.audit(tenantId, 'messenger.manual_send'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, messageId: null, recipientId: thread.senderId, at: wAt, channel: 'web' };
     }
@@ -2630,7 +2641,7 @@ export class MessengerService implements OnModuleInit {
         } as never,
       }).catch(() => undefined);
       if (!zr.ok) throw new BadRequestException(zr.error || 'Zalo từ chối tin nhắn (có thể đã quá cửa sổ trả lời).');
-      await this.audit(tenantId, 'messenger.manual_send');
+      await this.audit(tenantId, 'messenger.manual_send'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, messageId: null, recipientId: thread.senderId, at: zAt, channel: 'zalo' };
     }
@@ -2754,7 +2765,7 @@ export class MessengerService implements OnModuleInit {
       where: { id: thread.id, tenantId },
       data: { handoff: true, handoffAt: new Date() } as never,
     }).catch(() => undefined);
-    await this.audit(tenantId, 'messenger.manual_send');
+    await this.audit(tenantId, 'messenger.manual_send'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
     const ch = ((thread as unknown as { channel?: string }).channel === 'instagram') ? 'instagram' : 'messenger';
     return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: sentAtIso, channel: ch };
   }
@@ -2804,7 +2815,7 @@ export class MessengerService implements OnModuleInit {
     };
     if (web) {
       const at = await record({}, true);
-      await this.audit(tenantId, 'messenger.manual_photo');
+      await this.audit(tenantId, 'messenger.manual_photo'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, at, channel: 'web', url };
     }
@@ -2815,7 +2826,7 @@ export class MessengerService implements OnModuleInit {
       const zr = await sendZaloImage(sendToken, thread.senderId, url);
       const at = await record(zr.ok ? {} : { failed: true }, zr.ok);
       if (!zr.ok) throw new BadRequestException(zr.error || 'Zalo từ chối ảnh (có thể đã quá cửa sổ trả lời).');
-      await this.audit(tenantId, 'messenger.manual_photo');
+      await this.audit(tenantId, 'messenger.manual_photo'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, at, channel: 'zalo', url };
     }
@@ -2841,7 +2852,7 @@ export class MessengerService implements OnModuleInit {
       throw new BadRequestException(out.error?.message || 'Facebook rejected the photo (the messaging window may have closed).');
     }
     const at = await record({ messageId: out.message_id || null }, true);
-    await this.audit(tenantId, 'messenger.manual_photo');
+    await this.audit(tenantId, 'messenger.manual_photo'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
     this.events.publish(tenantId, 'message');
     return { ok: true as const, at, channel: channel === 'instagram' ? 'instagram' : 'messenger', url };
   }

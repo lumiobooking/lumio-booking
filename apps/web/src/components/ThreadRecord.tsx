@@ -33,7 +33,7 @@ function actText(a: Act, vi: boolean): string {
     const to = String(d.to ?? '—'); const from = d.from ? String(d.from) : null;
     if (r === 'first-reply') return L(`${to} trả lời lần đầu`, `${to} answered first`);
     if (r === 'unassign') return L(`bỏ giao${from ? ` (từ ${from})` : ''}`, `unassigned${from ? ` (from ${from})` : ''}`);
-    if (r === 'reassign-unread' || r === 'reassign-unreplied') return L(`chuyển turn ${from ? `từ ${from} ` : ''}sang ${to} (${r === 'reassign-unread' ? 'chưa mở' : 'chưa trả lời'})`, `turn passed ${from ? `from ${from} ` : ''}to ${to}`);
+    if (r === 'reassign-unread' || r === 'reassign-unreplied' || r === 'skip') return L(`chuyển turn ${from ? `từ ${from} ` : ''}sang ${to} (${r === 'reassign-unread' ? 'chưa mở' : r === 'skip' ? 'bấm bỏ qua' : 'chưa trả lời'})`, `turn passed ${from ? `from ${from} ` : ''}to ${to}`);
     if (r === 'manual') return L(`giao tay cho ${to}${from ? ` (từ ${from})` : ''}`, `moved to ${to}${from ? ` (from ${from})` : ''}`);
     return L(`chia turn cho ${to}`, `turn to ${to}`);
   }

@@ -16,7 +16,11 @@ import { ui } from '../lib/ui';
 type Member = { group: 'A' | 'B'; weight: number; sources: string[] };
 export type Team = { members: Record<string, Member>; adGroupFirst: boolean; staffSeeAll: boolean; staffCanTake: boolean; maskPhones: boolean; adCostCents: number; nightReport: boolean };
 type Source = { key: string; label: string };
-type Score = { userId: string; name: string; received: number; answered: number; medianSec: number | null; onTimePct: number | null; lost: number; withCustomer: number };
+type Score = { userId: string; name: string; received: number; answered: number; medianSec: number | null; onTimePct: number | null; lost: number; notOpened?: number; notReplied?: number; skipped?: number; withCustomer: number };
+type MissRow = { at: string; threadId: string; customer: string; fromAd: boolean; personId: string | null; person: string; why: 'not-opened' | 'not-replied' | 'skipped'; heldMins: number | null; to: string | null };
+type MissLog = { days: number; canSeeAll: boolean; waitedTooLong: number | null; totals: { personId: string; person: string; total: number; notOpened: number; notReplied: number; skipped: number; fromAd: number }[]; rows: MissRow[] };
+const whyText = (w: MissRow['why'], vi: boolean) => (w === 'not-opened' ? (vi ? 'Không mở' : 'Not opened') : w === 'skipped' ? (vi ? 'Bấm bỏ qua' : 'Skipped') : (vi ? 'Mở nhưng không trả lời' : 'Opened, no reply'));
+const stamp = (iso: string) => { try { return new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }); } catch { return iso; } };
 type Board = { days: number; adCustomers: number; adWaiting: number; adLimitMins: number; adMoneyCents: number | null; scores: Score[]; canSeeAll: boolean };
 
 const secText = (s: number | null) => (s == null ? '—' : s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
@@ -39,6 +43,16 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted }: { token:
   }, [token, days]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void loadBoard(); }, [loadBoard]);
+  // rt216: every turn let go, in detail.
+  const [misses, setMisses] = useState<MissLog | null>(null);
+  const [missDays, setMissDays] = useState(7);
+  const [missWho, setMissWho] = useState('');
+  const [missAll, setMissAll] = useState(false);
+  const loadMisses = useCallback(async () => {
+    if (!token) return;
+    try { setMisses(await apiFetch<MissLog>(`/messenger/turns/misses?days=${missDays}${missWho ? `&person=${encodeURIComponent(missWho)}` : ''}`, { token })); } catch { setMisses(null); }
+  }, [token, missDays, missWho]);
+  useEffect(() => { void loadMisses(); }, [loadMisses]);
 
   const save = async (next: Team) => {
     setTeam(next);
@@ -126,9 +140,9 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted }: { token:
           </div>
         )}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560, fontSize: 12.5 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 720, fontSize: 12.5 }}>
             <thead><tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
-              {[T('Nhân viên', 'Person'), T('Nhận', 'Turns'), T('Trả lời đầu', 'First answer'), T('Đúng hạn', 'On time'), T('Bị chuyển', 'Passed on'), T('Có SĐT/khách', 'With customer')].map((h) => <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', fontWeight: 700 }}>{h}</th>)}
+              {[T('Nhân viên', 'Person'), T('Nhận', 'Turns'), T('Trả lời đầu', 'First answer'), T('Đúng hạn', 'On time'), T('Bỏ turn', 'Let go'), T('Không mở', 'Not opened'), T('Không trả lời', 'No reply'), T('Bấm bỏ qua', 'Skipped'), T('Có SĐT/khách', 'With customer')].map((h) => <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', fontWeight: 700 }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {(board?.scores ?? []).map((s) => (
@@ -137,14 +151,69 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted }: { token:
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>{s.received}</td>
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', color: s.medianSec != null && s.medianSec > 180 ? 'var(--ink-bad)' : 'var(--ink-good)', fontWeight: 700 }}>{secText(s.medianSec)}</td>
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>{s.onTimePct == null ? '—' : `${s.onTimePct}%`}</td>
-                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', color: s.lost ? 'var(--ink-warn)' : undefined }}>{s.lost}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', color: s.lost ? 'var(--ink-warn)' : undefined, fontWeight: s.lost ? 700 : 400 }}>{s.lost}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', color: s.notOpened ? 'var(--ink-bad)' : undefined }}>{s.notOpened ?? 0}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', color: s.notReplied ? 'var(--ink-bad)' : undefined }}>{s.notReplied ?? 0}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>{s.skipped ?? 0}</td>
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>{s.withCustomer}{s.received ? ` (${Math.round((s.withCustomer * 100) / s.received)}%)` : ''}</td>
                 </tr>
               ))}
-              {board && !board.scores.length && <tr><td colSpan={6} style={{ padding: 10, color: 'var(--c94a3b8)' }}>{T('Chưa có turn nào trong khoảng này.', 'No turns in this period yet.')}</td></tr>}
+              {board && !board.scores.length && <tr><td colSpan={9} style={{ padding: 10, color: 'var(--c94a3b8)' }}>{T('Chưa có turn nào trong khoảng này.', 'No turns in this period yet.')}</td></tr>}
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* rt216: the turns each person let go, one by one */}
+      <div>
+        <div style={{ ...row, justifyContent: 'space-between' }}>
+          <span style={ui.label}>{T('Chi tiết bỏ turn / không phản hồi khách', 'Turns let go, one by one')}</span>
+          <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+            {[1, 7, 30].map((d) => <button key={d} type="button" onClick={() => setMissDays(d)} style={{ ...chip(missDays === d), cursor: 'pointer' }}>{d === 1 ? T('Hôm nay', 'Today') : T(`${d} ngày`, `${d} days`)}</button>)}
+          </span>
+        </div>
+        {misses?.canSeeAll && (
+          <div style={{ ...row, margin: '6px 0' }}>
+            <select value={missWho} onChange={(e) => setMissWho(e.target.value)} style={{ ...ui.input, maxWidth: 260 }} aria-label={T('Nhân viên', 'Person')}>
+              <option value="">{T('Tất cả nhân viên', 'Everyone')}</option>
+              {agents.map((a) => <option key={a.userId} value={a.userId}>{a.name}</option>)}
+            </select>
+            {misses.waitedTooLong != null && misses.waitedTooLong > 0 && <span style={{ fontSize: 12.5, color: 'var(--ink-bad)', fontWeight: 700 }}>{T(`🚨 ${misses.waitedTooLong} lần khách chờ quá lâu không ai trả lời`, `🚨 ${misses.waitedTooLong} customers waited too long`)}</span>}
+          </div>
+        )}
+        {misses && misses.totals.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '6px 0' }}>
+            {misses.totals.map((p) => (
+              <span key={p.personId} style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid var(--line)', fontSize: 12.5, color: 'var(--ccbd5e1)' }}>
+                <b style={{ color: 'var(--ce2e8f0)' }}>{p.person}</b>{T(` · bỏ ${p.total} turn`, ` · let go ${p.total}`)}
+                <span style={{ color: 'var(--c94a3b8)' }}>{T(` (không mở ${p.notOpened} · không trả lời ${p.notReplied} · bỏ qua ${p.skipped}${p.fromAd ? ` · ${p.fromAd} khách QC` : ''})`, ` (not opened ${p.notOpened} · no reply ${p.notReplied} · skipped ${p.skipped})`)}</span>
+              </span>
+            ))}
+          </div>
+        )}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640, fontSize: 12.5 }}>
+            <thead><tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
+              {[T('Lúc', 'When'), T('Khách', 'Customer'), T('Nhân viên bỏ', 'Let go by'), T('Lý do', 'Why'), T('Giữ', 'Held'), T('Chuyển cho', 'Passed to')].map((h) => <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', fontWeight: 700 }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {(misses?.rows ?? []).slice(0, missAll ? 500 : 30).map((r, i) => (
+                <tr key={`${r.threadId}-${r.at}-${i}`} style={{ color: 'var(--ccbd5e1)' }}>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{stamp(r.at)}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}><a href={`/salon/inbox?thread=${r.threadId}`} style={{ color: 'var(--ca5b4fc)', fontWeight: 600 }}>{r.customer}</a>{r.fromAd ? <span style={{ color: 'var(--ink-bad)', fontWeight: 700 }}> · QC</span> : null}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}><b style={{ color: 'var(--ce2e8f0)' }}>{r.person}</b></td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', color: r.why === 'skipped' ? 'var(--ink-warn)' : 'var(--ink-bad)' }}>{whyText(r.why, vi)}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>{r.heldMins == null ? '—' : T(`${r.heldMins} phút`, `${r.heldMins} min`)}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>{r.to ?? T('— (không ai rảnh)', '— (nobody free)')}</td>
+                </tr>
+              ))}
+              {misses && !misses.rows.length && <tr><td colSpan={6} style={{ padding: 10, color: 'var(--ink-good)' }}>{T('Không có turn nào bị bỏ trong khoảng này. 👍', 'No turns let go in this period. 👍')}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        {misses && misses.rows.length > 30 && !missAll && (
+          <button type="button" onClick={() => setMissAll(true)} style={{ ...chip(false), cursor: 'pointer', marginTop: 6 }}>{T(`Xem tất cả ${misses.rows.length} lần`, `Show all ${misses.rows.length}`)}</button>
+        )}
       </div>
     </div>
   );

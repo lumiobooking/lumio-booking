@@ -83,6 +83,8 @@ export interface AgentView {
   onDuty: boolean;
   openThreads: number;
   turnsToday: number;
+  /** rt216: when they last got a turn (ms), for fair ties. */
+  lastTurnAt?: number | null;
   /** Pressed "Vào ca" in Lumio (or on Messenger) and the shift has not ended. */
   shiftOn: boolean;
   shiftUntil: string | null;
@@ -116,6 +118,10 @@ export type TurnMiss = { at: string; customer: string | null; why: 'rules-off' |
 
 const INBOX_ROLES = [UserRole.SALON_ADMIN, UserRole.STAFF] as const;
 const TICK_MS = 60_000;
+/** Log rows that are not a live turn given to someone (fairness counts and "turns today"). */
+const NOT_TURNS = ['unassign', 'first-reply', 'backlog', 'opened', 'prospect', 'customer-back'];
+/** A turn passed on from someone who did not act: not opened, not answered, or skipped on Messenger. */
+const MISS_REASONS = ['reassign-unread', 'reassign-unreplied', 'skip'];
 
 @Injectable()
 export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
@@ -131,7 +137,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly staff?: StaffAlertsService,
   ) {
     // "Bỏ qua" on Messenger passes the turn on through the same routing.
-    this.staff?.setSkipRouter((tenantId, threadId, fromUserId) => this.route(tenantId, threadId, null, { excludeUserId: fromUserId, reason: 'reassign-unreplied' }));
+    this.staff?.setSkipRouter((tenantId, threadId, fromUserId) => this.route(tenantId, threadId, null, { excludeUserId: fromUserId, reason: 'skip' }));
     // "vào ca" / "ra ca" on Messenger opens / closes the same shift as the button.
     this.staff?.setShiftHook?.((tenantId, userId, on) => this.writeShift(tenantId, userId, on));
   }
@@ -185,8 +191,9 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const open = await this.db.messengerThread.groupBy({ by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null } }, _count: true }).catch(() => []) as { assignedUserId: string; _count: number }[];
     const openBy = new Map(open.map((r) => [r.assignedUserId, Number(r._count) || 0]));
     const since = new Date(Date.now() - 24 * 3600_000);
-    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: ['unassign', 'first-reply', 'backlog', 'opened', 'prospect', 'customer-back'] } }, _count: true }).catch(() => []) ?? [];
+    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: NOT_TURNS } }, _count: true, _max: { createdAt: true } }).catch(() => []) ?? [];
     const turnsBy = new Map<string, number>(logs.map((r: { userId: string; _count: number }) => [r.userId, Number(r._count) || 0]));
+    const lastBy = new Map<string, number>(logs.map((r: { userId: string; _max?: { createdAt?: Date | null } }) => [r.userId, r._max?.createdAt ? new Date(r._max.createdAt).getTime() : 0]));
     const clock = await this.salonClock(tenantId);
     const now = new Date();
     // On shift through their own Messenger ("vào ca") counts as having Lumio open.
@@ -217,6 +224,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         onDuty: canOpenInbox(String(u.role), u.staffMember?.staffRole, u.staffMember?.permissions, set.agentIds.includes(u.id)) && isOnDuty({ status, onShift: inShift ? true : onShift, lastSeenAt: present ? now : p?.lastSeenAt ?? null }, set, now),
         openThreads: openBy.get(u.id) ?? 0,
         turnsToday: turnsBy.get(u.id) ?? 0,
+        lastTurnAt: lastBy.get(u.id) || null,
         shiftOn: inShift,
         shiftUntil: inShift ? sh?.until ?? null : null,
         canInbox: canOpenInbox(String(u.role), u.staffMember?.staffRole, u.staffMember?.permissions, set.agentIds.includes(u.id)),
@@ -243,7 +251,19 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
    * or null (the bot keeps it). Never throws — a failed pick must not cost
    * the customer their reply.
    */
-  async route(tenantId: string, threadId: string, customerId: string | null, opts: { excludeUserId?: string | null; reason?: 'new' | 'reassign-unread' | 'reassign-unreplied' } = {}): Promise<string | null> {
+  /** rt216: who already had this customer in the current round (since the last fresh turn). */
+  private async roundHolders(tenantId: string, threadId: string): Promise<string[]> {
+    const logs = await this.db.chatAssignmentLog?.findMany({ where: { tenantId, threadId }, orderBy: { createdAt: 'desc' }, take: 60, select: { userId: true, reason: true } }).catch(() => []) ?? [];
+    const out = new Set<string>();
+    for (const l of logs as { userId: string | null; reason: string }[]) {
+      if (NOT_TURNS.includes(l.reason) && l.reason !== 'customer-back') continue;
+      if (l.userId) out.add(l.userId);
+      if (!MISS_REASONS.includes(l.reason)) break; // the turn that started this round
+    }
+    return [...out];
+  }
+
+  async route(tenantId: string, threadId: string, customerId: string | null, opts: { excludeUserId?: string | null; reason?: 'new' | 'reassign-unread' | 'reassign-unreplied' | 'skip' } = {}): Promise<string | null> {
     try {
       const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as ConnRow;
       const set = settingsOf(conn);
@@ -255,6 +275,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       const team = await this.teamOf(tenantId);
       const th = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { pageId: true, channel: true, adId: true, adAt: true } }).catch(() => null) as { pageId?: string | null; channel?: string | null; adId?: string | null; adAt?: Date | null } | null;
       const pools = poolsFor(pool.map((a) => ({ userId: a.userId, onShift: a.onDuty, openThreads: a.openThreads, turnsToday: a.turnsToday })), team, { source: sourceOf(th?.pageId, th?.channel), fromAd: !!th && isAdThread(th, new Date()) });
+      const avoid = opts.reason && opts.reason !== 'new' ? await this.roundHolders(tenantId, threadId) : [];
 
       let usualUserId: string | null = null;
       if (set.preferUsualTech && customerId) {
@@ -281,10 +302,11 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         }
         const p = pickAgent({
           rules: { mode: 'round-robin', rotation: set.rotation, maxOpenPerAgent: set.maxOpenPerAgent, preferUsualTech: false },
-          agents: sub.map((a) => ({ userId: a.userId, name: a.name, onShift: a.onDuty, openThreads: a.openThreads })),
+          agents: sub.map((a) => ({ userId: a.userId, name: a.name, onShift: a.onDuty, openThreads: a.openThreads, turnsToday: a.turnsToday, lastTurnAt: a.lastTurnAt })),
           usualUserId: null,
           lastAssignedUserId: (conn?.chatLastAssignedId as string | null) ?? null,
           excludeUserId: opts.excludeUserId ?? null,
+          avoid,
         });
         if (p.userId) { pick = p; break; }
         pick = p;
@@ -308,11 +330,13 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
 
   /** Write the assignment, move the rotation pointer, log it, wake the person. */
   private async recordTurn(tenantId: string, threadId: string, userId: string, reason: PickReason | string, fromUserId: string | null, byUserId: string | null, movePointer: boolean): Promise<void> {
-    const hop = reason === 'reassign-unread' || reason === 'reassign-unreplied';
+    const hop = MISS_REASONS.includes(String(reason));
     await this.db.messengerThread.updateMany({
       where: { id: threadId, tenantId },
       data: { assignedUserId: userId, assignedAt: new Date(), ...(hop ? { assignHops: { increment: 1 } } : { assignHops: 0 }) },
     }).catch(() => undefined);
+    // rt216: passes go on without end; the count stops at 98 so it never reads as an old follow-up (99).
+    if (hop) await this.db.messengerThread.updateMany({ where: { id: threadId, tenantId, assignHops: { gte: 99 } }, data: { assignHops: 98 } }).catch(() => undefined);
     // rt215: "Tôi nhận" by an earlier holder locks a conversation against
     // being passed on. When the rules give it to someone else that lock is
     // the old holder's, not the new one's — left in place it froze the turn
@@ -640,6 +664,73 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * rt216 — "thống kê số lần bỏ turn, số lần không phản hồi khách hàng đầy đủ
+   * và chi tiết để admin xử lý". Every turn passed on from someone who did not
+   * act, newest first: when, which customer, who let it go, why (not opened /
+   * opened but no answer / pressed Bỏ qua), who got it next, and how long the
+   * customer had been waiting. Plus per-person totals and how many customers
+   * waited past the alarm. The owner sees everyone (or one person); staff see
+   * only their own. One salon only.
+   */
+  async missLog(user: AuthenticatedUser, daysRaw?: number, person?: string) {
+    const tenantId = this.tenantOf(user);
+    const isAdmin = user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN;
+    const days = [1, 7, 30].includes(Number(daysRaw)) ? Number(daysRaw) : 7;
+    const since = new Date(Date.now() - days * 86_400_000);
+    const who = isAdmin ? (person ? String(person).slice(0, 64) : null) : user.userId;
+    const logs = await this.db.chatAssignmentLog?.findMany({
+      where: { tenantId, createdAt: { gte: since }, reason: { in: MISS_REASONS }, fromUserId: who ? who : { not: null } },
+      orderBy: { createdAt: 'desc' }, take: 500,
+      select: { threadId: true, userId: true, fromUserId: true, reason: true, createdAt: true },
+    }).catch(() => []) as { threadId: string; userId: string | null; fromUserId: string | null; reason: string; createdAt: Date }[] ?? [];
+    const threadIds = [...new Set(logs.map((l) => l.threadId))];
+    const threads = threadIds.length ? await this.db.messengerThread.findMany({ where: { tenantId, id: { in: threadIds } }, select: { id: true, senderName: true, adId: true, adAt: true } }).catch(() => []) as { id: string; senderName: string | null; adId: string | null; adAt: Date | null }[] : [];
+    const tBy = new Map(threads.map((t) => [t.id, t]));
+    // When each of those turns started (the assignment just before the pass), to say how long it sat.
+    const starts = threadIds.length ? await this.db.chatAssignmentLog?.findMany({
+      where: { tenantId, threadId: { in: threadIds }, createdAt: { gte: new Date(since.getTime() - 86_400_000) }, reason: { notIn: NOT_TURNS } },
+      orderBy: { createdAt: 'asc' }, take: 5000, select: { threadId: true, userId: true, createdAt: true },
+    }).catch(() => []) as { threadId: string; userId: string | null; createdAt: Date }[] ?? [] : [];
+    const startOf = (l: { threadId: string; fromUserId: string | null; createdAt: Date }) => {
+      let at: Date | null = null;
+      for (const s of starts) { if (s.threadId !== l.threadId || s.createdAt >= l.createdAt) continue; if (s.userId === l.fromUserId) at = s.createdAt; }
+      return at;
+    };
+    const uids = [...new Set(logs.flatMap((l) => [l.userId, l.fromUserId]).filter(Boolean) as string[])];
+    const users = uids.length ? await this.prisma.user.findMany({ where: { tenantId, id: { in: uids } }, select: { id: true, firstName: true, lastName: true, email: true } }).catch(() => []) : [];
+    const nm = new Map(users.map((u) => [u.id, [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email]));
+    const now = new Date();
+    const rows = logs.map((l) => {
+      const st = startOf(l);
+      const t = tBy.get(l.threadId);
+      return {
+        at: l.createdAt.toISOString(),
+        threadId: l.threadId,
+        customer: t?.senderName || 'Khách',
+        fromAd: !!t && isAdThread(t, l.createdAt),
+        personId: l.fromUserId,
+        person: l.fromUserId ? nm.get(l.fromUserId) ?? '—' : '—',
+        why: l.reason === 'reassign-unread' ? 'not-opened' : l.reason === 'skip' ? 'skipped' : 'not-replied',
+        heldMins: st ? Math.max(0, Math.round((l.createdAt.getTime() - st.getTime()) / 60_000)) : null,
+        to: l.userId ? nm.get(l.userId) ?? '—' : null,
+      };
+    });
+    const per = new Map<string, { personId: string; person: string; total: number; notOpened: number; notReplied: number; skipped: number; fromAd: number }>();
+    for (const r of rows) {
+      if (!r.personId) continue;
+      const p = per.get(r.personId) ?? { personId: r.personId, person: r.person, total: 0, notOpened: 0, notReplied: 0, skipped: 0, fromAd: 0 };
+      p.total += 1;
+      if (r.why === 'not-opened') p.notOpened += 1; else if (r.why === 'skipped') p.skipped += 1; else p.notReplied += 1;
+      if (r.fromAd) p.fromAd += 1;
+      per.set(r.personId, p);
+    }
+    // Customers who waited past the alarm with nobody answering (owner view only: not tied to one person).
+    const waited = isAdmin && !who ? await this.db.auditLog?.count({ where: { tenantId, action: 'messenger.turn_escalated', createdAt: { gte: since } } }).catch(() => 0) ?? 0 : null;
+    void now;
+    return { days, canSeeAll: isAdmin, totals: [...per.values()].sort((a, b) => b.total - a.total), waitedTooLong: waited, rows };
+  }
+
   // ---------------------------------------------------------------- API ----
 
   async view(user: AuthenticatedUser) {
@@ -880,7 +971,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         if (!mins.length) continue;
         const shortest = Math.min(...mins);
         const threads = await this.db.messengerThread.findMany({
-          where: { tenantId, status: 'open', assignedUserId: { not: null }, assignedAt: { lte: new Date(now.getTime() - shortest * 60_000) }, assignHops: { lt: set.maxHops } },
+          where: { tenantId, status: 'open', assignedUserId: { not: null }, assignedAt: { lte: new Date(now.getTime() - shortest * 60_000) }, assignHops: { lt: 99 } },
           select: { id: true, customerId: true, status: true, assignedUserId: true, assignedAt: true, readAt: true, handoffAt: true, handoffMode: true, assignHops: true, adId: true, adAt: true },
           take: 50,
         }).catch(() => []) as { id: string; customerId: string | null; assignedUserId: string; assignedAt: Date; adId?: string | null; adAt?: Date | null; readAt?: Date | null }[];
@@ -905,7 +996,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
           else {
             // Nobody else free: keep the person, count the attempt so it stops
             // asking after maxHops instead of every minute forever.
-            await this.db.messengerThread.updateMany({ where: { id: t.id, tenantId }, data: { assignHops: { increment: 1 } } }).catch(() => undefined);
+            await this.db.messengerThread.updateMany({ where: { id: t.id, tenantId }, data: { assignHops: Math.min(98, ((t as { assignHops?: number }).assignHops ?? 0) + 1) } }).catch(() => undefined);
           }
         }
       }

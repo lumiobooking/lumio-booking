@@ -62,6 +62,9 @@ const REASON: Record<string, [string, string]> = {
   'usual-technician': ['thợ quen của khách', 'her usual tech'],
   'reassign-unread': ['chuyển vì chưa mở', 'passed on — not opened'],
   'reassign-unreplied': ['chuyển vì chưa trả lời', 'passed on — not answered'],
+  skip: ['chuyển vì nhân viên bấm bỏ qua', 'passed on — skipped'],
+  'customer-back': ['khách nhắn lại — lượt mới', 'customer wrote again — new turn'],
+  prospect: ['giao khách tiềm năng để gọi lại', 'prospect given to follow up'],
   manual: ['giao tay', 'moved by hand'],
   unassign: ['bỏ giao', 'unassigned'],
 };
@@ -209,7 +212,7 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
             <div>
               <div style={ui.label}>{T('Kiểu chia', 'How turns go round')}</div>
               <select value={s.rotation} disabled={!edit || busy} onChange={(e) => void save({ rotation: e.target.value as TurnSettings['rotation'] })} style={ui.input}>
-                <option value="strict">{T('Xoay vòng lần lượt A → B → C', 'Strict turns A → B → C')}</option>
+                <option value="strict">{T('Chia đều — ai nhận ít khách nhất hôm nay nhận trước', 'Equal — whoever got the fewest today goes next')}</option>
                 <option value="least-busy">{T('Ai ít hội thoại nhất nhận trước', 'Whoever holds the fewest')}</option>
                 <option value="weighted">{T('Theo tỉ lệ % từng người', 'By each person’s share (%)')}</option>
               </select>
@@ -255,8 +258,8 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
                 {num('reassignUnreadMins', 240)}{T('phút', 'min')}</label>
               <label style={{ ...row, flexWrap: 'wrap' }}>{T('Nhân viên chưa trả lời khách sau', 'The person has not replied after')}
                 {num('reassignUnrepliedMins', 240)}{T('phút', 'min')}</label>
-              <label style={{ ...row, flexWrap: 'wrap' }}>{T('Mỗi hội thoại chuyển tối đa', 'Pass one conversation on at most')}
-                {num('maxHops', 10)}{T('lần — hết lượt mà vẫn chưa ai trả lời thì báo ngay cho chủ tiệm và cả nhóm đang trong ca (ai rảnh bấm vào là nhận)', 'times — then the owner and everyone on shift are told at once (whoever is free takes it)')}</label>
+              <label style={{ ...row, flexWrap: 'wrap' }}>{T('Chuyển', 'After')}
+                {num('maxHops', 10)}{T('lần mà vẫn chưa ai trả lời thì báo ngay cho chủ tiệm và cả nhóm đang trong ca — khách VẪN tiếp tục xoay vòng, không dừng ở người cuối', 'passes with no answer the owner and everyone on shift are told — the customer KEEPS going round, never stuck with the last person')}</label>
               <label style={{ ...row, flexWrap: 'wrap' }}><b style={{ color: 'var(--ink-bad)' }}>{T('Khách từ quảng cáo', 'Customers from ads')}</b>{T(': chuyển nếu chưa trả lời sau', ': pass on if not answered after')}
                 {num('reassignAdMins', 240)}{T('phút (0 = như khách thường)', 'min (0 = like everyone else)')}</label>
             </div>

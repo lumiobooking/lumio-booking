@@ -126,6 +126,10 @@ export type AgentScore = {
   onTimePct: number | null;
   /** Turns passed on FROM this person because they did not act. */
   lost: number;
+  /** rt216: of those — not even opened in time / opened but no answer / pressed "Bỏ qua". */
+  notOpened: number;
+  notReplied: number;
+  skipped: number;
   /** Conversations they held that now have a customer record (phone saved / booked). */
   withCustomer: number;
 };
@@ -142,13 +146,17 @@ export function scoreboard(logs: LogRow[], threads: Map<string, ThreadFacts>, li
   const by = new Map<string, AgentScore & { secs: number[]; onTime: number; heldThreads: Set<string> }>();
   const get = (id: string) => {
     let s = by.get(id);
-    if (!s) { s = { userId: id, received: 0, answered: 0, medianSec: null, onTimePct: null, lost: 0, withCustomer: 0, secs: [], onTime: 0, heldThreads: new Set() }; by.set(id, s); }
+    if (!s) { s = { userId: id, received: 0, answered: 0, medianSec: null, onTimePct: null, lost: 0, notOpened: 0, notReplied: 0, skipped: 0, withCustomer: 0, secs: [], onTime: 0, heldThreads: new Set() }; by.set(id, s); }
     return s;
   };
   const open = new Map<string, { userId: string; at: number }>(); // per thread: the turn in progress
   for (const r of sorted) {
     if (isTurn(r.reason) && r.userId) {
-      if ((r.reason === 'reassign-unread' || r.reason === 'reassign-unreplied') && r.fromUserId) get(r.fromUserId).lost += 1;
+      if ((r.reason === 'reassign-unread' || r.reason === 'reassign-unreplied' || r.reason === 'skip') && r.fromUserId) {
+        const f = get(r.fromUserId);
+        f.lost += 1;
+        if (r.reason === 'reassign-unread') f.notOpened += 1; else if (r.reason === 'skip') f.skipped += 1; else f.notReplied += 1;
+      }
       const s = get(r.userId);
       s.received += 1;
       s.heldThreads.add(r.threadId);
@@ -176,7 +184,7 @@ export function scoreboard(logs: LogRow[], threads: Map<string, ThreadFacts>, li
     return {
       userId: s.userId, received: s.received, answered: s.answered, medianSec: med,
       onTimePct: s.received ? Math.round((s.onTime * 100) / s.received) : null,
-      lost: s.lost, withCustomer,
+      lost: s.lost, notOpened: s.notOpened, notReplied: s.notReplied, skipped: s.skipped, withCustomer,
     };
   }).sort((a, b) => b.received - a.received);
 }
@@ -203,7 +211,7 @@ export function nightText(o: { scores: { name: string; received: number; medianS
   const lines = ['📊 Chia turn hôm nay'];
   for (const s of o.scores.slice(0, 6)) {
     const m = s.medianSec == null ? '—' : s.medianSec < 60 ? `${s.medianSec}s` : `${Math.floor(s.medianSec / 60)}p${String(s.medianSec % 60).padStart(2, '0')}`;
-    lines.push(`• ${s.name}: ${s.received} khách · trả lời ${m}${s.lost ? ` · bị chuyển ${s.lost}` : ''}`);
+    lines.push(`• ${s.name}: ${s.received} khách · trả lời ${m}${s.lost ? ` · bỏ turn ${s.lost}` : ''}`);
   }
   if (o.adWaiting) lines.push(`⚠ ${o.adWaiting} khách quảng cáo phải chờ quá hạn${o.money ? ` (~${o.money} tiền quảng cáo)` : ''}.`);
   return lines.join('\n');

@@ -261,10 +261,15 @@ describe('passing a conversation on', () => {
     expect(reassignDue({ ...base, assignedAt: new Date('2026-09-25T09:57:00Z') }, R, now)).toBeNull();
   });
 
-  it('never moves a conversation someone took over, a closed one, or one passed on enough', () => {
+  it('never moves a conversation someone took over, a closed one, or an old follow-up', () => {
     expect(reassignDue({ ...base, handoffMode: 'locked' }, R, now)).toBeNull();
     expect(reassignDue({ ...base, status: 'done' }, R, now)).toBeNull();
-    expect(reassignDue({ ...base, assignHops: 3 }, R, now)).toBeNull();
+    expect(reassignDue({ ...base, assignHops: 99 }, R, now)).toBeNull();
+  });
+
+  it('rt216: keeps going round after the last pass — never stuck with the last person', () => {
+    expect(reassignDue({ ...base, assignHops: 3 }, R, now)).not.toBeNull();
+    expect(reassignDue({ ...base, assignHops: 50 }, R, now)).not.toBeNull();
   });
 
   it('does nothing when the salon set no time (0 = never)', () => {

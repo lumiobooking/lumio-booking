@@ -79,7 +79,7 @@ describe('chia turn đợt 3 — scoreboard', () => {
 
   it('the evening summary', () => {
     const s = nightText({ scores: [{ name: 'Lan', received: 24, medianSec: 70, lost: 3 }], adWaiting: 7, money: '350.000' });
-    expect(s).toContain('Lan: 24 khách · trả lời 1p10 · bị chuyển 3');
+    expect(s).toContain('Lan: 24 khách · trả lời 1p10 · bỏ turn 3');
     expect(s).toContain('7 khách quảng cáo');
   });
 });

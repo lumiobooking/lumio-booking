@@ -91,6 +91,12 @@ export class ChatTurnsController {
     return this.turns.scoreboardView(user, Number(days) || 1);
   }
 
+  /** rt216: every turn someone let go — not opened, not answered, skipped. Owner: everyone; staff: their own. */
+  @Get('turns/misses')
+  misses(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string, @Query('person') person?: string) {
+    return this.turns.missLog(user, Number(days) || 7, person || undefined);
+  }
+
   @Get('turns')
   view(@CurrentUser() user: AuthenticatedUser) {
     return this.turns.view(user);

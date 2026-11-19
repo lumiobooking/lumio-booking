@@ -33,6 +33,10 @@ export interface ChatAgent {
   onShift: boolean;
   /** Conversations they already hold and have not closed. */
   openThreads: number;
+  /** rt216: live turns received in the last 24 h (fairness: fewest first). */
+  turnsToday?: number;
+  /** rt216: when they last got a turn (ms) — ties go to whoever waited longest. */
+  lastTurnAt?: number | null;
 }
 
 export interface ChatAssignmentRules {
@@ -89,6 +93,8 @@ export function pickAgent(args: {
   lastAssignedUserId?: string | null;
   /** Never this person (passing a conversation ON must not hand it back). */
   excludeUserId?: string | null;
+  /** rt216: people who already had this customer in this round — others first, then them again (the round goes on). */
+  avoid?: string[] | null;
 }): Pick {
   const rules: ChatAssignmentRules = { ...DEFAULT_CHAT_RULES, ...(args.rules ?? {}) };
   if (rules.mode !== 'round-robin') return { userId: null, reason: 'rules-off' };
@@ -96,8 +102,12 @@ export function pickAgent(args: {
   const onShift = (args.agents ?? []).filter((a) => a && a.onShift && a.userId && a.userId !== args.excludeUserId);
   if (!onShift.length) return { userId: null, reason: 'nobody-on-shift' };
 
-  const available = onShift.filter((a) => hasRoom(a, rules.maxOpenPerAgent));
-  if (!available.length) return { userId: null, reason: 'everyone-at-capacity' };
+  const roomy = onShift.filter((a) => hasRoom(a, rules.maxOpenPerAgent));
+  if (!roomy.length) return { userId: null, reason: 'everyone-at-capacity' };
+  // rt216: a customer passed on goes to someone who has not had them this
+  // round; when everyone has, the round simply goes on (never stuck at the last).
+  const fresh = args.avoid?.length ? roomy.filter((a) => !args.avoid!.includes(a.userId)) : roomy;
+  const available = fresh.length ? fresh : roomy;
 
   // The customer's own technician wins, but only if she is actually working and
   // not already full. Otherwise this rule would route people to someone who
@@ -111,16 +121,23 @@ export function pickAgent(args: {
   // the last one served, and give it to the first who can take it. The order
   // is the full list, not the available one, so somebody who was away keeps
   // their place in the queue instead of shuffling everyone behind them.
+  //
+  // rt216 — "không thể chia theo thứ tự, người đầu tiên có lợi, người cuối
+  // làm sao có turn". The order alone favoured whoever sat right after the
+  // last one served, every time someone was away or a turn was passed on. Now
+  // EQUAL COUNTS decide: whoever received the fewest customers in the last 24
+  // hours gets the next one; a tie goes to whoever has waited longest since
+  // their last customer; only then the queue order after the last one served.
   if ((rules.rotation ?? 'least-busy') === 'strict') {
     // The caller's order IS the queue (the salon's list, or by name).
     const order = [...(args.agents ?? [])].filter((a) => a && a.userId);
-    const can = new Set(available.map((a) => a.userId));
     const lastIdx = args.lastAssignedUserId ? order.findIndex((a) => a.userId === args.lastAssignedUserId) : -1;
-    for (let i = 1; i <= order.length; i += 1) {
-      const cand = order[(lastIdx + i + order.length) % order.length];
-      if (cand && can.has(cand.userId)) return { userId: cand.userId, reason: 'round-robin' };
-    }
-    return { userId: null, reason: 'everyone-at-capacity' };
+    const dist = (id: string) => { const i = order.findIndex((a) => a.userId === id); return i < 0 ? order.length : (i - lastIdx - 1 + order.length) % order.length; };
+    const ranked = [...available].sort((a, b) =>
+      (a.turnsToday ?? 0) - (b.turnsToday ?? 0)
+      || (a.lastTurnAt ?? 0) - (b.lastTurnAt ?? 0)
+      || dist(a.userId) - dist(b.userId));
+    return ranked.length ? { userId: ranked[0].userId, reason: 'round-robin' } : { userId: null, reason: 'everyone-at-capacity' };
   }
 
   // Fewest open conversations first — that is the fairness that matters, since
@@ -221,7 +238,10 @@ export function reassignDue(t: {
 }, rules: ReassignRules, now: Date = new Date()): null | 'reassign-unread' | 'reassign-unreplied' {
   if (String(t.status ?? 'open') !== 'open' || !t.assignedUserId || !t.assignedAt) return null;
   if (String(t.handoffMode ?? '') === 'locked') return null;
-  if ((t.assignHops ?? 0) >= Math.max(0, rules.maxHops)) return null;
+  // rt216: no ceiling on passes any more — the turn keeps going round until
+  // somebody answers (maxHops now only decides when the owner is alerted).
+  // 99 marks an old customer given out to follow up: never passed by timers.
+  if ((t.assignHops ?? 0) >= 99) return null;
   const at = new Date(t.assignedAt).getTime();
   if (!Number.isFinite(at)) return null;
   const age = now.getTime() - at;

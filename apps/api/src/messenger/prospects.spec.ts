@@ -122,3 +122,59 @@ describe('rt215 — giving prospects out', () => {
     await expect(svc.giveOut({ userId: 'lan', role: 'STAFF', tenantId: 'A' } as never, ['t1'], { reason: 'prospect', title: '', body: () => '', audit: 'x' })).rejects.toThrow();
   });
 });
+
+describe('rt216 — fair turns: equal counts, not the order', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { pickAgent } = require('./chat-assignment') as typeof import('./chat-assignment');
+  const rules = { mode: 'round-robin' as const, rotation: 'strict' as const, maxOpenPerAgent: 10, preferUsualTech: false };
+  const team = (counts: number[], last: (number | null)[] = []) => counts.map((n, i) => ({ userId: `u${i + 1}`, onShift: true, openThreads: 0, turnsToday: n, lastTurnAt: last[i] ?? null }));
+
+  it('whoever received the fewest gets the next customer, wherever they sit in the list', () => {
+    expect(pickAgent({ rules, agents: team([5, 5, 2]), lastAssignedUserId: 'u3' }).userId).toBe('u3');
+    expect(pickAgent({ rules, agents: team([0, 4, 4]), lastAssignedUserId: 'u1' }).userId).toBe('u1');
+  });
+
+  it('a tie goes to whoever has waited longest since their last customer', () => {
+    expect(pickAgent({ rules, agents: team([3, 3, 3], [300, 100, 200]) }).userId).toBe('u2');
+  });
+
+  it('with nothing to tell them apart the queue goes on after the last one served', () => {
+    expect(pickAgent({ rules, agents: team([0, 0, 0]), lastAssignedUserId: 'u1' }).userId).toBe('u2');
+    expect(pickAgent({ rules, agents: team([0, 0, 0]), lastAssignedUserId: 'u3' }).userId).toBe('u1');
+  });
+
+  it('a passed-on customer goes to someone who has not had them this round; when all have, it goes on', () => {
+    expect(pickAgent({ rules, agents: team([0, 0, 9]), excludeUserId: 'u1', avoid: ['u1', 'u2'] }).userId).toBe('u3');
+    expect(pickAgent({ rules, agents: team([0, 1, 2]), excludeUserId: 'u3', avoid: ['u1', 'u2', 'u3'] }).userId).toBe('u1');
+  });
+});
+
+describe('rt216 — the list of turns let go: per salon, staff see only their own', () => {
+  function svcWith() {
+    const calls: Record<string, unknown>[] = [];
+    const prisma = {
+      chatAssignmentLog: { findMany: jest.fn(async (a: Record<string, unknown>) => { calls.push(a); return (a.where as { reason?: { in?: string[] } }).reason?.in ? [{ threadId: 't1', userId: 'nhi', fromUserId: 'trang', reason: 'reassign-unread', createdAt: new Date() }] : []; }) },
+      messengerThread: { findMany: jest.fn(async () => [{ id: 't1', senderName: 'Viet', adId: null, adAt: null }]) },
+      user: { findMany: jest.fn(async () => [{ id: 'trang', firstName: 'Trang', lastName: null, email: 't@x' }, { id: 'nhi', firstName: 'Nhi', lastName: null, email: 'n@x' }]) },
+      auditLog: { count: jest.fn(async () => 2) },
+    };
+    return { svc: new ChatTurnsService(prisma as never, { publish: jest.fn() } as never), calls };
+  }
+
+  it('the owner sees who let which customer go and why', async () => {
+    const { svc, calls } = svcWith();
+    const r = await svc.missLog({ userId: 'o', role: 'SALON_ADMIN', tenantId: 'A' } as never, 7);
+    expect(r.rows[0]).toMatchObject({ customer: 'Viet', person: 'Trang', why: 'not-opened', to: 'Nhi' });
+    expect(r.totals[0]).toMatchObject({ person: 'Trang', total: 1, notOpened: 1 });
+    expect(r.waitedTooLong).toBe(2);
+    expect(calls[0]).toMatchObject({ where: { tenantId: 'A' } });
+  });
+
+  it('staff are limited to their own, whatever they ask for', async () => {
+    const { svc, calls } = svcWith();
+    const r = await svc.missLog({ userId: 'trang', role: 'STAFF', tenantId: 'B' } as never, 7, 'nhi');
+    expect(calls[0]).toMatchObject({ where: { tenantId: 'B', fromUserId: 'trang' } });
+    expect(r.canSeeAll).toBe(false);
+    expect(r.waitedTooLong).toBeNull();
+  });
+});

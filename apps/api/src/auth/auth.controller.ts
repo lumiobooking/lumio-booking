@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Ip, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Ip, Param, Post } from '@nestjs/common';
+import { TeamPinsService } from './team-pins.service';
 import { verifyLoginCaptcha } from '../common/security/turnstile';
 import { AuthService } from './auth.service';
 import { RateLimit } from '../common/security/rate-limit.guard';
@@ -16,6 +17,11 @@ class ApprovalPinDto {
   @IsOptional() @IsString() @MaxLength(6) pin?: string;
 }
 
+class TeamPinDto {
+  // 4–6 digits; empty clears it.
+  @IsOptional() @IsString() @MaxLength(6) pin?: string;
+}
+
 class ChangePasswordDto {
   @IsString() @MaxLength(200) currentPassword!: string;
   @IsString() @MinLength(8) @MaxLength(200) newPassword!: string;
@@ -23,7 +29,7 @@ class ChangePasswordDto {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService, private readonly teamPins: TeamPinsService) {}
 
   // POST /api/auth/login -> public, returns an access token.
   // Tight rate limit blunts password brute-forcing (10 tries/min per IP).
@@ -65,6 +71,20 @@ export class AuthController {
   @Get('approval-pin')
   approvalPin(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.approvalPinStatus(user);
+  }
+
+  // The salon's approvers and whether each has a PIN — for the owner, and for
+  // Lumio Support setting a restaurant up (see team-pins.service.ts).
+  @Get('approval-pins/team')
+  teamApprovalPins(@CurrentUser() user: AuthenticatedUser) {
+    return this.teamPins.list(user);
+  }
+
+  @RateLimit(20, 60_000)
+  @Post('approval-pins/team/:userId')
+  @HttpCode(200)
+  setTeamApprovalPin(@CurrentUser() user: AuthenticatedUser, @Param('userId') userId: string, @Body() dto: TeamPinDto) {
+    return this.teamPins.set(user, userId, dto.pin ?? '');
   }
 
   @RateLimit(10, 60_000)

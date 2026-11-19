@@ -58,6 +58,21 @@ function Inner() {
     } finally { setBusy(false); }
   }
 
+  // Lumio Support inside a salon: this page would be the SUPPORT login's own
+  // email and password (and its delete button) — never something to touch from
+  // a salon. What support sets up here is the salon's approval PINs.
+  if (user?.supportSession) {
+    return (
+      <section style={{ maxWidth: 560 }}>
+        <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{lang === 'vi' ? 'PIN duyệt của tiệm' : "The salon's approval PINs"}</h1>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>
+          {lang === 'vi' ? 'Bạn đang ở chế độ Lumio Support. Email và mật khẩu của tài khoản support không đổi ở đây.' : 'You are in a Lumio Support session. The support login’s email and password are not changed here.'}
+        </p>
+        <TeamApprovalPins />
+      </section>
+    );
+  }
+
   return (
     <section style={{ maxWidth: 520 }}>
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{t('ac.title')}</h1>
@@ -75,20 +90,21 @@ function Inner() {
         <div style={{ borderTop: '1px solid var(--c334155)', margin: '6px 0 12px', paddingTop: 12, fontSize: 13, color: 'var(--ccbd5e1)', fontWeight: 600 }}>{t('ac.changePw')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <label><span style={ui.label}>{t('ac.newPw')}</span>
-            <input style={ui.input} type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t('ac.newPwPh')} /></label>
+            <input style={ui.input} type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t('ac.newPwPh')} /></label>
           <label><span style={ui.label}>{t('ac.confirmPw')}</span>
-            <input style={ui.input} type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label>
+            <input style={ui.input} type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label>
         </div>
 
         <label style={{ display: 'block', marginTop: 12 }}>
           <span style={ui.label}>{t('ac.currentPw')}</span>
-          <input style={ui.input} type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
+          <input style={ui.input} type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
         </label>
 
         <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, marginTop: 16 }}>{busy ? t('ac.saving') : t('ac.save')}</button>
       </form>
 
       <ApprovalPin />
+      {user?.role === 'SALON_ADMIN' && <TeamApprovalPins />}
       <DeleteAccount />
     </section>
   );
@@ -219,6 +235,87 @@ function ApprovalPin() {
         <button type="button" disabled={busy || !pw} onClick={() => void save(false)} style={ui.primaryBtn}>{busy ? '…' : L('Lưu PIN', 'Save PIN')}</button>
         {isSet && <button type="button" disabled={busy || !pw} onClick={() => void save(true)} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer' }}>{L('Xoá PIN', 'Remove PIN')}</button>}
       </div>
+    </div>
+  );
+}
+
+type TeamPin = { id: string; name: string; email: string; role: 'OWNER' | 'MANAGER' | 'STAFF'; set: boolean };
+
+/**
+ * The salon's approvers and their till PINs, set by the owner or by Lumio
+ * Support during setup (19/11/2026). Who did it is written to the audit log;
+ * the PIN is never shown again.
+ */
+function TeamApprovalPins() {
+  const { token, user } = useAuth();
+  const { lang } = useLang();
+  const vi = lang === 'vi';
+  const L = (v: string, e: string) => ind(vi ? v : e);
+  const [people, setPeople] = useState<TeamPin[] | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
+  const [again, setAgain] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = () => {
+    if (!token) return;
+    apiFetch<{ people: TeamPin[] }>('/auth/approval-pins/team', { token }).then((r) => setPeople(r?.people ?? [])).catch((e) => { setPeople([]); setErr(e instanceof Error ? e.message : String(e)); });
+  };
+  useEffect(load, [token]);
+  const roleLabel = (r: TeamPin['role']) => r === 'OWNER' ? L('Chủ', 'Owner') : r === 'MANAGER' ? L('Quản lý', 'Manager') : L('Được huỷ/hoàn', 'May void');
+
+  async function save(id: string, clear: boolean) {
+    setErr(null); setMsg(null);
+    if (!clear && (!/^\d{4,6}$/.test(pin) || pin !== again)) { setErr(L('PIN gồm 4–6 số và phải nhập giống nhau 2 lần.', 'The PIN is 4–6 digits, typed the same twice.')); return; }
+    setBusy(true);
+    try {
+      await apiFetch('/auth/approval-pins/team/' + encodeURIComponent(id), { method: 'POST', token, body: { pin: clear ? '' : pin } });
+      setPin(''); setAgain(''); setOpen(null);
+      setMsg(clear ? L('Đã xoá PIN.', 'PIN removed.') : L('Đã lưu PIN. Hãy báo PIN cho đúng người đó và nhắc họ tự đổi lại trong Tài khoản của tôi.', 'PIN saved. Give it to that person and ask them to change it under My account.'));
+      load();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+
+  if (!user?.supportSession && people !== null && people.length <= 1) return null;
+  return (
+    <div style={{ ...ui.card, marginTop: 16 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>🔑 {L('PIN duyệt của chủ và quản lý', 'Approval PINs of owners and managers')}</div>
+      <p style={{ fontSize: 13, color: 'var(--c94a3b8)', margin: '4px 0 12px' }}>
+        {L('Nhân viên không có quyền huỷ món / hoàn tiền phải nhờ một người trong danh sách này nhập PIN. Chủ chưa đặt PIN thì PIN mặc định là 0000 — ai cũng đoán được, nên đặt ngay.',
+          'A staff member who may not void or refund needs one of these people to type their PIN. An owner with no PIN uses the default 0000, which anyone can guess — set one now.')}
+      </p>
+      {err && <div style={ui.banner}>{err}</div>}
+      {msg && <div style={{ fontSize: 13, color: 'var(--ink-good)', marginBottom: 10 }}>{msg}</div>}
+      {people === null ? <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>…</div> : people.length === 0 ? <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L('Tiệm chưa có ai được duyệt huỷ / hoàn.', 'Nobody in this salon may approve voids or refunds yet.')}</div> : people.map((p) => (
+        <div key={p.id} style={{ borderTop: '1px solid var(--c334155)', padding: '10px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name} · {roleLabel(p.role)}</div>
+              <div style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>{p.set
+                ? <span style={{ color: 'var(--ink-good)' }}>{L('Đã có PIN', 'PIN set')}</span>
+                : p.role === 'OWNER' ? <span style={{ color: 'var(--ink-bad)' }}>{L('Chưa đặt · đang dùng 0000', 'Not set · using 0000')}</span>
+                : <span style={{ color: 'var(--ink-warn)' }}>{L('Chưa đặt PIN', 'No PIN')}</span>}</div>
+            </div>
+            <button type="button" onClick={() => { setOpen(open === p.id ? null : p.id); setPin(''); setAgain(''); setErr(null); }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap' }}>{p.set ? L('Đổi PIN', 'Change') : L('Đặt PIN', 'Set PIN')}</button>
+          </div>
+          {open === p.id && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+                <label><span style={ui.label}>{L('PIN mới (4–6 số)', 'New PIN (4–6 digits)')}</span>
+                  <input style={ui.input} type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} /></label>
+                <label><span style={ui.label}>{L('Nhập lại PIN', 'PIN again')}</span>
+                  <input style={ui.input} type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={again} onChange={(e) => setAgain(e.target.value.replace(/\D/g, ''))} /></label>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <button type="button" disabled={busy} onClick={() => void save(p.id, false)} style={ui.primaryBtn}>{busy ? '…' : L('Lưu PIN', 'Save PIN')}</button>
+                {p.set && <button type="button" disabled={busy} onClick={() => void save(p.id, true)} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer' }}>{L('Xoá PIN', 'Remove PIN')}</button>}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { TeamPinsService } from './team-pins.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
@@ -20,6 +21,7 @@ import { SupportScopeGuard } from '../support/support-scope.guard';
   controllers: [AuthController],
   providers: [
     AuthService,
+    TeamPinsService,
     JwtStrategy,
     // Global guards: authenticate, enforce roles, then feature capabilities,
     // then — for Lumio setup sessions only — the employee's own level.

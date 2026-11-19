@@ -185,7 +185,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const open = await this.db.messengerThread.groupBy({ by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null } }, _count: true }).catch(() => []) as { assignedUserId: string; _count: number }[];
     const openBy = new Map(open.map((r) => [r.assignedUserId, Number(r._count) || 0]));
     const since = new Date(Date.now() - 24 * 3600_000);
-    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: ['unassign', 'first-reply'] } }, _count: true }).catch(() => []) ?? [];
+    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: ['unassign', 'first-reply', 'backlog'] } }, _count: true }).catch(() => []) ?? [];
     const turnsBy = new Map<string, number>(logs.map((r: { userId: string; _count: number }) => [r.userId, Number(r._count) || 0]));
     const clock = await this.salonClock(tenantId);
     const now = new Date();
@@ -379,6 +379,50 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       n += 1;
     }
     return n;
+  }
+
+  // ---------------------------------------------- old customers to follow up (rt211) ----
+
+  /**
+   * "Chia khách cũ": conversations from the last `days` days that nobody holds
+   * (open, not done, not spam) are given out among the people ticked in the
+   * Chia turn list who can open the Inbox — evenly, fewest open first — so
+   * each one finds them under "Của tôi" and follows up. They are NOT passed
+   * on automatically for being unanswered (assignHops at its ceiling): an old
+   * customer is a follow-up, not a live chat on a timer. Each person gets one
+   * notification, not one per customer. The owner only.
+   */
+  async distributeBacklog(user: AuthenticatedUser, daysRaw?: number) {
+    const tenantId = this.tenantOf(user);
+    if (!(user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN)) throw new ForbiddenException('Only the salon admin can give out conversations.');
+    const days = [7, 30, 90].includes(Number(daysRaw)) ? Number(daysRaw) : 30;
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as ConnRow;
+    const set = settingsOf(conn);
+    const people = (await this.agents(tenantId, set)).filter((a) => a.inRotation && a.canInbox && a.role === 'STAFF');
+    if (!people.length) throw new BadRequestException('Chưa có nhân viên nào được tích trong danh sách Chia turn.');
+    const rows = await this.db.messengerThread.findMany({
+      where: { tenantId, status: 'open', assignedUserId: null, lastMessageAt: { gte: new Date(Date.now() - days * 86_400_000) } },
+      select: { id: true }, orderBy: { lastMessageAt: 'desc' }, take: 500,
+    }).catch(() => []) as { id: string }[];
+    const load = new Map(people.map((p) => [p.userId, p.openThreads]));
+    const given = new Map<string, number>();
+    const now = new Date();
+    for (const t of rows) {
+      // Fewest open first; ties keep the list order.
+      const to = [...people].sort((a, b) => (load.get(a.userId)! - load.get(b.userId)!))[0].userId;
+      const r = await this.db.messengerThread.updateMany({ where: { id: t.id, tenantId, assignedUserId: null }, data: { assignedUserId: to, assignedAt: now, assignHops: 99 } }).catch(() => ({ count: 0 }));
+      if (!r.count) continue;
+      await this.db.chatAssignmentLog?.create({ data: { tenantId, threadId: t.id, userId: to, byUserId: user.userId, reason: 'backlog' } }).catch(() => undefined);
+      load.set(to, (load.get(to) ?? 0) + 1);
+      given.set(to, (given.get(to) ?? 0) + 1);
+    }
+    for (const [uid, n] of given) {
+      void this.push?.sendToUser(tenantId, uid, { title: 'Bạn được giao khách cũ để theo dõi', body: `${n} khách — mở Tin nhắn › Của tôi để nhắn lại.`, url: '/salon/inbox', tag: 'turn-backlog' }).catch(() => undefined);
+    }
+    const total = [...given.values()].reduce((a, b) => a + b, 0);
+    await this.db.auditLog?.create({ data: { tenantId, userId: user.userId, action: 'messenger.turn_backlog_given', resourceType: 'tenant', resourceId: tenantId, metadata: { days, total } } }).catch(() => undefined);
+    this.events.publish(tenantId, 'thread');
+    return { days, total, per: people.map((p) => ({ name: p.name, n: given.get(p.userId) ?? 0 })) };
   }
 
   // ---------------------------------------------------------------- team (đợt 2) ----

@@ -130,7 +130,7 @@ export type AgentScore = {
   withCustomer: number;
 };
 
-const isTurn = (r: string) => r !== 'unassign' && r !== 'first-reply';
+const isTurn = (r: string) => r !== 'unassign' && r !== 'first-reply' && r !== 'backlog'; // rt211: old customers given out to follow up are not live turns
 
 /**
  * Score each person from the assignment log: a turn starts at an assignment

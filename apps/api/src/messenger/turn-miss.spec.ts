@@ -107,3 +107,46 @@ describe('rt208 — ticked by name in Chia turn: answers customers, whatever the
     expect(threads.find((t) => t.id === 'w1')!.assignedUserId).toBe('lan');
   });
 });
+
+describe('rt211 — old customers given out to follow up', () => {
+  function two() {
+    const now = Date.now();
+    const threads = Array.from({ length: 5 }, (_, i) => ({ id: `o${i}`, tenantId: 'A', status: 'open', assignedUserId: null as string | null, assignHops: 0, lastMessageAt: new Date(now - (i + 1) * 86_400_000) }))
+      .concat([{ id: 'ob', tenantId: 'B', status: 'open', assignedUserId: null, assignHops: 0, lastMessageAt: new Date(now - 86_400_000) }]);
+    const logs: Record<string, unknown>[] = [];
+    const prisma = {
+      tenant: { findUnique: jest.fn(async () => ({ timezone: 'Asia/Ho_Chi_Minh' })) },
+      messengerConnection: { findUnique: jest.fn(async () => ({ chatAssignMode: 'round-robin', chatAgentIds: ['lan', 'minh'] })) },
+      user: { findMany: jest.fn(async ({ where }: { where: { tenantId: string } }) => (where.tenantId === 'A' ? ['lan', 'minh', 'tho'].map((id) => ({ id, firstName: id, lastName: null, email: `${id}@x`, role: 'STAFF', staffMember: { isActive: true, staffRole: id === 'tho' ? 'TECHNICIAN' : 'CHAT', permissions: null, workingHours: [] } })) : [])) },
+      setting: { findMany: jest.fn(async () => []), findUnique: jest.fn(async () => null) },
+      chatAgentPresence: { findMany: jest.fn(async () => []) },
+      messengerThread: {
+        groupBy: jest.fn(async () => []),
+        findMany: jest.fn(async ({ where }: { where: { tenantId: string } }) => threads.filter((t) => t.tenantId === where.tenantId && !t.assignedUserId)),
+        updateMany: jest.fn(async ({ where, data }: { where: { id: string; tenantId: string }; data: Record<string, unknown> }) => { const t = threads.find((x) => x.id === where.id && x.tenantId === where.tenantId && !x.assignedUserId); if (t) Object.assign(t, data); return { count: t ? 1 : 0 }; }),
+      },
+      chatAssignmentLog: { groupBy: jest.fn(async () => []), create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => { logs.push(data); return {}; }) },
+      messengerPage: { findMany: jest.fn(async () => []) },
+      auditLog: { create: jest.fn(async () => ({})) },
+    };
+    return { svc: new ChatTurnsService(prisma as never, { publish: jest.fn() } as never), threads, logs };
+  }
+
+  it('evenly among the listed people who can open the Inbox, not passed on by the timer, only this salon', async () => {
+    const { svc, threads, logs } = two();
+    const r = await svc.distributeBacklog({ userId: 'o', role: 'SALON_ADMIN', tenantId: 'A' } as never, 30);
+    expect(r.total).toBe(5);
+    const a = threads.filter((t) => t.tenantId === 'A');
+    expect(a.filter((t) => t.assignedUserId === 'lan').length + a.filter((t) => t.assignedUserId === 'minh').length).toBe(5);
+    expect(Math.abs(a.filter((t) => t.assignedUserId === 'lan').length - a.filter((t) => t.assignedUserId === 'minh').length)).toBeLessThanOrEqual(1);
+    expect(a.some((t) => t.assignedUserId === 'tho')).toBe(false);
+    expect(a.every((t) => t.assignHops === 99)).toBe(true);
+    expect(logs.every((l) => l.reason === 'backlog')).toBe(true);
+    expect(threads.find((t) => t.id === 'ob')!.assignedUserId).toBeNull();
+  });
+
+  it('staff cannot give out conversations', async () => {
+    const { svc } = two();
+    await expect(svc.distributeBacklog({ userId: 'lan', role: 'STAFF', tenantId: 'A' } as never, 30)).rejects.toThrow();
+  });
+});

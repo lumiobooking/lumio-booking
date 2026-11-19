@@ -17,11 +17,26 @@ const goBtn: React.CSSProperties = {
 
 const hhmm = (iso: string) => { try { return new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }); } catch { return ''; } };
 
-export function ShiftButton({ vi, on, until, busy, devices, pushOn, onToggle }: {
+export function ShiftButton({ vi, on, until, busy, devices, pushOn, onToggle, compact = false }: {
   vi: boolean; on: boolean; until: string | null; busy: boolean;
   devices?: number; pushOn?: boolean; onToggle: () => void;
+  /** rt211: one slim line on a phone — the list keeps the screen. */
+  compact?: boolean;
 }) {
   const L = (v: string, e: string) => (vi ? v : e);
+  if (compact) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 38 }}>
+        <span style={{ width: 9, height: 9, borderRadius: '50%', background: on ? 'var(--ink-good)' : 'var(--c94a3b8)', flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {on ? L(`Đang trong ca${until ? ` · tới ${hhmm(until)}` : ''}`, `On shift${until ? ` · until ${hhmm(until)}` : ''}`) : L('Chưa vào ca — chưa nhận khách', 'Not on shift')}
+        </span>
+        {on
+          ? <button type="button" onClick={onToggle} disabled={busy} style={{ height: 32, padding: '0 12px', borderRadius: 9, border: '1px solid var(--line-strong)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>■ {L('Ra ca', 'End')}</button>
+          : <button type="button" onClick={onToggle} disabled={busy} style={{ ...goBtn, width: 'auto', height: 34, padding: '0 14px', fontSize: 13, opacity: busy ? 0.6 : 1 }}>▶ {L('Vào ca', 'Start')}</button>}
+      </div>
+    );
+  }
   const noPhone = devices === 0;
   const hint = pushOn === false
     ? L('Máy chủ chưa bật thông báo — báo chủ tiệm.', 'Push is off on the server — tell the owner.')

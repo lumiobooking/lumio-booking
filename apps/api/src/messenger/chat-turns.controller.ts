@@ -31,6 +31,10 @@ export class ChatStatusDto {
   @IsIn(['available', 'away']) status!: 'available' | 'away';
 }
 
+export class ChatBacklogDto {
+  @IsOptional() @IsInt() @IsIn([7, 30, 90]) days?: number;
+}
+
 export class ChatShiftDto {
   @IsBoolean() on!: boolean;
 }
@@ -105,6 +109,13 @@ export class ChatTurnsController {
   @Post('turns/standard')
   standard(@CurrentUser() user: AuthenticatedUser) {
     return this.turns.applyStandard(user);
+  }
+
+  /** rt211: give out the old conversations nobody holds, to follow up. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('turns/backlog')
+  backlog(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChatBacklogDto) {
+    return this.turns.distributeBacklog(user, dto.days);
   }
 
   @Post('turns/status')

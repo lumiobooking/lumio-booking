@@ -1530,7 +1530,8 @@ export function InboxView() {
       <div style={{ boxSizing: 'border-box', padding: narrow ? '12px 16px 10px' : '12px 12px 8px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
         {narrow && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 22, fontWeight: 700, flex: 1, letterSpacing: -0.2, color: 'var(--cf1f5f9)' }}>{vi ? 'Hộp thư' : 'Inbox'}</span>
+            {/* rt211: the staff app already says "Tin nhắn" above — no second title eating the screen. */}
+            <span style={{ fontSize: 22, fontWeight: 700, flex: 1, letterSpacing: -0.2, color: 'var(--cf1f5f9)' }}>{inSalonPortal() ? (vi ? 'Hộp thư' : 'Inbox') : ''}</span>
             {v2 && <span title={aiLine} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, color: aiLive ? 'var(--ink-good)' : 'var(--c64748b)', whiteSpace: 'nowrap' }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: aiLive ? '#16a34a' : 'var(--c64748b)' }} />{aiLive ? (vi ? 'AI đang bật' : 'AI on') : !uiCfg.aiOn ? (vi ? 'AI đang tắt' : 'AI off') : (vi ? 'AI chỉ phụ' : 'AI assists')}</span>}
             {!v2 && waiting > 0 && <span style={{ height: 26, padding: '0 9px', borderRadius: 999, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center' }}>{waiting} {vi ? 'đang chờ' : 'waiting'}</span>}
             {unreadCount > 0 && (
@@ -1596,10 +1597,11 @@ export function InboxView() {
             {turns && !v2 && <span style={{ color: turns.settings.botFirst ? 'var(--ink-good)' : 'var(--c64748b)', fontWeight: 600, whiteSpace: 'nowrap' }}>● {turns.settings.botFirst ? (vi ? 'Bot đang bật' : 'Bot on') : (vi ? 'Bot chỉ phụ' : 'Bot assists')}</span>}
           </div>
         )}
-        {(narrow || compact) && <PushSetup compact />}
+        {/* rt211: on a phone, one slim line each — the notification card only while this phone does not ring yet. */}
+        {(narrow || compact) && <PushSetup compact hideWhenReady />}
         {/* rt208: on a phone the left rail is hidden — Vào ca / Ra ca sits right here. */}
         {(narrow || compact) && turnsOn && turns?.me && (
-          <ShiftButton vi={vi} on={myShift} until={turns.me.shiftUntil ?? null} busy={shiftBusy} devices={turns.me.devices} pushOn={turns.pushOn} onToggle={() => void toggleShift()} />
+          <ShiftButton compact vi={vi} on={myShift} until={turns.me.shiftUntil ?? null} busy={shiftBusy} devices={turns.me.devices} pushOn={turns.pushOn} onToggle={() => void toggleShift()} />
         )}
         {labels.length > 0 && !narrow && (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>

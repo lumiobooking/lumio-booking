@@ -315,6 +315,7 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
               {!view.agents.length && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{T('Chưa có nhân viên nào có tài khoản đăng nhập.', 'No team member has a login yet.')}</div>}
             </div>
             {/* rt200: add people to the team right here — link + Facebook, no accounts to create. */}
+            {view.canEdit && <BacklogBox token={token} vi={vi} />}
             {view.canEdit && (
               <details style={{ marginTop: 8 }}>
                 <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--ink-link)' }}>＋ {T('Thêm nhân viên nhận tin (gửi link mời)', 'Add people (send an invite link)')}</summary>
@@ -357,3 +358,45 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
 }
 
 const miniBtn: CSSProperties = { width: 26, height: 26, minHeight: 26, borderRadius: 6, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 12, padding: 0 };
+
+/**
+ * rt211 — "Chia khách cũ": the conversations from the last 7/30/90 days that
+ * nobody holds are given out evenly to the people ticked above, so each one
+ * finds them under "Của tôi" and follows up. Not passed on by the timers.
+ */
+function BacklogBox({ token, vi }: { token: string | null; vi: boolean }) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  const [days, setDays] = useState(30);
+  const [busy, setBusy] = useState(false);
+  const [sure, setSure] = useState(false);
+  const [res, setRes] = useState<string | null>(null);
+  const run = async () => {
+    if (!token) return;
+    setBusy(true); setRes(null);
+    try {
+      const r = await apiFetch<{ total: number; per: { name: string; n: number }[] }>('/messenger/turns/backlog', { method: 'POST', token, body: { days } });
+      setRes(r.total ? T(`Đã chia ${r.total} khách: `, `Gave out ${r.total}: `) + r.per.map((p) => `${p.name} ${p.n}`).join(' · ') : T('Không còn khách cũ nào chưa có người nhận.', 'No unclaimed conversations left.'));
+      setSure(false);
+    } catch (e) { setRes(String((e as Error)?.message ?? e)); } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <b style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>📥 {T('Chia khách cũ cho nhân viên để follow-up', 'Give out old conversations to follow up')}</b>
+      <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{T('Khách nhắn trong khoảng thời gian chọn mà chưa ai nhận sẽ được chia đều cho người được tích ở trên. Mỗi người thấy họ trong mục “Của tôi”. Khách cũ không bị tự chuyển người theo phút.', 'Unclaimed conversations from the chosen period are shared out evenly to the people ticked above; each finds them under “Mine”. Not passed on by the minute timers.')}</span>
+      <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ height: 32, borderRadius: 8, border: '1px solid var(--line-strong)', background: 'transparent', color: 'var(--ce2e8f0)', padding: '0 8px', fontFamily: 'inherit' }}>
+          <option value={7}>{T('7 ngày qua', 'Last 7 days')}</option>
+          <option value={30}>{T('30 ngày qua', 'Last 30 days')}</option>
+          <option value={90}>{T('90 ngày qua', 'Last 90 days')}</option>
+        </select>
+        {!sure
+          ? <button type="button" disabled={busy} onClick={() => setSure(true)} style={{ height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid var(--ink-link)', background: 'transparent', color: 'var(--ink-link)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Chia khách cũ', 'Give them out')}</button>
+          : <>
+              <button type="button" disabled={busy} onClick={() => void run()} style={{ height: 32, padding: '0 12px', borderRadius: 8, border: 0, background: '#2563eb', color: '#ffffff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{busy ? '…' : T('Xác nhận chia', 'Confirm')}</button>
+              <button type="button" onClick={() => setSure(false)} style={{ height: 32, padding: '0 10px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Huỷ', 'Cancel')}</button>
+            </>}
+      </span>
+      {res && <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-good)' }}>{res}</span>}
+    </div>
+  );
+}

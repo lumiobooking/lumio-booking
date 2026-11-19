@@ -21,7 +21,7 @@ import { pushState, subscribeToPush, type PushState } from '../lib/push-client';
  */
 type Mine = { web: number; native: number; enabled: boolean; native_on?: boolean };
 
-export function PushSetup({ compact = false }: { compact?: boolean }) {
+export function PushSetup({ compact = false, hideWhenReady = false }: { compact?: boolean; /** rt211: on a phone, say nothing once this device rings. */ hideWhenReady?: boolean }) {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
@@ -78,6 +78,7 @@ export function PushSetup({ compact = false }: { compact?: boolean }) {
   }
 
   if (state === 'loading') return null;
+  if (hideWhenReady && (state === 'ready' || state === 'native') && ((mine?.web ?? 0) + (mine?.native ?? 0)) > 0) return null;
 
   const total = (mine?.web ?? 0) + (mine?.native ?? 0);
   const ok = state === 'ready' || state === 'native';

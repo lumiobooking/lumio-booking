@@ -164,3 +164,59 @@ describe("Meta's ad notice is never 'undelivered'", () => {
     expect(mergeHistory(meta, local, NOW).filter((t) => t.undelivered)).toHaveLength(0);
   });
 });
+
+describe('rt201 — a reply the customer got is never called undelivered', () => {
+  const T0 = new Date('2026-11-19T07:36:00Z');
+  const NOW2 = new Date(T0.getTime() + 60 * 60_000);
+  const at = (s: number) => new Date(T0.getTime() + s * 1000).toISOString();
+  const cust = { role: 'user' as const, content: 'Giá thế nào?', at: at(-30) };
+
+  it('an AI reply sent as two bubbles is one reply, delivered, keeping its details', () => {
+    const reply = 'Gói Basic $29/tháng và gói Pro $69/tháng.\n\nAnh/chị cho em xin tên tiệm và thành phố để team kiểm tra khu vực ạ?';
+    const local: HistoryTurn[] = [cust, { role: 'assistant', content: reply, at: at(0), why: { n: 6 } } as unknown as HistoryTurn];
+    const meta: HistoryTurn[] = [cust,
+      { role: 'assistant', content: 'Gói Basic $29/tháng và gói Pro $69/tháng.', at: at(1), messageId: 'm_1' } as HistoryTurn,
+      { role: 'assistant', content: 'Anh/chị cho em xin tên tiệm và thành phố để team kiểm tra khu vực ạ?', at: at(2), messageId: 'm_2' } as HistoryTurn];
+    const out = mergeHistory(meta, local, NOW2);
+    expect(out.filter((t) => t.undelivered)).toHaveLength(0);
+    const mine = out.filter((t) => t.role === 'assistant');
+    expect(mine).toHaveLength(1);
+    expect((mine[0] as unknown as { why?: unknown }).why).toEqual({ n: 6 });
+  });
+
+  it('a staff reply typed in decomposed Vietnamese (NFD) matches Meta’s composed copy', () => {
+    const typed = 'Dạ chị ơi, tiệm còn chỗ lúc 3 giờ ạ'.normalize('NFD');
+    const local: HistoryTurn[] = [cust, { role: 'assistant', content: typed, at: at(0), manual: true } as HistoryTurn];
+    const meta: HistoryTurn[] = [cust, { role: 'assistant', content: typed.normalize('NFC'), at: at(1) } as HistoryTurn];
+    expect(mergeHistory(meta, local, NOW2).filter((t) => t.undelivered)).toHaveLength(0);
+  });
+
+  it('a staff reply is proven by Meta’s message id, whatever the spacing', () => {
+    const local: HistoryTurn[] = [cust, { role: 'assistant', content: 'Dạ   em gửi chị\n\n bảng giá ạ ', at: at(0), manual: true, messageId: 'm_77' } as HistoryTurn];
+    const meta: HistoryTurn[] = [cust, { role: 'assistant', content: 'Dạ em gửi chị bảng giá ạ', at: at(1), messageId: 'm_77' } as HistoryTurn];
+    const out = mergeHistory(meta, local, NOW2);
+    expect(out.filter((t) => t.undelivered)).toHaveLength(0);
+    expect(out.filter((t) => t.role === 'assistant')).toHaveLength(1);
+  });
+
+  it('a long reply Meta holds cut at its limit is delivered', () => {
+    const long = 'Dạ '.repeat(800).trim();
+    const local: HistoryTurn[] = [cust, { role: 'assistant', content: long, at: at(0), manual: true } as HistoryTurn];
+    const meta: HistoryTurn[] = [cust, { role: 'assistant', content: long.slice(0, 1900), at: at(1) } as HistoryTurn];
+    expect(mergeHistory(meta, local, NOW2).filter((t) => t.undelivered)).toHaveLength(0);
+  });
+
+  it('a reply Meta truly does not have is still flagged', () => {
+    const local: HistoryTurn[] = [cust, { role: 'assistant', content: 'Tin này không tới khách được', at: at(0), manual: true } as HistoryTurn];
+    const meta: HistoryTurn[] = [cust, { role: 'assistant', content: 'Một tin khác hoàn toàn', at: at(-10) } as HistoryTurn];
+    expect(mergeHistory(meta, local, NOW2).filter((t) => t.undelivered)).toHaveLength(1);
+  });
+
+  it('one Meta message never proves two of our replies', () => {
+    const local: HistoryTurn[] = [cust,
+      { role: 'assistant', content: 'Dạ vâng ạ', at: at(0), manual: true } as HistoryTurn,
+      { role: 'assistant', content: 'Dạ vâng ạ'.normalize('NFD'), at: at(60), manual: true } as HistoryTurn];
+    const meta: HistoryTurn[] = [cust, { role: 'assistant', content: 'dạ vâng ạ', at: at(1) } as HistoryTurn];
+    expect(mergeHistory(meta, local, NOW2).filter((t) => t.undelivered)).toHaveLength(1);
+  });
+});

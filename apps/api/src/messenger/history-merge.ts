@@ -208,6 +208,49 @@ function markManual(meta: HistoryTurn[], ours: HistoryTurn[]): HistoryTurn[] {
 /** How long Meta's read API is given to show a message we sent before it counts as missing. */
 export const UNDELIVERED_AFTER_MS = 3 * 60_000;
 
+/**
+ * rt201 — the same message, written two ways.
+ *
+ * "⚠ Không thấy tin này trên Messenger" was shown on replies the customer DID
+ * get, because the check compared our copy and Meta's copy character for
+ * character. They differ for ordinary reasons:
+ *  - the AI's reply goes out as two bubbles (./reply-style splitBubbles), so
+ *    Meta has two messages where we have one;
+ *  - Vietnamese typed on a phone or Unikey can be decomposed (NFD) while Meta
+ *    hands it back composed (NFC) — the same letters, different bytes;
+ *  - spaces and line breaks, invisible characters, a long text cut at 1900.
+ * A staff reply also carries the message id Meta gave it: the surest proof.
+ */
+export function normText(s: unknown): string {
+  return String(s ?? '').normalize('NFC').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+type MetaPart = { i: number; n: string; at: number | null; id: string | null };
+
+/**
+ * Which of Meta's Page messages are this reply of ours, or null when none are.
+ * By id first; then the same text once normalised; then the bubbles it was
+ * sent as — Meta messages close in time whose text lies inside ours and
+ * together cover it.
+ */
+export function deliveredAs(t: HistoryTurn, parts: MetaPart[], used: Set<number>): number[] | null {
+  const free = parts.filter((p) => !used.has(p.i));
+  const mid = (t as { messageId?: string | null }).messageId;
+  if (mid) { const hit = free.find((p) => p.id === mid); if (hit) return [hit.i]; }
+  const n = normText(t.content);
+  if (!n) return null;
+  const same = free.find((p) => p.n === n);
+  if (same) return [same.i];
+  const at = Date.parse(String(t.at ?? ''));
+  const near = free.filter((p) => p.n.length >= 2 && (p.at === null || !Number.isFinite(at) || Math.abs(p.at - at) <= 20 * 60_000));
+  // Cut at Meta's limit: what Meta has is the start of what we kept.
+  const cut = near.find((p) => p.n.length >= 1500 && n.startsWith(p.n));
+  if (cut) return [cut.i];
+  const inside = near.filter((p) => n.includes(p.n));
+  const covered = inside.reduce((sum, p) => sum + p.n.length, 0);
+  return inside.length >= 2 && covered >= n.length * 0.85 ? inside.map((p) => p.i) : null;
+}
+
 export function mergeHistory(meta: HistoryTurn[] | null | undefined, local: HistoryTurn[], now: Date = new Date()): HistoryTurn[] {
   const ours = Array.isArray(local) ? local.filter(Boolean) : [];
 
@@ -222,6 +265,12 @@ export function mergeHistory(meta: HistoryTurn[] | null | undefined, local: Hist
   );
 
   const seen = new Set(merged.map(key));
+  // Meta's own Page messages, normalised once, for the loose match (deliveredAs).
+  const metaParts: MetaPart[] = merged.map((t, i) => ({ t, i })).filter((x) => x.t.role === 'assistant')
+    .map(({ t, i }) => ({ i, n: normText(t.content), at: Number.isFinite(Date.parse(String(t.at ?? ''))) ? Date.parse(String(t.at)) : null, id: (t as { messageId?: string | null }).messageId ?? null }));
+  const usedParts = new Set<number>();
+  /** Meta messages that turned out to be bubbles of one of our replies: shown as that one reply. */
+  const replaced = new Set<number>();
   // The span Meta's copy covers: a turn older than Meta's oldest line may
   // simply be outside the page of messages we asked for, and says nothing.
   const metaFrom = Math.min(...merged.map((t) => Date.parse(String(t.at ?? ''))).filter((n) => Number.isFinite(n)));
@@ -237,6 +286,20 @@ export function mergeHistory(meta: HistoryTurn[] | null | undefined, local: Hist
     // precisely the message a person needs to see and send again, and dropping
     // it because "Meta does not have it" would hide the only evidence that a
     // customer was left without an answer.
+    if (!seen.has(key(t)) && t.role === 'assistant' && !t.failed) {
+      const hits = deliveredAs(t, metaParts, usedParts);
+      if (hits) {
+        hits.forEach((i) => usedParts.add(i));
+        if (hits.length > 1) {
+          // Two bubbles on Messenger, one reply here: show ours (it keeps the
+          // AI's sources and timing) in place of Meta's pieces.
+          hits.forEach((i) => replaced.add(i));
+          merged.push({ ...t });
+        }
+        seen.add(key(t));
+        continue;
+      }
+    }
     if (!seen.has(key(t))) {
       // A bot or staff reply Meta does not have, well after Meta should have
       // shown it: it did not reach the customer. Said on screen, because the
@@ -258,5 +321,5 @@ export function mergeHistory(meta: HistoryTurn[] | null | undefined, local: Hist
   // Put the whole thing back in clock order. Appending above is how a turn
   // Meta has not returned gets INTO the list; it is not a claim about when it
   // happened. See sortByTime.
-  return sortByTime(merged);
+  return sortByTime(replaced.size ? merged.filter((_, i) => !replaced.has(i)) : merged);
 }

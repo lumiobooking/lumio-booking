@@ -100,6 +100,13 @@ export class ChatTurnsController {
     return this.turns.updateSettings(user, dto as unknown as Record<string, unknown>);
   }
 
+  /** rt210: put every rule back to the standard setup (who takes turns is kept). */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('turns/standard')
+  standard(@CurrentUser() user: AuthenticatedUser) {
+    return this.turns.applyStandard(user);
+  }
+
   @Post('turns/status')
   status(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChatStatusDto) {
     return this.turns.setStatus(user, dto.status);

@@ -116,6 +116,19 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
     finally { setBusy(false); }
   }, [token, draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** rt210: every rule back to the standard setup (who takes turns is kept). */
+  const [teamKey, setTeamKey] = useState(0);
+  const [confirmStd, setConfirmStd] = useState(false);
+  const applyStandard = async () => {
+    if (!token) return;
+    setBusy(true); setMsg(null);
+    try {
+      const v = await apiFetch<TurnsView>('/messenger/turns/standard', { method: 'POST', token });
+      setView(v); setDraft(v.settings); setTeamKey((k) => k + 1); setConfirmStd(false);
+      setMsg(T('Đã áp dụng cài đặt chuẩn', 'Standard setup applied'));
+    } catch (e) { setMsg(String(e)); } finally { setBusy(false); }
+  };
+
   if (!view || !draft) {
     return <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{msg ?? T('Đang tải…', 'Loading…')}</div>;
   }
@@ -162,6 +175,25 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
 
   return (
     <div>
+      {edit && (
+        <div style={{ marginBottom: 12, padding: '11px 13px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--wash-blue)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <b style={{ fontSize: 13.5, color: 'var(--ce2e8f0)' }}>⚙️ {T('Cài đặt chuẩn (như Pancake và các hệ thống lớn)', 'Standard setup (as Pancake and the big inboxes do)')}</b>
+          <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>
+            {T('Chia lần lượt cho người đang trong ca · chưa mở sau 3 phút / chưa trả lời sau 5 phút thì chuyển người khác (khách quảng cáo 2 phút, tối đa 3 lần) · mỗi người giữ tối đa 10 khách · khách cũ về đúng người cũ · 10 phút chưa ai trả lời thì báo chủ tiệm và cả nhóm · nhân viên chỉ thấy khách của mình và khách chưa ai nhận · AI trả lời trước khi chưa có người · báo cáo 21:00.',
+              'Round robin among people on shift · passed on if not opened in 3 min / not answered in 5 (ads 2 min, max 3 times) · up to 10 open per person · returning customers go back to their person · 10 min with no reply alerts the owner and the team · staff see their own and unclaimed · the AI answers first · 9 pm report.')}
+          </span>
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {!confirmStd
+              ? <button type="button" disabled={busy} onClick={() => setConfirmStd(true)} style={{ height: 32, padding: '0 12px', borderRadius: 9, border: '1px solid var(--ink-link)', background: 'transparent', color: 'var(--ink-link)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Dùng cài đặt chuẩn', 'Use the standard setup')}</button>
+              : <>
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-warn)', fontWeight: 600 }}>{T('Đặt lại mọi quy tắc bên dưới về chuẩn? (danh sách người nhận turn giữ nguyên)', 'Reset every rule below to the standard? (who takes turns is kept)')}</span>
+                  <button type="button" disabled={busy} onClick={() => void applyStandard()} style={{ height: 32, padding: '0 12px', borderRadius: 9, border: 0, background: '#2563eb', color: '#ffffff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Áp dụng', 'Apply')}</button>
+                  <button type="button" onClick={() => setConfirmStd(false)} style={{ height: 32, padding: '0 10px', borderRadius: 9, border: '1px solid var(--line-strong)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Huỷ', 'Cancel')}</button>
+                </>}
+            <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{T('Bật chia turn lần đầu sẽ tự dùng cài đặt này. Sau đó anh/chị chỉnh từng mục bên dưới tuỳ ý.', 'Switching turns on the first time uses this setup. Then change any rule below.')}</span>
+          </span>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
         <select value={s.mode} disabled={!edit || busy} onChange={(e) => void save({ mode: e.target.value as TurnSettings['mode'] })} style={{ ...ui.input, maxWidth: 420 }}>
           <option value="off">{T('Tắt — bot trả lời, ai muốn thì tự nhận', 'Off — the bot answers, staff take over by hand')}</option>
@@ -295,7 +327,7 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
           </div>
 
           {/* 5b. Team, permissions, scoreboard (đợt 2 + 3) */}
-          <TurnTeamPanel token={token} vi={vi} agents={view.agents.map((a) => ({ userId: a.userId, name: a.name }))} canEdit={edit} weighted={s.rotation === 'weighted'} />
+          <TurnTeamPanel key={teamKey} token={token} vi={vi} agents={view.agents.map((a) => ({ userId: a.userId, name: a.name }))} canEdit={edit} weighted={s.rotation === 'weighted'} />
 
           {/* 6. The last turns */}
           {view.recent.length > 0 && (

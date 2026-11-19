@@ -7,6 +7,7 @@ import { InboxEventsService } from './inbox-events.service';
 import { isOnDuty, isOnShift, pickAgent, reassignDue, type PickReason } from './chat-assignment';
 import { StaffAlertsService } from './staff-alerts.service';
 import { escalationDue, isAdThread, unrepliedMinsFor, windowOpen } from './staff-alerts';
+import { STANDARD_TEAM, firstEnable, standardColumns } from './turn-standard';
 import { SHIFT_PREFIX, cleanShift, remindDue, rescueOpen, shiftActive, shiftExpired, shiftKey, shiftUntil, type Shift } from './turn-shift';
 import { DEFAULT_TEAM, REPORT_SENT_KEY, TEAM_KEY, adWaits, cleanTeam, nightText, pickWeighted, poolsFor, scoreboard, sourceOf, type LogRow, type TeamConfig, type ThreadFacts } from './turn-team';
 
@@ -499,6 +500,9 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
     if (!conn) throw new BadRequestException('Connect a chat channel first.');
     const data: Record<string, unknown> = {};
+    // rt210: switched on for the first time with no timers ever set — start from the standard setup.
+    const fresh = firstEnable(settingsOf(conn as ConnRow), dto.mode);
+    if (fresh) Object.assign(data, standardColumns(dto));
     if (dto.mode === 'off' || dto.mode === 'round-robin') data.chatAssignMode = dto.mode;
     if (dto.rotation === 'strict' || dto.rotation === 'least-busy' || dto.rotation === 'weighted') data.chatRotation = dto.rotation;
     for (const [k, col] of [['botFirst', 'chatBotFirst'], ['needStatus', 'chatNeedStatus'], ['needShift', 'chatNeedShift'], ['needOnline', 'chatNeedOnline'], ['preferUsualTech', 'chatPreferUsualTech']] as const) {
@@ -519,8 +523,31 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       data.chatAgentIds = wanted.filter((id) => okSet.has(id));
     }
     await this.prisma.messengerConnection.update({ where: { tenantId }, data: data as never });
-    await this.db.auditLog?.create({ data: { tenantId, userId: user.userId, action: 'messenger.chat_turns_updated', resourceType: 'tenant', resourceId: tenantId } }).catch(() => undefined);
+    if (fresh) await this.writeStandardTeam(tenantId);
+    await this.db.auditLog?.create({ data: { tenantId, userId: user.userId, action: fresh ? 'messenger.chat_turns_enabled_standard' : 'messenger.chat_turns_updated', resourceType: 'tenant', resourceId: tenantId } }).catch(() => undefined);
     return this.view(user);
+  }
+
+  /**
+   * rt210 — "Dùng cài đặt chuẩn": every rule back to the standard (turn-standard.ts).
+   * Who takes turns, groups, shares and Pages, and the ad cost, are the
+   * salon's own and are kept; on/off is kept too.
+   */
+  async applyStandard(user: AuthenticatedUser) {
+    const tenantId = this.tenantOf(user);
+    if (!(user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN)) throw new ForbiddenException('Only the salon admin can change chat turn rules.');
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
+    if (!conn) throw new BadRequestException('Connect a chat channel first.');
+    await this.prisma.messengerConnection.update({ where: { tenantId }, data: standardColumns() as never });
+    await this.writeStandardTeam(tenantId);
+    await this.db.auditLog?.create({ data: { tenantId, userId: user.userId, action: 'messenger.chat_turns_standard', resourceType: 'tenant', resourceId: tenantId } }).catch(() => undefined);
+    return this.view(user);
+  }
+
+  private async writeStandardTeam(tenantId: string): Promise<void> {
+    const cur = await this.teamOf(tenantId);
+    const team = cleanTeam({ ...cur, ...STANDARD_TEAM });
+    await this.prisma.setting.upsert({ where: { tenantId_key: { tenantId, key: TEAM_KEY } }, create: { tenantId, key: TEAM_KEY, value: team as never }, update: { value: team as never } });
   }
 
   // ---------------------------------------------------------- shift (rt198) ----

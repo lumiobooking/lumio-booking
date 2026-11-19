@@ -1,6 +1,7 @@
 'use client';
 
 import { payQrFor } from '../../../lib/pay-qr';
+import { salePrice, shownPercent } from '../../../lib/discount';
 import { GuestPayQr } from '../../../components/GuestPayQr';
 import { PayQrPanel } from '../../../components/PayQrPanel';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -31,8 +32,8 @@ import { isTableIndustry } from '../../../lib/restaurant-till';
 import { RestaurantTill } from '../../../components/RestaurantTill';
 import { isBookable } from '../../../lib/bookable-staff';
 
-interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; isFree?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
-interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null; imageUrl?: string | null }
+interface Service { id: string; name: string; priceCents: number; discountPercent?: number; discountCents?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; isFree?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
+interface Product { id: string; name: string; priceCents: number; discountPercent?: number; discountCents?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null; imageUrl?: string | null }
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string | null; categoryId?: string | null; askAtBooking?: boolean; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean; tipQrUrl?: string | null; tipHandle?: string | null }
 interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; email?: string | null; loyaltyPoints?: number }
@@ -58,7 +59,9 @@ interface Line {
   name: string;
   origUnitPriceCents: number; // list price before any discount
   unitPriceCents: number; // net price actually charged
-  discountPercent: number; // promo % off (0 = none)
+  discountPercent: number; // promo % off (0 = none); for an amount off, the rounded share
+  /** The catalog sale was an AMOUNT off: the receipt prints the money saved, not a percent. */
+  offIsAmount?: boolean;
   quantity: number;
   tipCents: number;
   staffMemberId: string;
@@ -694,8 +697,7 @@ function Register() {
               // the customer was promised at booking would silently disappear.
               const addonsTotal = (appt.addons ?? []).reduce((sum, it) => sum + (it.priceCents ?? 0), 0);
               const savedPrimary = Math.max(0, (appt.priceCents ?? 0) - addonsTotal);
-              const legacyD = s?.discountPercent ?? 0;
-              const legacyUnit = legacyD > 0 ? Math.round((base * (100 - legacyD)) / 100) : base;
+              const legacyUnit = s ? salePrice({ ...s, priceCents: base }) : base;
               const unit = (appt.priceCents ?? 0) > 0 ? savedPrimary : legacyUnit; // old rows w/o price fall back
               const orig = Math.max(base, unit);
               const d = orig > 0 && unit < orig ? Math.round(((orig - unit) / orig) * 100) : 0;
@@ -720,11 +722,11 @@ function Register() {
       if (sid) {
         const s = services.find((x) => x.id === sid);
         if (s) {
-          const d = s.discountPercent ?? 0;
-          const unit = d > 0 ? Math.round((s.priceCents * (100 - d)) / 100) : s.priceCents;
+          const d = shownPercent(s);
+          const unit = salePrice(s);
           setCart((c) =>
             c.length === 0
-              ? [{ uid: `u${uidSeq++}`, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: unit, discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: stid }]
+              ? [{ uid: `u${uidSeq++}`, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: unit, discountPercent: d, offIsAmount: (s.discountCents ?? 0) > 0, quantity: 1, tipCents: 0, staffMemberId: stid }]
               : c,
           );
         }
@@ -734,15 +736,10 @@ function Register() {
     return () => { alive = false; };
   }, [services, prefilled, params, token, walkInId, appointmentId, groupId]);
 
-  const net = (priceCents: number, discountPercent?: number) =>
-    discountPercent && discountPercent > 0
-      ? Math.round((priceCents * (100 - discountPercent)) / 100)
-      : priceCents;
-
   function addService(s: Service) {
-    const d = s.discountPercent ?? 0;
+    const d = shownPercent(s);
     const uid = `u${uidSeq++}`;
-    setCart((c) => [...c, { uid, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: net(s.priceCents, d), discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: '' }]);
+    setCart((c) => [...c, { uid, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: salePrice(s), discountPercent: d, offIsAmount: (s.discountCents ?? 0) > 0, quantity: 1, tipCents: 0, staffMemberId: '' }]);
     // Priced at the salon (no menu price, not free): open the price box at once
     // so the cashier types what the tech quoted instead of charging $0.
     if (!(s.priceCents > 0) && !s.isFree) setEditUid(uid);
@@ -772,11 +769,11 @@ function Register() {
     return addons.filter((a) => !have.has(a.id) && (a.serviceId ? a.serviceId === serviceId : a.categoryId ? sv?.category?.id === a.categoryId : true));
   }
   function addProduct(p: Product) {
-    const d = p.discountPercent ?? 0;
+    const d = shownPercent(p);
     setCart((c) => {
       const existing = c.find((l) => l.kind === 'PRODUCT' && l.refId === p.id);
       if (existing) return c.map((l) => (l.uid === existing.uid ? { ...l, quantity: l.quantity + 1 } : l));
-      return [...c, { uid: `u${uidSeq++}`, kind: 'PRODUCT', refId: p.id, name: p.name, origUnitPriceCents: p.priceCents, unitPriceCents: net(p.priceCents, d), discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: '' }];
+      return [...c, { uid: `u${uidSeq++}`, kind: 'PRODUCT', refId: p.id, name: p.name, origUnitPriceCents: p.priceCents, unitPriceCents: salePrice(p), discountPercent: d, offIsAmount: (p.discountCents ?? 0) > 0, quantity: 1, tipCents: 0, staffMemberId: '' }];
     });
   }
   // Apply the booking's campaign code once, on its own timeline.
@@ -812,7 +809,7 @@ function Register() {
       if (l.uid !== uid) return l;
       const orig = Math.max(l.origUnitPriceCents, cents);
       const pct = orig > 0 && cents < orig ? Math.round(((orig - cents) / orig) * 100) : 0;
-      return { ...l, unitPriceCents: cents, origUnitPriceCents: orig, discountPercent: pct };
+      return { ...l, unitPriceCents: cents, origUnitPriceCents: orig, discountPercent: pct, offIsAmount: false };
     }));
   }
   function resetLinePrice(uid: string) {
@@ -826,8 +823,7 @@ function Register() {
   function catalogPrice(l: Line): number | null {
     const src = l.kind === 'SERVICE' ? services.find((x) => x.id === l.refId) : products.find((x) => x.id === l.refId);
     if (!src) return null;
-    const d = src.discountPercent ?? 0;
-    return d > 0 ? Math.round((src.priceCents * (100 - d)) / 100) : src.priceCents;
+    return salePrice(src); // a percent or an amount off (lib/discount)
   }
 
   function removeLine(uid: string) {
@@ -1431,6 +1427,7 @@ function Register() {
         amountCents: l.unitPriceCents * l.quantity,
         origAmountCents: l.origUnitPriceCents * l.quantity,
         discountPercent: l.discountPercent,
+        ...(l.offIsAmount ? { offIsAmount: true } : {}),
         isAddon: l.isAddon,
         tech: l.staffMemberId ? staffName(l.staffMemberId) : null,
         tipCents: l.tipCents,
@@ -1982,15 +1979,15 @@ function Register() {
       )}
     </button>
   );
-  const priceTag = (cents: number, disc?: number, from?: boolean, free?: boolean) => {
+  const priceTag = (cents: number, disc?: number, from?: boolean, free?: boolean, discCents?: number) => {
     if (!(cents > 0)) {
       // No menu price: never "$0" on the tile — it is quoted at the chair.
       return free
         ? <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-good)' }}>{L('Miễn phí', 'Free')}</span>
         : <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-warn)' }}>{L('Giá tại tiệm', 'Price at salon')}</span>;
     }
-    const d = disc ?? 0;
-    const netC = d > 0 ? Math.round((cents * (100 - d)) / 100) : cents;
+    const netC = salePrice({ priceCents: cents, discountPercent: disc, discountCents: discCents });
+    const d = netC < cents ? 1 : 0;
     return (
       <>
         {d > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c64748b)', textDecoration: 'line-through', marginRight: 5 }}>{fmtShort(cents)}</span>}
@@ -2003,14 +2000,14 @@ function Register() {
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', margin: '0 -8px', padding: '10px 8px 12px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gridAutoRows: tileRow, gap: layout === 'phone' ? 8 : layout === 'wide' && !tightTop ? 12 : 10, alignContent: 'start' }}>
         {tab === 'SERVICE' && flatServices.map((s) => tile(
-          s.id, s.name, s.durationMinutes > 0 ? `${s.durationMinutes} ${L('phút', 'min')}` : (s.category && catFilter === null ? niceName(s.category.name) : ''), priceTag(s.priceCents, s.discountPercent, s.priceFrom, s.isFree),
+          s.id, s.name, s.durationMinutes > 0 ? `${s.durationMinutes} ${L('phút', 'min')}` : (s.category && catFilter === null ? niceName(s.category.name) : ''), priceTag(s.priceCents, s.discountPercent, s.priceFrom, s.isFree, s.discountCents),
           qtyInCart.get(s.id) || 0, () => addService(s), s.category ? catHue.get(s.category.id) : undefined, false, s.imageUrl,
         ))}
         {tab === 'ADDON' && addonGroups.flatMap((g) => g.items).map((a) => tile(
           a.id, `+ ${a.name}`, a.service?.name ?? '', fmt(a.priceCents), qtyInCart.get(a.id) || 0, () => addAddon(a), undefined, true,
         ))}
         {tab === 'PRODUCT' && productsF.map((p) => tile(
-          p.id, p.name, p.trackStock ? `${t('po.stock')}: ${p.stockQty}` : '', priceTag(p.priceCents, p.discountPercent), qtyInCart.get(p.id) || 0, () => addProduct(p), undefined, false, p.imageUrl,
+          p.id, p.name, p.trackStock ? `${t('po.stock')}: ${p.stockQty}` : '', priceTag(p.priceCents, p.discountPercent, false, false, p.discountCents), qtyInCart.get(p.id) || 0, () => addProduct(p), undefined, false, p.imageUrl,
         ))}
       </div>
       {tab === 'SERVICE' && flatServices.length === 0 && <EmptyState text={services.length === 0 ? t('po.noServices') : `${t('po.noMatch')} "${query}"`} />}
@@ -2912,10 +2909,10 @@ function IpadPairPanel({ session, onRotate, onClose, t }: {
   );
 }
 
-function CatPrice({ priceCents, discountPercent, currency }: { priceCents: number; discountPercent?: number; currency: string }) {
-  const d = discountPercent ?? 0;
-  if (d <= 0) return <span style={{ color: 'var(--ink-good)' }}>{posMoney(priceCents, currency)}</span>;
-  const netP = Math.round((priceCents * (100 - d)) / 100);
+function CatPrice({ priceCents, discountPercent, discountCents, currency }: { priceCents: number; discountPercent?: number; discountCents?: number; currency: string }) {
+  const netP = salePrice({ priceCents, discountPercent, discountCents });
+  if (netP >= priceCents) return <span style={{ color: 'var(--ink-good)' }}>{posMoney(priceCents, currency)}</span>;
+  const d = shownPercent({ priceCents, discountPercent, discountCents });
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
       <span style={{ textDecoration: 'line-through', color: 'var(--c64748b)', fontSize: 11 }}>{posMoney(priceCents, currency)}</span>

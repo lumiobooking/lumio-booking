@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { salePrice } from '../common/discount';
 import { CALLED_KEY, NOTIFIED_KEY, calledTooLong, pruneCalled, turnSoonSms, upcomingToNotify, yourTurnSms } from './desk-policy';
 import { queueEstimates } from './wait-estimate';
 import { dayReview, type ClosedUnpaid, type Override, type ReviewTicket } from './day-review';
@@ -156,10 +157,10 @@ export class WalkinsService {
 
   /** Menu rows with what the legs need: zone (name + category) and turn value. */
   private async menuRows(tenantId: string, ids: string[]) {
-    type Row = { id: string; name: string; priceCents: number; discountPercent: number | null; durationMinutes: number; turnValue?: number | null; category?: { id?: string; name: string } | null };
+    type Row = { id: string; name: string; priceCents: number; discountPercent: number | null; discountCents?: number | null; durationMinutes: number; turnValue?: number | null; category?: { id?: string; name: string } | null };
     const uniq = [...new Set(ids.filter(Boolean))];
     if (!uniq.length) return new Map<string, Row>();
-    const select = { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true, category: { select: { id: true, name: true } } };
+    const select = { id: true, name: true, priceCents: true, discountPercent: true, discountCents: true, durationMinutes: true, category: { select: { id: true, name: true } } };
     let rows: Row[];
     try {
       rows = await this.db.service.findMany({ where: { tenantId, id: { in: uniq } }, select: { ...select, turnValue: true } });
@@ -178,8 +179,7 @@ export class WalkinsService {
   private async buildItem(tenantId: string, serviceId: string, staffId: string | null, promo?: (categoryId: string | null) => number): Promise<LegItem & { zone: Zone }> {
     const svc = (await this.menuRows(tenantId, [serviceId])).get(serviceId);
     if (!svc) throw new BadRequestException('Service not found');
-    const d = Math.min(90, Math.max(0, svc.discountPercent ?? 0));
-    const net = d > 0 ? Math.round((svc.priceCents * (100 - d)) / 100) : svc.priceCents;
+    const net = salePrice(svc); // a percent or an amount off (common/discount.ts)
     const p = promo ? Math.min(90, Math.max(0, Math.round(promo(svc.category?.id ?? null) || 0))) : 0;
     const price = p > 0 ? Math.round((net * (100 - p)) / 100) : net;
     return {

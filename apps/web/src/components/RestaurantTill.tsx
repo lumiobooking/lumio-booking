@@ -60,7 +60,7 @@ interface Floor { currency: string; settings: Settings; canPay: boolean; tables:
 /** The group key of dishes with no category ("Khác"); never a real category name. */
 const NO_CAT = '\u0000khac';
 
-interface Dish { id: string; name: string; category: string | null; priceCents: number; imageUrl: string | null; station: string; options: OptionGroup[]; soldOut: boolean }
+interface Dish { id: string; name: string; category: string | null; priceCents: number; /** The price before a sale (Giá gạch); priceCents is what is charged. */ origPriceCents?: number; imageUrl: string | null; station: string; options: OptionGroup[]; soldOut: boolean }
 interface FailedJob { id: string; title: string | null; station: string | null; error: string | null; createdAt: string }
 
 const MONEY_LOCALE: Record<string, string> = { USD: 'en-US', CAD: 'en-CA', VND: 'vi-VN', AUD: 'en-AU', GBP: 'en-GB', EUR: 'de-DE' };
@@ -859,7 +859,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                 {d.soldOut
                   ? <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--ink-bad)' }}>{L('HẾT MÓN', 'SOLD OUT')}</span>
                   : <span style={{ fontSize: 11.5, fontWeight: 700, color: C.muted }}>{d.options.length ? L('Tuỳ chọn', 'Options') : ''}</span>}
-                <b style={{ fontSize: 13.5 }}>{fmt(d.priceCents)}</b>
+                <b style={{ fontSize: 13.5 }}>{d.origPriceCents ? <s style={{ color: C.muted, fontWeight: 500, marginRight: 4 }}>{fmt(d.origPriceCents)}</s> : null}{fmt(d.priceCents)}</b>
               </span>
               </span>
             </button>
@@ -888,7 +888,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
                       <span style={{ fontSize: 15, fontWeight: inBill ? 700 : 600, lineHeight: 1.35, textDecoration: d.soldOut ? 'line-through' : undefined }}>{d.name}</span>
                       {(d.soldOut || d.options.length > 0) && <span style={{ fontSize: 12, fontWeight: 700, color: d.soldOut ? 'var(--ink-bad)' : C.muted }}>{d.soldOut ? L('Hết món', 'Sold out') : L('Có tuỳ chọn', 'Has options')}</span>}
                     </span>
-                    <span style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap', color: d.soldOut ? C.muted : C.strong }}>{priceText(d.priceCents)}</span>
+                    <span style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap', color: d.soldOut ? C.muted : C.strong }}>{d.origPriceCents ? <s style={{ fontSize: 12, color: C.muted, fontWeight: 500, marginRight: 4 }}>{priceText(d.origPriceCents)}</s> : null}{priceText(d.priceCents)}</span>
                     {mobile && !d.soldOut && <span aria-hidden style={{ width: 32, height: 32, borderRadius: '50%', background: inBill ? '#4f46e5' : 'var(--c1e1b4b)', color: inBill ? '#fff' : '#818cf8', display: 'grid', placeItems: 'center', fontSize: 19, fontWeight: 700, flexShrink: 0 }}>+</span>}
                   </button>
                 );

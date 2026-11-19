@@ -1,4 +1,5 @@
 import { currencyCode } from '../common/money';
+import { cleanDiscount } from '../common/discount';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -239,7 +240,7 @@ export class ServicesService {
           // booking calendar computable without forcing data entry up front.
           durationMinutes: dto.durationMinutes ?? 30,
           priceCents: dto.priceCents,
-          discountPercent: dto.discountPercent ?? 0,
+          ...cleanDiscount({ kind: dto.discountKind, discountPercent: dto.discountPercent, discountCents: dto.discountCents }, dto.priceCents),
           // The salon's currency. A hard 'USD' here is how an Australian
           // salon's menu ended up labelled in US dollars (common/money.ts).
           currency: salonCurrency,
@@ -294,7 +295,11 @@ export class ServicesService {
       description: dto.description === undefined ? undefined : (dto.description.trim() || null),
       durationMinutes: dto.durationMinutes,
       priceCents: dto.priceCents,
-      discountPercent: dto.discountPercent,
+      // Exactly one kind of sale (common/discount.ts), checked against the price it will have.
+      ...(dto.discountPercent !== undefined || dto.discountCents !== undefined || dto.discountKind !== undefined
+        ? cleanDiscount({ kind: dto.discountKind, discountPercent: dto.discountPercent, discountCents: dto.discountCents },
+          dto.priceCents ?? (await this.prisma.service.findFirst({ where: { id, tenantId }, select: { priceCents: true } }))?.priceCents ?? 0) as object
+        : {}),
       currency: salonCurrency,
       isActive: dto.isActive,
       sortOrder: dto.sortOrder,

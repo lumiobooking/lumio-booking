@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { cleanDiscount } from '../common/discount';
 import {
   AppointmentStatus,
   OrderItemKind,
@@ -118,7 +119,7 @@ export class PosService {
         sku: dto.sku ?? null,
         barcode: dto.barcode?.trim() || null,
         priceCents: dto.priceCents,
-        discountPercent: dto.discountPercent ?? 0,
+        ...cleanDiscount({ kind: dto.discountKind, discountPercent: dto.discountPercent, discountCents: dto.discountCents }, dto.priceCents),
         // The salon's own currency, never the client's guess.
         currency: salonCurrency ?? currencyCode(dto.currency) ?? 'USD',
         taxable: dto.taxable ?? true,
@@ -143,7 +144,9 @@ export class PosService {
         sku: dto.sku,
         barcode: dto.barcode === undefined ? undefined : (dto.barcode.trim() || null),
         priceCents: dto.priceCents,
-        discountPercent: dto.discountPercent,
+        ...(dto.discountPercent !== undefined || dto.discountCents !== undefined || dto.discountKind !== undefined
+          ? cleanDiscount({ kind: dto.discountKind, discountPercent: dto.discountPercent, discountCents: dto.discountCents }, dto.priceCents ?? existing.priceCents) as object
+          : {}),
         currency: salonCurrency ?? undefined,
         taxable: dto.taxable,
         trackStock: dto.trackStock,

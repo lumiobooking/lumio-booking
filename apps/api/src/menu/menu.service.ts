@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { cleanDiscount } from '../common/discount';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
@@ -69,6 +70,7 @@ export class MenuService {
         name: dto.name,
         category: dto.category ?? null,
         priceCents: dto.priceCents,
+        ...cleanDiscount({ kind: dto.discountKind, discountPercent: dto.discountPercent, discountCents: dto.discountCents }, dto.priceCents),
         currency: await this.currencyOf(tenantId),
         description: dto.description ?? null,
         imageUrl: dto.imageUrl ?? null,
@@ -89,6 +91,9 @@ export class MenuService {
         name: dto.name ?? undefined,
         category: dto.category ?? undefined,
         priceCents: dto.priceCents ?? undefined,
+        ...(dto.discountPercent !== undefined || dto.discountCents !== undefined || dto.discountKind !== undefined
+          ? cleanDiscount({ kind: dto.discountKind, discountPercent: dto.discountPercent, discountCents: dto.discountCents }, dto.priceCents ?? existing.priceCents) as object
+          : {}),
         description: dto.description ?? undefined,
         imageUrl: dto.imageUrl ?? undefined,
         isActive: dto.isActive ?? undefined,

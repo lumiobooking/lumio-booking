@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min, MinLength, IsIn, Max } from 'class-validator';
 
 export class UpdateMenuItemDto {
   @IsOptional()
@@ -21,6 +21,22 @@ export class UpdateMenuItemDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  /** Giá gạch: a percent (0–90) or an amount off (wins when > 0); common/discount.ts. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(90)
+  discountPercent?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  discountCents?: number;
+
+  @IsOptional()
+  @IsIn(['percent', 'amount', 'none'])
+  discountKind?: 'percent' | 'amount' | 'none';
 
   @IsOptional()
   @IsString()

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
+import { onSale, salePrice } from '../common/discount';
 import { PAY_KEY as CHAT_PAY_KEY, applyBankCredit, cleanRequests as cleanPayRequests, payCodeInText } from '../messenger/chat-pay';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { OrderItemKind, PaymentMethod, PrintJobStatus, UserRole } from '@prisma/client';
@@ -238,7 +239,8 @@ export class RestaurantService {
     const items = orderByCategories(raw, allCategories(order, raw.map((m) => m.category)));
     const now = new Date();
     return items.map((m) => ({
-      id: m.id, name: m.name, category: m.category, priceCents: m.priceCents, imageUrl: m.imageUrl,
+      // The price the till charges is the sale price; the old one rides along for the strike-through.
+      id: m.id, name: m.name, category: m.category, priceCents: salePrice(m), ...(onSale(m) ? { origPriceCents: m.priceCents } : {}), imageUrl: m.imageUrl,
       station: stationFor(m.category, settings), options: cleanOptionGroups(m.options),
       soldOut: soldOutNow(m.soldOutAt, settings.soldOutReset, ctx.tz, now),
     }));
@@ -345,7 +347,7 @@ export class RestaurantService {
     let picked: ReturnType<typeof pickOptions>;
     try { picked = pickOptions(cleanOptionGroups(item.options), dto.options); } catch (e) { throw new BadRequestException((e as Error).message); }
     const note = cleanNote(dto.note);
-    const unit = item.priceCents + picked.extraCents;
+    const unit = salePrice(item) + picked.extraCents;
     const key = optionsKey(picked.chosen);
     const same = check.lines.find((l) => l.state === 'UNSENT' && l.menuItemId === item.id && (l.note ?? null) === note && l.unitPriceCents === unit && optionsKey(chosenOf(l.options)) === key);
     if (same) {
@@ -1035,7 +1037,7 @@ export class RestaurantService {
       // The restaurant's own colour and logo on the guest's phone (white-label), never Lumio's.
       ...guestBrand(tenant?.branding),
       menu: items.map((m) => ({
-        id: m.id, name: m.name, category: m.category, priceCents: m.priceCents, imageUrl: m.imageUrl, description: m.description,
+        id: m.id, name: m.name, category: m.category, priceCents: salePrice(m), ...(onSale(m) ? { origPriceCents: m.priceCents } : {}), imageUrl: m.imageUrl, description: m.description,
         options: cleanOptionGroups(m.options), soldOut: soldOutNow(m.soldOutAt, settings.soldOutReset, ctx.tz, now),
       })),
       ordered: lines.map((l) => ({ name: l.name, quantity: l.quantity, status: l.state === 'PENDING' ? 'waiting' : l.readyAt ? 'ready' : l.state === 'SENT' ? 'cooking' : 'ordered' })),
@@ -1083,7 +1085,7 @@ export class RestaurantService {
       try { picked = pickOptions(cleanOptionGroups(item.options), w.options); } catch (e) { throw new BadRequestException((e as Error).message); }
       await this.prisma.tableCheckLine.create({
         data: {
-          tenantId, checkId: open!.id, menuItemId: item.id, name: item.name, unitPriceCents: item.priceCents + picked.extraCents, quantity: w.quantity,
+          tenantId, checkId: open!.id, menuItemId: item.id, name: item.name, unitPriceCents: salePrice(item) + picked.extraCents, quantity: w.quantity,
           note: w.note, options: picked.chosen as never, station: stationFor(item.category, settings), state, source: 'QR',
         },
       });

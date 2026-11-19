@@ -15,6 +15,7 @@
 // ===========================================================================
 
 import { buttonVars, type SocialLink } from '../../../lib/booking-buttons';
+import { salePrice, shownPercent } from '../../../lib/discount';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
@@ -149,7 +150,7 @@ interface Salon {
   industry?: string;
 }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; askAtBooking?: boolean }
-interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; isFree?: boolean; imageUrl?: string | null; addons: Addon[] }
+interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; discountCents?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; isFree?: boolean; imageUrl?: string | null; addons: Addon[] }
 interface Category { id: string; name: string; icon?: string | null }
 interface Staff {
   id: string; firstName: string; lastName: string | null; avatarUrl: string | null;
@@ -199,8 +200,10 @@ function promoPctFor(salon: Salon | null | undefined, date: Date | null, categor
 }
 /** What the menu says about a service's promotion. */
 interface MenuDeal { pct: number; label: string | null; upcoming: string | null }
-function svcDiscount(s: Service | null): number { return s ? Math.min(90, Math.max(0, s.discountPercent ?? 0)) : 0; }
-function svcNetCents(s: Service | null): number { return s ? Math.round((s.priceCents * (100 - svcDiscount(s))) / 100) : 0; }
+/** The service's own sale, for the badge: a percent, or (amount off) its rounded share — see lib/discount. */
+function svcDiscount(s: Service | null): number { return s ? shownPercent(s) : 0; }
+/** What it costs before any promotion: a percent or an amount off. */
+function svcNetCents(s: Service | null): number { return s ? salePrice(s) : 0; }
 
 /**
  * Treats the wall-clock digits of `local` as a time IN `timeZone` (the salon's
@@ -2218,7 +2221,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                     <span style={rowTitle}>
                       {s.name}
                       {s.isFeatured && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3 }}>{bt('POPULAR')}</span>}
-                      {disc > 0 && <span style={{ marginLeft: 8, background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700 }}>-{disc}%</span>}
+                      {disc > 0 && <span style={{ marginLeft: 8, background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700 }}>{(s.discountCents ?? 0) > 0 ? `-${fmt(s.priceCents - svcNetCents(s))}` : `-${disc}%`}</span>}
                       {promo > 0 && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>🎉 −{promo}%{deal?.label ? ` · ${deal.label}` : ''}</span>}
                     </span>
                     {/* The salon's own words about the service. Two clamped

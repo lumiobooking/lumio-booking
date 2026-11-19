@@ -25,7 +25,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
  * and "Đã gọi" shows each dish moving through the kitchen.
  */
 
-interface GuestDish { id: string; name: string; category: string | null; priceCents: number; imageUrl: string | null; description?: string | null; options: OptionGroup[]; soldOut: boolean }
+interface GuestDish { id: string; name: string; category: string | null; priceCents: number; /** Before the sale (Giá gạch). */ origPriceCents?: number; imageUrl: string | null; description?: string | null; options: OptionGroup[]; soldOut: boolean }
 interface Ordered { name: string; quantity: number; status: 'waiting' | 'ordered' | 'cooking' | 'ready' }
 interface TableMenu {
   restaurant: string; table: string; currency: string; lang: string; mode: 'confirm' | 'auto' | 'off';
@@ -268,7 +268,7 @@ export default function TablePage() {
                         <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                           <b style={{ fontSize: 15, lineHeight: 1.3 }}>{d.name}</b>
                           {d.description && <span style={{ fontSize: 12.5, color: P.soft, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{d.description}</span>}
-                          <span style={{ fontWeight: 800, fontSize: 14.5, color: d.soldOut ? P.bad : P.ink }}>{d.soldOut ? t.soldOut : fmt(d.priceCents)}{d.options.length > 0 && !d.soldOut && <span style={{ fontSize: 11.5, fontWeight: 600, color: P.soft }}> · {t.optional.toLowerCase()}</span>}</span>
+                          <span style={{ fontWeight: 800, fontSize: 14.5, color: d.soldOut ? P.bad : P.ink }}>{d.soldOut ? t.soldOut : <>{d.origPriceCents ? <s style={{ fontWeight: 500, fontSize: 12.5, color: P.soft, marginRight: 5 }}>{fmt(d.origPriceCents)}</s> : null}{fmt(d.priceCents)}</>}{d.options.length > 0 && !d.soldOut && <span style={{ fontSize: 11.5, fontWeight: 600, color: P.soft }}> · {t.optional.toLowerCase()}</span>}</span>
                         </span>
                       </button>
                       {!d.soldOut && (n > 0
@@ -432,7 +432,7 @@ function DishSheet({ dish, t, fmt, accent, onClose, onAdd }: {
       <Thumb d={dish} size="100%" radius={18} />
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <span style={{ flex: 1, color: P.soft, fontSize: 14, lineHeight: 1.55 }}>{dish.description || ''}</span>
-        <b style={{ fontSize: 18 }}>{fmt(dish.priceCents)}</b>
+        <b style={{ fontSize: 18 }}>{dish.origPriceCents ? <s style={{ fontWeight: 500, fontSize: 14, color: P.soft, marginRight: 6 }}>{fmt(dish.origPriceCents)}</s> : null}{fmt(dish.priceCents)}</b>
       </div>
       {dish.options.map((g) => (
         <fieldset key={g.id} style={{ border: 0, margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>

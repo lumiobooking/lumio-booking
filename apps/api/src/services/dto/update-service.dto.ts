@@ -9,6 +9,7 @@ import {
   Min,
   MaxLength,
   MinLength,
+  IsIn,
 } from 'class-validator';
 import { SERVICE_DESCRIPTION_MAX } from './create-service.dto';
 
@@ -39,6 +40,17 @@ export class UpdateServiceDto {
   @Min(0)
   @Max(90)
   discountPercent?: number;
+
+  // Or an AMOUNT off (cents), which wins when > 0 (common/discount.ts).
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  discountCents?: number;
+
+  // Which kind the form chose: 'percent' | 'amount' | 'none'.
+  @IsOptional()
+  @IsIn(['percent', 'amount', 'none'])
+  discountKind?: 'percent' | 'amount' | 'none';
 
   @IsOptional()
   @IsString()

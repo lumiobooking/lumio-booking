@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DiscountField } from '../../../components/DiscountField';
+import { badgeText, discountBody, kindOf, onSale, salePrice, type DiscountKind } from '../../../lib/discount';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -15,7 +17,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { foldText } from '../../../lib/menu-nav';
 import { MenuCategoryManager, type MenuCategories } from '../../../components/MenuCategoryManager';
 
-interface Item { id: string; name: string; category: string | null; priceCents: number; currency: string; description: string | null; imageUrl: string | null; isActive: boolean; sortOrder: number; options?: unknown[] }
+interface Item { id: string; name: string; category: string | null; priceCents: number; discountPercent?: number; discountCents?: number; currency: string; description: string | null; imageUrl: string | null; isActive: boolean; sortOrder: number; options?: unknown[] }
 
 
 function MenuThumb({ url, onSet, onClear }: { url: string | null; onSet: (dataUrl: string) => void; onClear: () => void }) {
@@ -63,6 +65,7 @@ function Inner() {
   // "Nhập thực đơn từ Excel": template, upload, check, import (MenuTableImport).
   const [showImport, setShowImport] = useState(false);
   const [optionsFor, setOptionsFor] = useState<Item | null>(null);
+  const [saleFor, setSaleFor] = useState<Item | null>(null);
   const vi = lang === 'vi';
   const sym = currencySymbolFor(pageCurrency);
   const [err, setErr] = useState<string | null>(null);
@@ -290,6 +293,10 @@ function Inner() {
                     onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, priceCents: toMinorUnits(e.target.value, pageCurrency) } : x)))}
                     onBlur={(e) => patch(it.id, { priceCents: toMinorUnits(e.target.value, pageCurrency) })} />
                 </div>
+                <button type="button" onClick={() => setSaleFor(it)} title={vi ? 'Giá gạch: giảm % hoặc giảm số tiền' : 'Sale: percent or amount off'}
+                  style={{ padding: '5px 10px', borderRadius: 6, border: onSale(it) ? '1px solid #ef4444' : '1px solid var(--c334155)', background: 'transparent', color: onSale(it) ? 'var(--ink-bad)' : 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', fontWeight: onSale(it) ? 700 : 400 }}>
+                  {onSale(it) ? `${badgeText(it, (c) => `${fromMinorUnits(c, pageCurrency)}${sym}`)} · ${fromMinorUnits(salePrice(it), pageCurrency)}${sym}` : (vi ? 'Giảm giá' : 'Sale')}
+                </button>
                 <button type="button" onClick={() => setOptionsFor(it)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer' }}>
                   {vi ? 'Tuỳ chọn' : 'Options'}{(it.options?.length ?? 0) ? ` (${it.options!.length})` : ''}
                 </button>
@@ -305,11 +312,36 @@ function Inner() {
       {query && shownGroups.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 14 }}>{vi ? 'Không có món nào khớp.' : 'No dish matches.'}</p>}
       </div>
       </div>
+      {saleFor && <SaleDialog item={saleFor} vi={vi} currency={pageCurrency} sym={sym} onClose={() => setSaleFor(null)}
+        onSave={async (body) => { await patch(saleFor.id, body); setSaleFor(null); }} />}
       {optionsFor && (
         <MenuOptionsEditor vi={vi} currency={pageCurrency} dishName={optionsFor.name} initial={(optionsFor.options ?? []) as OptionGroupDraft[]}
           onClose={() => setOptionsFor(null)}
           onSave={async (options) => { await patch(optionsFor.id, { options }); setOptionsFor(null); }} />
       )}
     </section>
+  );
+}
+
+/** Giá gạch for one dish: no sale / percent off / amount off, previewed as the guest will see it. */
+function SaleDialog({ item, vi, currency, sym, onClose, onSave }: { item: Item; vi: boolean; currency: string; sym: string; onClose: () => void; onSave: (b: Record<string, unknown>) => Promise<void> }) {
+  const [kind, setKind] = useState<DiscountKind>(kindOf(item));
+  const [value, setValue] = useState(kindOf(item) === 'amount' ? fromMinorUnits(item.discountCents ?? 0, currency) : kindOf(item) === 'percent' ? String(item.discountPercent ?? 0) : '');
+  const [busy, setBusy] = useState(false);
+  return (
+    <div role="dialog" aria-modal="true" aria-label={vi ? 'Giảm giá món' : 'Dish sale'} onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(2,6,23,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(460px, 100%)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <b style={{ fontSize: 16 }}>{item.name}</b>
+        <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{vi ? 'Giá gốc' : 'Price'}: {fromMinorUnits(item.priceCents, currency)}{sym}</span>
+        <DiscountField kind={kind} value={value} priceCents={item.priceCents} toCents={(v) => toMinorUnits(v, currency)} money={(c) => `${fromMinorUnits(c, currency)}${sym}`}
+          vi={vi} inputStyle={ui.input} labelStyle={ui.label} onChange={(k, v) => { setKind(k); setValue(v); }} />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer' }}>{vi ? 'Đóng' : 'Close'}</button>
+          <button type="button" disabled={busy} onClick={async () => { setBusy(true); try { await onSave(discountBody(kind, value, (v) => toMinorUnits(v, currency))); } finally { setBusy(false); } }}
+            style={{ padding: '8px 16px', borderRadius: 8, border: 0, background: '#4f46e5', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>{vi ? 'Lưu' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
   );
 }

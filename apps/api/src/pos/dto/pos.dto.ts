@@ -11,6 +11,7 @@ import {
   MaxLength,
   ValidateNested,
   ArrayMinSize,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { OrderItemKind, PaymentMethod } from '@prisma/client';
@@ -22,6 +23,9 @@ export class CreateProductDto {
   @IsOptional() @IsString() @MaxLength(80) barcode?: string;
   @IsInt() @Min(0) priceCents!: number;
   @IsOptional() @IsInt() @Min(0) @Max(90) discountPercent?: number;
+  /** An amount off instead (wins when > 0); common/discount.ts. */
+  @IsOptional() @IsInt() @Min(0) discountCents?: number;
+  @IsOptional() @IsIn(['percent', 'amount', 'none']) discountKind?: 'percent' | 'amount' | 'none';
   @IsOptional() @IsString() @MaxLength(8) currency?: string;
   @IsOptional() @IsBoolean() taxable?: boolean;
   @IsOptional() @IsBoolean() trackStock?: boolean;
@@ -35,6 +39,9 @@ export class UpdateProductDto {
   @IsOptional() @IsString() @MaxLength(80) barcode?: string;
   @IsOptional() @IsInt() @Min(0) priceCents?: number;
   @IsOptional() @IsInt() @Min(0) @Max(90) discountPercent?: number;
+  /** An amount off instead (wins when > 0); common/discount.ts. */
+  @IsOptional() @IsInt() @Min(0) discountCents?: number;
+  @IsOptional() @IsIn(['percent', 'amount', 'none']) discountKind?: 'percent' | 'amount' | 'none';
   @IsOptional() @IsString() @MaxLength(8) currency?: string;
   @IsOptional() @IsBoolean() taxable?: boolean;
   @IsOptional() @IsBoolean() trackStock?: boolean;

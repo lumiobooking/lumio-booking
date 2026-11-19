@@ -27,6 +27,7 @@
  */
 
 import { inPromoWindow } from '../settings/promo-window';
+import { salePrice, shownPercent } from '../common/discount';
 
 export interface WeekdayRule { day: number; categoryId: string | null; percent: number }
 export interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
@@ -82,9 +83,9 @@ export function promoPct(p: PromoSettings, day: SalonDay, categoryId: string | n
  * what is left. Integer cents, rounded once per step — the same two roundings
  * the booking page does, so both screens print the same figure.
  */
-export function netCents(priceCents: number, discountPercent: number, promo: number): number {
-  const own = pct(discountPercent);
-  const afterOwn = own > 0 ? Math.round((priceCents * (100 - own)) / 100) : priceCents;
+export function netCents(priceCents: number, discountPercent: number, promo: number, discountCents = 0): number {
+  // Own sale: an amount off wins over a percent (common/discount.ts).
+  const afterOwn = salePrice({ priceCents, discountPercent, discountCents });
   const pr = pct(promo);
   return pr > 0 ? Math.round((afterOwn * (100 - pr)) / 100) : afterOwn;
 }
@@ -93,8 +94,10 @@ export interface PricedService {
   id: string;
   name: string;
   priceCents: number;
-  /** The service's own discount, 0–90. */
+  /** The service's own discount, 0–90 (for an amount off: the rounded share, for the badge). */
   discountPercent: number;
+  /** An amount off instead of a percent (0 = none). */
+  discountCents: number;
   /** Today's promotion for this service's category, 0–90. */
   promoPercent: number;
   /** What the customer pays today. Equal to priceCents when nothing applies. */
@@ -105,19 +108,21 @@ export interface PricedService {
 }
 
 export function priceService(
-  s: { id: string; name: string; priceCents: number; discountPercent?: number | null; durationMinutes: number; isFeatured?: boolean | null; category?: { id: string; name: string } | null },
+  s: { id: string; name: string; priceCents: number; discountPercent?: number | null; discountCents?: number | null; durationMinutes: number; isFeatured?: boolean | null; category?: { id: string; name: string } | null },
   p: PromoSettings,
   day: SalonDay,
 ): PricedService {
   const promo = promoPct(p, day, s.category?.id ?? null);
   const own = pct(s.discountPercent);
+  const cents = Math.max(0, Math.round(Number(s.discountCents ?? 0)));
   return {
     id: s.id,
     name: s.name,
     priceCents: s.priceCents,
-    discountPercent: own,
+    discountPercent: shownPercent({ priceCents: s.priceCents, discountPercent: own, discountCents: cents }),
+    discountCents: cents > 0 ? Math.min(cents, s.priceCents) : 0,
     promoPercent: promo,
-    netCents: netCents(s.priceCents, own, promo),
+    netCents: netCents(s.priceCents, own, promo, cents),
     durationMinutes: s.durationMinutes,
     isFeatured: s.isFeatured === true,
     category: s.category ?? null,

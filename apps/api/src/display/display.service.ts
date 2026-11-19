@@ -80,7 +80,7 @@ export class DisplayService {
       this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, branding: true, timezone: true } }),
       this.prisma.service.findMany({
         where: { tenantId, isActive: true },
-        select: { id: true, name: true, priceCents: true, discountPercent: true, isFeatured: true, durationMinutes: true, category: { select: { id: true, name: true } } },
+        select: { id: true, name: true, priceCents: true, discountPercent: true, discountCents: true, isFeatured: true, durationMinutes: true, category: { select: { id: true, name: true } } },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       }),
       this.promosOf(tenantId),
@@ -324,7 +324,7 @@ export class DisplayService {
       ? await Promise.all([
           this.prisma.service.findMany({
             where: { id: { in: allIds }, tenantId, isActive: true },
-            select: { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true, category: { select: { id: true, name: true } } },
+            select: { id: true, name: true, priceCents: true, discountPercent: true, discountCents: true, durationMinutes: true, category: { select: { id: true, name: true } } },
           }),
           this.promosOf(tenantId),
           this.salonDay(tenantId),
@@ -345,7 +345,7 @@ export class DisplayService {
           lineId: randomBytes(12).toString('base64url'),
           serviceId: sv.id,
           name: sv.name,
-          priceCents: visitPct > priced.promoPercent ? netCents(sv.priceCents, priced.discountPercent, visitPct) : priced.netCents,
+          priceCents: visitPct > priced.promoPercent ? netCents(sv.priceCents, priced.discountCents > 0 ? 0 : priced.discountPercent, visitPct, priced.discountCents) : priced.netCents,
           durationMinutes: sv.durationMinutes,
           staffId: null as string | null,
         };

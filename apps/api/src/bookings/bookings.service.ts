@@ -1,4 +1,5 @@
 import { keptOnLate } from './pay-in-full';
+import { salePrice, type Discountable } from '../common/discount';
 import { RULES_KEY as PHOTO_RULES_KEY, cleanRules as cleanPhotoRules } from '../messenger/photo-library';
 import { EXTENSION_KEY, extensionCharge, extensionName, policyFrom, shrinkExtensions, type ExtensionPolicy, type ExtLine } from './extension-price';
 import { staffBusyMessage } from './busy-message';
@@ -814,8 +815,8 @@ export class BookingsService {
     const programPct = await this.programDiscountPercent(tenantId, dto, start, saleWhere);
 
     // Primary service: its own discount, then the best promo for its category.
-    const primaryDisc = Math.min(90, Math.max(0, service.discountPercent ?? 0));
-    const primaryNet = Math.round((service.priceCents * (100 - primaryDisc)) / 100);
+    // Its own sale — a percent or an amount off (common/discount.ts).
+    const primaryNet = salePrice(service as Discountable);
     const primaryWd = Math.max(await this.promoDiscountPercent(tenantId, start, service.categoryId, saleWhere), programPct);
     const primaryFinal = Math.round((primaryNet * (100 - primaryWd)) / 100);
 
@@ -835,8 +836,7 @@ export class BookingsService {
     if (walkInExtra) throw new BadRequestException(walkInOnlyMessage(walkInExtra.name));
     const extraItems: { id: string; name: string; priceCents: number; durationMinutes: number; kind: 'service' }[] = [];
     for (const s of extraServices) {
-      const disc = Math.min(90, Math.max(0, s.discountPercent ?? 0));
-      const net = Math.round((s.priceCents * (100 - disc)) / 100);
+      const net = salePrice(s as Discountable);
       const wd = Math.max(await this.promoDiscountPercent(tenantId, start, s.categoryId, saleWhere), programPct);
       extraItems.push({ id: s.id, name: s.name, priceCents: Math.round((net * (100 - wd)) / 100), durationMinutes: s.durationMinutes, kind: 'service' });
     }
@@ -1542,8 +1542,7 @@ export class BookingsService {
 
     const items: { id: string; name: string; priceCents: number; durationMinutes: number; kind: 'service' }[] = [];
     for (const s of services) {
-      const disc = Math.min(90, Math.max(0, s.discountPercent ?? 0));
-      const net = Math.round((s.priceCents * (100 - disc)) / 100);
+      const net = salePrice(s as Discountable);
       const wd = Math.max(await this.promoDiscountPercent(tenantId, appt.startTime, s.categoryId, channelOfSource(appt.source)), programPct);
       items.push({
         id: s.id, name: s.name, kind: 'service',
@@ -2708,6 +2707,7 @@ export class BookingsService {
         durationMinutes: true,
         priceCents: true,
         discountPercent: true,
+        discountCents: true,
         currency: true,
         categoryId: true,
         isFeatured: true,
@@ -3974,8 +3974,7 @@ export class BookingsService {
       const linesPrice = current.reduce((sum, x) => sum + (x.priceCents ?? 0), 0);
       removedPrice += Math.max(0, b.priceCents - linesPrice);
       removedMinutes += old?.durationMinutes ?? 0;
-      const disc = Math.min(90, Math.max(0, sv.discountPercent ?? 0));
-      const net = Math.round((sv.priceCents * (100 - disc)) / 100);
+      const net = salePrice(sv as Discountable);
       const wd = await this.promoDiscountPercent(tenantId, b.startTime, sv.categoryId, channelOfSource(b.source));
       mainSwap = { id: sv.id, name: sv.name, from: old?.name ?? null, priceCents: Math.round((net * (100 - wd)) / 100), minutes: sv.durationMinutes };
     }
@@ -3987,8 +3986,7 @@ export class BookingsService {
       const svcs = await this.prisma.service.findMany({ where: { id: { in: addIds }, tenantId, isActive: true } });
       if (svcs.length !== addIds.length) throw new BadRequestException('One or more selected services are unavailable.');
       for (const sv of svcs) {
-        const disc = Math.min(90, Math.max(0, sv.discountPercent ?? 0));
-        const net = Math.round((sv.priceCents * (100 - disc)) / 100);
+        const net = salePrice(sv as Discountable);
         const wd = await this.promoDiscountPercent(tenantId, b.startTime, sv.categoryId, channelOfSource(b.source));
         added.push({
           id: sv.id, name: sv.name, durationMinutes: sv.durationMinutes, kind: 'service',
@@ -5042,7 +5040,7 @@ export class BookingsService {
 
 /** A menu line as the public booking page receives it. */
 export interface PublicServiceRow {
-  id: string; name: string; description: string | null; durationMinutes: number; priceCents: number; discountPercent: number; currency: string;
+  id: string; name: string; description: string | null; durationMinutes: number; priceCents: number; discountPercent: number; discountCents?: number; currency: string;
   categoryId: string | null; isFeatured: boolean; priceFrom: boolean; imageUrl: string | null; sortOrder: number; walkInOnly?: boolean;
   addons: { id: string; name: string; durationMinutes: number; priceCents: number; currency: string; askAtBooking?: boolean }[];
 }

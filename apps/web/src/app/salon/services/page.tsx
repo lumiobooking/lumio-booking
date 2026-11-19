@@ -16,6 +16,8 @@ import { SearchBox, matchesQuery } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { ind } from '../../../lib/ui-industry';
 import { isBookable } from '../../../lib/bookable-staff';
+import { DiscountField, SalePriceText } from '../../../components/DiscountField';
+import { discountBody, kindOf, onSale, type DiscountKind } from '../../../lib/discount';
 
 interface Service {
   id: string;
@@ -24,6 +26,7 @@ interface Service {
   durationMinutes: number;
   priceCents: number;
   discountPercent?: number;
+  discountCents?: number;
   currency: string;
   isActive: boolean;
   createdAt?: string;
@@ -837,12 +840,8 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
           ? `${s.durationMinutes} ${t('sv.min')}`
           : <span title={lang === 'vi' ? 'Chưa đặt thời lượng — lịch hẹn sẽ không chặn giờ của thợ' : 'No duration set — bookings will not block the technician\'s time'} style={{ color: 'var(--ink-warn)' }}>{lang === 'vi' ? 'Chưa đặt' : 'Not set'}</span>}</td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
-          {s.discountPercent && s.discountPercent > 0 ? (
-            <span>
-              <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{fmt(s.priceCents)}</span>
-              <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
-              <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{s.discountPercent}%</span>
-            </span>
+          {onSale(s) ? (
+            <SalePriceText priceCents={s.priceCents} discountPercent={s.discountPercent} discountCents={s.discountCents} money={fmt} />
           ) : (
             <>{!(s.priceCents > 0) ? <NoPriceTag s={s} vi={lang === 'vi'} /> : fmt(s.priceCents)}{s.priceFrom && s.priceCents > 0 ? <span title={lang === 'vi' ? 'Giá từ (trở lên)' : 'From price (and up)'} style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}>+</span> : null}{s.walkInOnly ? <span title={t('sv.walkInOnlyHelp')} style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-warn)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px', whiteSpace: 'nowrap' }}>{t('sv.walkInOnlyBadge')}</span> : null}</>
           )}
@@ -900,12 +899,8 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
         <MRow label={t('sv.colCategory')}>{catName(s.categoryId)}</MRow>
         <MRow label={t('sv.colDuration')}>{s.durationMinutes} {t('sv.min')}</MRow>
         <MRow label={t('sv.colPrice')}>
-          {s.discountPercent && s.discountPercent > 0 ? (
-            <span>
-              <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{fmt(s.priceCents)}</span>
-              <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
-              <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{s.discountPercent}%</span>
-            </span>
+          {onSale(s) ? (
+            <SalePriceText priceCents={s.priceCents} discountPercent={s.discountPercent} discountCents={s.discountCents} money={fmt} />
           ) : !(s.priceCents > 0) ? <NoPriceTag s={s} vi={lang === 'vi'} /> : fmt(s.priceCents)}
         </MRow>
         <MActions>
@@ -970,7 +965,8 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
     description: service.description ?? '',
     duration: String(service.durationMinutes),
     price: fromMinorUnits(service.priceCents, service.currency),
-    discount: String(service.discountPercent ?? 0),
+    discountKind: kindOf(service),
+    discount: kindOf(service) === 'amount' ? fromMinorUnits(service.discountCents ?? 0, service.currency) : String(service.discountPercent ?? 0),
     categoryId: service.categoryId ?? '',
     isFeatured: service.isFeatured ?? false,
     priceFrom: service.priceFrom ?? false,
@@ -998,7 +994,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           description: form.description.trim(),
           durationMinutes: form.duration.trim() === '' ? 30 : Math.max(0, parseInt(form.duration, 10) || 0),
           priceCents: toMinorUnits(form.price || '0', service.currency),
-          discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
+          ...discountBody(form.discountKind, form.discount, (v) => toMinorUnits(v, service.currency)),
           categoryId: form.categoryId || null,
           isFeatured: form.isFeatured,
           priceFrom: form.priceFrom,
@@ -1015,7 +1011,8 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           description: updated.description ?? '',
           duration: String(updated.durationMinutes),
           price: fromMinorUnits(updated.priceCents, updated.currency ?? service.currency),
-          discount: String(updated.discountPercent ?? 0),
+          discountKind: kindOf(updated),
+          discount: kindOf(updated) === 'amount' ? fromMinorUnits(updated.discountCents ?? 0, updated.currency ?? service.currency) : String(updated.discountPercent ?? 0),
           categoryId: updated.categoryId ?? '',
           isFeatured: updated.isFeatured ?? false,
           priceFrom: updated.priceFrom ?? false,
@@ -1042,7 +1039,9 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
         <label><span style={ui.label}>{t('sv.fName')}</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('sv.fDuration')}</span><input style={ui.input} type="number" min={0} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="30" /></label>
         <label><span style={ui.label}>{t('sv.fPrice').replace('{c}', service.currency)}</span><input style={{ ...ui.input, opacity: priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' || form.isFree ? 0.5 : 1 }} type="number" min={0} step={priceInputStep(service.currency)} value={priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' || form.isFree ? '' : form.price} placeholder={form.isFree ? (lang === 'vi' ? 'Miễn phí' : 'Free') : priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' ? (lang === 'vi' ? 'Báo giá tại tiệm' : 'At salon') : ''} disabled={priceKindOf(form.price, form.priceFrom, form.isFree) === 'salon' || form.isFree} onChange={(e) => { setForm({ ...form, price: e.target.value, isFree: false }); setSaved(false); }} required={priceKindOf(form.price, form.priceFrom, form.isFree) === 'fixed' || form.priceFrom} /></label>
-        <label><span style={ui.label}>{t('sv.fDiscount')}</span><input style={ui.input} type="number" min={0} max={90} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
+        <DiscountField kind={form.discountKind} value={form.discount} priceCents={toMinorUnits(form.price || '0', service.currency)} toCents={(v) => toMinorUnits(v, service.currency)}
+          money={(c) => `${fromMinorUnits(c, service.currency)} ${service.currency}`} vi={lang === 'vi'} inputStyle={ui.input} labelStyle={ui.label}
+          onChange={(k, v) => { setForm({ ...form, discountKind: k, discount: v }); setSaved(false); }} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginTop: 10, alignItems: 'end' }}>
         <label><span style={ui.label}>{t('sv.fCategory')}</span>
@@ -1182,7 +1181,7 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
 function CreateServiceForm({ token, categories, staff, currency, onCreated }: { token: string; categories: Category[]; staff: Staff[]; currency: string; onCreated: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false, isFree: false, imageUrl: '', turnValue: 1, walkInOnly: false });
+  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discountKind: 'none' as DiscountKind, discount: '', categoryId: '', isFeatured: false, priceFrom: false, isFree: false, imageUrl: '', turnValue: 1, walkInOnly: false });
   const [staffIds, setStaffIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -1200,7 +1199,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
           description: form.description || undefined,
           durationMinutes: form.durationMinutes.trim() === '' ? 30 : Math.max(0, parseInt(form.durationMinutes, 10) || 0),
           priceCents: toMinorUnits(form.price || '0', currency),
-          discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
+          ...discountBody(form.discountKind, form.discount, (v) => toMinorUnits(v, currency)),
           categoryId: form.categoryId || null,
           isFeatured: form.isFeatured,
           priceFrom: form.priceFrom,
@@ -1256,17 +1255,9 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
             required={priceKindOf(form.price, form.priceFrom, form.isFree) === 'fixed' || form.priceFrom}
           />
         </label>
-        <label>
-          <span style={ui.label}>{t('sv.fDiscount')}</span>
-          <input
-            style={ui.input}
-            type="number"
-            min={0}
-            max={90}
-            value={form.discount}
-            onChange={(e) => setForm({ ...form, discount: e.target.value })}
-          />
-        </label>
+        <DiscountField kind={form.discountKind} value={form.discount} priceCents={toMinorUnits(form.price || '0', currency)} toCents={(v) => toMinorUnits(v, currency)}
+          money={(c) => `${fromMinorUnits(c, currency)} ${currency}`} vi={lang === 'vi'} inputStyle={ui.input} labelStyle={ui.label}
+          onChange={(k, v) => setForm({ ...form, discountKind: k, discount: v })} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginTop: 12, alignItems: 'end' }}>
         <label><span style={ui.label}>{t('sv.fCategory')}</span>

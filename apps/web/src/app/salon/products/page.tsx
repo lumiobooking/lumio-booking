@@ -1,6 +1,8 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
+import { DiscountField, SalePriceText } from '../../../components/DiscountField';
+import { discountBody, kindOf, onSale, salePrice, type DiscountKind } from '../../../lib/discount';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -13,14 +15,13 @@ import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../c
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Product {
-  id: string; name: string; sku: string | null; barcode?: string | null; priceCents: number; discountPercent?: number; currency: string;
+  id: string; name: string; sku: string | null; barcode?: string | null; priceCents: number; discountPercent?: number; discountCents?: number; currency: string;
   taxable: boolean; trackStock: boolean; stockQty: number; isActive: boolean; createdAt?: string;
 }
 
-function netCents(p: { priceCents: number; discountPercent?: number }) {
-  return p.discountPercent && p.discountPercent > 0
-    ? Math.round((p.priceCents * (100 - p.discountPercent)) / 100)
-    : p.priceCents;
+/** What the customer pays: a percent or an amount off (lib/discount). */
+function netCents(p: { priceCents: number; discountPercent?: number; discountCents?: number }) {
+  return salePrice(p);
 }
 
 export default function ProductsPage() {
@@ -138,13 +139,7 @@ function Inner() {
                     {p.name}{p.sku ? <span style={{ color: 'var(--c64748b)', fontSize: 12 }}> · {p.sku}</span> : null}
                   </MHead>
                   <MRow label={t('pd.colPrice')}>
-                    {p.discountPercent && p.discountPercent > 0 ? (
-                      <span>
-                        <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
-                        <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
-                        <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{p.discountPercent}%</span>
-                      </span>
-                    ) : formatPrice(p.priceCents, p.currency)}
+                    {onSale(p) ? <SalePriceText priceCents={p.priceCents} discountPercent={p.discountPercent} discountCents={p.discountCents} money={(c) => formatPrice(c, p.currency)} /> : formatPrice(p.priceCents, p.currency)}
                   </MRow>
                   <MRow label={t('pd.colTaxable')}>{p.taxable ? t('pd.yes') : t('pd.no')}</MRow>
                   <MRow label={t('pd.colStock')}>{p.trackStock ? p.stockQty : '—'}</MRow>
@@ -178,13 +173,7 @@ function Inner() {
                     <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(p.id)} onChange={() => bulk.toggle(p.id)} /></td>
                     <td style={ui.td}>{p.name}{p.sku ? <span style={{ color: 'var(--c64748b)', fontSize: 12 }}> · {p.sku}</span> : null}</td>
                     <td style={ui.td}>
-                      {p.discountPercent && p.discountPercent > 0 ? (
-                        <span>
-                          <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
-                          <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
-                          <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{p.discountPercent}%</span>
-                        </span>
-                      ) : formatPrice(p.priceCents, p.currency)}
+                      {onSale(p) ? <SalePriceText priceCents={p.priceCents} discountPercent={p.discountPercent} discountCents={p.discountCents} money={(c) => formatPrice(c, p.currency)} /> : formatPrice(p.priceCents, p.currency)}
                     </td>
                     <td style={ui.td}>{p.taxable ? t('pd.yes') : t('pd.no')}</td>
                     <td style={ui.td}>{p.trackStock ? p.stockQty : '—'}</td>
@@ -223,7 +212,8 @@ function ProductForm({ token, product, onDone, currency = 'USD' }: { token: stri
     sku: product?.sku ?? '',
     barcode: product?.barcode ?? '',
     price: product ? fromMinorUnits(product.priceCents, product.currency) : '',
-    discountPercent: product ? String(product.discountPercent ?? 0) : '0',
+    discountKind: (product ? kindOf(product) : 'none') as DiscountKind,
+    discount: product ? (kindOf(product) === 'amount' ? fromMinorUnits(product.discountCents ?? 0, product.currency) : String(product.discountPercent ?? 0)) : '',
     taxable: product?.taxable ?? true,
     trackStock: product?.trackStock ?? false,
     stockQty: product ? String(product.stockQty) : '0',
@@ -241,7 +231,7 @@ function ProductForm({ token, product, onDone, currency = 'USD' }: { token: stri
         sku: form.sku || undefined,
         barcode: form.barcode || undefined,
         priceCents: toMinorUnits(form.price, product?.currency ?? currency),
-        discountPercent: Math.max(0, Math.min(90, parseInt(form.discountPercent, 10) || 0)),
+        ...discountBody(form.discountKind, form.discount, (v) => toMinorUnits(v, product?.currency ?? currency)),
         taxable: form.taxable,
         trackStock: form.trackStock,
         stockQty: parseInt(form.stockQty, 10) || 0,
@@ -262,8 +252,10 @@ function ProductForm({ token, product, onDone, currency = 'USD' }: { token: stri
         <label><span style={ui.label}>{t('pd.sku')}</span><input style={ui.input} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></label>
         <label><span style={ui.label}>{t('pd.barcode')}</span><input style={ui.input} value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder={t('pd.barcodePh')} /></label>
         <label><span style={ui.label}>{t('pd.price')}</span><input style={ui.input} type="number" min={0} step={priceInputStep(product?.currency ?? currency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
-        <label><span style={ui.label}>{t('pd.discount')}</span><input style={ui.input} type="number" min={0} max={90} value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} /></label>
         <label><span style={ui.label}>{t('pd.stockQty')}</span><input style={ui.input} type="number" min={0} value={form.stockQty} onChange={(e) => setForm({ ...form, stockQty: e.target.value })} disabled={!form.trackStock} /></label>
+        <DiscountField kind={form.discountKind} value={form.discount} priceCents={toMinorUnits(form.price || '0', product?.currency ?? currency)} toCents={(v) => toMinorUnits(v, product?.currency ?? currency)}
+          money={(c) => formatPrice(c, product?.currency ?? currency)} vi={lang === 'vi'} inputStyle={ui.input} labelStyle={ui.label}
+          onChange={(k, v) => setForm({ ...form, discountKind: k, discount: v })} />
       </div>
       <div style={{ display: 'flex', gap: 18, marginTop: 12, flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={form.taxable} onChange={(e) => setForm({ ...form, taxable: e.target.checked })} /> {t('pd.taxable')}</label>

@@ -58,6 +58,8 @@ export interface ReceiptLine {
   /** Before the line's own discount, when it had one. */
   origAmountCents?: number;
   discountPercent?: number;
+  /** The sale was an amount off: print the money saved instead of a percent. */
+  offIsAmount?: boolean;
   isAddon?: boolean;
   tech?: string | null;
   tipCents?: number;
@@ -255,7 +257,7 @@ export function buildReceiptHtml(data: ReceiptData, shop: ReceiptShop, design0: 
     `<tr${bold ? ' class="b"' : ''}><td>${label}</td><td class="r">${val}</td></tr>`;
   const lineRow = (l: ReceiptLine) => {
     const disc = d.showSavings && l.discountPercent && l.origAmountCents
-      ? `<div class="s"><s>${money(l.origAmountCents)}</s> &nbsp;-${l.discountPercent}%</div>` : '';
+      ? `<div class="s"><s>${money(l.origAmountCents)}</s> &nbsp;-${l.offIsAmount ? money(l.origAmountCents - l.amountCents) : `${l.discountPercent}%`}</div>` : '';
     const tech = d.showTechnician && l.tech ? `<div class="s">${esc(l.tech)}</div>` : '';
     const tip = d.showLineTips && l.tipCents ? `<div class="s">${L.tip}: ${money(l.tipCents)}</div>` : '';
     const addon = l.isAddon ? ` <span class="s">(${L.addon})</span>` : '';

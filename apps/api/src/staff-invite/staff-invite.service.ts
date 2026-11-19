@@ -10,7 +10,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { oauthBase } from '../common/public-url.util';
 import { takesAppointmentsFor } from '../staff/bookable-role';
 import {
-  PROVIDER_FACEBOOK, ROLE_LABEL_VI, cleanInviteInput, facebookEmail, hashToken, inviteProblem, newToken,
+  PROVIDER_FACEBOOK, ROLE_LABEL_VI, cleanInviteInput, phoneEmail, phoneKey, facebookEmail, hashToken, inviteProblem, newToken,
   signState, signTicket, splitName, tokenShapeOk, verifyState, verifyTicket, type InviteRole,
 } from './staff-invite';
 
@@ -201,6 +201,44 @@ export class StaffInviteService {
     const owners = await this.prisma.user.findMany({ where: { tenantId: inv.tenantId, isActive: true, role: UserRole.SALON_ADMIN }, select: { id: true } }).catch(() => []);
     for (const o of owners) void this.push?.sendToUser(inv.tenantId, o.id, { title: 'Nhân viên mới đã tham gia', body: `${who.name || 'Một người'} vừa vào tiệm qua link mời (${ROLE_LABEL_VI[role as InviteRole] ?? role}).`, url: '/salon/staff', tag: `staff-joined-${userId}` }).catch(() => undefined);
     return [userId];
+  }
+
+  /**
+   * rt202 — the same invite without Facebook: the person types their name,
+   * phone number and a password of their own, and is signed in at once. Next
+   * time: phone + password on the normal sign-in page. Same atomic claim of
+   * one use as the Facebook path; same tenant, role and audit.
+   */
+  async joinWithPassword(token: string, raw: { name?: unknown; phone?: unknown; password?: unknown }) {
+    if (!tokenShapeOk(token)) throw new BadRequestException('Link mời không đúng.');
+    const inv = await this.db.staffInvite.findUnique({ where: { tokenHash: hashToken(token) } });
+    const now = new Date();
+    const problem = inviteProblem(inv, now);
+    if (problem || !inv) throw new BadRequestException(problem === 'used' ? 'Link mời đã dùng hết lượt.' : problem === 'expired' ? 'Link mời đã hết hạn.' : problem === 'revoked' ? 'Link mời đã bị huỷ.' : 'Link mời không đúng.');
+    const name = String(raw.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (name.length < 2) throw new BadRequestException('Nhập tên của bạn.');
+    const phone = phoneKey(raw.phone);
+    if (!phone) throw new BadRequestException('Số điện thoại chưa đúng.');
+    const password = String(raw.password ?? '');
+    if (password.length < 8) throw new BadRequestException('Mật khẩu cần ít nhất 8 ký tự.');
+    const email = phoneEmail(phone);
+    const taken = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (taken) throw new BadRequestException('Số điện thoại này đã có tài khoản — vào trang đăng nhập, gõ số điện thoại và mật khẩu.');
+    const { firstName, lastName } = splitName(name);
+    const passwordHash = await hashSecret(password);
+    const role = inv.staffRole as StaffRole;
+    const userId = await this.prisma.$transaction(async (tx) => {
+      const t = tx as unknown as Record<string, any>;
+      const claimed = await t.staffInvite.updateMany({ where: { id: inv.id, tenantId: inv.tenantId, revokedAt: null, expiresAt: { gt: now }, uses: { lt: inv.maxUses } }, data: { uses: { increment: 1 } } });
+      if (!claimed.count) throw new BadRequestException('Link mời đã dùng hết lượt.');
+      const user = await t.user.create({ data: { tenantId: inv.tenantId, role: UserRole.STAFF, email, passwordHash, firstName, lastName } });
+      await t.staffMember.create({ data: { tenantId: inv.tenantId, firstName, lastName, phone, isActive: true, staffRole: role, takesAppointments: takesAppointmentsFor(role, undefined), userId: user.id } });
+      return user.id as string;
+    });
+    await this.audit.log({ tenantId: inv.tenantId, userId, action: 'staff.joined_by_invite', resourceType: 'staff_invite', resourceId: inv.id, metadata: { staffRole: role, via: 'phone' } });
+    const owners = await this.prisma.user.findMany({ where: { tenantId: inv.tenantId, isActive: true, role: UserRole.SALON_ADMIN }, select: { id: true } }).catch(() => []);
+    for (const o of owners) void this.push?.sendToUser(inv.tenantId, o.id, { title: 'Nhân viên mới đã tham gia', body: `${name} vừa vào tiệm qua link mời (${ROLE_LABEL_VI[role as InviteRole] ?? role}).`, url: '/salon/staff', tag: `staff-joined-${userId}` }).catch(() => undefined);
+    return this.auth.sessionForUser(userId);
   }
 
   /**

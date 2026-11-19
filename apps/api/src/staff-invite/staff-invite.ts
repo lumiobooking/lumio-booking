@@ -122,3 +122,26 @@ export const ROLE_LABEL_VI: Record<InviteRole, string> = {
   MANAGER: 'Quản lý',
   TECHNICIAN: 'Thợ',
 };
+
+// ------------------------------------------------- phone + password (rt202)
+
+/**
+ * A phone number as a login: digits only, Vietnam's +84 written as 0.
+ * "0913 456 142", "+84 913 456 142" → "0913456142". Null when it is not a phone.
+ */
+export function phoneKey(raw: unknown): string | null {
+  const s = String(raw ?? '').trim();
+  if (!s || s.includes('@') || !/^[+()\-.\s\d]+$/.test(s)) return null;
+  let d = s.replace(/\D/g, '');
+  if (d.startsWith('84') && d.length === 11) d = `0${d.slice(2)}`;
+  return d.length >= 9 && d.length <= 15 ? d : null;
+}
+
+/** The hidden login e-mail behind a phone login (never shown, never mailed). */
+export const phoneEmail = (digits: string) => `tel-${digits}@staff.lumiobooking.invalid`;
+
+/** What sign-in accepts: an e-mail as typed, or a phone turned into its hidden login. */
+export function loginIdentifier(raw: unknown): string {
+  const p = phoneKey(raw);
+  return p ? phoneEmail(p) : String(raw ?? '').trim().toLowerCase();
+}

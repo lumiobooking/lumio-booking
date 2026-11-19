@@ -7,6 +7,7 @@ import { hashSecret, verifySecret } from './password.util';
 import { canBootstrap, passwordProblem } from './bootstrap.guard';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { capabilitiesFor, cleanStaffCaps, hasCapability } from './capabilities';
+import { loginIdentifier } from '../staff-invite/staff-invite';
 
 @Injectable()
 export class AuthService {
@@ -73,7 +74,8 @@ export class AuthService {
    * tamper-proof source rather than client input.
    */
   async login(email: string, password: string) {
-    const wanted = String(email ?? '').trim().toLowerCase();
+    // rt202: a team member who joined by invite signs in with their phone number.
+    const wanted = loginIdentifier(email);
     let user = await this.prisma.user.findUnique({
       where: { email: wanted },
       include: { tenant: true },

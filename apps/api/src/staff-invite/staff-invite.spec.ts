@@ -1,4 +1,4 @@
-import { cleanInviteInput, facebookEmail, hashToken, inviteProblem, newToken, signState, signTicket, splitName, tokenShapeOk, verifyState, verifyTicket } from './staff-invite';
+import { cleanInviteInput, facebookEmail, loginIdentifier, phoneKey, hashToken, inviteProblem, newToken, signState, signTicket, splitName, tokenShapeOk, verifyState, verifyTicket } from './staff-invite';
 import { StaffInviteService } from './staff-invite.service';
 
 const now = new Date('2026-11-19T09:00:00Z');
@@ -78,6 +78,7 @@ function setup() {
       create: jest.fn(async ({ data }: Row) => { const r = { id: `u${++seq}`, isActive: true, ...data }; db.users.push(r); return r; }),
       findFirst: jest.fn(async ({ where }: Row) => db.users.find((r) => match(r, where)) ?? null),
       findMany: jest.fn(async ({ where }: Row) => db.users.filter((r) => match(r, where))),
+      findUnique: jest.fn(async ({ where }: Row) => db.users.find((r) => r.email === where.email) ?? null),
     },
     staffMember: { create: jest.fn(async ({ data }: Row) => { db.staff.push(data); return data; }) },
     tenant: { findUnique: jest.fn(async ({ where }: Row) => ({ name: where.id === 'A' ? 'Nail A' : 'Nail B' })), findMany: jest.fn(async ({ where }: Row) => (where.id.in as string[]).map((id) => ({ id, name: id === 'A' ? 'Nail A' : 'Nail B' }))) },
@@ -165,5 +166,39 @@ describe('rt200 — one salon at a time', () => {
   it('a state we did not sign is refused before Facebook is asked anything', async () => {
     const { svc } = setup();
     expect(await svc.callback('c', 'sl.forged.sig', '', lan)).toContain('fb=expired');
+  });
+});
+
+describe('rt202 — join with a phone number, no Facebook', () => {
+  it('reads a phone the way people write it', () => {
+    expect(phoneKey('0913 456 142')).toBe('0913456142');
+    expect(phoneKey('+84 913 456 142')).toBe('0913456142');
+    expect(phoneKey('(714) 555-0142')).toBe('7145550142');
+    expect(phoneKey('lan@salon.com')).toBeNull();
+    expect(phoneKey('12345')).toBeNull();
+    expect(loginIdentifier(' Lan@Salon.com ')).toBe('lan@salon.com');
+    expect(loginIdentifier('+84913456142')).toBe(loginIdentifier('0913456142'));
+  });
+
+  it('a link + name + phone + password: in the salon that made the link, signed in at once', async () => {
+    const { svc, db, auth } = setup();
+    const { url } = await svc.create(ownerA, { maxUses: 1 });
+    await svc.joinWithPassword(tokenOf(url), { name: 'Phạm Minh', phone: '0913 456 142', password: 'abc12345' });
+    const u = db.users.find((x) => x.email === 'tel-0913456142@staff.lumiobooking.invalid');
+    expect(u).toMatchObject({ tenantId: 'A', role: 'STAFF' });
+    expect(u!.passwordHash).not.toBe('abc12345');
+    expect(db.staff[0]).toMatchObject({ tenantId: 'A', staffRole: 'CHAT', phone: '0913456142' });
+    expect(auth.sessionForUser).toHaveBeenCalledWith(u!.id);
+    // The one use is spent; a second person cannot come in on it.
+    await expect(svc.joinWithPassword(tokenOf(url), { name: 'Hà', phone: '0988000111', password: 'abc12345' })).rejects.toThrow(/hết lượt/);
+  });
+
+  it('one phone, one login; short passwords and bad links refused', async () => {
+    const { svc } = setup();
+    const a = await svc.create(ownerA, { maxUses: 5 });
+    await svc.joinWithPassword(tokenOf(a.url), { name: 'Lan', phone: '0913456142', password: 'abc12345' });
+    await expect(svc.joinWithPassword(tokenOf(a.url), { name: 'Lan', phone: '+84913456142', password: 'abc12345' })).rejects.toThrow(/đã có tài khoản/);
+    await expect(svc.joinWithPassword(tokenOf(a.url), { name: 'Hà', phone: '0988000111', password: '123' })).rejects.toThrow(/8 ký tự/);
+    await expect(svc.joinWithPassword('x'.repeat(43), { name: 'Hà', phone: '0988000111', password: 'abc12345' })).rejects.toThrow();
   });
 });

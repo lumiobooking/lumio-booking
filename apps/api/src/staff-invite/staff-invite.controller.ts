@@ -19,6 +19,12 @@ export class FacebookStartDto {
   @IsIn(['join', 'login']) mode!: 'join' | 'login';
   @IsOptional() @IsString() @MaxLength(64) token?: string;
 }
+export class JoinPasswordDto {
+  @IsString() @MaxLength(64) token!: string;
+  @IsString() @MaxLength(80) name!: string;
+  @IsString() @MaxLength(30) phone!: string;
+  @IsString() @MaxLength(128) password!: string;
+}
 export class FacebookExchangeDto {
   @IsString() @MaxLength(2000) ticket!: string;
   @IsOptional() @IsInt() @Min(0) @Max(9) pick?: number;
@@ -52,6 +58,13 @@ export class StaffInviteController {
   @Post('auth/facebook/start')
   @HttpCode(200)
   start(@Body() dto: FacebookStartDto) { return this.svc.start(dto.mode, dto.token); }
+
+  /** rt202: join by the invite without Facebook — name, phone, own password. */
+  @Public()
+  @RateLimit(10)
+  @Post('staff-invites/join')
+  @HttpCode(200)
+  joinPassword(@Body() dto: JoinPasswordDto) { return this.svc.joinWithPassword(dto.token, dto); }
 
   @Public()
   @RateLimit(20)

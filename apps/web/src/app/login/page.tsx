@@ -226,7 +226,7 @@ export default function LoginPage() {
     e.preventDefault();
     if (busy) return;
     setError(null);
-    if (!email.trim() || !password) { wobble(L('Nhập email và mật khẩu để đăng nhập.', 'Enter your email and password.')); return; }
+    if (!email.trim() || !password) { wobble(L('Nhập email (hoặc số điện thoại) và mật khẩu để đăng nhập.', 'Enter your email (or phone) and password.')); return; }
     if (!passed) { wobble(L('Vui lòng xác nhận bạn không phải là robot.', 'Please confirm you are not a robot.')); return; }
     setPhase('busy');
     try {
@@ -254,7 +254,7 @@ export default function LoginPage() {
     } catch (err) {
       setPhase('idle');
       const msg = err instanceof Error ? err.message : 'Login failed';
-      wobble(/invalid credentials/i.test(msg) ? L('Email hoặc mật khẩu chưa đúng. Bấm 👁 để xem lại mật khẩu đã gõ.', 'Wrong email or password. Tap 👁 to check the password you typed.') : msg);
+      wobble(/invalid credentials/i.test(msg) ? L('Email / số điện thoại hoặc mật khẩu chưa đúng. Bấm 👁 để xem lại mật khẩu đã gõ.', 'Wrong email / phone or password. Tap 👁 to check the password you typed.') : msg);
       // A Turnstile answer is good for one try only.
       if (SITE_KEY) resetCaptcha();
     }
@@ -306,9 +306,9 @@ export default function LoginPage() {
                 </div>
 
                 <div className="lg2-field">
-                  <input id="login-email" className="lg2-in" type="email" placeholder=" " autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                  <input id="login-email" className="lg2-in" type="text" inputMode="email" placeholder=" " autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
                     value={email} onChange={(e) => setEmail(e.target.value)} tabIndex={flipped ? -1 : 0} />
-                  <label htmlFor="login-email" className="lg2-lb">Email</label>
+                  <label htmlFor="login-email" className="lg2-lb">{L('Email hoặc số điện thoại', 'Email or phone')}</label>
                   {Ico.mail}
                 </div>
 

@@ -55,14 +55,14 @@ export function StaffInvitePanel({ token, vi, defaultRole = 'CHAT' }: { token: s
 
   const box: React.CSSProperties = { border: '1px solid var(--line)', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--c0f172a)' };
   const hint = ROLES.find((r) => r.v === role);
-  const shareText = link ? L(`Chào bạn, mời bạn vào tiệm trên Lumio. Mở link rồi bấm "Đăng nhập với Facebook": ${link}`, `You're invited to our salon on Lumio. Open the link and press "Continue with Facebook": ${link}`) : '';
+  const shareText = link ? L(`Chào bạn, mời bạn vào tiệm trên Lumio. Mở link bằng Safari/Chrome rồi bấm "Đăng nhập với Facebook" hoặc "Vào bằng số điện thoại": ${link}`, `You're invited to our salon on Lumio. Open the link in Safari/Chrome, then "Continue with Facebook" or "Join with your phone": ${link}`) : '';
 
   return (
     <div style={box}>
       <div>
         <b style={{ fontSize: 14.5, color: 'var(--ce2e8f0)' }}>🔗 {L('Mời nhân viên bằng link', 'Invite by link')}</b>
         <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
-          {L('Tạo link, gửi qua Zalo. Nhân viên mở link, bấm “Đăng nhập với Facebook” là vào tiệm — không cần tạo tài khoản hay mật khẩu. Facebook chỉ dùng để biết tên người đó.', 'Make a link and send it on Zalo. They open it and press “Continue with Facebook” — no account or password to create. Facebook only tells us their name.')}
+          {L('Tạo link, gửi qua Zalo. Nhân viên mở link, bấm “Đăng nhập với Facebook” hoặc “Vào bằng số điện thoại” (tự đặt mật khẩu) là vào tiệm — anh không phải tạo tài khoản.', 'Make a link and send it on Zalo. They open it and use Facebook or their phone number (with their own password) — no account for you to create.')}
         </p>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

@@ -34,6 +34,12 @@ export interface ShiftSummary {
   openChecks?: { count: number; totalCents: number; labels: string[] };
   /** Restaurants: dishes taken back after the kitchen had them, this shift. */
   voidedItems?: { count: number; totalCents: number; list: { name: string; quantity: number; amountCents: number; reason: string | null; at: string }[] };
+  voidedBills?: { count: number; totalCents: number };
+  bigDiscounts?: { count: number; pct: number };
+  otherBills?: number;
+  bank?: { connected: boolean; matchedCents: number };
+  /** Who checked the drawer with their PIN at close, when the owner asks for one. */
+  witnessName?: string;
 }
 export interface ShiftState {
   requireShift: boolean; shift: ShiftView | null; summary: ShiftSummary | null;
@@ -243,41 +249,83 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
           </div>
         )}
 
-        <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={secLabel}>{L('CHỐT CA & BÀN GIAO', 'CLOSE & HAND OVER')}</div>
+        {/* Close & hand over — laid out like the approved mockup "Đóng ca có
+            đếm két" (19/11/2026): what the drawer should hold, the count with a
+            big short/over figure, transfers vs the bank, what went wrong in
+            this shift, and the second person's PIN when the owner asks. */}
+        <div style={card}>
+          <div style={cardTitle}>{L('Két phải có', 'The drawer should hold')}</div>
           <Row k={L('Tiền đầu ca', 'Opening float')} v={fmt(shift.openingCents)} />
-          <Row k={L('+ Tiền mặt thu (đã trừ thối)', '+ Cash taken (net of change)')} v={fmt(s.byMethod.cashCents - s.changeCents)} />
-          {s.cashInCents > 0 && <Row k={L('+ Thu thêm', '+ Cash in')} v={fmt(s.cashInCents)} />}
-          {s.cashOutCents > 0 && <Row k={L('− Chi ra', '− Cash out')} v={`−${fmt(s.cashOutCents)}`} />}
-          <Row k={L('= Két phải có', '= Drawer should hold')} v={fmt(s.expectedCashCents)} strong />
-          <label style={lab}>{L('Tiền mặt đếm được trong két', 'Cash counted in the drawer')}
+          <Row k={L(`+ Bill tiền mặt (đã trừ thối)`, '+ Cash bills (net of change)')} v={fmt(s.byMethod.cashCents - s.changeCents)} />
+          {s.cashInCents > 0 && <Row k={L('+ Thu thêm vào két', '+ Cash in')} v={fmt(s.cashInCents)} />}
+          {s.cashOutCents > 0 && <Row k={L('− Chi ra trong ca', '− Cash out')} v={`−${fmt(s.cashOutCents)}`} />}
+          <div style={{ borderTop: '2px solid var(--ce2e8f0)', paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{L('Phải có trong két', 'Should be in the drawer')}</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmt(s.expectedCashCents)}</span>
+          </div>
+        </div>
+
+        <div style={card}>
+          <div style={cardTitle}>{L('Đếm tiền thật', 'Count the cash')}</div>
+          <label style={lab}>{L('Số tiền đếm được trong két', 'Cash counted in the drawer')}
             <div style={{ display: 'flex', gap: 6 }}>
-              <input inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} placeholder={fromMinorUnits(s.expectedCashCents, currency)} style={{ ...inp, fontSize: 18, fontWeight: 700 }} />
-              <button type="button" onClick={() => setCounted(fromMinorUnits(s.expectedCashCents, currency))} style={ghost}>{L('Khớp đúng', 'Matches')}</button>
+              <input id="shift-counted" inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} placeholder={fromMinorUnits(s.expectedCashCents, currency)} style={{ ...inp, height: 56, fontSize: 22, fontWeight: 800, border: '2px solid #4f46e5' }} />
+              <button type="button" onClick={() => setCounted(fromMinorUnits(s.expectedCashCents, currency))} style={{ ...ghost, height: 56 }}>{L('Khớp đúng', 'Matches')}</button>
             </div>
           </label>
           <CashCounter vi={vi} currency={currency} fmt={fmt} onTotal={(c) => setCounted(fromMinorUnits(c, currency))} />
           {variance !== null && (
-            <div style={{ fontSize: 14, fontWeight: 700, color: variance === 0 ? 'var(--ink-good)' : variance < 0 ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>
-              {variance === 0 ? L('Khớp — không chênh lệch.', 'Balanced — no variance.') : `${L('Chênh lệch', 'Variance')}: ${signed(variance, fmt)} ${variance < 0 ? L('(thiếu)', '(short)') : L('(dư)', '(over)')}`}
+            <div role="status" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 12, background: variance === 0 ? 'rgba(34,197,94,.12)' : variance < 0 ? 'rgba(239,68,68,.12)' : 'rgba(245,158,11,.14)' }}>
+              <span style={{ fontSize: 16, fontWeight: 800, color: variance === 0 ? 'var(--ink-good)' : variance < 0 ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>{variance === 0 ? L('Đủ tiền', 'Balanced') : variance < 0 ? L('Thiếu', 'Short') : L('Dư', 'Over')}</span>
+              <span style={{ fontSize: 22, fontWeight: 800, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: variance === 0 ? 'var(--ink-good)' : variance < 0 ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>{variance === 0 ? '✓' : fmt(Math.abs(variance))}</span>
             </div>
           )}
-          <input value={closeNote} onChange={(e) => setCloseNote(e.target.value)} placeholder={needNote ? L('Lý do chênh lệch (bắt buộc)', 'Why the drawer is off (required)') : L('Ghi chú bàn giao (không bắt buộc)', 'Hand-over note (optional)')} style={{ ...inp, ...(needNote && !closeNote.trim() ? { borderColor: 'var(--ink-bad)' } : {}) }} />
-          {rules.witness && (
-            <label style={lab}>{L('Người kiểm két nhập PIN (chủ hoặc quản lý, không phải người đóng ca)', 'Checked by: owner or manager PIN (not the person closing)')}
-              <input type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={witnessPin} onChange={(e) => setWitnessPin(e.target.value.replace(/\D/g, ''))} placeholder="••••" style={{ ...inp, fontSize: 18, letterSpacing: 4 }} />
-            </label>
-          )}
-          {!confirmClose ? (
-            <button type="button" disabled={busy || !canClose} onClick={() => setConfirmClose(true)} style={{ ...ui.primaryBtn, padding: '12px 14px', fontSize: 15, opacity: canClose ? 1 : 0.5 }}>{L('Chốt ca', 'Close shift')}</button>
-          ) : (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" disabled={busy} onClick={() => void close()} style={{ ...ui.primaryBtn, flex: 1, padding: '12px 14px', fontSize: 15, background: '#dc2626' }}>{L('Xác nhận chốt & bàn giao', 'Confirm close & hand over')}</button>
-              <button type="button" onClick={() => setConfirmClose(false)} style={ghost}>{L('Huỷ', 'Cancel')}</button>
-            </div>
-          )}
-          <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.45 }}>{L('Sau khi chốt, số liệu của ca được khoá và in được phiếu bàn giao. Tip tiền mặt nằm trong két — trả thợ rồi ghi "Chi" nếu muốn két khớp.', 'After closing, the figures are frozen and the hand-over sheet can be printed. Cash tips sit in the drawer — pay them out and log an "Out" if you want the drawer to balance.')}</div>
+          <input id="shift-note" value={closeNote} onChange={(e) => setCloseNote(e.target.value)} placeholder={needNote ? L('Giải thích chênh lệch (bắt buộc khi lệch)…', 'Why the drawer is off (required)…') : L('Ghi chú bàn giao (không bắt buộc)', 'Hand-over note (optional)')} style={{ ...inp, ...(needNote && !closeNote.trim() ? { borderColor: 'var(--ink-bad)' } : {}) }} />
         </div>
+
+        <div style={card}>
+          <div style={cardTitle}>{L('Chuyển khoản / QR', 'Transfer / QR')}</div>
+          <Row k={L(`Theo bill (${s.otherBills ?? 0} bill)`, `On the bills (${s.otherBills ?? 0})`)} v={fmt(s.byMethod.otherCents)} />
+          {s.bank?.connected ? (
+            <Row k={L('Tiền vào ngân hàng', 'Received by the bank')} v={`${fmt(s.bank.matchedCents)}${s.bank.matchedCents >= s.byMethod.otherCents ? ' ✓' : ''}`} color={s.bank.matchedCents >= s.byMethod.otherCents ? 'var(--ink-good)' : 'var(--ink-warn)'} />
+          ) : (
+            <Row k={L('Tiền vào ngân hàng', 'Received by the bank')} v={L('Chưa nối sao kê', 'Bank feed not connected')} color="var(--c94a3b8)" />
+          )}
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>
+            {s.bank?.connected
+              ? L('Lumio tự đối chiếu từng khoản tiền vào tài khoản với bill (mã LM trên QR).', 'Lumio matches each bank credit to its bill (the LM code on the QR).')
+              : L('Nối sao kê ngân hàng ở Bàn & bếp › Cài đặt để Lumio tự đối chiếu tiền chuyển khoản với từng bill.', 'Connect the bank feed under Tables › Settings so Lumio matches transfers to bills.')}
+            {(s.otherBills ?? 0) === 0 && s.orders >= 5 ? <b style={{ color: 'var(--ink-warn)' }}>{L(' Cả ca không bill nào bấm chuyển khoản — nếu khách có quét mã thì thu ngân đang bấm nhầm “tiền mặt”.', ' Not one bill was marked as transfer — if guests paid by QR, the cashier is pressing “cash”.')}</b> : null}
+          </div>
+        </div>
+
+        <div style={card}>
+          <div style={cardTitle}>{L('Trong ca này', 'This shift')}</div>
+          <Row k={L('Bill huỷ', 'Voided bills')} v={s.voidedBills ? `${s.voidedBills.count} · ${fmt(s.voidedBills.totalCents)}` : '0'} color={s.voidedBills ? 'var(--ink-bad)' : undefined} />
+          {s.voidedItems !== undefined && <Row k={L('Món bị huỷ', 'Dishes taken back')} v={(s.voidedItems?.count ?? 0) > 0 ? `${s.voidedItems!.count} · ${fmt(s.voidedItems!.totalCents)}` : '0'} color={(s.voidedItems?.count ?? 0) > 0 ? 'var(--ink-bad)' : undefined} />}
+          <Row k={L(`Bill giảm từ ${s.bigDiscounts?.pct ?? 30}%`, `Bills ${s.bigDiscounts?.pct ?? 30}%+ off`)} v={String(s.bigDiscounts?.count ?? 0)} color={s.bigDiscounts ? 'var(--ink-warn)' : undefined} />
+          {(s.openChecks?.count ?? 0) > 0 && <Row k={L('Bill còn mở trên bàn', 'Bills still open')} v={`${s.openChecks!.count} · ${fmt(s.openChecks!.totalCents)}`} color="var(--ink-warn)" />}
+        </div>
+
+        {rules.witness && (
+          <div style={card}>
+            <div style={cardTitle}>{L('Người kiểm két', 'Checked by')}</div>
+            <label style={lab}>{L('Chủ hoặc quản lý (không phải người đóng ca) nhập PIN', 'Owner or manager (not the person closing) types their PIN')}
+              <input id="shift-witness" type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={witnessPin} onChange={(e) => setWitnessPin(e.target.value.replace(/\D/g, ''))} placeholder="••••" style={{ ...inp, fontSize: 20, letterSpacing: 6 }} />
+            </label>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L('Đóng ca cần người thứ hai nhập PIN. Chủ nhận báo cáo ca ngay trên điện thoại.', 'Closing needs a second person’s PIN. The owner gets the shift report on their phone at once.')}</div>
+          </div>
+        )}
+
+        {!confirmClose ? (
+          <button type="button" disabled={busy || !canClose} onClick={() => setConfirmClose(true)} style={{ ...ui.primaryBtn, height: 52, fontSize: 16, opacity: canClose ? 1 : 0.5 }}>{L('Đóng ca và gửi báo cáo', 'Close the shift and send the report')}</button>
+        ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" disabled={busy} onClick={() => void close()} style={{ ...ui.primaryBtn, flex: 1, height: 52, fontSize: 15, background: '#dc2626' }}>{L('Xác nhận đóng ca & bàn giao', 'Confirm close & hand over')}</button>
+            <button type="button" onClick={() => setConfirmClose(false)} style={{ ...ghost, height: 52 }}>{L('Huỷ', 'Cancel')}</button>
+          </div>
+        )}
+        <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.45 }}>{L('Sau khi đóng, số liệu của ca được khoá và in được phiếu bàn giao. Tip tiền mặt nằm trong két — trả thợ rồi ghi "Chi" nếu muốn két khớp.', 'After closing, the figures are frozen and the hand-over sheet can be printed. Cash tips sit in the drawer — pay them out and log an "Out" if you want the drawer to balance.')}</div>
       </div>
     );
   }
@@ -301,6 +349,8 @@ export function ShiftSheet({ shift, summary, vi, fmt }: { shift: ShiftView; summ
     <div style={{ borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', padding: 12, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13.5, color: 'var(--ce2e8f0)' }}>
       <Row k={L('Mở ca', 'Opened')} v={`${fmtInTz(shift.openedAt, { day: '2-digit', month: '2-digit', hour: 'numeric', minute: '2-digit' })}${shift.openedByName ? ` · ${shift.openedByName}` : ''}`} />
       {shift.closedAt && <Row k={L('Chốt ca', 'Closed')} v={`${fmtInTz(shift.closedAt, { day: '2-digit', month: '2-digit', hour: 'numeric', minute: '2-digit' })}${shift.closedByName ? ` · ${shift.closedByName}` : ''}`} />}
+      {summary.witnessName && <Row k={L('Người kiểm két', 'Checked by')} v={summary.witnessName} />}
+      {summary.voidedBills && <Row k={L('Bill huỷ trong ca', 'Voided bills')} v={`${summary.voidedBills.count} · ${fmt(summary.voidedBills.totalCents)}`} color="var(--ink-bad)" />}
       <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
       <Row k={L('Đơn đã thu', 'Sales')} v={String(summary.orders)} />
       <Row k={L('Doanh thu', 'Revenue')} v={fmt(summary.revenueCents)} />
@@ -342,7 +392,7 @@ export function printSheet(shift: ShiftView, summary: ShiftSummary, vi: boolean,
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(L('Phiếu chốt ca', 'Shift hand-over'))}</title>
 <style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:13px;color:#000;margin:0;padding:12px;max-width:340px}h1{font-size:16px;margin:0 0 2px}h2{font-size:12px;margin:10px 0 4px;letter-spacing:.6px}table{width:100%;border-collapse:collapse}hr{border:0;border-top:1px dashed #000;margin:8px 0}.sig{margin-top:22px;display:flex;justify-content:space-between;font-size:12px}.sig div{width:45%;border-top:1px solid #000;padding-top:4px;text-align:center}</style></head><body>
 <h1>${esc(salonName || '')}</h1><div>${esc(L('PHIẾU CHỐT CA THU NGÂN', 'CASHIER SHIFT HAND-OVER'))}</div><hr>
-<table>${row(L('Mở ca', 'Opened'), `${when(shift.openedAt)} ${shift.openedByName ?? ''}`)}${shift.closedAt ? row(L('Chốt ca', 'Closed'), `${when(shift.closedAt)} ${shift.closedByName ?? ''}`) : ''}</table><hr>
+<table>${row(L('Mở ca', 'Opened'), `${when(shift.openedAt)} ${shift.openedByName ?? ''}`)}${shift.closedAt ? row(L('Chốt ca', 'Closed'), `${when(shift.closedAt)} ${shift.closedByName ?? ''}`) : ''}${summary.witnessName ? row(L('Người kiểm két', 'Checked by'), summary.witnessName) : ''}</table><hr>
 <h2>${esc(L('DOANH THU', 'SALES'))}</h2><table>${row(L('Đơn đã thu', 'Sales'), String(summary.orders))}${row(L('Doanh thu', 'Revenue'), fmt(summary.revenueCents))}${row(L('Tip', 'Tips'), fmt(summary.tipsCents))}${tenders}${summary.byMethod.giftCardCents > 0 ? row('  Gift card', fmt(summary.byMethod.giftCardCents)) : ''}</table><hr>
 <h2>${esc(L('TIỀN MẶT TRONG KÉT', 'CASH DRAWER'))}</h2><table>${row(L('Tiền đầu ca', 'Opening float'), fmt(shift.openingCents))}${row(L('+ Tiền mặt thu (đã trừ thối)', '+ Cash taken (net of change)'), fmt(summary.byMethod.cashCents - summary.changeCents))}${summary.cashInCents ? row(L('+ Thu thêm', '+ Cash in'), fmt(summary.cashInCents)) : ''}${summary.cashOutCents ? row(L('− Chi ra', '− Cash out'), `−${fmt(summary.cashOutCents)}`) : ''}${row(L('= Két phải có', '= Should hold'), fmt(summary.expectedCashCents), true)}${shift.countedCents != null ? row(L('Đếm được', 'Counted'), fmt(shift.countedCents), true) : ''}${shift.varianceCents != null ? row(L('Chênh lệch', 'Variance'), variance === 0 ? L('Khớp', 'Balanced') : `${signed(variance, fmt)} ${variance < 0 ? L('(thiếu)', '(short)') : L('(dư)', '(over)')}`, true) : ''}</table>
 ${moves ? `<hr><h2>${esc(L('THU / CHI', 'CASH IN / OUT'))}</h2><table>${moves}</table>` : ''}
@@ -386,6 +436,8 @@ function Row({ k, v, strong, color }: { k: string; v: string; strong?: boolean; 
 const lab: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12.5, color: 'var(--ccbd5e1)', fontWeight: 600 };
 const inp: React.CSSProperties = { ...ui.input, height: 44, fontSize: 15 };
 const ghost: React.CSSProperties = { height: 40, padding: '0 12px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' };
+const card: React.CSSProperties = { padding: 14, borderRadius: 14, border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', gap: 10 };
+const cardTitle: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' };
 const secLabel: React.CSSProperties = { fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, color: 'var(--c94a3b8)' };
 
 export function useShiftState(token: string | null) {

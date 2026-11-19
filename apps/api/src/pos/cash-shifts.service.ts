@@ -47,6 +47,14 @@ export interface ShiftSummary {
   openChecks?: { count: number; totalCents: number; labels: string[] };
   /** Restaurants: dishes taken back after the kitchen had them, during this shift. */
   voidedItems?: { count: number; totalCents: number; list: { name: string; quantity: number; amountCents: number; reason: string | null; at: string }[] };
+  /** Bills voided during this shift (after or before payment). */
+  voidedBills?: { count: number; totalCents: number };
+  /** Paid bills discounted by `pct`% or more. */
+  bigDiscounts?: { count: number; pct: number };
+  /** Paid bills with a transfer / QR / wallet tender, and how many. */
+  otherBills?: number;
+  /** Restaurants with the bank feed connected: money the bank matched to this shift's bills. */
+  bank?: { connected: boolean; matchedCents: number };
 }
 
 type ShiftRow = {
@@ -98,13 +106,13 @@ export class CashShiftsService {
 
   /** Live totals for a shift — sales tagged with it (paid only) plus its cash movements. */
   async summarize(tenantId: string, shift: { id: string; openingCents: number }): Promise<ShiftSummary> {
-    type OrderLite = { totalCents: number; tipCents: number; changeCents: number | null; giftCardAppliedCents: number | null; tenders: { method: string; amountCents: number }[] };
+    type OrderLite = { id?: string; totalCents: number; tipCents: number; changeCents: number | null; giftCardAppliedCents: number | null; subtotalCents?: number; discountCents?: number; tenders: { method: string; amountCents: number }[] };
     type MoveRow = { id: string; kind: MovementKind; amountCents: number; reason: string | null; byName: string | null; createdAt: Date; categoryId?: string | null };
     const [orders, moves] = await Promise.all([
       this.db.order.findMany({
         // 'PAID' only: a voided or refunded sale put no money in the drawer.
         where: { tenantId, status: 'PAID', shiftId: shift.id },
-        select: { totalCents: true, tipCents: true, changeCents: true, giftCardAppliedCents: true, tenders: { select: { method: true, amountCents: true } } },
+        select: { id: true, totalCents: true, tipCents: true, changeCents: true, giftCardAppliedCents: true, subtotalCents: true, discountCents: true, tenders: { select: { method: true, amountCents: true } } },
       }) as Promise<OrderLite[]>,
       this.db.cashMovement.findMany({ where: { tenantId, shiftId: shift.id }, orderBy: { createdAt: 'asc' } }) as Promise<MoveRow[]>,
     ]);
@@ -130,8 +138,10 @@ export class CashShiftsService {
     for (const m of moves) { if (m.kind === 'IN') cashIn += m.amountCents; else cashOut += m.amountCents; }
     const expected = shift.openingCents + byMethod.cashCents - change + cashIn - cashOut;
     const restaurant = await this.restaurantPart(tenantId, shift as { id: string; openedAt?: Date; closedAt?: Date | null });
+    const extra = await this.moneyChecks(tenantId, shift.id, orders);
     return {
       ...restaurant,
+      ...extra,
       orders: orders.length,
       revenueCents: revenue,
       tipsCents: tips,
@@ -143,6 +153,37 @@ export class CashShiftsService {
       expectedCashCents: expected,
       movements: moves.map((m: MoveRow) => ({ id: m.id, kind: m.kind, amountCents: m.amountCents, reason: m.reason, byName: m.byName, at: m.createdAt.toISOString(), categoryId: m.categoryId ?? null })),
     };
+  }
+
+  /**
+   * The money checks the shift-close screen shows (19/11/2026, mockup "Đóng
+   * ca có đếm két"): bills voided in this shift, big discounts, how many bills
+   * were paid by transfer / QR, and — when the restaurant connected its bank
+   * feed — what the bank actually received for this shift's bills. Any
+   * failure reads as "nothing to say", never as a broken close.
+   */
+  private async moneyChecks(tenantId: string, shiftId: string, paid: { id?: string; subtotalCents?: number; discountCents?: number; tenders: { method: string; amountCents: number }[] }[]) {
+    try {
+      const out: Pick<ShiftSummary, 'voidedBills' | 'bigDiscounts' | 'otherBills' | 'bank'> = {};
+      const orderDb = this.db as unknown as { order: { findMany: (a: unknown) => Promise<{ totalCents: number }[]> } };
+      const voided = await Promise.resolve().then(() => orderDb.order.findMany({ where: { tenantId, status: 'VOID', shiftId }, select: { totalCents: true } })).catch(() => [] as { totalCents: number }[]);
+      if (voided.length) out.voidedBills = { count: voided.length, totalCents: voided.reduce((s, o) => s + (o.totalCents ?? 0), 0) };
+      const alerts = await Promise.resolve().then(() => this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'restaurant.alerts' } } })).catch(() => null);
+      const pct = cleanAlerts(alerts?.value ?? {}).discountPct;
+      const big = paid.filter((o) => (o.discountCents ?? 0) > 0 && (o.subtotalCents ?? 0) > 0 && (o.discountCents as number) * 100 >= (o.subtotalCents as number) * pct).length;
+      if (big) out.bigDiscounts = { count: big, pct };
+      out.otherBills = paid.filter((o) => (o.tenders ?? []).some((t) => bucketFor(t.method) === 'other' && t.amountCents > 0)).length;
+      const feed = await Promise.resolve().then(() => this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'restaurant_bank_feed' } } })).catch(() => null);
+      if (feed) {
+        const ids = paid.map((o) => o.id).filter((x): x is string => !!x);
+        const db = this.db as unknown as { tableCheck?: { findMany: (a: unknown) => Promise<{ bankPaidCents: number }[]> } };
+        const rows = ids.length && db.tableCheck ? await db.tableCheck.findMany({ where: { tenantId, orderId: { in: ids } }, select: { bankPaidCents: true } }).catch(() => []) : [];
+        out.bank = { connected: true, matchedCents: rows.reduce((s, r) => s + (r.bankPaidCents ?? 0), 0) };
+      }
+      return out;
+    } catch {
+      return {};
+    }
   }
 
   /**

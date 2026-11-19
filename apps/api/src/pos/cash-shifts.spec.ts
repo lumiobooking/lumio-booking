@@ -201,3 +201,30 @@ describe('closing rules from the restaurant alerts (19/11/2026)', () => {
     jest.dontMock('../auth/password.util');
   });
 });
+
+describe('the money checks on the shift-close screen (19/11/2026)', () => {
+  it('counts voided bills, big discounts, transfer bills and what the bank matched — this salon only', async () => {
+    const made = makeService();
+    made.prisma.setting = { findUnique: jest.fn(async ({ where }: any) => (where.tenantId_key.tenantId === 'A' && where.tenantId_key.key === 'restaurant_bank_feed' ? { value: { hookId: 'h' } } : null)) };
+    made.prisma.tableCheck = { findMany: jest.fn(async ({ where }: any) => [{ tenantId: 'A', orderId: 'o2', bankPaidCents: 892000 }, { tenantId: 'B', orderId: 'o2', bankPaidCents: 999 }].filter((c) => c.tenantId === where.tenantId && where.orderId.in.includes(c.orderId))) };
+    await made.svc.open(lan, { openingCents: 0 });
+    const sid = made.shifts[0].id;
+    made.orders.push(
+      { id: 'o1', tenantId: 'A', shiftId: sid, status: 'PAID', totalCents: 980000, subtotalCents: 1400000, discountCents: 420000, tipCents: 0, changeCents: 0, giftCardAppliedCents: 0, tenders: [{ method: 'CASH', amountCents: 980000 }] },
+      { id: 'o2', tenantId: 'A', shiftId: sid, status: 'PAID', totalCents: 892000, subtotalCents: 892000, discountCents: 0, tipCents: 0, changeCents: 0, giftCardAppliedCents: 0, tenders: [{ method: 'VIETQR', amountCents: 892000 }] },
+      { id: 'o3', tenantId: 'A', shiftId: sid, status: 'VOID', totalCents: 1850000, tipCents: 0, changeCents: 0, giftCardAppliedCents: 0, tenders: [] },
+      { id: 'o4', tenantId: 'B', shiftId: sid, status: 'VOID', totalCents: 5, tipCents: 0, changeCents: 0, giftCardAppliedCents: 0, tenders: [] },
+    );
+    const r = await made.svc.current(lan);
+    expect(r.summary).toMatchObject({ voidedBills: { count: 1, totalCents: 1850000 }, bigDiscounts: { count: 1, pct: 30 }, otherBills: 1, bank: { connected: true, matchedCents: 892000 } });
+  });
+
+  it('no bank feed: says so, and a quiet shift adds nothing alarming', async () => {
+    const made = makeService();
+    await made.svc.open(lan, { openingCents: 0 });
+    const r = await made.svc.current(lan);
+    expect(r.summary!.bank).toBeUndefined();
+    expect(r.summary!.voidedBills).toBeUndefined();
+    expect(r.summary!.otherBills).toBe(0);
+  });
+});

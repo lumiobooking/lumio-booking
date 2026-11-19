@@ -74,12 +74,14 @@ const BLOCK: Record<string, [string, string]> = {
   'not-present': ['chưa bấm Vào ca và không mở Lumio', 'not on shift and Lumio not open'],
   full: ['đã giữ đủ số khách tối đa', 'holding the maximum'],
   'weight-zero': ['tỉ lệ 0%', 'share 0%'],
+  'no-inbox': ['vai trò “Thợ” không mở được Hộp thư — vào Nhân viên → Sửa → Vai trò: Tư vấn tin nhắn (hoặc Lễ tân)', 'a technician cannot open the Inbox — Staff → Edit → Role: Messages only (or Front desk)'],
 };
 const MISS: Record<string, [string, string]> = {
   'nobody-on-duty': ['không ai đang trong ca', 'nobody was on shift'],
   'everyone-full': ['ai cũng đã giữ đủ số khách tối đa', 'everyone was at the maximum'],
   'nobody-in-list': ['chưa tích ai nhận turn', 'nobody is ticked to take turns'],
   'no-match': ['không ai nhận được trang/nhóm này', 'nobody takes this Page / group'],
+  'no-inbox': ['nhân viên trong danh sách đều là vai trò “Thợ”, không mở được Hộp thư — đổi vai trò sang “Tư vấn tin nhắn” ở mục Nhân viên', 'everyone listed is a technician and cannot open the Inbox — change their role to “Messages only” under Staff'],
 };
 
 const hhmm = (iso: string) => { try { return new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }); } catch { return ''; } };

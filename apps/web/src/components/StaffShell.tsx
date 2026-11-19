@@ -1,4 +1,5 @@
 'use client';
+import { useChatSeat } from '../lib/chat-seat';
 
 import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -34,6 +35,7 @@ export function StaffShell({ children, title = 'My Bookings', subtitle, right, w
   const vi = lang === 'vi';
   const isMobile = useIsMobile(720);
   const [pending, setPending] = useState(0);
+  const chatSeat = useChatSeat(token);
 
   useEffect(() => {
     if (!ready) return;
@@ -83,9 +85,11 @@ export function StaffShell({ children, title = 'My Bookings', subtitle, right, w
 
   const tabs = [
     { href: '/staff/today', label: vi ? 'Hôm nay' : 'Today', icon: IC.home, also: ['/staff/chair'] },
+    // rt208: someone the owner ticked to answer customers gets the Inbox as a tab of its own.
+    ...(chatSeat ? [{ href: '/staff/inbox', label: vi ? 'Tin nhắn' : 'Inbox', icon: IC.message }] : []),
     { href: '/staff/bookings', label: vi ? 'Lịch' : 'Schedule', icon: IC.calendar, badge: pending },
     { href: '/staff/turns', label: vi ? 'Lượt' : 'Turns', icon: IC.turns },
-    { href: '/staff/me', label: vi ? 'Tôi' : 'Me', icon: IC.me, also: ['/staff/profile', '/staff/tips', '/staff/reviews', '/staff/inbox', '/staff/pay'] },
+    { href: '/staff/me', label: vi ? 'Tôi' : 'Me', icon: IC.me, also: ['/staff/profile', '/staff/tips', '/staff/reviews', '/staff/pay', ...(chatSeat ? [] : ['/staff/inbox'])] },
   ];
   const isOn = (t: { href: string; also?: string[] }) => pathname === t.href || pathname.startsWith(t.href + '/') || (t.also ?? []).some((a) => pathname.startsWith(a));
 
@@ -106,7 +110,7 @@ export function StaffShell({ children, title = 'My Bookings', subtitle, right, w
           {children}
         </main>
         <nav aria-label={vi ? 'Mục chính' : 'Main'} style={{
-          position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 120, display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 120, display: 'grid', gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
           background: 'var(--c0f172a)', borderTop: '1px solid var(--line)', paddingBottom: BOTTOM_SAFE,
         }}>
           {tabs.map((t) => {

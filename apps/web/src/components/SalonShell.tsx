@@ -357,6 +357,9 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     if (!ready) return;
     if (!token) { router.replace('/login'); return; }
     if (!user) return;
+    // rt208: a notification for a customer ("/salon/inbox?thread=…") opened by a
+    // technician who answers chats lands in their own app's Inbox, same thread.
+    if (!hasSalonAccess && pathname.startsWith('/salon/inbox')) { router.replace(`/staff/inbox${typeof window !== 'undefined' ? window.location.search : ''}`); return; }
     if (!hasSalonAccess) { router.replace('/'); return; } // technicians → routed to their own portal
     if (!can(pathname)) router.replace(firstAllowedHref); // on a page this role can't open
   }, [ready, token, user, pathname, hasSalonAccess, firstAllowedHref]);

@@ -13,7 +13,7 @@ function setup(opts: { lanSeenMinsAgo?: number | null } = {}) {
   const prisma = {
     tenant: { findUnique: jest.fn(async () => ({ timezone: 'Asia/Ho_Chi_Minh' })) },
     messengerConnection: { findUnique: jest.fn(async () => ({ chatAssignMode: 'round-robin' })), update: jest.fn(async () => ({})) },
-    user: { findMany: jest.fn(async ({ where }: { where: { tenantId: string } }) => (where.tenantId === 'A' ? [{ id: 'lan', firstName: 'Lan', lastName: null, email: 'l@x', role: 'STAFF', staffMember: null }] : [{ id: 'bao', firstName: 'Bảo', lastName: null, email: 'b@x', role: 'STAFF', staffMember: null }])) },
+    user: { findMany: jest.fn(async ({ where }: { where: { tenantId: string } }) => (where.tenantId === 'A' ? [{ id: 'lan', firstName: 'Lan', lastName: null, email: 'l@x', role: 'STAFF', staffMember: { isActive: true, staffRole: 'CHAT', permissions: null, workingHours: [] } }] : [{ id: 'bao', firstName: 'Bảo', lastName: null, email: 'b@x', role: 'STAFF', staffMember: { isActive: true, staffRole: 'CHAT', permissions: null, workingHours: [] } }])) },
     setting: { findMany: jest.fn(async () => []), findUnique: jest.fn(async () => null) },
     chatAgentPresence: { findMany: jest.fn(async ({ where }: { where: { tenantId: string } }) => (where.tenantId === 'A' && seen ? [{ userId: 'lan', status: 'available', lastSeenAt: seen }] : [])) },
     messengerThread: {
@@ -67,5 +67,43 @@ describe('rt206 — why nobody got the customer, and giving out the ones waiting
     expect(threads.find((t) => t.id === 'w1')!.assignedUserId).toBe('lan');
     await svc.claimIfFree('B', 'w2', 'bao'); // another salon's id: nothing
     expect(threads.find((t) => t.id === 'w2')!.assignedUserId).toBeNull();
+  });
+});
+
+describe('rt207 — a customer goes only to someone who can open the Inbox', () => {
+  it('owner, messages-only, front desk, manager: yes; technician: no', async () => {
+    const { canOpenInbox } = await import('./chat-turns.service');
+    expect(canOpenInbox('SALON_ADMIN', null, null)).toBe(true);
+    expect(canOpenInbox('STAFF', 'CHAT', null)).toBe(true);
+    expect(canOpenInbox('STAFF', 'RECEPTIONIST', null)).toBe(true);
+    expect(canOpenInbox('STAFF', 'MANAGER', null)).toBe(true);
+    expect(canOpenInbox('STAFF', 'TECHNICIAN', null)).toBe(false);
+    expect(canOpenInbox('STAFF', 'TECHNICIAN', ['pos'])).toBe(false);
+  });
+
+  it('a technician with Lumio open is not given the customer, and the reason says why', async () => {
+    const { svc } = setup({ lanSeenMinsAgo: 1 });
+    // Lan is a technician in this salon.
+    const users = (svc as unknown as { prisma: { user: { findMany: jest.Mock } } }).prisma.user.findMany;
+    users.mockImplementation(async () => [{ id: 'lan', firstName: 'Lan', lastName: null, email: 'l@x', role: 'STAFF', staffMember: { isActive: true, staffRole: 'TECHNICIAN', permissions: null, workingHours: [] } }]);
+    const [lan] = await svc.agents('A');
+    expect(lan).toMatchObject({ onDuty: false, blockers: expect.arrayContaining(['no-inbox']) });
+    expect(await svc.route('A', 'w1', null)).toBeNull();
+    expect(svc.lastMiss('A')?.why).toBe('no-inbox');
+  });
+});
+
+describe('rt208 — ticked by name in Chia turn: answers customers, whatever the role', () => {
+  it('a technician the owner listed can open the Inbox and is given customers', async () => {
+    const { canOpenInbox } = await import('./chat-turns.service');
+    expect(canOpenInbox('STAFF', 'TECHNICIAN', null, true)).toBe(true);
+    const { svc, threads } = setup({ lanSeenMinsAgo: 1 });
+    const p = (svc as unknown as { prisma: { user: { findMany: jest.Mock }; messengerConnection: { findUnique: jest.Mock } } }).prisma;
+    p.user.findMany.mockImplementation(async () => [{ id: 'lan', firstName: 'Lan', lastName: null, email: 'l@x', role: 'STAFF', staffMember: { isActive: true, staffRole: 'TECHNICIAN', permissions: null, workingHours: [] } }]);
+    p.messengerConnection.findUnique.mockImplementation(async () => ({ chatAssignMode: 'round-robin', chatAgentIds: ['lan'] }));
+    const [lan] = await svc.agents('A');
+    expect(lan).toMatchObject({ canInbox: true, onDuty: true });
+    expect(await svc.route('A', 'w1', null)).toBe('lan');
+    expect(threads.find((t) => t.id === 'w1')!.assignedUserId).toBe('lan');
   });
 });

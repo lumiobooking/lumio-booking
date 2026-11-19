@@ -54,7 +54,7 @@ function setup() {
     messengerConnection: { findUnique: jest.fn(async () => ({ chatAssignMode: 'round-robin', chatNeedOnline: true, chatOnlineMins: 10 })) },
     user: {
       findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) => { const u = users.find((x) => x.id === where.id && x.tenantId === where.tenantId); return u ? { id: u.id, staffMember: null } : null; }),
-      findMany: jest.fn(async ({ where }: { where: { tenantId: string } }) => users.filter((u) => u.tenantId === where.tenantId).map((u) => ({ ...u, lastName: null, email: `${u.id}@x`, role: 'STAFF', staffMember: null }))),
+      findMany: jest.fn(async ({ where }: { where: { tenantId: string } }) => users.filter((u) => u.tenantId === where.tenantId).map((u) => ({ ...u, lastName: null, email: `${u.id}@x`, role: 'STAFF', staffMember: { isActive: true, staffRole: 'CHAT', permissions: null, workingHours: [] } }))),
     },
     setting: {
       findMany: jest.fn(async ({ where }: { where: { tenantId: string; key: { startsWith: string } } }) => [...settings.entries()].filter(([k]) => k.startsWith(`${where.tenantId}|${where.key.startsWith}`)).map(([k, value]) => ({ key: k.split('|')[1], value }))),

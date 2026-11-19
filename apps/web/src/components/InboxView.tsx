@@ -1583,6 +1583,10 @@ export function InboxView() {
           </div>
         )}
         {(narrow || compact) && <PushSetup compact />}
+        {/* rt208: on a phone the left rail is hidden — Vào ca / Ra ca sits right here. */}
+        {(narrow || compact) && turnsOn && turns?.me && (
+          <ShiftButton vi={vi} on={myShift} until={turns.me.shiftUntil ?? null} busy={shiftBusy} devices={turns.me.devices} pushOn={turns.pushOn} onToggle={() => void toggleShift()} />
+        )}
         {labels.length > 0 && !narrow && (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
             {labels.map((l) => (

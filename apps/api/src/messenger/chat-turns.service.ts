@@ -89,11 +89,29 @@ export interface AgentView {
   devices?: number;
   /** rt206: why this person is not taking customers right now (empty = taking them). */
   blockers: TurnBlocker[];
+  /** rt208: this person can open the Inbox (their app shows it). */
+  canInbox: boolean;
 }
 
 /** rt206 — the reasons a person is not given a customer, in words the owner can act on. */
-export type TurnBlocker = 'not-in-list' | 'away' | 'off-hours' | 'not-present' | 'full' | 'weight-zero';
-export type TurnMiss = { at: string; customer: string | null; why: 'rules-off' | 'nobody-in-list' | 'nobody-on-duty' | 'everyone-full' | 'no-match'; agents: { name: string; blockers: TurnBlocker[] }[] };
+export type TurnBlocker = 'not-in-list' | 'away' | 'off-hours' | 'not-present' | 'full' | 'weight-zero' | 'no-inbox';
+
+/**
+ * rt207 — who can actually answer: the owner, and staff whose role opens the
+ * Inbox (messages-only, front desk, manager, or a desk permission the owner
+ * gave). A technician's account opens the technicians' app, where the Inbox
+ * is closed — giving them a customer meant nobody saw it, and it went round
+ * the team every few minutes unopened.
+ */
+export function canOpenInbox(role: string, staffRole: string | null | undefined, permissions: unknown, listed = false): boolean {
+  if (role !== 'STAFF') return role === 'SALON_ADMIN';
+  // rt208: the owner ticked this person by name in the Chia turn list — they
+  // answer customers, whatever their role. Their technicians' app shows the Inbox.
+  if (listed) return true;
+  if (['CHAT', 'RECEPTIONIST', 'MANAGER'].includes(String(staffRole ?? ''))) return true;
+  return Array.isArray(permissions) && permissions.length > 0 && String(staffRole ?? '') !== 'TECHNICIAN';
+}
+export type TurnMiss = { at: string; customer: string | null; why: 'rules-off' | 'nobody-in-list' | 'nobody-on-duty' | 'everyone-full' | 'no-match' | 'no-inbox'; agents: { name: string; blockers: TurnBlocker[] }[] };
 
 const INBOX_ROLES = [UserRole.SALON_ADMIN, UserRole.STAFF] as const;
 const TICK_MS = 60_000;
@@ -153,13 +171,13 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       where: { tenantId, isActive: true, role: { in: INBOX_ROLES as unknown as UserRole[] } },
       select: {
         id: true, firstName: true, lastName: true, email: true, role: true,
-        staffMember: { select: { isActive: true, workingHours: { select: { dayOfWeek: true, startTime: true, endTime: true, isActive: true } } } },
+        staffMember: { select: { isActive: true, staffRole: true, permissions: true, workingHours: { select: { dayOfWeek: true, startTime: true, endTime: true, isActive: true } } } },
       } as never,
       orderBy: { firstName: 'asc' },
       take: 200,
     }).catch(() => []) as unknown as {
       id: string; firstName: string | null; lastName: string | null; email: string; role: string;
-      staffMember: { isActive: boolean; workingHours: { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[] } | null;
+      staffMember: { isActive: boolean; staffRole?: string | null; permissions?: unknown; workingHours: { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[] } | null;
     }[];
     const presence = await this.db.chatAgentPresence?.findMany({ where: { tenantId }, select: { userId: true, status: true, lastSeenAt: true } }).catch(() => []) ?? [];
     const presBy = new Map<string, { status: string; lastSeenAt: Date | null }>(presence.map((p: { userId: string; status: string; lastSeenAt: Date | null }) => [p.userId, p]));
@@ -195,12 +213,14 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         online,
         onShift,
         // Pressing "Vào ca" is the person saying they work now — also outside their usual hours.
-        onDuty: isOnDuty({ status, onShift: inShift ? true : onShift, lastSeenAt: present ? now : p?.lastSeenAt ?? null }, set, now),
+        onDuty: canOpenInbox(String(u.role), u.staffMember?.staffRole, u.staffMember?.permissions, set.agentIds.includes(u.id)) && isOnDuty({ status, onShift: inShift ? true : onShift, lastSeenAt: present ? now : p?.lastSeenAt ?? null }, set, now),
         openThreads: openBy.get(u.id) ?? 0,
         turnsToday: turnsBy.get(u.id) ?? 0,
         shiftOn: inShift,
         shiftUntil: inShift ? sh?.until ?? null : null,
+        canInbox: canOpenInbox(String(u.role), u.staffMember?.staffRole, u.staffMember?.permissions, set.agentIds.includes(u.id)),
         blockers: ([
+          !canOpenInbox(String(u.role), u.staffMember?.staffRole, u.staffMember?.permissions, set.agentIds.includes(u.id)) ? 'no-inbox' : null,
           !inList(u.id) ? 'not-in-list' : null,
           set.needStatus && status === 'away' ? 'away' : null,
           set.needShift && onShift === false && !inShift ? 'off-hours' : null,
@@ -274,7 +294,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         const anyOnDuty = pool.some((a) => a.onDuty);
         const anyFree = pool.some((a) => a.onDuty && !a.blockers.includes('full'));
         const c = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { senderName: true } }).catch(() => null) as { senderName?: string | null } | null;
-        this.noteMiss(tenantId, { at: new Date().toISOString(), customer: c?.senderName ?? null, why: !anyOnDuty ? 'nobody-on-duty' : !anyFree ? 'everyone-full' : 'no-match', agents: all2 });
+        this.noteMiss(tenantId, { at: new Date().toISOString(), customer: c?.senderName ?? null, why: pool.every((x) => x.blockers.includes('no-inbox')) ? 'no-inbox' : !anyOnDuty ? 'nobody-on-duty' : !anyFree ? 'everyone-full' : 'no-match', agents: all2 });
         return null;
       }
       await this.recordTurn(tenantId, threadId, pick.userId, opts.reason && opts.reason !== 'new' ? opts.reason : pick.reason, opts.excludeUserId ?? null, null, pick.reason === 'usual-technician' ? false : true);

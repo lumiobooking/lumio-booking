@@ -140,8 +140,6 @@ export class MessengerController {
    */
   @Roles(...INBOX_ROLES)
   @Post('threads/:id/pay-qr')
-  @UseGuards(FeaturePolicyGuard)
-  @RequiresFeature('messengerAi')
   async sendPayQr(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { amountCents?: unknown; appointmentId?: unknown }) {
     if (!this.pay) throw new BadRequestException('Unavailable.');
     await this.svc.assertOwnThread(user, id);
@@ -174,8 +172,6 @@ export class MessengerController {
   /** A person sends one library picture. Same window, ownership and audit rules as any photo from the reply box. */
   @Roles(...INBOX_ROLES)
   @Post('threads/:id/photo-library')
-  @UseGuards(FeaturePolicyGuard)
-  @RequiresFeature('messengerAi')
   async sendLibraryPhoto(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { itemId?: unknown }) {
     const lib = libOf(this.photos);
     await this.svc.assertOwnThread(user, id);
@@ -395,8 +391,6 @@ export class MessengerController {
 
   /** Three lines and a draft reply for the person taking this chat over (handoff-brief). Sends nothing. */
   @Roles(...INBOX_ROLES)
-  @UseGuards(FeaturePolicyGuard)
-  @RequiresFeature('messengerAi')
   @Post('threads/:id/brief')
   threadBrief(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query('lang') lang?: string) {
     return this.svc.threadBrief(user, id, lang);
@@ -595,8 +589,6 @@ export class MessengerController {
    */
   @Roles(...INBOX_ROLES)
   @Post('threads/:id/photo')
-  @UseGuards(FeaturePolicyGuard)
-  @RequiresFeature('messengerAi')
   async sendPhoto(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { dataUrl?: unknown }) {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) throw new BadRequestException('No salon in scope.');
@@ -610,9 +602,12 @@ export class MessengerController {
   }
 
   @Roles(...INBOX_ROLES)
+  // rt221: answering a customer is the inbox's job, not an AI setting. Tagged
+  // 'messengerAi', every send, photo, payment QR and brief was refused with
+  // "This setting is managed by Lumio" for any salon whose AI Lumio runs —
+  // owner and staff alike could not reply. Only Lumio support could. The
+  // feature switch locks the AI's SETTINGS; replying stays with the team.
   @Post('send')
-  @UseGuards(FeaturePolicyGuard)
-  @RequiresFeature('messengerAi')
   send(@CurrentUser() user: AuthenticatedUser, @Body() dto: SendTestDto) {
     return this.svc.sendManual(user, dto.threadId, dto.text);
   }

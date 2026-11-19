@@ -796,7 +796,9 @@ export function InboxView() {
         // A poll is not a person. Refreshing the open thread re-reads it only
         // when the person has not deliberately parked it as unread — otherwise
         // the next tick would quietly undo the press.
-        openRef.current ? loadThread(openRef.current, keepUnreadRef.current !== openRef.current, true) : Promise.resolve(),
+        // rt221: mark read only when there is something unread — a refresh that
+        // re-marks a read conversation was a write that triggered the next refresh.
+        openRef.current ? loadThread(openRef.current, keepUnreadRef.current !== openRef.current && !!rowsRef.current.find((r) => r.id === openRef.current)?.unread, true) : Promise.resolve(),
         // Shift and turn state (Vào ca, who holds whom) moves with the same nudge.
         loadTurnsRef.current?.() ?? Promise.resolve(),
       ]).catch(() => undefined).finally(() => {

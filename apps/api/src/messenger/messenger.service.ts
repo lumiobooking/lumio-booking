@@ -2646,7 +2646,16 @@ export class MessengerService implements OnModuleInit {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('Thread not found');
-    await this.prisma.messengerThread.update({ where: { id: row.id }, data: { readAt: new Date() } as never });
+    // rt221 — THE LOOP BEHIND "hệ thống đang load rất chậm". Every write to a
+    // conversation nudges every open inbox to refresh (rt205), and a refresh of
+    // the open conversation marks it read — which was a write, which nudged
+    // again: each open screen re-loaded itself back-to-back, for ever, the more
+    // people working the worse. A conversation already read since its last
+    // message is left alone, so reading it again writes nothing.
+    const r0 = row as unknown as { readAt?: Date | null; lastMessageAt?: Date | null; updatedAt?: Date | null };
+    const lastMsg = r0.lastMessageAt ?? null;
+    const alreadyRead = !!r0.readAt && (!lastMsg || new Date(r0.readAt).getTime() >= new Date(lastMsg).getTime());
+    if (!alreadyRead) await this.prisma.messengerThread.update({ where: { id: row.id }, data: { readAt: new Date() } as never });
     // rt213: the turn rule "not opened in X min" asks whether the PERSON GIVEN
     // the customer opened it — not whether anyone did (the owner looking used
     // to count as the assignee opening it, and the turn never moved).

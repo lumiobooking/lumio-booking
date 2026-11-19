@@ -16,7 +16,9 @@ export const inboxBus = new EventEmitter();
 inboxBus.setMaxListeners(0);
 
 /** Tables whose rows a live inbox shows. */
-export const INBOX_MODELS = new Set(['MessengerThread', 'MessengerNote', 'MessengerThreadLabel', 'ChatAssignmentLog', 'ChatAgentPresence']);
+// rt221: not ChatAgentPresence — every heartbeat of every team member used to
+// make every open inbox reload itself; who is online is not worth a reload.
+export const INBOX_MODELS = new Set(['MessengerThread', 'MessengerNote', 'MessengerThreadLabel', 'ChatAssignmentLog']);
 const WRITES = new Set(['create', 'createMany', 'update', 'updateMany', 'upsert', 'delete', 'deleteMany']);
 
 type Params = { model?: string; action?: string; args?: { where?: Record<string, unknown>; data?: Record<string, unknown> | Record<string, unknown>[]; create?: Record<string, unknown> } };

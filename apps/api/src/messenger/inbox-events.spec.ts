@@ -4,7 +4,7 @@ import { InboxEventsService } from './inbox-events.service';
 describe('rt205 — every conversation write reaches the open inbox at once', () => {
   it('knows which writes move an inbox screen', () => {
     expect(inboxWrite({ model: 'MessengerThread', action: 'update' })).toBe(true);
-    expect(inboxWrite({ model: 'ChatAgentPresence', action: 'upsert' })).toBe(true);
+    expect(inboxWrite({ model: 'ChatAgentPresence', action: 'upsert' })).toBe(false); // rt221: heartbeats do not reload screens
     expect(inboxWrite({ model: 'MessengerThread', action: 'findMany' })).toBe(false);
     expect(inboxWrite({ model: 'Appointment', action: 'update' })).toBe(false);
     expect(inboxWrite({ model: 'Setting', action: 'upsert', args: { where: { tenantId_key: { tenantId: 'A', key: 'messenger.turn_shift.u1' } } as never } })).toBe(true);

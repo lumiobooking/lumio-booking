@@ -41,12 +41,20 @@ export class InboxEventsService {
     inboxBus.on('nudge', (tenantId: string, kind: 'message' | 'thread') => this.publishSoon(tenantId, kind));
   }
 
-  /** Coalesce within 120 ms — fast enough to read as instant, slow enough to merge a burst. */
+  /**
+   * Coalesce within 120 ms — fast enough to read as instant, slow enough to
+   * merge a burst. rt221: and never more than one push per 1.5 s per salon: a
+   * long burst (pulling old conversations from Meta writes hundreds) used to
+   * reload every open screen eight times a second.
+   */
+  private readonly lastPush = new Map<string, number>();
   publishSoon(tenantId: string, kind: 'message' | 'thread' = 'thread'): void {
     if (!tenantId || !this.subs.get(tenantId)?.size) return;
     const cur = this.soon.get(tenantId);
     if (cur) { if (kind === 'message') cur.kind = 'message'; return; }
-    const entry = { kind, timer: setTimeout(() => { this.soon.delete(tenantId); this.publish(tenantId, entry.kind); }, 120) };
+    const since = Date.now() - (this.lastPush.get(tenantId) ?? 0);
+    const wait = Math.max(120, 1500 - since);
+    const entry = { kind, timer: setTimeout(() => { this.soon.delete(tenantId); this.lastPush.set(tenantId, Date.now()); if (this.lastPush.size > 5000) this.lastPush.delete(this.lastPush.keys().next().value as string); this.publish(tenantId, entry.kind); }, wait) };
     entry.timer.unref?.();
     this.soon.set(tenantId, entry);
   }

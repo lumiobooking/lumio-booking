@@ -35,6 +35,7 @@ import { DateTimeField } from './DateTimeField';
 import { Linkified } from './Linkified';
 import { PushSetup } from './PushSetup';
 import type { TurnsView } from './ChatTurnsPanel';
+import { ShiftButton } from './ShiftButton';
 import { useLang } from '../lib/i18n';
 import { setOpenConversation } from '../lib/inbox-sound';
 import { uiLocale } from '../lib/datetime';
@@ -521,14 +522,16 @@ export function InboxView() {
     return () => window.clearInterval(id);
   }, [loadTurns]);
   const turnsOn = turns?.settings.mode === 'round-robin';
-  const myStatus = turns?.me?.status ?? 'available';
-  async function toggleMyStatus() {
-    if (!token) return;
-    const next = myStatus === 'available' ? 'away' : 'available';
+  /** rt198: "Vào ca" / "Ra ca" — one button; the phone rings with the app closed while on shift. */
+  const myShift = !!turns?.me?.shiftOn;
+  const [shiftBusy, setShiftBusy] = useState(false);
+  async function toggleShift() {
+    if (!token || shiftBusy) return;
+    setShiftBusy(true);
     try {
-      await apiFetch('/messenger/turns/status', { method: 'POST', token, body: { status: next } });
+      await apiFetch('/messenger/turns/shift', { method: 'POST', token, body: { on: !myShift } });
       await loadTurns();
-    } catch (e) { setErr(String(e)); }
+    } catch (e) { setErr(String(e)); } finally { setShiftBusy(false); }
   }
   /**
    * Has the conversation list come back from the server even once?
@@ -1411,13 +1414,10 @@ export function InboxView() {
               <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>{turns.settings.botFirst ? (vi ? 'bàn giao khi khách cần người thật' : 'hands over when a person is needed') : (vi ? 'bot chỉ phụ' : 'the bot only assists')}</span>
             </span>
           </div>
-          {turnsOn && turns.me && <MessengerAlertCard token={token ?? null} vi={vi} />}
           {turnsOn && turns.me && (
-            <button onClick={() => void toggleMyStatus()} style={{ height: 32, borderRadius: 9, border: `1px solid ${myStatus === 'available' ? '#22c55e' : 'var(--c334155)'}`, background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: myStatus === 'available' ? '#22c55e' : 'var(--c64748b)' }} />
-              {myStatus === 'available' ? (vi ? 'Đang nhận khách · tạm vắng' : 'Taking turns · go away') : (vi ? 'Đang vắng · nhận lại' : 'Away · take turns')}
-            </button>
+            <ShiftButton vi={vi} on={myShift} until={turns.me.shiftUntil ?? null} busy={shiftBusy} devices={turns.me.devices} pushOn={turns.pushOn} onToggle={() => void toggleShift()} />
           )}
+          {turnsOn && turns.me && <MessengerAlertCard token={token ?? null} vi={vi} />}
         </div>
       )}
     </div>

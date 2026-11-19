@@ -40,6 +40,14 @@ export function MessengerAlertCard({ token, vi }: { token: string | null; vi: bo
   const copy = async (t: string) => { try { await navigator.clipboard.writeText(t); setCopied(true); } catch { setCopied(false); } };
   const unlink = async () => { if (!token) return; try { await apiFetch('/messenger/turns/messenger/unlink', { method: 'POST', token }); await load(); } catch { /* ignore */ } };
 
+  if (!mine.linked && !code) {
+    // rt198: the phone's own alerts (Vào ca) are the main way; Messenger is an optional extra.
+    return (
+      <button type="button" onClick={() => void getCode()} style={{ border: 0, background: 'transparent', padding: '2px 0', color: 'var(--ink-link)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+        ＋ {L('Nhận thêm báo qua Messenger (không bắt buộc)', 'Also get alerts on Messenger (optional)')}
+      </button>
+    );
+  }
   if (!mine.linked) {
     return (
       <div style={box}>

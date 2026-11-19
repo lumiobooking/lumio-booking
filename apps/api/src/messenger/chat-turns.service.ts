@@ -7,6 +7,7 @@ import { InboxEventsService } from './inbox-events.service';
 import { isOnDuty, isOnShift, pickAgent, reassignDue, type PickReason } from './chat-assignment';
 import { StaffAlertsService } from './staff-alerts.service';
 import { escalationDue, isAdThread, unrepliedMinsFor, windowOpen } from './staff-alerts';
+import { SHIFT_PREFIX, cleanShift, remindDue, rescueOpen, shiftActive, shiftExpired, shiftKey, shiftUntil, type Shift } from './turn-shift';
 import { DEFAULT_TEAM, REPORT_SENT_KEY, TEAM_KEY, adWaits, cleanTeam, nightText, pickWeighted, poolsFor, scoreboard, sourceOf, type LogRow, type TeamConfig, type ThreadFacts } from './turn-team';
 
 /**
@@ -81,6 +82,11 @@ export interface AgentView {
   onDuty: boolean;
   openThreads: number;
   turnsToday: number;
+  /** Pressed "Vào ca" in Lumio (or on Messenger) and the shift has not ended. */
+  shiftOn: boolean;
+  shiftUntil: string | null;
+  /** Phones/browsers of this person that get push (owner's view only). */
+  devices?: number;
 }
 
 const INBOX_ROLES = [UserRole.SALON_ADMIN, UserRole.STAFF] as const;
@@ -101,6 +107,8 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
   ) {
     // "Bỏ qua" on Messenger passes the turn on through the same routing.
     this.staff?.setSkipRouter((tenantId, threadId, fromUserId) => this.route(tenantId, threadId, null, { excludeUserId: fromUserId, reason: 'reassign-unreplied' }));
+    // "vào ca" / "ra ca" on Messenger opens / closes the same shift as the button.
+    this.staff?.setShiftHook?.((tenantId, userId, on) => this.writeShift(tenantId, userId, on));
   }
 
   onModuleInit(): void {
@@ -160,13 +168,18 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const links = this.staff ? await this.staff.linksOf(tenantId).catch(() => ({})) : {};
     const onMsgr = (id: string) => windowOpen((links as Record<string, never>)[id], now);
     const inList = (id: string) => (set.agentIds.length ? set.agentIds.includes(id) : true);
+    // rt198: "Vào ca" pressed in Lumio counts as present, app open or not.
+    const shifts = await this.shiftsOf(tenantId);
 
     const views = users.map((u) => {
       const p = presBy.get(u.id);
       const hours = u.staffMember?.workingHours ?? [];
       const onShift = !u.staffMember || !hours.length ? null : (clock ? isOnShift(hours, clock.weekday, clock.minutes) : null);
       const status = p?.status === 'away' ? 'away' as const : 'available' as const;
-      const online = onMsgr(u.id) || (!!p?.lastSeenAt && now.getTime() - new Date(p.lastSeenAt).getTime() <= Math.max(1, set.onlineMins) * 60_000);
+      const sh = shifts.get(u.id) ?? null;
+      const inShift = shiftActive(sh, now);
+      const present = onMsgr(u.id) || inShift;
+      const online = present || (!!p?.lastSeenAt && now.getTime() - new Date(p.lastSeenAt).getTime() <= Math.max(1, set.onlineMins) * 60_000);
       return {
         userId: u.id,
         name: [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email,
@@ -175,9 +188,12 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         status,
         online,
         onShift,
-        onDuty: isOnDuty({ status, onShift, lastSeenAt: onMsgr(u.id) ? now : p?.lastSeenAt ?? null }, set, now),
+        // Pressing "Vào ca" is the person saying they work now — also outside their usual hours.
+        onDuty: isOnDuty({ status, onShift: inShift ? true : onShift, lastSeenAt: present ? now : p?.lastSeenAt ?? null }, set, now),
         openThreads: openBy.get(u.id) ?? 0,
         turnsToday: turnsBy.get(u.id) ?? 0,
+        shiftOn: inShift,
+        shiftUntil: inShift ? sh?.until ?? null : null,
       };
     });
     // The queue order: the salon's own list order when it made one, else by name.
@@ -367,13 +383,22 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as ConnRow;
     const settings = settingsOf(conn);
     const agents = await this.agents(tenantId, settings);
+    const isAdmin = user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN;
+    // Who of the team will actually hear a customer: their registered phones.
+    if (this.push) {
+      await Promise.all(agents.map(async (a) => {
+        if (!isAdmin && a.userId !== user.userId) return;
+        const c = await this.push!.countForUser(tenantId, a.userId).catch(() => ({ web: 0, native: 0 }));
+        a.devices = c.web + c.native;
+      }));
+    }
     const recent = await this.db.chatAssignmentLog?.findMany({
       where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 20,
       select: { id: true, threadId: true, userId: true, fromUserId: true, reason: true, createdAt: true, thread: { select: { senderName: true } } },
     }).catch(() => []) ?? [];
     const me = agents.find((a) => a.userId === user.userId) ?? null;
     const team = await this.teamOf(tenantId);
-    return { settings, agents, me, recent, team, sources: await this.sources(tenantId), canEdit: user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN };
+    return { settings, agents, me, recent, team, sources: await this.sources(tenantId), canEdit: isAdmin, pushOn: this.push?.enabled() ?? false };
   }
 
   async updateSettings(user: AuthenticatedUser, dto: Record<string, unknown>) {
@@ -408,6 +433,79 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     return this.view(user);
   }
 
+  // ---------------------------------------------------------- shift (rt198) ----
+
+  private async shiftsOf(tenantId: string): Promise<Map<string, Shift>> {
+    const rows = await Promise.resolve().then(() => this.prisma.setting.findMany({ where: { tenantId, key: { startsWith: SHIFT_PREFIX } }, select: { key: true, value: true }, take: 500 })).catch(() => [] as { key: string; value: unknown }[]);
+    const out = new Map<string, Shift>();
+    for (const r of rows ?? []) {
+      const s = cleanShift(r.value);
+      if (s) out.set(r.key.slice(SHIFT_PREFIX.length), s);
+    }
+    return out;
+  }
+
+  /**
+   * Open or close one person's shift in one salon. The person must belong to
+   * the salon (checked). Never throws to the Messenger hook.
+   */
+  async writeShift(tenantId: string, userId: string, on: boolean, now: Date = new Date()): Promise<{ on: boolean; until: string | null }> {
+    const u = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId, isActive: true },
+      select: { id: true, staffMember: { select: { workingHours: { select: { dayOfWeek: true, startTime: true, endTime: true, isActive: true } } } } } as never,
+    }).catch(() => null) as { id: string; staffMember?: { workingHours: { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[] } | null } | null;
+    if (!u) throw new ForbiddenException('Not on this salon\'s team.');
+    const until = on ? shiftUntil(now, await this.salonClock(tenantId), u.staffMember?.workingHours ?? []).toISOString() : null;
+    const value: Shift = { on, at: now.toISOString(), until };
+    const key = shiftKey(userId);
+    await this.prisma.setting.upsert({ where: { tenantId_key: { tenantId, key } }, create: { tenantId, key, value: value as never }, update: { value: value as never } });
+    await this.db.chatAgentPresence?.upsert({
+      where: { tenantId_userId: { tenantId, userId } },
+      update: { status: on ? 'available' : 'away', lastSeenAt: now },
+      create: { tenantId, userId, status: on ? 'available' : 'away', lastSeenAt: now },
+    }).catch(() => undefined);
+    this.events.publish(tenantId, 'thread');
+    return { on, until };
+  }
+
+  /** The "Vào ca" / "Ra ca" button. Each person changes only their own shift. */
+  async setShift(user: AuthenticatedUser, on: boolean) {
+    const tenantId = this.tenantOf(user);
+    const r = await this.writeShift(tenantId, user.userId, on);
+    await this.db.auditLog?.create({ data: { tenantId, userId: user.userId, action: on ? 'messenger.turn_shift_on' : 'messenger.turn_shift_off', resourceType: 'user', resourceId: user.userId, metadata: { until: r.until } } }).catch(() => undefined);
+    return r;
+  }
+
+  /** Shifts whose time ran out: close them and tell the person once. */
+  private async closeShifts(tenantId: string, now: Date): Promise<number> {
+    const shifts = await this.shiftsOf(tenantId);
+    let n = 0;
+    for (const [userId, s] of shifts) {
+      if (!shiftExpired(s, now)) continue;
+      await this.writeShift(tenantId, userId, false, now).catch(() => undefined);
+      await this.db.auditLog?.create({ data: { tenantId, userId, action: 'messenger.turn_shift_auto_off', resourceType: 'user', resourceId: userId } }).catch(() => undefined);
+      void this.push?.sendToUser(tenantId, userId, { title: 'Đã tự ra ca', body: 'Hết giờ làm nên Lumio đã cho bạn ra ca — không chia khách mới nữa. Mở Lumio bấm "Vào ca" nếu bạn còn làm.', url: '/salon/inbox', tag: 'turn-shift' }).catch(() => undefined);
+      n += 1;
+    }
+    return n;
+  }
+
+  /** A customer given to someone a minute ago and still not opened: ring again. */
+  private async remind(tenantId: string, now: Date): Promise<number> {
+    const rows = await this.db.messengerThread.findMany({
+      where: { tenantId, status: 'open', assignedUserId: { not: null }, assignedAt: { gt: new Date(now.getTime() - 120_000), lte: new Date(now.getTime() - 60_000) } },
+      select: { id: true, status: true, senderName: true, assignedUserId: true, assignedAt: true, readAt: true, handoffAt: true },
+      take: 50,
+    }).catch(() => []) as { id: string; status: string; senderName: string | null; assignedUserId: string; assignedAt: Date; readAt: Date | null; handoffAt: Date | null }[];
+    let n = 0;
+    for (const t of rows) {
+      if (!remindDue(t, now)) continue;
+      void this.push?.sendToUser(tenantId, t.assignedUserId, { title: '⏰ Nhắc lại: khách đang chờ bạn', body: `${t.senderName || 'Khách'} chưa được trả lời. Bấm để mở và trả lời ngay.`, url: `/salon/inbox?thread=${t.id}`, tag: `chat-turn-${t.id}-again` }).catch(() => undefined);
+      n += 1;
+    }
+    return n;
+  }
+
   async setStatus(user: AuthenticatedUser, status: string) {
     const tenantId = this.tenantOf(user);
     const s = status === 'away' ? 'away' : 'available';
@@ -437,13 +535,14 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
    */
   async assign(user: AuthenticatedUser, threadId: string, toUserId: string | null) {
     const tenantId = this.tenantOf(user);
-    const thread = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { id: true, assignedUserId: true } });
+    const thread = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { id: true, assignedUserId: true, escalatedAt: true, lastCustomerAt: true, handoffAt: true } });
     if (!thread) throw new NotFoundException('Thread not found');
     const isAdmin = user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN;
     if (!isAdmin && thread.assignedUserId && thread.assignedUserId !== user.userId) {
       // The salon may let staff TAKE a conversation (to themselves only), never move it elsewhere.
       const team = await this.teamOf(tenantId);
-      if (!(team.staffCanTake && toUserId === user.userId)) throw new ForbiddenException('This conversation belongs to someone else. Ask the salon admin to move it.');
+      // A customer left waiting past the alarm may be taken by anyone on the team ("ai rảnh nhận giúp").
+      if (!((team.staffCanTake || rescueOpen(thread)) && toUserId === user.userId)) throw new ForbiddenException('This conversation belongs to someone else. Ask the salon admin to move it.');
     }
     if (toUserId) {
       const target = await this.prisma.user.findFirst({ where: { id: toUserId, tenantId, isActive: true, role: { in: INBOX_ROLES as unknown as UserRole[] } }, select: { id: true } });
@@ -479,6 +578,8 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         const set = settingsOf(c);
         if (set.escalateMins > 0) await this.escalate(tenantId, set, now).catch((e) => this.logger.warn(`escalation failed: ${String(e).slice(0, 120)}`));
         await this.nightReport(tenantId, now).catch((e) => this.logger.warn(`turn report failed: ${String(e).slice(0, 120)}`));
+        await this.closeShifts(tenantId, now).catch((e) => this.logger.warn(`shift close failed: ${String(e).slice(0, 120)}`));
+        await this.remind(tenantId, now).catch((e) => this.logger.warn(`turn reminder failed: ${String(e).slice(0, 120)}`));
         const mins = [set.reassignUnreadMins, set.reassignUnrepliedMins, set.reassignAdMins].filter((m) => m > 0);
         if (!mins.length) continue;
         const shortest = Math.min(...mins);
@@ -552,6 +653,9 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const due = rows.filter((t) => escalationDue(t, set.escalateMins, now));
     if (!due.length) return 0;
     const owners = await this.prisma.user.findMany({ where: { tenantId, isActive: true, role: UserRole.SALON_ADMIN }, select: { id: true } }).catch(() => []);
+    // rt198: everyone on shift hears it too — whoever is free takes it.
+    const ownerIds = new Set(owners.map((o) => o.id));
+    const team = (await this.agents(tenantId, set).catch(() => [] as AgentView[])).filter((a) => a.inRotation && a.onDuty && !ownerIds.has(a.userId));
     for (const t of due) {
       const done = await this.db.messengerThread.updateMany({ where: { id: t.id, tenantId, OR: [{ escalatedAt: null }, { escalatedAt: { lt: t.lastCustomerAt } }] }, data: { escalatedAt: now } }).catch(() => ({ count: 0 }));
       if (!done.count) continue;
@@ -559,6 +663,10 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       const text = `🚨 ${t.senderName || 'Khách'}${isAdThread(t, now) ? ' (từ QUẢNG CÁO)' : ''} đã chờ ${waited} phút, chưa ai trả lời${t.assignHops ? ` · đã chuyển ${t.assignHops} lần` : ''}.`;
       for (const o of owners) {
         void this.push?.sendToUser(tenantId, o.id, { title: 'Khách chờ quá lâu', body: text, url: `/salon/inbox?thread=${t.id}`, tag: `chat-escalate-${t.id}` }).catch(() => undefined);
+      }
+      for (const a of team) {
+        if (a.userId === t.assignedUserId) continue;
+        void this.push?.sendToUser(tenantId, a.userId, { title: '🙋 Ai rảnh nhận giúp khách này?', body: `${text} Bấm để mở và nhận.`, url: `/salon/inbox?thread=${t.id}`, tag: `chat-escalate-${t.id}` }).catch(() => undefined);
       }
       void this.staff?.notifyEscalation(tenantId, owners.map((o) => o.id), `${text}
 Mở Lumio › Hộp thư để trả lời.`).catch(() => 0);

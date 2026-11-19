@@ -26,6 +26,9 @@ export class StaffAlertsService {
   constructor(private readonly prisma: PrismaService) {}
 
   setSkipRouter(fn: (tenantId: string, threadId: string, fromUserId: string) => Promise<string | null>) { this.skipRouter = fn; }
+  /** rt198: "vào ca" / "ra ca" on Messenger is the same shift as the button in Lumio. */
+  private shiftHook: ((tenantId: string, userId: string, on: boolean) => Promise<unknown>) | null = null;
+  setShiftHook(fn: (tenantId: string, userId: string, on: boolean) => Promise<unknown>) { this.shiftHook = fn; }
 
   private tenantOf(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -134,6 +137,7 @@ export class StaffAlertsService {
       links2[me!.userId].on = true;
       await this.write(tenantId, LINKS_KEY, links2);
       await this.setPresence(tenantId, me!.userId, 'available');
+      await this.shiftHook?.(tenantId, me!.userId, true).catch(() => undefined);
       await this.audit(tenantId, me!.userId, 'messenger.staff_shift_on');
       await say('✅ Đã vào ca. Khách mới được chia cho bạn sẽ báo ở đây (trong 24 giờ). Hết ca nhắn “ra ca”.');
       return true;
@@ -142,6 +146,7 @@ export class StaffAlertsService {
       links2[me!.userId].on = false;
       await this.write(tenantId, LINKS_KEY, links2);
       await this.setPresence(tenantId, me!.userId, 'away');
+      await this.shiftHook?.(tenantId, me!.userId, false).catch(() => undefined);
       await this.audit(tenantId, me!.userId, 'messenger.staff_shift_off');
       await say('👋 Đã ra ca. Bạn sẽ không được chia khách mới tới khi nhắn “vào ca”.');
       return true;

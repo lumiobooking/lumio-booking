@@ -1,3 +1,4 @@
+import { rescueOpen } from './turn-shift';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { onSale, salePrice } from '../common/discount';
 import { discountRules, promoKnowledge, type PromoInputs } from './promo-knowledge';
@@ -1914,7 +1915,8 @@ export class MessengerService implements OnModuleInit {
     // Đợt 2 permissions: a salon may keep staff to their own and nobody's conversations.
     const team = this.turns ? await this.turns.teamOf(tenantId).catch(() => null) : null;
     const staffOnly = String(user.role) === 'STAFF' && !user.supportSession;
-    if (staffOnly && team && !team.staffSeeAll && (row as { assignedUserId?: string | null }).assignedUserId && (row as { assignedUserId?: string | null }).assignedUserId !== user.userId) {
+    if (staffOnly && team && !team.staffSeeAll && (row as { assignedUserId?: string | null }).assignedUserId && (row as { assignedUserId?: string | null }).assignedUserId !== user.userId && !rescueOpen(row as never)) {
+      // rt198: a customer left waiting past the alarm is open to the whole team ("ai rảnh nhận giúp").
       throw new ForbiddenException('This conversation belongs to someone else.');
     }
 

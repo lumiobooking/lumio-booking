@@ -31,6 +31,10 @@ export class ChatStatusDto {
   @IsIn(['available', 'away']) status!: 'available' | 'away';
 }
 
+export class ChatShiftDto {
+  @IsBoolean() on!: boolean;
+}
+
 export class AssignThreadDto {
   @IsOptional() @IsString() @MaxLength(64) userId?: string | null;
 }
@@ -99,6 +103,12 @@ export class ChatTurnsController {
   @Post('turns/status')
   status(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChatStatusDto) {
     return this.turns.setStatus(user, dto.status);
+  }
+
+  /** rt198: "Vào ca" / "Ra ca" — each person, their own shift only. */
+  @Post('turns/shift')
+  shift(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChatShiftDto) {
+    return this.turns.setShift(user, dto.on);
   }
 
   @Post('turns/heartbeat')

@@ -37,12 +37,18 @@ export interface TurnAgent {
   userId: string; name: string; role: string; inRotation: boolean;
   status: 'available' | 'away'; online: boolean; onShift: boolean | null; onDuty: boolean;
   openThreads: number; turnsToday: number;
+  /** rt198: pressed "Vào ca" and the shift has not ended. */
+  shiftOn?: boolean; shiftUntil?: string | null;
+  /** Phones of this person that get push (owner's view; own row for staff). */
+  devices?: number;
 }
 export interface TurnsView {
   settings: TurnSettings;
   agents: TurnAgent[];
   me: TurnAgent | null;
   canEdit: boolean;
+  /** The server can send push at all (VAPID set on the API). */
+  pushOn?: boolean;
   recent: { id: string; threadId: string; userId: string | null; fromUserId: string | null; reason: string; createdAt: string; thread?: { senderName?: string | null } | null }[];
 }
 
@@ -54,6 +60,8 @@ const REASON: Record<string, [string, string]> = {
   manual: ['giao tay', 'moved by hand'],
   unassign: ['bỏ giao', 'unassigned'],
 };
+
+const hhmm = (iso: string) => { try { return new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }); } catch { return ''; } };
 
 export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolean }) {
   const T = (v: string, e: string) => ind(vi ? v : e);
@@ -171,7 +179,7 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
               <label style={{ ...row, flexWrap: 'wrap' }}><input type="checkbox" disabled={!edit} checked={s.needOnline} onChange={(e) => void save({ needOnline: e.target.checked })} />
                 {T('Đang mở Lumio trong', 'Has Lumio open within the last')}
                 {num('onlineMins', 120, 1)}
-                {T('phút gần nhất', 'minutes')}</label>
+                {T('phút gần nhất — hoặc đã bấm “Vào ca” (không cần mở app)', 'minutes — or pressed “Vào ca” (app may be closed)')}</label>
             </div>
           </div>
 
@@ -203,22 +211,31 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
           <div>
             <div style={ui.label}>{T('Báo khẩn cho chủ tiệm', 'Urgent alert to the owner')}</div>
             <label style={{ ...row, flexWrap: 'wrap' }}>{T('Khi khách chờ quá', 'When a customer has waited over')}
-              {num('escalateMins', 240)}{T('phút mà chưa ai trả lời (0 = tắt). Báo qua app và Messenger của chủ tiệm nếu đang vào ca.', 'min with no reply (0 = off). Sent to the app, and the owner’s Messenger when on shift.')}</label>
+              {num('escalateMins', 240)}{T('phút mà chưa ai trả lời (0 = tắt). Báo cho chủ tiệm và cả nhóm đang trong ca — ai rảnh bấm vào là nhận được khách.', 'min with no reply (0 = off). Sent to the owner and everyone on shift — whoever is free taps it to take the customer.')}</label>
           </div>
 
           {/* 5. The team, in turn order */}
           <div>
             <div style={ui.label}>{T('Nhân viên nhận turn (theo thứ tự lượt)', 'Who takes turns (in turn order)')}</div>
+            <p style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '0 0 6px', lineHeight: 1.5 }}>{T('Nhân viên bấm “Vào ca” trong Hộp thư là bắt đầu nhận khách; điện thoại reo cả khi tắt app. Hết giờ làm Lumio tự cho ra ca.', 'Staff press “Vào ca” in the Inbox to start taking customers; the phone rings even with the app closed. Lumio ends the shift after their hours.')}</p>
+            {view.pushOn === false && (
+              <div style={{ margin: '0 0 8px', padding: '8px 10px', borderRadius: 10, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)', fontSize: 12.5, fontWeight: 600, lineHeight: 1.45 }}>
+                {T('Máy chủ chưa bật thông báo đẩy (thiếu VAPID trên Render) — điện thoại nhân viên sẽ chưa reo.', 'Push is not configured on the server (VAPID missing on Render) — staff phones will not ring yet.')}
+              </div>
+            )}
             <div style={{ display: 'grid', gap: 6 }}>
               {ordered.map((a, i) => (
                 <div key={a.userId} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 10, background: inQueue(a.userId) ? 'var(--c0f172a)' : 'transparent', opacity: inQueue(a.userId) ? 1 : 0.6 }}>
                   <input type="checkbox" disabled={!edit || busy} checked={inQueue(a.userId)} onChange={() => toggleAgent(a.userId)} aria-label={a.name} />
                   <b style={{ fontSize: 13, color: 'var(--ce2e8f0)', minWidth: 110 }}>{i + 1}. {a.name}</b>
                   <span style={{ display: 'inline-flex', gap: 10, flexWrap: 'wrap' }}>
-                    {dot(a.onDuty, a.onDuty ? T('đang trực', 'on duty') : T('không trực', 'off duty'))}
-                    {s.needStatus && dot(a.status === 'available', a.status === 'available' ? T('sẵn sàng', 'available') : T('vắng mặt', 'away'))}
-                    {s.needShift && a.onShift !== null && dot(a.onShift, a.onShift ? T('trong ca', 'on shift') : T('ngoài ca', 'off shift'))}
-                    {s.needOnline && dot(a.online, a.online ? T('đang mở app', 'online') : T('offline', 'offline'))}
+                    {dot(a.onDuty, a.onDuty ? T('đang nhận khách', 'taking customers') : T('không nhận khách', 'not taking customers'))}
+                    {a.shiftOn
+                      ? dot(true, a.shiftUntil ? T(`đã vào ca · tới ${hhmm(a.shiftUntil)}`, `on shift · until ${hhmm(a.shiftUntil)}`) : T('đã vào ca', 'on shift'))
+                      : dot(false, T('chưa vào ca', 'not on shift'))}
+                    {a.devices !== undefined && (a.devices > 0
+                      ? dot(true, T(`📱 ${a.devices} máy nhận thông báo`, `📱 ${a.devices} phone(s) get alerts`))
+                      : <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-bad)' }}>📵 {T('chưa bật thông báo — nhắc bạn ấy', 'no alerts on — remind them')}</span>)}
                   </span>
                   <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--c94a3b8)' }}>
                     {T(`${a.openThreads} đang giữ · ${a.turnsToday} turn/24h`, `${a.openThreads} open · ${a.turnsToday} turns/24h`)}

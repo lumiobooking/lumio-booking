@@ -1,4 +1,4 @@
-import { blockedLabel, blockedTone, filterItems, kindLabel, modesFor, parseTags, type LibraryItem } from './photo-library';
+import { blockedLabel, blockedTone, filterItems, kindLabel, modesFor, parseTags, payLine, type LibraryItem, type PayRequest } from './photo-library';
 
 const it0 = (o: Partial<LibraryItem>): LibraryItem => ({
   id: 'x', url: 'https://x/a.jpg', kind: 'sample', title: '', serviceId: null, serviceName: null, tags: [], aiAllowed: true, expiresAt: null,
@@ -32,5 +32,14 @@ describe('photo library screen helpers', () => {
   });
   it('tags from a comma list', () => {
     expect(parseTags(' French, trắng ,french,, vuông ')).toEqual(['french', 'trắng', 'vuông']);
+  });
+  it('deposit lines never say received from a picture alone', () => {
+    const r: PayRequest = { code: 'LB482913', threadId: 't', appointmentId: null, amountCents: 100000, at: '', by: null, status: 'sent' };
+    expect(payLine(r, true).text).toMatch(/Chờ khách chuyển/);
+    const claimed = payLine({ ...r, status: 'claimed', claim: { amountCents: 100000, codeSeen: true, at: '' } }, true);
+    expect(claimed.text).toMatch(/chưa đối chiếu ngân hàng/);
+    expect(claimed.text).not.toMatch(/đã nhận/i);
+    expect(payLine({ ...r, status: 'paid', bank: { amountCents: 100000, ref: 'x', at: '' } }, true)).toMatchObject({ tone: 'ok' });
+    expect(payLine({ ...r, status: 'partial', bank: { amountCents: 50000, ref: 'x', at: '' } }, true).text).toMatch(/chưa đủ/);
   });
 });

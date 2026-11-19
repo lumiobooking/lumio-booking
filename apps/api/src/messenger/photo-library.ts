@@ -73,6 +73,8 @@ export type LibItem = {
   status: PhotoStatus;
   /** For a price list: the menu prices it was checked against (see priceSignature). */
   priceSig?: string | null;
+  /** 'chat' = a picture a customer sent: never used without their consent. */
+  source?: string | null;
 };
 
 export function isKind(v: unknown): v is PhotoKind {
@@ -127,7 +129,7 @@ export function blockedReason(item: LibItem, now: Date, priceSig?: string | null
   if (!item.aiAllowed) return 'ai_off';
   if (item.expiresAt && item.expiresAt.getTime() < now.getTime()) return 'expired';
   if (item.flags?.length && !item.consent) return 'flagged';
-  if (item.kind === 'result' && !item.consent) return 'no_consent';
+  if ((item.kind === 'result' || item.source === 'chat') && !item.consent) return 'no_consent';
   if (item.kind === 'price_list' && priceSig && item.priceSig && item.priceSig !== priceSig) return 'price_stale';
   return null;
 }

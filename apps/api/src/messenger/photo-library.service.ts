@@ -98,7 +98,7 @@ export class PhotoLibraryService {
     return {
       id: r.id, url: r.url, kind: isKind(r.kind) ? r.kind : 'sample', title: r.title, serviceId: r.serviceId,
       serviceName: r.serviceId ? names.get(r.serviceId) ?? null : null, tags: r.tags ?? [], aiAllowed: r.aiAllowed,
-      expiresAt: r.expiresAt, flags: r.flags ?? [], consent: r.consent, status: r.status === 'pending' ? 'pending' : 'ready', priceSig: r.priceSig,
+      expiresAt: r.expiresAt, flags: r.flags ?? [], consent: r.consent, status: r.status === 'pending' ? 'pending' : 'ready', priceSig: r.priceSig, source: r.source,
     };
   }
 
@@ -166,7 +166,7 @@ export class PhotoLibraryService {
       data: {
         tenantId, url, kind, title: String(body.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 60), serviceId,
         tags: cleanTags(body.tags), aiAllowed: body.aiAllowed !== false, expiresAt: this.cleanDate(body.expiresAt),
-        consent, status: 'ready', source: 'upload', createdBy: user.userId ?? null,
+        consent, status: 'ready', source: body.source === 'chat' ? 'chat' : 'upload', createdBy: user.userId ?? null,
         priceSig: kind === 'price_list' ? await this.priceSigOf(tenantId) : null,
       },
     });
@@ -326,6 +326,39 @@ export class PhotoLibraryService {
     return { result: pickPhotos(items, { kind, serviceId, words }, { now: new Date(), sent, priceSig, rules }), rules };
   }
 
+  /**
+   * The last look before pictures go out: the AI sees the chosen pictures and
+   * what the customer asked for, and drops any that plainly do not show it
+   * (a red set for "French"). Labels can be wrong; this catches it. Bounded
+   * to a few seconds — on any failure the pictures stand as chosen.
+   */
+  async verifyPicks<T extends { item: LibItem }>(tenantId: string, picks: T[], asked: string): Promise<T[]> {
+    if (!picks.length || !asked.trim() || (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY)) return picks;
+    const blocks: unknown[] = [];
+    const idx: number[] = [];
+    for (let i = 0; i < picks.length; i++) {
+      const b = await this.imageBlock(picks[i].item.url);
+      if (b) { blocks.push(b, { type: 'text', text: `Ảnh ${idx.length + 1}` }); idx.push(i); }
+    }
+    if (!idx.length) return picks;
+    const out = await llmChat({
+      system: 'You check whether salon photos show what a customer asked for. Reply with ONE JSON object only.',
+      messages: [{ role: 'user', content: [...blocks, { type: 'text', text:
+        `Khách hỏi: "${asked.slice(0, 160)}". Với mỗi ảnh ở trên (đánh số 1..${idx.length}), ảnh có đúng là thứ khách hỏi không? `
+        + 'Trả về {"keep":[số các ảnh đúng]}. Ảnh gần đúng (cùng kiểu, khác chút màu) vẫn giữ; ảnh sai hẳn thì bỏ.' }] }] as unknown as ChatMessage[],
+      max_tokens: 60,
+      timeoutMs: 7_000,
+    }).catch(() => ({ ok: false }) as { ok: false });
+    if (!out.ok) return picks;
+    this.usage?.record({ feature: 'messenger', tenantId, model: out.reply.usage?.model ?? 'unknown', input: out.reply.usage?.input ?? 0, output: out.reply.usage?.output ?? 0, cacheRead: 0, cacheWrite: 0, failed: false });
+    const text = ((out.reply as { content?: { type: string; text?: string }[] }).content ?? []).filter((b) => b.type === 'text').map((b) => b.text || '').join('');
+    const keep = keepFromReading(text, idx.length);
+    if (!keep) return picks;
+    const kept = new Set(keep.map((n) => idx[n - 1]));
+    // A picture that could not be loaded for the check is not dropped for that.
+    return picks.filter((_, i) => kept.has(i) || !idx.includes(i));
+  }
+
   async markSent(tenantId: string, ids: string[]): Promise<void> {
     if (!ids.length) return;
     await this.db.updateMany({ where: { tenantId, id: { in: ids } }, data: { sentCount: { increment: 1 }, lastSentAt: new Date() } }).catch(() => undefined);
@@ -403,6 +436,19 @@ export class PhotoLibraryService {
     await this.markSent(tenantId, [itemId]);
     await this.clearPending(tenantId, threadId);
     await this.audit(tenantId, user.userId ?? null, 'messenger.photo_sent', threadId, { by: 'person', ids: [itemId] });
+  }
+}
+
+/** {"keep":[1,3]} → [1,3] (numbers within 1..n); null when the answer is unreadable. */
+export function keepFromReading(text: string, n: number): number[] | null {
+  const m = /\{[\s\S]*\}/.exec(String(text ?? ''));
+  if (!m) return null;
+  try {
+    const o = JSON.parse(m[0]) as { keep?: unknown };
+    if (!Array.isArray(o.keep)) return null;
+    return Array.from(new Set(o.keep.map(Number).filter((x) => Number.isInteger(x) && x >= 1 && x <= n)));
+  } catch {
+    return null;
   }
 }
 

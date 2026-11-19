@@ -1,4 +1,5 @@
 import { keptOnLate } from './pay-in-full';
+import { RULES_KEY as PHOTO_RULES_KEY, cleanRules as cleanPhotoRules } from '../messenger/photo-library';
 import { EXTENSION_KEY, extensionCharge, extensionName, policyFrom, shrinkExtensions, type ExtensionPolicy, type ExtLine } from './extension-price';
 import { staffBusyMessage } from './busy-message';
 import { GROUP_NOTICE_DELAY_MS, groupLead, groupSummary, visitPeople, type GroupMember } from './group-notice';
@@ -2050,6 +2051,28 @@ export class BookingsService {
     return { sent };
   }
 
+  /**
+   * The salon's "before your visit" picture for this booking: a ready guide
+   * from its own library, for the booked service or for every service, still
+   * running, allowed for the AI and not held back for privacy. Skipped when
+   * the salon switched guides off in its picture rules.
+   */
+  private async reminderGuide(tenantId: string, appointmentId: string): Promise<{ url: string; title: string } | null> {
+    const rules = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: PHOTO_RULES_KEY } } }).catch(() => null);
+    if (cleanPhotoRules(rules?.value).modes.guide === 'off') return null;
+    const appt = await this.prisma.appointment.findFirst({ where: { id: appointmentId, tenantId }, select: { serviceId: true } });
+    const db = (this.prisma as unknown as { mediaLibraryItem?: { findMany: (a: unknown) => Promise<{ url: string; title: string; serviceId: string | null; flags: string[]; consent: boolean }[]> } }).mediaLibraryItem;
+    if (!db) return null;
+    const now = new Date();
+    const rows = await db.findMany({
+      where: { tenantId, kind: 'guide', status: 'ready', aiAllowed: true, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+      orderBy: { createdAt: 'desc' }, take: 20, select: { url: true, title: true, serviceId: true, flags: true, consent: true },
+    });
+    const ok = rows.filter((r) => /^https:\/\//.test(r.url) && (!r.flags?.length || r.consent));
+    const pick = ok.find((r) => appt?.serviceId && r.serviceId === appt.serviceId) ?? ok.find((r) => !r.serviceId);
+    return pick ? { url: pick.url, title: pick.title || '' } : null;
+  }
+
   /** Send a single reminder (email + SMS, per the salon's reminder channels). */
   private async sendReminderFor(
     tenantId: string,
@@ -2133,9 +2156,15 @@ export class BookingsService {
       }
     } catch { /* referral is optional — never block a reminder */ }
 
+    // "Chuẩn bị trước buổi hẹn" from the salon's picture library, for this
+    // service (or for every service): in the reminder EMAIL only — the SMS
+    // stays a plain transactional line.
+    const guide = await this.reminderGuide(tenantId, appt.id).catch(() => null);
+    const guideHtml = guide ? `<p style="margin:16px 0 6px;font-weight:600">${(n.market ?? 'US').toUpperCase() === 'VN' ? 'Chuẩn bị trước buổi hẹn' : 'Before your visit'}</p><img src="${guide.url}" alt="${guide.title.replace(/"/g, '')}" style="max-width:100%;border-radius:10px">` : '';
+
     const jobs: Promise<unknown>[] = [];
     if (rs.channelEmail && custEmail) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text + refText, html: html + refHtml, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text + refText, html: html + guideHtml + refHtml, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
     }
     if (rs.channelSms && custPhone) {
       jobs.push(this.notifications.send({

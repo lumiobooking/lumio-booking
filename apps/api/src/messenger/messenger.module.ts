@@ -25,10 +25,11 @@ import { KnowledgeGapsService } from './knowledge-gaps.service';
 
 import { UploadsModule } from '../uploads/uploads.module';
 import { PhotoLibraryService } from './photo-library.service';
+import { ChatPayService } from './chat-pay.service';
 @Module({
   imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule, UploadsModule],
   controllers: [SupportAiLeaksController, SupportAiFleetController, AiGoldenController, MessengerController, ChatTurnsController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
-  providers: [OAuthGate, InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService, ChatFollowUpScheduler, KnowledgeGapsService, BotReportService, AiDigestService, AiGoldenService, PhotoLibraryService],
-  exports: [InboxEventsService, MessengerService, ChatTurnsService, PhotoLibraryService],
+  providers: [OAuthGate, InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService, ChatFollowUpScheduler, KnowledgeGapsService, BotReportService, AiDigestService, AiGoldenService, PhotoLibraryService, ChatPayService],
+  exports: [InboxEventsService, MessengerService, ChatTurnsService, PhotoLibraryService, ChatPayService],
 })
 export class MessengerModule {}

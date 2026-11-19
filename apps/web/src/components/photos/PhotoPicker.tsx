@@ -16,7 +16,7 @@
  */
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { apiFetch } from '../../lib/api';
-import { blockedLabel, filterItems, kindLabel, type LibraryResponse, type SuggestItem, type SuggestResponse } from '../../lib/photo-library';
+import { blockedLabel, filterItems, kindLabel, payLine, vnd, type LibraryResponse, type PayPanel, type SuggestItem, type SuggestResponse } from '../../lib/photo-library';
 
 const L = (vi: boolean, v: string, e: string) => (vi ? v : e);
 // White on a dark scrim over a PHOTO (never a themed surface): the scrim does not flip in light mode.
@@ -45,7 +45,17 @@ export function PhotoWaiting({ token, threadId, vi, suggest, onSent, onError, di
 }) {
   const [busy, setBusy] = useState(false);
   const w = suggest?.waiting;
-  if (!w || !token) return null;
+  const pay = (suggest?.pay ?? []).slice(0, 2);
+  if (!token || (!w && !pay.length)) return null;
+  const payRows = pay.map((r) => {
+    const l = payLine(r, vi);
+    return (
+      <div key={r.code} role="status" style={{ padding: '7px 10px', borderRadius: 10, border: '1px solid var(--line)', fontSize: 12.5, fontWeight: 700,
+        background: l.tone === 'ok' ? 'var(--wash-green, var(--wash-blue))' : l.tone === 'warn' ? 'var(--wash-amber-3)' : 'var(--wash-blue)',
+        color: l.tone === 'ok' ? 'var(--ink-good)' : l.tone === 'warn' ? 'var(--ink-warn)' : 'var(--ink-link)' }}>💳 {l.text}</div>
+    );
+  });
+  if (!w) return <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{payRows}</div>;
   const sendAll = async () => {
     setBusy(true);
     try { for (const it of w.items) await sendItem(token, threadId, it.id); onSent(); }
@@ -57,6 +67,8 @@ export function PhotoWaiting({ token, threadId, vi, suggest, onSent, onError, di
     catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    {payRows}
     <div role="status" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--wash-amber-3)' }}>
       <span style={{ fontSize: 13, color: 'var(--ink-warn)', fontWeight: 700, flex: '1 1 180px', minWidth: 0 }}>
         {w.items.length
@@ -78,6 +90,69 @@ export function PhotoWaiting({ token, threadId, vi, suggest, onSent, onError, di
         {L(vi, 'Bỏ qua', 'Dismiss')}
       </button>
     </div>
+    </div>
+  );
+}
+
+/** Under a customer's picture in the chat (owner): keep it in the library — locked for the AI until the customer agrees. */
+export function SaveToLibrary({ token, threadId, url, vi }: { token: string | null; threadId: string; url: string; vi: boolean }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'err'>('idle');
+  const [msg, setMsg] = useState('');
+  if (!token) return null;
+  const save = async () => {
+    setState('busy');
+    try { await apiFetch(`/messenger/threads/${threadId}/save-photo`, { method: 'POST', token, body: { url, kind: 'result' } }); setState('done'); }
+    catch (e) { setMsg(String(e).replace(/^Error:\s*/, '').slice(0, 120)); setState('err'); }
+  };
+  if (state === 'done') return <span style={{ fontSize: 11.5, color: 'var(--ink-good)', fontWeight: 700 }}>{L(vi, '✓ Đã lưu — cần khách đồng ý mới dùng', '✓ Saved — needs consent before use')}</span>;
+  return (
+    <button type="button" disabled={state === 'busy'} onClick={() => void save()} title={state === 'err' ? msg : L(vi, 'Lưu ảnh này vào Thư viện ảnh gửi khách (AI không dùng tới khi khách đồng ý)', 'Keep this picture in the photo library (locked until the customer agrees)')}
+      style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 700, color: state === 'err' ? 'var(--ink-bad)' : 'var(--ink-link)' }}>
+      {state === 'busy' ? L(vi, 'Đang lưu…', 'Saving…') : state === 'err' ? L(vi, 'Không lưu được', 'Not saved') : L(vi, '＋ Lưu vào thư viện', '＋ Save to library')}
+    </button>
+  );
+}
+
+/** The deposit QR tab: a person decides the amount and sends; the server uses the salon's own account. */
+function PayTab({ token, threadId, vi, disabled, onSent, onError }: { token: string | null; threadId: string; vi: boolean; disabled?: boolean; onSent: () => void; onError: (m: string) => void }) {
+  const [p, setP] = useState<PayPanel | null>(null);
+  const [amount, setAmount] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<PayPanel>(`/messenger/threads/${threadId}/pay-qr`, { token }).then((x) => { setP(x); if (x.suggestedCents) setAmount(String(x.suggestedCents)); }).catch(() => setP(null));
+  }, [token, threadId]);
+  if (!p) return <div style={{ padding: 16, fontSize: 13.5, color: 'var(--c94a3b8)' }}>{L(vi, 'Đang tải…', 'Loading…')}</div>;
+  if (!p.available) return (
+    <div style={{ padding: '14px 8px', fontSize: 13.5, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>
+      {L(vi, 'Chưa gửi được QR: tiệm chưa có tài khoản ngân hàng nhận tiền (VietQR). Chủ tiệm điền ở Cài đặt › Thu ngân (POS).', 'No QR yet: the salon has no VietQR bank account. The owner adds it under Settings › POS.')}
+    </div>
+  );
+  const n = Math.round(Number(amount.replace(/\D/g, '')) || 0);
+  const send = async () => {
+    if (!token || n < 1000) return;
+    setBusy(true);
+    try { await apiFetch(`/messenger/threads/${threadId}/pay-qr`, { method: 'POST', token, body: { amountCents: n, appointmentId: p.appointment?.id ?? null } }); onSent(); }
+    catch (e) { onError(String(e)); } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px' }}>
+      <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+        {L(vi, 'Nhận vào', 'Paid to')}: <b style={{ color: 'var(--ce2e8f0)' }}>{p.bank?.name} {p.bank?.accountNo}</b>{p.bank?.accountName ? ` · ${p.bank.accountName}` : ''}
+        {p.appointment && <><br />{L(vi, 'Lịch hẹn', 'Booking')}: <b style={{ color: 'var(--ce2e8f0)' }}>{p.appointment.service ?? ''} · {new Date(p.appointment.startTime).toLocaleString(vi ? 'vi-VN' : 'en-US', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</b></>}
+      </div>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, fontWeight: 700, color: 'var(--c94a3b8)' }}>
+        {L(vi, 'Số tiền cọc (đồng)', 'Deposit (VND)')}
+        <input inputMode="numeric" value={amount ? Number(amount.replace(/\D/g, '') || 0).toLocaleString('vi-VN') : ''} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
+          style={{ minHeight: 42, padding: '0 12px', borderRadius: 10, border: '1px solid var(--line-strong)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 16, fontWeight: 700, fontFamily: 'inherit' }} />
+      </label>
+      {p.suggestedCents ? <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L(vi, `Theo quy định cọc của tiệm: ${vnd(p.suggestedCents)}`, `Salon deposit rule: ${vnd(p.suggestedCents)}`)}</span> : null}
+      <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{L(vi, 'Khách nhận ảnh QR điền sẵn số tiền và mã (LB…). Khi khách gửi ảnh chuyển khoản hoặc ngân hàng báo tiền về, Hộp thư sẽ ghi bên cạnh — tiệm tự xác nhận.', 'The customer gets a QR with the amount and code (LB…). A transfer picture or the bank feed shows up here — the salon confirms.')}</span>
+      <button type="button" disabled={busy || disabled || n < 1000} onClick={() => void send()}
+        style={{ minHeight: 42, borderRadius: 12, border: 0, background: '#4f46e5', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', opacity: busy || disabled || n < 1000 ? 0.55 : 1 }}>
+        {busy ? L(vi, 'Đang gửi…', 'Sending…') : n >= 1000 ? L(vi, `Gửi QR cọc ${vnd(n)}`, `Send ${vnd(n)} QR`) : L(vi, 'Nhập số tiền', 'Enter an amount')}
+      </button>
+    </div>
   );
 }
 
@@ -85,11 +160,17 @@ export function PhotoPicker({ token, threadId, vi, narrow, suggest, onClose, onS
   token: string | null; threadId: string; vi: boolean; narrow: boolean; suggest: SuggestResponse | null;
   onClose: () => void; onSent: () => void; onUpload: () => void; onError: (m: string) => void; disabled?: boolean;
 }) {
-  const [tab, setTab] = useState<'suggest' | 'library'>('suggest');
+  const [tab, setTab] = useState<'suggest' | 'library' | 'pay'>('suggest');
   const [lib, setLib] = useState<LibraryResponse | null>(null);
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  // The deposit tab only for salons that can take a VietQR (Vietnam); the server decides.
+  const [payOk, setPayOk] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<PayPanel>(`/messenger/threads/${threadId}/pay-qr`, { token }).then((x) => setPayOk(x.reason !== 'not_vn')).catch(() => setPayOk(false));
+  }, [token, threadId]);
 
   useEffect(() => {
     if (tab !== 'library' || lib || !token) return;
@@ -119,7 +200,7 @@ export function PhotoPicker({ token, threadId, vi, narrow, suggest, onClose, onS
     catch (e) { onError(String(e)); } finally { setBusy(false); }
   };
 
-  const tabBtn = (id: 'suggest' | 'library', label: string): JSX.Element => {
+  const tabBtn = (id: 'suggest' | 'library' | 'pay', label: string): JSX.Element => {
     const on = tab === id;
     return (
       <button key={id} type="button" role="tab" aria-selected={on} onClick={() => setTab(id)}
@@ -145,7 +226,9 @@ export function PhotoPicker({ token, threadId, vi, narrow, suggest, onClose, onS
         <div role="tablist" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {tabBtn('suggest', L(vi, 'Gợi ý', 'Suggested'))}
           {tabBtn('library', L(vi, 'Thư viện', 'Library'))}
+          {payOk && tabBtn('pay', L(vi, 'QR đặt cọc', 'Deposit QR'))}
         </div>
+        {tab === 'pay' && <PayTab token={token} threadId={threadId} vi={vi} disabled={disabled} onSent={() => { onSent(); onClose(); }} onError={onError} />}
         {tab === 'suggest' && suggest?.lastText ? (
           <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{L(vi, 'Theo câu khách hỏi: ', 'From what the customer asked: ')}<b style={{ color: 'var(--ce2e8f0)' }}>“{suggest.lastText}”</b></div>
         ) : null}
@@ -153,7 +236,7 @@ export function PhotoPicker({ token, threadId, vi, narrow, suggest, onClose, onS
           <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={L(vi, 'Tìm: french, nude, bảng giá…', 'Find: french, nude, price…')} aria-label={L(vi, 'Tìm ảnh', 'Find a photo')}
             style={{ minHeight: 38, padding: '0 12px', borderRadius: 10, border: '1px solid var(--line-strong)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, fontFamily: 'inherit' }} />
         )}
-        <div style={{ overflowY: 'auto', minHeight: 120 }}>
+        {tab !== 'pay' && <div style={{ overflowY: 'auto', minHeight: 120 }}>
           {list.length === 0 ? (
             <div style={{ padding: '20px 8px', textAlign: 'center', fontSize: 13.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
               {(suggest?.total ?? 0) === 0
@@ -180,8 +263,8 @@ export function PhotoPicker({ token, threadId, vi, narrow, suggest, onClose, onS
               })}
             </div>
           )}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        </div>}
+        {tab !== 'pay' && <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" disabled={disabled} onClick={() => { onUpload(); onClose(); }}
             style={{ flex: 1, minHeight: 42, borderRadius: 12, border: '1px solid var(--line-strong)', background: 'transparent', color: 'var(--ce2e8f0)', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' }}>
             {L(vi, 'Ảnh từ máy', 'From this device')}
@@ -190,7 +273,7 @@ export function PhotoPicker({ token, threadId, vi, narrow, suggest, onClose, onS
             style={{ flex: 1.4, minHeight: 42, borderRadius: 12, border: 0, background: '#4f46e5', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit', opacity: busy || disabled || !picked.length ? 0.55 : 1 }}>
             {busy ? L(vi, 'Đang gửi…', 'Sending…') : picked.length ? L(vi, `Gửi ${picked.length} ảnh`, `Send ${picked.length}`) : L(vi, 'Chọn ảnh để gửi', 'Pick photos')}
           </button>
-        </div>
+        </div>}
       </div>
     </>
   );

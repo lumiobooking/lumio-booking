@@ -42,6 +42,8 @@ const STAFF_MAY = [
   // Thư viện ảnh gửi khách (19/11/2026): seeing the library to pick from, the suggestions beside a chat,
   // sending one picture (server re-checks it is this salon's and not locked) and dismissing a waiting one.
   'photoLibrary', 'photoSuggest', 'sendLibraryPhoto', 'clearPhotoWaiting',
+  // The deposit QR: seeing the panel and sending it (a person, never the AI; the server picks the salon's own account).
+  'payPanel', 'sendPayQr',
   // The top of the AI page (which staff may already view): this salon's numbers, nothing to change.
   'aiOverview',
   // Turning notifications on for their own phone is NOT here: that already
@@ -58,7 +60,7 @@ const STAFF_MUST_NOT = [
   'keepOnly',
   'importFacts', 'suggestGreeting',
   // Changing the picture library and its rules is the owner's.
-  'addPhoto', 'importPhotos', 'photoRules', 'savePhotoRules', 'updatePhoto', 'deletePhoto',
+  'addPhoto', 'importPhotos', 'photoRules', 'savePhotoRules', 'updatePhoto', 'deletePhoto', 'saveChatPhoto',
   // Pulling the Page's past conversations into the inbox reads the Page token
   // and writes threads for the whole shop — the owner's (or Lumio's) call.
   'importConversations',

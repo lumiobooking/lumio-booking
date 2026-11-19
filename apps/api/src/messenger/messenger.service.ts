@@ -57,6 +57,7 @@ import { leadDossier, rawMemoryFallback, LeadFacts, customerDossier, type KnownC
 import { habitLine, profileFrom } from '../common/customer-profile';
 import { InboxEventsService } from './inbox-events.service';
 import { PhotoLibraryService, sentUrls } from './photo-library.service';
+import { ChatPayService } from './chat-pay.service';
 import { isKind as isPhotoKind, toolAnswer as photoToolAnswer, wordsOf as wordsOfPhoto, type PhotoKind } from './photo-library';
 import { PushService } from '../push/push.service';
 import { pushPayload } from '../notifications/push-payload';
@@ -358,7 +359,18 @@ export class MessengerService implements OnModuleInit {
     @Optional() private readonly release?: AiReleaseService,
     // Thư viện ảnh gửi khách: pictures chosen by their labels. Optional: without it send_photos uses the old sources.
     @Optional() private readonly photoLibrary?: PhotoLibraryService,
+    // Mã QR đặt cọc: a transfer picture is read only when this chat has an open request.
+    @Optional() private readonly chatPay?: ChatPayService,
   ) {}
+
+  /** Did THIS salon's conversation receive this picture from the customer? (Guards "save to library".) */
+  async threadReceivedImage(user: AuthenticatedUser, threadId: string, url: string): Promise<boolean> {
+    const tenantId = this.tenantId(user);
+    const t = await this.prisma.messengerThread.findFirst({ where: { id: String(threadId ?? ''), tenantId }, select: { history: true } });
+    if (!t || !url) return false;
+    const hist = (Array.isArray(t.history) ? t.history : []) as Turn[];
+    return hist.some((h) => h.role === 'user' && Array.isArray(h.images) && h.images.includes(url));
+  }
 
   /**
    * A person answered a customer's question by hand — in Lumio's inbox or in
@@ -3772,6 +3784,11 @@ export class MessengerService implements OnModuleInit {
       update: { lastText: cutText(text, 300), channel } as never,
       create: { tenantId: page.tenantId, pageId, senderId, lastText: cutText(text, 300), channel } as never,
     });
+    // A transfer picture for an open deposit QR in this chat: noted beside the
+    // request ("khách báo đã chuyển"), whoever is answering. Never confirms.
+    if (inImages.length && this.chatPay) {
+      void this.chatPay.onCustomerImages(page.tenantId, thread.id, inImages, (urls) => this.photoNote(page.tenantId, urls)).catch(() => undefined);
+    }
     // Best-effort: resolve the customer's display name once (User Profile API).
     if (!thread.senderName && channel !== 'web') {
       // A website visitor has no profile to look up; the bot asks for a name
@@ -7469,6 +7486,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     }
     if (result.decision !== 'send' && result.decision !== 'ask') return photoToolAnswer(result, 0, label);
     if (!ctx.pageToken || !ctx.senderId) return 'Could not send pictures in this chat.';
+    // The last look: the AI checks the chosen samples against the words asked for.
+    if (kind === 'sample' && words.length && !dry) {
+      const kept = await this.photoLibrary.verifyPicks(tenantId, result.picked, label).catch(() => result.picked);
+      if (!kept.length) return photoToolAnswer({ ...result, decision: 'none', picked: [] }, 0, label);
+      result.picked = kept;
+    }
     const ch = (ctx.channel === 'instagram' || ctx.channel === 'zalo' || ctx.channel === 'web' ? ctx.channel : 'messenger') as Channel;
     const okIds: string[] = [];
     const okUrls: string[] = [];

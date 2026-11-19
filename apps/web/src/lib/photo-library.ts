@@ -21,7 +21,44 @@ export interface SuggestItem { id: string; url: string; kind: PhotoKind; title: 
 export interface SuggestResponse {
   lastText: string | null; words: string[]; suggestions: SuggestItem[]; total: number;
   waiting: { label: string; at: string; items: { id: string; url: string; kind: PhotoKind; title: string; serviceName: string | null; tags: string[] }[] } | null;
+  /** Deposit QRs sent in this chat, newest first. */
+  pay?: PayRequest[];
 }
+
+export type PayStatus = 'sent' | 'claimed' | 'paid' | 'partial';
+export interface PayRequest {
+  code: string; threadId: string; appointmentId: string | null; amountCents: number; at: string; by: string | null; status: PayStatus;
+  claim?: { amountCents: number | null; codeSeen: boolean; at: string } | null;
+  bank?: { amountCents: number; ref: string; at: string } | null;
+}
+export interface PayPanel {
+  available: boolean; reason: string | null;
+  bank: { name: string; accountNo: string; accountName: string } | null;
+  appointment: { id: string; startTime: string; service: string | null; priceCents: number } | null;
+  suggestedCents: number | null; requests: PayRequest[];
+}
+
+export const vnd = (n: number) => `${Math.round(n).toLocaleString('vi-VN')}đ`;
+
+/**
+ * One line for a deposit QR: what was asked, what the customer's picture
+ * said, what the bank reported. Never "đã nhận" from a picture alone.
+ */
+export function payLine(r: PayRequest, vi: boolean): { text: string; tone: 'ok' | 'warn' | 'info' } {
+  const ask = vi ? `QR cọc ${vnd(r.amountCents)} (${r.code})` : `Deposit QR ${vnd(r.amountCents)} (${r.code})`;
+  if (r.status === 'paid') return { tone: 'ok', text: vi ? `${ask} · Ngân hàng đã nhận ${vnd(r.bank?.amountCents ?? r.amountCents)}` : `${ask} · Bank received ${vnd(r.bank?.amountCents ?? r.amountCents)}` };
+  if (r.status === 'partial') return { tone: 'warn', text: vi ? `${ask} · Ngân hàng mới nhận ${vnd(r.bank?.amountCents ?? 0)} — chưa đủ` : `${ask} · Bank has ${vnd(r.bank?.amountCents ?? 0)} — short` };
+  if (r.status === 'claimed' && r.claim) {
+    const amt = r.claim.amountCents;
+    const match = amt === r.amountCents;
+    const t = vi
+      ? `${ask} · Khách gửi ảnh chuyển khoản${amt ? ` ${vnd(amt)}` : ''}${match ? '' : amt ? ' (khác số tiền)' : ''}${r.claim.codeSeen ? ', đúng mã' : ', không thấy mã'} — chưa đối chiếu ngân hàng`
+      : `${ask} · Customer sent a transfer picture${amt ? ` ${vnd(amt)}` : ''}${match ? '' : amt ? ' (different amount)' : ''}${r.claim.codeSeen ? ', code matches' : ', no code seen'} — not checked with the bank`;
+    return { tone: 'warn', text: t };
+  }
+  return { tone: 'info', text: vi ? `${ask} · Chờ khách chuyển` : `${ask} · Waiting for the transfer` };
+}
+
 
 const K: Record<PhotoKind, [string, string]> = {
   sample: ['Mẫu', 'Sample'], price_list: ['Bảng giá', 'Price list'], storefront: ['Mặt tiền', 'Storefront'],

@@ -8,6 +8,7 @@ import { AiDigestService } from './ai-digest.service';
 import { BotReportService } from './bot-report.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { PhotoLibraryService } from './photo-library.service';
+import { ChatPayService } from './chat-pay.service';
 import { resolveTenantScope } from '../common/tenant/tenant-context';
 import { HandoffDto, LeadStatusDto, ThreadLeadDto, RenameThreadDto, SendTestDto, SuggestGreetingDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -35,6 +36,21 @@ function libOf(photos?: PhotoLibraryService): PhotoLibraryService {
   return photos;
 }
 
+/** A picture the customer sent, read once into a small data URL (≤ 3 MB, JPG/PNG/WebP). */
+async function fetchAsDataUrl(url: string): Promise<string | null> {
+  if (!/^https:\/\//i.test(url)) return null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(12_000), redirect: 'follow' });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length || buf.length > 3_000_000) return null;
+    const type = buf[0] === 0xff && buf[1] === 0xd8 ? 'image/jpeg' : buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png' : buf.subarray(8, 12).toString('ascii') === 'WEBP' ? 'image/webp' : null;
+    return type ? `data:${type};base64,${buf.toString('base64')}` : null;
+  } catch {
+    return null;
+  }
+}
+
 const INBOX_ROLES = [UserRole.SALON_ADMIN, UserRole.STAFF] as const;
 
 /** Salon-admin management of the Messenger booking bot (tenant-scoped). */
@@ -51,6 +67,8 @@ export class MessengerController {
     @Optional() private readonly uploads?: UploadsService,
     // Thư viện ảnh gửi khách (19/11/2026). Optional so a library problem never takes the Inbox down.
     @Optional() private readonly photos?: PhotoLibraryService,
+    // Mã QR đặt cọc gửi trong chat (19/11/2026).
+    @Optional() private readonly pay?: ChatPayService,
   ) {}
 
   // ---- Thư viện ảnh gửi khách. Reading it: owner and staff (the Inbox picker). Changing it: owner only (class default).
@@ -100,8 +118,57 @@ export class MessengerController {
   /** Beside a conversation: pictures that fit what the customer last wrote, and any the AI is holding for a person. */
   @Roles(...INBOX_ROLES)
   @Get('threads/:id/photo-suggest')
-  photoSuggest(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return libOf(this.photos).suggest(user, id);
+  async photoSuggest(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    const out = await libOf(this.photos).suggest(user, id);
+    const tenantId = resolveTenantScope(user);
+    const pay = this.pay && tenantId ? (await this.pay.requestsOf(tenantId)).filter((r) => r.threadId === id).slice(0, 3) : [];
+    return { ...out, pay };
+  }
+
+  /** The "QR đặt cọc" panel beside a conversation: can this salon send one, the next booking, what was sent before. */
+  @Roles(...INBOX_ROLES)
+  @Get('threads/:id/pay-qr')
+  payPanel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    if (!this.pay) throw new BadRequestException('Unavailable.');
+    return this.pay.panel(user, id);
+  }
+
+  /**
+   * A PERSON sends the deposit QR (the AI never does): the salon's own
+   * account, an exact amount and a code the bank feed and the receipt reader
+   * look for. Sent through the same photo and text routes as anything typed.
+   */
+  @Roles(...INBOX_ROLES)
+  @Post('threads/:id/pay-qr')
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('messengerAi')
+  async sendPayQr(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { amountCents?: unknown; appointmentId?: unknown }) {
+    if (!this.pay) throw new BadRequestException('Unavailable.');
+    await this.svc.assertOwnThread(user, id);
+    const p = await this.pay.prepare(user, id, dto ?? {});
+    const out = await this.svc.sendManualPhoto(user, id, p.url);
+    await this.svc.sendManual(user, id, p.text).catch(() => undefined);
+    await this.pay.recordSent(user, p.tenantId, id, { code: p.code, amount: p.amount, appointmentId: p.appointmentId }, null);
+    return { ...out, code: p.code };
+  }
+
+  /**
+   * Keep a customer's picture from this conversation in the library (their
+   * result, or a design they liked). The address must be one this
+   * conversation actually received; the file is copied into the salon's own
+   * folder, and it stays locked for the AI until the owner ticks consent.
+   */
+  @Post('threads/:id/save-photo')
+  async saveChatPhoto(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { url?: unknown; kind?: unknown }) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    if (!this.uploads) throw new BadRequestException('STORAGE_NOT_CONFIGURED');
+    const url = String(dto?.url ?? '');
+    if (!(await this.svc.threadReceivedImage(user, id, url))) throw new BadRequestException('Ảnh này không thuộc cuộc trò chuyện.');
+    const dataUrl = await fetchAsDataUrl(url);
+    if (!dataUrl) throw new BadRequestException('Không tải được ảnh (có thể link của Facebook đã hết hạn).');
+    const stored = await this.uploads.uploadDataUrl(tenantId, dataUrl);
+    return libOf(this.photos).create(user, stored, { kind: dto?.kind === 'sample' ? 'sample' : 'result', consent: false, source: 'chat', aiAllowed: false });
   }
 
   /** A person sends one library picture. Same window, ownership and audit rules as any photo from the reply box. */

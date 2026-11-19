@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
+import { PAY_KEY as CHAT_PAY_KEY, applyBankCredit, cleanRequests as cleanPayRequests, payCodeInText } from '../messenger/chat-pay';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { OrderItemKind, PaymentMethod, PrintJobStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1200,6 +1201,12 @@ export class RestaurantService {
         if ((e as { code?: string }).code === 'P2002') continue; // this transaction was already counted
         throw e;
       }
+      // A deposit QR sent in the chat (messenger/chat-pay): its code "LB482913" in the note.
+      const chatCode = payCodeInText(credit.description);
+      if (chatCode) {
+        if (await this.creditChatDeposit(tenantId, chatCode, credit, ctx.lang, ctx.currency)) matched++;
+        continue;
+      }
       const number = payCodeIn(credit.description);
       if (number == null) continue;
       const check = await this.prisma.tableCheck.findFirst({ where: { tenantId, number, status: { in: LIVE } }, select: { id: true, number: true, tableIds: true } });
@@ -1212,6 +1219,23 @@ export class RestaurantService {
     }
     await this.prisma.setting.updateMany({ where: { id: row.id, tenantId }, data: { value: { ...(row.value as object), lastAt: new Date().toISOString() } as never } });
     return { success: true, matched };
+  }
+
+  /**
+   * Money for a chat deposit QR: noted on THIS salon's request (paid / short),
+   * the owner's phone told, the Inbox shows it beside the conversation. It
+   * does not mark the booking paid — a person confirms that.
+   */
+  private async creditChatDeposit(tenantId: string, code: string, credit: { id: string; amount: number }, lang: string, currency: string): Promise<boolean> {
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: CHAT_PAY_KEY } } }).catch(() => null);
+    const { list, hit } = applyBankCredit(cleanPayRequests(row?.value), code, credit.amount, credit.id.slice(0, 80), new Date().toISOString());
+    if (!hit) return false;
+    const value = list as never;
+    await this.prisma.setting.upsert({ where: { tenantId_key: { tenantId, key: CHAT_PAY_KEY } }, create: { tenantId, key: CHAT_PAY_KEY, value }, update: { value } });
+    const vi = lang === 'vi';
+    this.ping(tenantId, vi ? 'Đã nhận tiền cọc qua chat' : 'Chat deposit received', `${code}: ${moneyText(credit.amount, currency)}${hit.status === 'partial' ? (vi ? ' (chưa đủ)' : ' (short)') : ''}`);
+    await this.audit.log({ tenantId, action: 'messenger.pay_bank_credit', resourceType: 'messenger', resourceId: hit.threadId, metadata: { code, amount: credit.amount, ref: credit.id, status: hit.status } });
+    return true;
   }
 
   /** Print jobs that did not come out, so the till can say so and reprint. */

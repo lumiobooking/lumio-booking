@@ -23,7 +23,7 @@
  */
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PhotoPicker, PhotoWaiting, usePhotoSuggest } from './photos/PhotoPicker';
+import { PhotoPicker, PhotoWaiting, SaveToLibrary, usePhotoSuggest } from './photos/PhotoPicker';
 import { fmtInTz } from '../lib/datetime';
 import { useAuth } from '../lib/auth';
 import { apiFetch, apiStream, apiImage, apiImageCached } from '../lib/api';
@@ -2062,10 +2062,13 @@ export function InboxView() {
                       {!!t.images?.length && (
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {t.images.map((u, j) => (
-                            <a key={j} href={u} target="_blank" rel="noreferrer" title={vi ? 'Mở ảnh gốc' : 'Open the photo'}>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={u} alt="" loading="lazy" style={{ width: narrow ? 160 : 140, height: narrow ? 160 : 140, objectFit: 'cover', borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--raised)', display: 'block' }} />
-                            </a>
+                            <div key={j} style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                              <a href={u} target="_blank" rel="noreferrer" title={vi ? 'Mở ảnh gốc' : 'Open the photo'}>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={u} alt="" loading="lazy" style={{ width: narrow ? 160 : 140, height: narrow ? 160 : 140, objectFit: 'cover', borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--raised)', display: 'block' }} />
+                              </a>
+                              {!mine && mayEditNudge && <SaveToLibrary token={token ?? null} threadId={detail.id} url={u} vi={vi} />}
+                            </div>
                           ))}
                         </div>
                       )}

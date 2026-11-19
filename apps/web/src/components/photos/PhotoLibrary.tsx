@@ -235,7 +235,7 @@ function Editor({ item, services, vi, canEdit, busy, onClose, onPatch, onRemove 
           <img src={item.url} alt="" style={{ width: 160, maxWidth: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 10, background: 'var(--c1e293b)' }} />
           <div style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, color: 'var(--c94a3b8)' }}>
             <b style={{ color: 'var(--ce2e8f0)', fontSize: 15 }}>{L(vi, 'Ảnh trong thư viện', 'Library photo')}</b>
-            <span>{L(vi, 'Nguồn', 'From')}: {item.source === 'service' ? L(vi, 'ảnh dịch vụ', 'service photo') : item.source === 'branding' ? L(vi, 'thương hiệu', 'branding') : item.source === 'post' ? L(vi, 'bài đã đăng', 'a post') : L(vi, 'tải lên', 'upload')}</span>
+            <span>{L(vi, 'Nguồn', 'From')}: {item.source === 'service' ? L(vi, 'ảnh dịch vụ', 'service photo') : item.source === 'branding' ? L(vi, 'thương hiệu', 'branding') : item.source === 'post' ? L(vi, 'bài đã đăng', 'a post') : item.source === 'chat' ? L(vi, 'khách gửi trong chat', 'sent by a customer in chat') : L(vi, 'tải lên', 'upload')}</span>
             {item.flags.length > 0 && <span style={{ ...tone('bad'), padding: '4px 8px', borderRadius: 8, fontWeight: 700 }}>{L(vi, `Có ${flagText(item.flags, true)}`, `Shows ${flagText(item.flags, false)}`)}</span>}
             <span>{kindHint(kind, vi)}</span>
           </div>

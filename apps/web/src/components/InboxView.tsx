@@ -501,6 +501,8 @@ export function InboxView() {
   const [prospects, setProspects] = useState<InboxRow[] | null>(null);
   const [prospectDays, setProspectDays] = useState<30 | 90 | 365>(90);
   const [prospectMsg, setProspectMsg] = useState<string | null>(null);
+  /** rt218: how many prospects, for the left rail (one cached scan a minute on the server). */
+  const [prospectCount, setProspectCount] = useState<number | null>(null);
   const paged = useMemo(() => {
     const ids = new Set(topRows.map((r) => r.id));
     return older.length ? [...topRows, ...older.filter((r) => !ids.has(r.id))] : topRows;
@@ -1122,11 +1124,20 @@ export function InboxView() {
     return () => { gone = true; window.clearTimeout(t); };
   }, [query, token]);
 
+  useEffect(() => {
+    if (!token) return;
+    let gone = false;
+    const ask = () => { void apiFetch<{ totals?: { all?: number } }>('/messenger/prospects?days=90', { token }).then((r) => { if (!gone && typeof r?.totals?.all === 'number') setProspectCount(r.totals.all); }).catch(() => undefined); };
+    const t0 = window.setTimeout(ask, 1500); // after the list itself
+    const t = window.setInterval(ask, 5 * 60_000);
+    return () => { gone = true; window.clearTimeout(t0); window.clearInterval(t); };
+  }, [token]);
   const loadProspects = useCallback(async () => {
     if (!token) return;
     try {
       const r = await apiFetch<InboxRow[]>(`/messenger/threads?prospects=1&days=${prospectDays}`, { token });
       setProspects(Array.isArray(r) ? r : []);
+      if (prospectDays === 90 && Array.isArray(r)) setProspectCount(r.length);
     } catch (e) { setErr(String(e)); setProspects([]); }
   }, [token, prospectDays]);
   useEffect(() => {
@@ -1148,7 +1159,7 @@ export function InboxView() {
     if (!token) return;
     setBusy(true); setProspectMsg(null);
     try {
-      const r = await apiFetch<{ total: number; per: { name: string; n: number }[] }>('/messenger/prospects/give-out', { method: 'POST', token, body: JSON.stringify({ days: prospectDays }) });
+      const r = await apiFetch<{ total: number; per: { name: string; n: number }[] }>('/messenger/prospects/give-out', { method: 'POST', token, body: { days: prospectDays } });
       setProspectMsg(r.total
         ? `Đã chia ${r.total} khách: ${r.per.filter((p) => p.n).map((p) => `${p.name} ${p.n}`).join(' · ')}`
         : 'Không còn khách tiềm năng nào chưa có người giữ.');
@@ -1396,7 +1407,7 @@ export function InboxView() {
             return (
               <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 1.4, color: ev ? 'var(--c64748b)' : r.unread ? 'var(--ce2e8f0)' : 'var(--c94a3b8)', fontWeight: r.unread && !ev ? 500 : 400, fontStyle: ev ? 'italic' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {r.prospectPhone ? <b style={{ color: 'var(--ink-warn)', fontWeight: 700 }}>📞 {r.prospectPhone}{r.assignedName ? ` · ${r.assignedName}` : (vi ? ' · chưa ai giữ' : ' · unheld')} — </b> : null}
+                  {r.prospectPhone || r.prospectEmail ? <b style={{ color: 'var(--ink-warn)', fontWeight: 700 }}>{r.prospectPhone ? `📞 ${r.prospectPhone}` : ''}{r.prospectPhone && r.prospectEmail ? ' · ' : ''}{r.prospectEmail ? `✉️ ${r.prospectEmail}` : ''}{r.assignedName ? ` · ${r.assignedName}` : (vi ? ' · chưa ai giữ' : ' · unheld')} — </b> : null}
                   {ev ? systemEventLabel(ev, vi) : (r.lastText || (vi ? '(chưa có tin nhắn)' : '(no message yet)'))}
                 </span>
                 {r.unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#4f46e5', flexShrink: 0 }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
@@ -1473,9 +1484,9 @@ export function InboxView() {
     spam: svg(<><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></>),
   };
   const queueItem = (key: InboxQueue, count: React.ReactNode) => {
-    const on = queue === key;
+    const on = queue === key && !prospectMode;
     return (
-      <button key={key} onClick={() => setQueue(key)} aria-pressed={on} style={{ minHeight: 38, boxSizing: 'border-box', padding: '0 10px', borderRadius: 9, border: 'none', display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', width: '100%',
+      <button key={key} onClick={() => { setProspectMode(false); setQueue(key); }} aria-pressed={on && !prospectMode} style={{ minHeight: 38, boxSizing: 'border-box', padding: '0 10px', borderRadius: 9, border: 'none', display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', width: '100%',
         background: on ? 'var(--c1e1b4b)' : 'transparent', color: on ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: on ? 700 : 500 }}>
         <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', color: on ? 'var(--ca5b4fc)' : 'var(--c94a3b8)' }}>{QUEUE_ICON[key]}</span>
         <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{queueName(key)}</span>
@@ -1506,6 +1517,12 @@ export function InboxView() {
       {queueItem('mine', railCount(counts.mine))}
       {queueItem('done', railCount(counts.done))}
       {queueItem('all', railCount(!prospectMode && !query.trim() && source === 'any' && total != null ? Math.max(counts.all, total) : counts.all))}
+      <button type="button" onClick={toggleProspects} aria-pressed={prospectMode} style={{ minHeight: 38, boxSizing: 'border-box', padding: '0 10px', borderRadius: 9, border: 'none', display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', width: '100%',
+        background: prospectMode ? 'var(--c1e1b4b)' : 'transparent', color: prospectMode ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: prospectMode ? 700 : 500 }}>
+        <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center' }}>📞</span>
+        <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{vi ? 'Khách tiềm năng' : 'Prospects'}</span>
+        {prospectCount != null && railCount(prospectCount)}
+      </button>
       {(counts.spam > 0 || queue === 'spam') && queueItem('spam', railCount(counts.spam))}
       </>) : (<>
             {sectionHead(vi ? 'Hộp thư' : 'Inbox')}
@@ -1686,6 +1703,7 @@ export function InboxView() {
               )}
             </span>
             {prospectMsg && <span style={{ fontSize: 12.5, color: 'var(--ink-good)', fontWeight: 600 }}>{prospectMsg}</span>}
+            {mayEditNudge && <a href="/salon/messenger#leads" style={{ fontSize: 12.5, color: 'var(--ca5b4fc)', fontWeight: 600 }}>{vi ? '📊 Xem bảng thống kê đầy đủ (SĐT, email, người giữ) →' : 'Full board →'}</a>}
           </div>
         )}
         {v2 ? (narrow ? (

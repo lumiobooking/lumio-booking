@@ -12,6 +12,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { ChatTurnsPanel } from '../../../components/ChatTurnsPanel';
+import { ProspectsBoard } from '../../../components/ProspectsBoard';
 import { useLang } from '../../../lib/i18n';
 import { AiNotesBox } from '../../../components/AiNotesBox';
 import { FollowUpBox } from '../../../components/FollowUpBox';
@@ -697,7 +698,8 @@ function Inner() {
     { key: 'reply', label: salesBot ? L('Cách trả lời', 'How it replies') : L('Chế độ trả lời', 'Reply mode'), count: 0, tone: 'idle' },
     { key: 'turns', label: L('Chia turn', 'Chat turns'), count: 0, tone: 'idle' },
     ...(salesBot ? [{ key: 'know' as TabKey, label: L('Kiến thức', 'Knowledge'), count: gapsOpen, tone: 'warn' as Tone }] : []),
-    ...(showLeads ? [{ key: 'leads' as TabKey, label: L('Khách tiềm năng', 'Leads'), count: newLeads, tone: 'ok' as Tone }] : []),
+    // rt218: always there — every salon has customers who left a phone or an email.
+    { key: 'leads' as TabKey, label: L('Khách tiềm năng', 'Prospects'), count: newLeads, tone: 'ok' as Tone },
     { key: 'log', label: L('Nhật ký', 'Log'), count: failed24, tone: 'bad' },
     { key: 'connect', label: L('Kết nối', 'Connections'), count: 0, tone: 'idle' },
   ];
@@ -1298,8 +1300,12 @@ function Inner() {
 
       {tab === 'leads' && (
         <>
+      <div style={{ ...ui.card }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ce2e8f0)', marginBottom: 8 }}>📞 {L('Khách tiềm năng — để lại số điện thoại / email, chưa đặt', 'Prospects — left a phone or email, never booked')}</div>
+        <ProspectsBoard token={token} vi={lang === 'vi'} />
+      </div>
       {/* Sales-mode leads: the bot's handover list for the human team. */}
-      <div style={{ ...ui.card, marginTop: 16 }}>
+      {showLeads && <div style={{ ...ui.card, marginTop: 16 }}>
         <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>🔥 {t('leadsTitle')} ({leads.length})</div>
         {leads.length === 0 ? (
           <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noLeads')}</p>
@@ -1338,7 +1344,7 @@ function Inner() {
             </table>
           </div>
         )}
-      </div>
+      </div>}
         </>
       )}
 

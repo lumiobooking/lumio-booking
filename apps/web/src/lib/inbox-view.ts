@@ -20,6 +20,8 @@ export interface InboxRow {
   id: string;
   /** rt215: the number this prospect left (only in the "Khách tiềm năng" list). */
   prospectPhone?: string | null;
+  /** rt218: the email this prospect left. */
+  prospectEmail?: string | null;
   senderId?: string | null;
   senderName?: string | null;
   lastText?: string | null;

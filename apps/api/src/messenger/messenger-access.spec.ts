@@ -28,7 +28,7 @@ const canStaff = (method: string) => (rolesOf(method) ?? []).includes(UserRole.S
 
 // Answering customers. A technician needs all of this to do the job.
 const STAFF_MAY = [
-  'threads', 'threadsCount', 'thread', 'avatar', 'stream',
+  'threads', 'threadsCount', 'prospects', 'thread', 'avatar', 'stream',
   'send', 'handoff', 'threadStatus', 'threadRead', 'threadUnread', 'readAll', 'rename',
   'addNote', 'deleteNote',
   // The summary + draft for the person taking a chat over (handoff-brief): reads this salon's thread, sends nothing.

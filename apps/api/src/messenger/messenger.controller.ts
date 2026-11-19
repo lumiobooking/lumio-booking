@@ -286,6 +286,13 @@ export class MessengerController {
     return this.svc.listThreads(user, { before: before || undefined, beforeId: beforeId ? String(beforeId).slice(0, 64) : undefined, take: take ? Number(take) : undefined, q: q ? String(q).slice(0, 120) : undefined, prospects: prospects === '1', days: days ? Number(days) : undefined });
   }
 
+  /** rt218 — the prospects board: phone, email, who holds them, totals. */
+  @Roles(...INBOX_ROLES)
+  @Get('prospects')
+  prospects(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string) {
+    return this.svc.prospectBoard(user, days ? Number(days) : undefined);
+  }
+
   /** rt215 — the owner gives every unheld prospect (left a phone, never booked) to the team. */
   @Roles(UserRole.SALON_ADMIN)
   @Post('prospects/give-out')

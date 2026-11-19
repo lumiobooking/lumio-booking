@@ -234,3 +234,46 @@ describe('rt217 — the one who follows up owns the customer', () => {
     expect(reassignDue({ status: 'open', assignedUserId: 'nhi', assignedAt: old, assignHops: 0, handoffAt: new Date() }, R)).toBeNull();
   });
 });
+
+describe('rt218 — email too, and the board', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const p = require('./prospects') as typeof import('./prospects');
+  it('reads an email the customer typed, not the salon’s', () => {
+    expect(p.emailIn('mail em là Lan.Nguyen@Gmail.com nhé.')).toBe('lan.nguyen@gmail.com');
+    expect(p.emailIn('không có')).toBeNull();
+    expect(p.customerEmailFrom([{ role: 'assistant', content: 'Gửi về shop@tiem.vn ạ' }, { role: 'user', content: 'ok' }])).toBeNull();
+    expect(p.customerEmailFrom([{ role: 'user', content: 'a@b.co' }])).toBe('a@b.co');
+  });
+
+  it('an email alone is enough to follow up; booked is not a prospect', () => {
+    const base = { threadId: 't', phoneTyped: null, phoneSaved: null, leadStatus: null, booked: false };
+    expect(p.prospectContact({ ...base, emailTyped: 'a@b.co' })).toEqual({ phone: null, email: 'a@b.co' });
+    expect(p.prospectContact({ ...base, emailTyped: 'a@b.co', booked: true })).toBeNull();
+    expect(p.prospectContact(base)).toBeNull();
+  });
+
+  it('the board is this salon’s; staff kept to their own see their own and the unheld ones', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { MessengerService } = require('./messenger.service') as typeof import('./messenger.service');
+    const asked: Record<string, unknown>[] = [];
+    const self = {
+      tenantId: (u: { tenantId: string }) => u.tenantId,
+      turns: { teamOf: jest.fn(async () => ({ staffSeeAll: false })) },
+      prospectIds: jest.fn(async () => new Map([['t1', { phone: '0912345678', email: 'a@b.co' }]])),
+      prisma: {
+        messengerThread: { findMany: jest.fn(async (a: Record<string, unknown>) => { asked.push(a); return [{ id: 't1', senderName: 'Lan', pageId: 'p', channel: 'messenger', lastText: 'hi', lastCustomerAt: new Date(), updatedAt: new Date(), assignedUserId: null, assignedUser: null }]; }) },
+        messengerPage: { findMany: jest.fn(async () => []) },
+        salesLead: { findMany: jest.fn(async () => []) },
+      },
+    };
+    const board = (MessengerService.prototype as unknown as { prospectBoard: (this: unknown, u: unknown, d?: unknown) => Promise<{ totals: Record<string, number>; rows: { phone: string | null; email: string | null }[]; canGiveOut: boolean }> }).prospectBoard;
+    const r = await board.call(self, { userId: 'lan', role: 'STAFF', tenantId: 'B' }, 90);
+    expect(asked[0]).toMatchObject({ where: { tenantId: 'B', OR: [{ assignedUserId: 'lan' }, { assignedUserId: null }] } });
+    expect(r.rows[0]).toMatchObject({ phone: '0912345678', email: 'a@b.co' });
+    expect(r.totals).toMatchObject({ all: 1, phone: 1, email: 1, both: 1, unheld: 1 });
+    expect(r.canGiveOut).toBe(false);
+    const o = await board.call(self, { userId: 'o', role: 'SALON_ADMIN', tenantId: 'A' }, 90);
+    expect(JSON.stringify((asked[1] as { where: unknown }).where)).not.toContain('assignedUserId');
+    expect(o.canGiveOut).toBe(true);
+  });
+});

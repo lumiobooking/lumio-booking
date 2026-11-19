@@ -1,6 +1,6 @@
 import { rescueOpen } from './turn-shift';
 import { FOLD_FROM, FOLD_TO, searchPattern } from './thread-search';
-import { customerPhoneFrom, phoneKeyOf, prospectDays, prospectPhone } from './prospects';
+import { customerEmailFrom, customerPhoneFrom, phoneKeyOf, prospectContact, prospectDays } from './prospects';
 import { logRowsFrom } from './message-log';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { onSale, salePrice } from '../common/discount';
@@ -1684,57 +1684,144 @@ export class MessengerService implements OnModuleInit {
    * never booked / signed up. Newest first, as a map thread → phone. Only this
    * salon's rows are ever read.
    */
-  async prospectIds(tenantId: string, daysRaw?: unknown, max = 300): Promise<Map<string, string>> {
+  /** rt218: one scan per salon per minute is enough (the inbox, the board and the count all ask). */
+  private readonly prospectCache = new Map<string, { at: number; map: Map<string, { phone: string | null; email: string | null }> }>();
+
+  async prospectIds(tenantId: string, daysRaw?: unknown, max = 300): Promise<Map<string, { phone: string | null; email: string | null }>> {
     const days = prospectDays(daysRaw);
+    const key = `${tenantId}|${days}|${max}`;
+    const hit = this.prospectCache.get(key);
+    if (hit && Date.now() - hit.at < 60_000) return hit.map;
+    const map = await this.scanProspects(tenantId, days, max);
+    this.prospectCache.set(key, { at: Date.now(), map });
+    if (this.prospectCache.size > 500) this.prospectCache.delete(this.prospectCache.keys().next().value as string);
+    return map;
+  }
+
+  /** Forget the cached scan (a booking, a lead won, a give-out). */
+  dropProspectCache(tenantId: string): void {
+    for (const k of [...this.prospectCache.keys()]) if (k.startsWith(`${tenantId}|`)) this.prospectCache.delete(k);
+  }
+
+  private async scanProspects(tenantId: string, days: number, max: number): Promise<Map<string, { phone: string | null; email: string | null }>> {
     const since = new Date(Date.now() - days * 86_400_000);
-    // 1. Customer lines that hold something like a number (database-side, so
-    //    thousands of conversations cost one query, not thousands of rows).
+    // 1. Customer lines that hold something like a number or an email
+    //    (database-side, so thousands of conversations cost one query).
     const typed = await this.prisma.$queryRaw<{ id: string; texts: unknown }[]>(Prisma.sql`
       SELECT t.id, jsonb_agg(e) AS texts
       FROM messenger_threads t, jsonb_array_elements(CASE WHEN jsonb_typeof(t.history::jsonb) = 'array' THEN t.history::jsonb ELSE '[]'::jsonb END) e
       WHERE t."tenantId" = ${tenantId} AND t.status <> 'spam'
         AND COALESCE(t."lastCustomerAt", t."updatedAt") >= ${since}
-        AND e->>'role' = 'user' AND (e->>'content') ~ '[0-9][0-9 .()-]{7,}[0-9]'
+        AND e->>'role' = 'user' AND ((e->>'content') ~ '[0-9][0-9 .()-]{7,}[0-9]' OR (e->>'content') ~ '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}')
       GROUP BY t.id
       LIMIT 3000`).catch((e) => { this.logger.warn(`prospect scan failed: ${String(e).slice(0, 160)}`); return [] as { id: string; texts: unknown }[]; });
     const phoneTyped = new Map<string, string>();
-    for (const r of typed) { const p = customerPhoneFrom(r.texts); if (p) phoneTyped.set(r.id, p); }
-    // 2. Numbers saved on the conversation: the linked customer, a lead card.
+    const emailTyped = new Map<string, string>();
+    for (const r of typed) {
+      const p = customerPhoneFrom(r.texts); if (p) phoneTyped.set(r.id, p);
+      const e = customerEmailFrom(r.texts); if (e) emailTyped.set(r.id, e);
+    }
+    // 2. Saved on the conversation: the linked customer, a lead card.
     const linked = await this.prisma.messengerThread.findMany({
       where: { tenantId, status: { not: 'spam' }, customerId: { not: null }, OR: [{ lastCustomerAt: { gte: since } }, { lastCustomerAt: null, updatedAt: { gte: since } }] } as never,
-      select: { id: true, customerId: true, customer: { select: { phone: true } } } as never, take: 3000,
-    }).catch(() => []) as unknown as { id: string; customerId: string; customer: { phone: string | null } | null }[];
+      select: { id: true, customerId: true, customer: { select: { phone: true, email: true } } } as never, take: 3000,
+    }).catch(() => []) as unknown as { id: string; customerId: string; customer: { phone: string | null; email: string | null } | null }[];
     const leads = await this.prisma.salesLead.findMany({ where: { tenantId, threadId: { not: null } }, select: { threadId: true, phone: true, status: true }, orderBy: { createdAt: 'asc' }, take: 5000 }).catch(() => []) as { threadId: string | null; phone: string; status: string }[];
     const leadOf = new Map<string, { phone: string; status: string }>();
     for (const l of leads) if (l.threadId) leadOf.set(l.threadId, { phone: l.phone, status: l.status });
     const phoneSaved = new Map<string, string>();
+    const emailSaved = new Map<string, string>();
     const custOf = new Map<string, string>();
-    for (const t of linked) { custOf.set(t.id, t.customerId); if (t.customer?.phone && t.customer.phone.replace(/\D/g, '').length >= 8) phoneSaved.set(t.id, t.customer.phone); }
-    for (const [tid, l] of leadOf) if (!phoneSaved.has(tid) && l.phone && l.phone.replace(/\D/g, '').length >= 8) phoneSaved.set(tid, l.phone);
-    const ids = [...new Set([...phoneTyped.keys(), ...phoneSaved.keys()])];
+    const digits = (v: string | null | undefined) => String(v ?? '').replace(/\D/g, '').length;
+    for (const t of linked) {
+      custOf.set(t.id, t.customerId);
+      if (t.customer?.phone && digits(t.customer.phone) >= 8) phoneSaved.set(t.id, t.customer.phone);
+      // Placeholder addresses some flows write are not a way to reach anyone.
+      if (t.customer?.email && /@/.test(t.customer.email) && !/\.invalid$|@(noemail|example)\./i.test(t.customer.email)) emailSaved.set(t.id, t.customer.email.toLowerCase());
+    }
+    for (const [tid, l] of leadOf) if (!phoneSaved.has(tid) && l.phone && digits(l.phone) >= 8) phoneSaved.set(tid, l.phone);
+    const ids = [...new Set([...phoneTyped.keys(), ...phoneSaved.keys(), ...emailTyped.keys(), ...emailSaved.keys()])];
     if (!ids.length) return new Map();
-    // 3. Booked? By the linked customer, or any customer of this salon with that number.
-    const wantKeys = new Set(ids.map((id) => phoneKeyOf(phoneSaved.get(id) || phoneTyped.get(id))).filter((k) => k.length >= 8));
-    const customers = wantKeys.size ? await this.prisma.customer.findMany({
-      where: { tenantId, OR: [{ id: { in: [...new Set(ids.map((id) => custOf.get(id)).filter(Boolean) as string[])] } }, ...[...wantKeys].slice(0, 2000).map((k) => ({ phone: { endsWith: k.slice(-9) } }))] },
-      select: { id: true, phone: true }, take: 5000,
-    }).catch(() => []) : [];
+    // 3. Booked? By the linked customer, or any customer of this salon with that number / email.
+    const phoneOf = (id: string) => phoneSaved.get(id) || phoneTyped.get(id) || '';
+    const emailOf = (id: string) => emailSaved.get(id) || emailTyped.get(id) || '';
+    const wantKeys = [...new Set(ids.map((id) => phoneKeyOf(phoneOf(id))).filter((k) => k.length >= 8))];
+    const wantEmails = [...new Set(ids.map(emailOf).filter(Boolean))];
+    const customers = await this.prisma.customer.findMany({
+      where: { tenantId, OR: [
+        { id: { in: [...new Set(ids.map((id) => custOf.get(id)).filter(Boolean) as string[])] } },
+        ...wantKeys.slice(0, 2000).map((k) => ({ phone: { endsWith: k.slice(-9) } })),
+        ...(wantEmails.length ? [{ email: { in: wantEmails.slice(0, 2000), mode: 'insensitive' as const } }] : []),
+      ] },
+      select: { id: true, phone: true, email: true }, take: 5000,
+    }).catch(() => [] as { id: string; phone: string | null; email: string | null }[]);
     const bookedCust = new Set((await this.prisma.appointment.groupBy({
       by: ['customerId'], where: { tenantId, customerId: { in: customers.map((c) => c.id) }, status: { notIn: ['CANCELLED', 'REJECTED'] as never } } as never,
     }).catch(() => []) as unknown as { customerId: string }[]).map((r) => r.customerId));
-    const bookedKeys = new Set(customers.filter((c) => bookedCust.has(c.id)).map((c) => phoneKeyOf(c.phone)));
-    const order = await this.prisma.messengerThread.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, lastCustomerAt: true, updatedAt: true }, orderBy: { updatedAt: 'desc' } }).catch(() => []) as { id: string; lastCustomerAt: Date | null; updatedAt: Date }[];
+    const booked = customers.filter((c) => bookedCust.has(c.id));
+    const bookedKeys = new Set(booked.map((c) => phoneKeyOf(c.phone)).filter((k) => k.length >= 8));
+    const bookedMails = new Set(booked.map((c) => String(c.email ?? '').toLowerCase()).filter(Boolean));
+    const order = await this.prisma.messengerThread.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, lastCustomerAt: true, updatedAt: true } }).catch(() => []) as { id: string; lastCustomerAt: Date | null; updatedAt: Date }[];
     order.sort((a, b) => (b.lastCustomerAt ?? b.updatedAt).getTime() - (a.lastCustomerAt ?? a.updatedAt).getTime());
-    const out = new Map<string, string>();
+    const out = new Map<string, { phone: string | null; email: string | null }>();
     for (const t of order) {
       const cust = custOf.get(t.id);
-      const ph = phoneSaved.get(t.id) || phoneTyped.get(t.id) || '';
-      const booked = (!!cust && bookedCust.has(cust)) || bookedKeys.has(phoneKeyOf(ph));
-      const p = prospectPhone({ threadId: t.id, phoneTyped: phoneTyped.get(t.id) ?? null, phoneSaved: phoneSaved.get(t.id) ?? null, leadStatus: leadOf.get(t.id)?.status ?? null, booked });
-      if (p) out.set(t.id, p);
+      const isBooked = (!!cust && bookedCust.has(cust)) || bookedKeys.has(phoneKeyOf(phoneOf(t.id))) || (!!emailOf(t.id) && bookedMails.has(emailOf(t.id)));
+      const c = prospectContact({ threadId: t.id, phoneTyped: phoneTyped.get(t.id) ?? null, phoneSaved: phoneSaved.get(t.id) ?? null, emailTyped: emailTyped.get(t.id) ?? null, emailSaved: emailSaved.get(t.id) ?? null, leadStatus: leadOf.get(t.id)?.status ?? null, booked: isBooked });
+      if (c) out.set(t.id, c);
       if (out.size >= max) break;
     }
     return out;
+  }
+
+  /**
+   * rt218 — the board: every prospect with phone and email, who holds them,
+   * and the totals, for the owner (everyone) or a team member (their own and
+   * the unheld ones when the salon keeps staff to their own).
+   */
+  async prospectBoard(user: AuthenticatedUser, daysRaw?: unknown) {
+    const tenantId = this.tenantId(user);
+    const days = prospectDays(daysRaw);
+    const team = this.turns ? await this.turns.teamOf(tenantId).catch(() => null) : null;
+    const ownOnly = String(user.role) === 'STAFF' && !user.supportSession && team && !team.staffSeeAll;
+    const map = await this.prospectIds(tenantId, days, 1000);
+    const rows = map.size ? await this.prisma.messengerThread.findMany({
+      where: { tenantId, id: { in: [...map.keys()] }, ...(ownOnly ? { OR: [{ assignedUserId: user.userId }, { assignedUserId: null }] } : {}) },
+      select: { id: true, senderName: true, pageId: true, channel: true, lastText: true, lastCustomerAt: true, updatedAt: true, assignedUserId: true, assignedUser: { select: { firstName: true, lastName: true } } } as never,
+    }).catch(() => []) as unknown as { id: string; senderName: string | null; pageId: string; channel: string; lastText: string | null; lastCustomerAt: Date | null; updatedAt: Date; assignedUserId: string | null; assignedUser: { firstName: string | null; lastName: string | null } | null }[] : [];
+    const pages = new Map<string, string>();
+    for (const pg of await this.prisma.messengerPage.findMany({ where: { tenantId }, select: { pageId: true, pageName: true } }).catch(() => [])) pages.set(pg.pageId, String(pg.pageName ?? ''));
+    const leads = rows.length ? await this.prisma.salesLead.findMany({ where: { tenantId, threadId: { in: rows.map((r) => r.id) } }, select: { threadId: true, status: true } }).catch(() => []) : [];
+    const stage = new Map(leads.map((l) => [String(l.threadId), l.status]));
+    const list = rows.map((r) => ({
+      threadId: r.id,
+      name: r.senderName || 'Khách',
+      phone: map.get(r.id)?.phone ?? null,
+      email: map.get(r.id)?.email ?? null,
+      page: pages.get(r.pageId) || null,
+      channel: r.channel,
+      lastAt: (r.lastCustomerAt ?? r.updatedAt).toISOString(),
+      lastText: (r.lastText ?? '').slice(0, 160),
+      heldBy: r.assignedUserId ? ([r.assignedUser?.firstName, r.assignedUser?.lastName].filter(Boolean).join(' ').trim() || '—') : null,
+      mine: r.assignedUserId === user.userId,
+      stage: stage.get(r.id) ?? null,
+    })).sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+    const per = new Map<string, number>();
+    for (const r of list) if (r.heldBy) per.set(r.heldBy, (per.get(r.heldBy) ?? 0) + 1);
+    return {
+      days,
+      canGiveOut: String(user.role) === 'SALON_ADMIN' || user.supportSession === true,
+      totals: {
+        all: list.length,
+        phone: list.filter((r) => r.phone).length,
+        email: list.filter((r) => r.email).length,
+        both: list.filter((r) => r.phone && r.email).length,
+        unheld: list.filter((r) => !r.heldBy).length,
+        mine: list.filter((r) => r.mine).length,
+      },
+      perPerson: [...per.entries()].map(([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n),
+      rows: list,
+    };
   }
 
   /**
@@ -1749,6 +1836,7 @@ export class MessengerService implements OnModuleInit {
     const free = await this.prisma.messengerThread.findMany({ where: { tenantId, id: { in: [...map.keys()] }, assignedUserId: null }, select: { id: true } }).catch(() => []);
     const freeIds = new Set(free.map((f) => f.id));
     const ordered = [...map.keys()].filter((id) => freeIds.has(id));
+    this.dropProspectCache(tenantId);
     return this.turns.giveOut(user, ordered, { reason: 'prospect', title: 'Bạn được giao khách tiềm năng để gọi lại', body: (n) => `${n} khách đã để lại số điện thoại nhưng chưa đặt — mở Tin nhắn › Của tôi.`, audit: 'messenger.prospects_given' });
   }
 
@@ -1856,7 +1944,7 @@ export class MessengerService implements OnModuleInit {
         lastMessageAt: (r as unknown as { lastMessageAt?: Date | null }).lastMessageAt ?? row.updatedAt,
         labels: ((r as unknown as { threadLabels?: { label: { id: string; name: string; color: string } }[] }).threadLabels ?? []).map((t) => t.label),
         assignedName: who || null,
-        ...(prospects ? { prospectPhone: prospects.get((r as unknown as { id: string }).id) ?? null } : {}),
+        ...(prospects ? { prospectPhone: prospects.get((r as unknown as { id: string }).id)?.phone ?? null, prospectEmail: prospects.get((r as unknown as { id: string }).id)?.email ?? null } : {}),
         waitingMinutes: waitingMinutes(r as never, now, botFirst),
         // Chia turn: from an ad, and when this turn passes on if nobody answers (the countdown).
         fromAd: isAdThread(r as never, now),

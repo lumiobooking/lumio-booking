@@ -19,7 +19,7 @@ import { useParams } from 'next/navigation';
 import { apiFetch } from '../../../lib/api';
 import { homeFor, useAuth, type LoginResponse } from '../../../lib/auth';
 
-type Preview = { ok: true; salonName: string; role: string; roleLabel: string } | { ok: false; reason: string };
+type Preview = { ok: true; salonName: string; role: string; roleLabel: string; facebook?: boolean } | { ok: false; reason: string };
 
 const C = { bg: '#e8eef6', card: '#ffffff', ink: '#0f2747', muted: '#52637d', fb: '#1877f2', bad: '#b42318', line: '#d5deea', blue: '#0659b8' };
 
@@ -55,7 +55,11 @@ export default function JoinPage() {
     const a = inAppBrowser();
     setApp(a);
     if (a) setUsePhone(true);
-    void apiFetch<Preview>(`/staff-invites/preview/${encodeURIComponent(token)}`).then(setP).catch(() => setP({ ok: false, reason: 'missing' }));
+    void apiFetch<Preview>(`/staff-invites/preview/${encodeURIComponent(token)}`).then((r) => {
+      setP(r);
+      // rt203: no Facebook sign-in on this server — the phone form is the way in.
+      if (r.ok && r.facebook === false) setUsePhone(true);
+    }).catch(() => setP({ ok: false, reason: 'missing' }));
   }, [token]);
 
   async function facebook() {
@@ -108,7 +112,7 @@ export default function JoinPage() {
             <h1 style={{ fontSize: 23, margin: 0 }}>{p.salonName}</h1>
             <p style={{ margin: 0, fontSize: 14.5 }}>Vai trò: <b>{p.roleLabel}</b></p>
 
-            {app && (
+            {app && p.facebook !== false && (
               <div style={{ textAlign: 'left', background: '#fff7e6', border: '1px solid #f5c26b', borderRadius: 12, padding: '10px 12px', fontSize: 13.5, lineHeight: 1.5, color: '#7a4b00' }}>
                 Bạn đang mở link trong <b>{app}</b>. Cách nhanh nhất: <b>vào bằng số điện thoại</b> ngay bên dưới.
                 <br />Muốn dùng Facebook: bấm <b>⋯</b> ở góc trên → <b>{ios ? 'Mở bằng Safari' : 'Mở bằng trình duyệt'}</b>
@@ -135,8 +139,8 @@ export default function JoinPage() {
                   {busy ? 'Đang vào…' : 'Vào tiệm'}
                 </button>
                 <span style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>Lần sau: vào trang đăng nhập Lumio, gõ <b>số điện thoại</b> và <b>mật khẩu</b> này.</span>
-                {!app && <button type="button" onClick={() => { setUsePhone(false); setErr(null); }} style={{ border: 0, background: 'none', color: C.fb, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>← Dùng Facebook thay vì số điện thoại</button>}
-                {app && <button type="button" onClick={() => void facebook()} style={{ border: 0, background: 'none', color: C.fb, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>Vẫn thử Đăng nhập với Facebook</button>}
+                {!app && p.facebook !== false && <button type="button" onClick={() => { setUsePhone(false); setErr(null); }} style={{ border: 0, background: 'none', color: C.fb, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>← Dùng Facebook thay vì số điện thoại</button>}
+                {app && p.facebook !== false && <button type="button" onClick={() => void facebook()} style={{ border: 0, background: 'none', color: C.fb, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>Vẫn thử Đăng nhập với Facebook</button>}
               </form>
             )}
             {err && <p style={{ color: C.bad, margin: 0, fontSize: 13.5, fontWeight: 600 }}>{err}</p>}

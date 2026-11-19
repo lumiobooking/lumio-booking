@@ -86,7 +86,7 @@ function setup() {
   prisma.$transaction = jest.fn(async (fn: (tx: Row) => unknown) => fn(prisma));
   const audit = { log: jest.fn(async (x: Row) => { db.audit.push(x); }) };
   const auth = { sessionForUser: jest.fn(async (id: string) => ({ accessToken: `jwt-${id}`, user: { id } })) };
-  process.env.FB_APP_ID = 'app';
+  process.env.FB_LOGIN_APP_ID = 'app'; process.env.FB_LOGIN_APP_SECRET = 'secret';
   const svc = new StaffInviteService(prisma as never, audit as never, auth as never);
   return { svc, db, auth };
 }
@@ -200,5 +200,20 @@ describe('rt202 — join with a phone number, no Facebook', () => {
     await expect(svc.joinWithPassword(tokenOf(a.url), { name: 'Lan', phone: '+84913456142', password: 'abc12345' })).rejects.toThrow(/đã có tài khoản/);
     await expect(svc.joinWithPassword(tokenOf(a.url), { name: 'Hà', phone: '0988000111', password: '123' })).rejects.toThrow(/8 ký tự/);
     await expect(svc.joinWithPassword('x'.repeat(43), { name: 'Hà', phone: '0988000111', password: 'abc12345' })).rejects.toThrow();
+  });
+});
+
+describe('rt203 — Facebook sign-in only when an app for it is set', () => {
+  it('hidden without a login app; the phone way still works', async () => {
+    const { svc } = setup();
+    delete process.env.FB_LOGIN_APP_ID; delete process.env.FB_LOGIN_APP_SECRET; delete process.env.FB_STAFF_LOGIN;
+    process.env.FB_APP_ID = 'page-app'; process.env.FB_APP_SECRET = 'x';
+    expect(svc.facebookOn()).toBe(false);
+    const { url } = await svc.create(ownerA, {});
+    expect(await svc.preview(tokenOf(url))).toMatchObject({ ok: true, facebook: false });
+    await expect(svc.start('login')).rejects.toThrow(/số điện thoại/);
+    process.env.FB_STAFF_LOGIN = '1';
+    expect(svc.facebookOn()).toBe(true);
+    delete process.env.FB_STAFF_LOGIN;
   });
 });

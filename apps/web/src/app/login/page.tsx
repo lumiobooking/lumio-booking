@@ -135,6 +135,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   // rt200: "Đăng nhập với Facebook" for team members who joined by an invite link.
   const [fbBusy, setFbBusy] = useState(false);
+  // rt203: the Facebook button shows only when the server has a sign-in app for it.
+  const [fbOn, setFbOn] = useState(false);
+  useEffect(() => { void apiFetch<{ on: boolean }>('/auth/facebook/available').then((r) => setFbOn(!!r?.on)).catch(() => setFbOn(false)); }, []);
   useEffect(() => {
     const fb = new URLSearchParams(window.location.search).get('fb');
     if (!fb) return;
@@ -352,11 +355,11 @@ export default function LoginPage() {
                   {L('ĐĂNG NHẬP', 'SIGN IN')} {Ico.arrow}<i aria-hidden="true" />
                 </button>
 
-                <div className="lg2-or">{L('nhân viên', 'team members')}</div>
-                <button type="button" className="lg2-fb" onClick={() => void facebookLogin()} disabled={fbBusy} tabIndex={flipped ? -1 : 0}>
+                {fbOn && <div className="lg2-or">{L('nhân viên', 'team members')}</div>}
+                {fbOn && <button type="button" className="lg2-fb" onClick={() => void facebookLogin()} disabled={fbBusy} tabIndex={flipped ? -1 : 0}>
                   <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#ffffff" d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.04V9.41c0-3.02 1.8-4.7 4.54-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.95.93-1.95 1.88v2.27h3.32l-.53 3.49h-2.79V24C19.61 23.1 24 18.1 24 12.07z" /></svg>
                   {fbBusy ? L('Đang mở Facebook…', 'Opening Facebook…') : L('Đăng nhập với Facebook', 'Continue with Facebook')}
-                </button>
+                </button>}
 
                 <div className="lg2-center" style={{ marginTop: 6 }}>
                   {L('Chưa có tài khoản?', 'New to Lumio?')}

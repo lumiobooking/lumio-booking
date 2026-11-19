@@ -53,6 +53,11 @@ export class StaffInviteController {
   @Get('staff-invites/preview/:token')
   preview(@Param('token') token: string) { return this.svc.preview(token); }
 
+  /** rt203: is "Đăng nhập với Facebook" offered on this server? */
+  @Public()
+  @Get('auth/facebook/available')
+  available() { return { on: this.svc.facebookOn() }; }
+
   @Public()
   @RateLimit(20)
   @Post('auth/facebook/start')

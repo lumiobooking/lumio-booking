@@ -37,8 +37,19 @@ export class StaffInviteService {
     const cors = (process.env.CORS_ORIGINS || '').split(',')[0].trim();
     return (process.env.PUBLIC_WEB_URL || cors || 'https://lumiobooking.com').replace(/\/$/, '');
   }
-  private appId(): string { return process.env.FB_APP_ID || ''; }
-  private appSecret(): string { return process.env.FB_APP_SECRET || ''; }
+  /**
+   * rt203 — which Meta app signs people in. The Page app is set up for
+   * "Facebook Login for Business" and Meta refuses plain public_profile on it
+   * ("This app needs at least one supported permission"). So staff sign-in
+   * uses its OWN consumer app (FB_LOGIN_APP_ID / FB_LOGIN_APP_SECRET), or the
+   * Page app only when someone has added consumer Facebook Login to it and
+   * says so (FB_STAFF_LOGIN=1). Neither set: the Facebook button is hidden and
+   * people join with their phone number.
+   */
+  private appId(): string { return process.env.FB_LOGIN_APP_ID || (process.env.FB_STAFF_LOGIN === '1' ? process.env.FB_APP_ID || '' : ''); }
+  private appSecret(): string { return process.env.FB_LOGIN_APP_ID ? process.env.FB_LOGIN_APP_SECRET || '' : process.env.FB_STAFF_LOGIN === '1' ? process.env.FB_APP_SECRET || '' : ''; }
+  /** Whether "Đăng nhập với Facebook" is offered at all. */
+  facebookOn(): boolean { return !!this.appId() && !!this.appSecret(); }
   /** The SAME redirect the Page connection uses — already allowed in the Meta app, nothing to add there. */
   private redirect(): string { return `${oauthBase()}/api/messenger/oauth/callback`; }
 
@@ -100,12 +111,12 @@ export class StaffInviteService {
     const problem = inviteProblem(inv, new Date());
     if (problem || !inv) return { ok: false, reason: problem ?? 'missing' };
     const t = await this.prisma.tenant.findUnique({ where: { id: inv.tenantId }, select: { name: true } });
-    return { ok: true, salonName: t?.name ?? '', role: inv.staffRole as InviteRole, roleLabel: ROLE_LABEL_VI[inv.staffRole as InviteRole] ?? '' };
+    return { ok: true, salonName: t?.name ?? '', role: inv.staffRole as InviteRole, roleLabel: ROLE_LABEL_VI[inv.staffRole as InviteRole] ?? '', facebook: this.facebookOn() };
   }
 
   /** The Facebook dialog: only public_profile — who the person is, nothing else. */
   async start(mode: 'join' | 'login', token?: string) {
-    if (!this.appId()) throw new BadRequestException('Facebook sign-in is not set up on this server.');
+    if (!this.facebookOn()) throw new BadRequestException('Đăng nhập Facebook chưa được bật — hãy vào bằng số điện thoại.');
     let i: string | undefined;
     if (mode === 'join') {
       if (!token || !tokenShapeOk(token)) throw new BadRequestException('This invite link is not valid.');

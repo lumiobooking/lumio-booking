@@ -694,7 +694,8 @@ function Inner() {
 
   const tabs: { key: TabKey; label: string; count: number; tone: Tone }[] = [
     { key: 'overview', label: L('Tổng quan', 'Overview'), count: 0, tone: 'idle' },
-    { key: 'reply', label: salesBot ? L('Cách trả lời', 'How it replies') : L('Chia turn & chế độ', 'Turns & mode'), count: 0, tone: 'idle' },
+    { key: 'reply', label: salesBot ? L('Cách trả lời', 'How it replies') : L('Chế độ trả lời', 'Reply mode'), count: 0, tone: 'idle' },
+    { key: 'turns', label: L('Chia turn', 'Chat turns'), count: 0, tone: 'idle' },
     ...(salesBot ? [{ key: 'know' as TabKey, label: L('Kiến thức', 'Knowledge'), count: gapsOpen, tone: 'warn' as Tone }] : []),
     ...(showLeads ? [{ key: 'leads' as TabKey, label: L('Khách tiềm năng', 'Leads'), count: newLeads, tone: 'ok' as Tone }] : []),
     { key: 'log', label: L('Nhật ký', 'Log'), count: failed24, tone: 'bad' },
@@ -1063,15 +1064,6 @@ function Inner() {
             <span style={{ color: 'var(--ink-link)', fontWeight: 700 }}>{lang === 'vi' ? 'Mở →' : 'Open →'}</span>
           </a>
         )}
-        {/* Chat turns ("chia turn"): the rules for handing each new
-            conversation to one person. Its own panel and its own endpoint —
-            see components/ChatTurnsPanel. */}
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', marginBottom: 8 }}>
-            {lang === 'vi' ? 'Chia turn hội thoại cho nhân viên' : 'Chat turns for the team'}
-          </div>
-          <ChatTurnsPanel token={token} vi={lang === 'vi'} />
-        </div>
 
         {salesBot && (<>
         <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
@@ -1294,6 +1286,16 @@ function Inner() {
       )}
 
       {/* ============ KHÁCH TIỀM NĂNG / LEADS ============ */}
+      {/* Chat turns ("chia turn"): its own tab since rt199 — it was buried under
+          "Cách trả lời" and owners could not find it. See components/ChatTurnsPanel. */}
+      {tab === 'turns' && (
+        <div style={{ ...ui.card }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{L('Chia turn hội thoại cho nhân viên', 'Chat turns for the team')}</div>
+          <p style={{ fontSize: 12.5, color: 'var(--c94a3b8)', margin: '0 0 12px', lineHeight: 1.5 }}>{L('Khách nhắn vào được giao cho một nhân viên đang trong ca, như bảng turn ở tiệm. Nhân viên bấm “Vào ca” trong Hộp thư để bắt đầu nhận khách.', 'Each new conversation goes to one team member on shift, like the walk-in turn list. Staff press “Vào ca” in the Inbox to start.')}</p>
+          <ChatTurnsPanel token={token} vi={lang === 'vi'} />
+        </div>
+      )}
+
       {tab === 'leads' && (
         <>
       {/* Sales-mode leads: the bot's handover list for the human team. */}
@@ -1751,8 +1753,8 @@ const fbBtn: React.CSSProperties = {
 
 // ---- the status strip and the tabs ------------------------------------------
 
-type TabKey = 'overview' | 'reply' | 'know' | 'leads' | 'log' | 'connect';
-const TAB_KEYS: TabKey[] = ['overview', 'reply', 'know', 'leads', 'log', 'connect'];
+type TabKey = 'overview' | 'reply' | 'turns' | 'know' | 'leads' | 'log' | 'connect';
+const TAB_KEYS: TabKey[] = ['overview', 'reply', 'turns', 'know', 'leads', 'log', 'connect'];
 type Tone = 'ok' | 'warn' | 'bad' | 'idle';
 
 function toneStyle(tone: Tone): React.CSSProperties {

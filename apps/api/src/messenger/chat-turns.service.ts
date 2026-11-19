@@ -633,7 +633,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const money = sc.adMoneyCents != null ? new Intl.NumberFormat('vi-VN').format(sc.adMoneyCents) : null;
     const text = nightText({ scores: sc.scores, adWaiting: sc.adWaiting, money });
     const owners = await this.prisma.user.findMany({ where: { tenantId, isActive: true, role: UserRole.SALON_ADMIN }, select: { id: true } }).catch(() => []);
-    for (const o of owners) void this.push?.sendToUser(tenantId, o.id, { title: 'Báo cáo chia turn hôm nay', body: text.split('\n').slice(1, 4).join(' · '), url: '/salon/messenger?tab=turns', tag: `turn-report-${day}` }).catch(() => undefined);
+    for (const o of owners) void this.push?.sendToUser(tenantId, o.id, { title: 'Báo cáo chia turn hôm nay', body: text.split('\n').slice(1, 4).join(' · '), url: '/salon/messenger#turns', tag: `turn-report-${day}` }).catch(() => undefined);
     void this.staff?.notifyEscalation(tenantId, owners.map((o) => o.id), text).catch(() => 0);
   }
 

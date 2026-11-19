@@ -42,6 +42,8 @@ export interface TurnAgent {
   shiftOn?: boolean; shiftUntil?: string | null;
   /** Phones of this person that get push (owner's view; own row for staff). */
   devices?: number;
+  /** rt206: why this person is not taking customers right now. */
+  blockers?: string[];
 }
 export interface TurnsView {
   settings: TurnSettings;
@@ -50,6 +52,8 @@ export interface TurnsView {
   canEdit: boolean;
   /** The server can send push at all (VAPID set on the API). */
   pushOn?: boolean;
+  /** rt206: the last customer nobody could be given, and why. */
+  lastMiss?: { at: string; customer: string | null; why: string; agents: { name: string; blockers: string[] }[] } | null;
   recent: { id: string; threadId: string; userId: string | null; fromUserId: string | null; reason: string; createdAt: string; thread?: { senderName?: string | null } | null }[];
 }
 
@@ -60,6 +64,22 @@ const REASON: Record<string, [string, string]> = {
   'reassign-unreplied': ['chuyển vì chưa trả lời', 'passed on — not answered'],
   manual: ['giao tay', 'moved by hand'],
   unassign: ['bỏ giao', 'unassigned'],
+};
+
+/** rt206: the reasons, in the owner's words, with what to do. */
+const BLOCK: Record<string, [string, string]> = {
+  'not-in-list': ['chưa được tích nhận turn', 'not ticked to take turns'],
+  away: ['đang tắt “Sẵn sàng”', 'set to away'],
+  'off-hours': ['ngoài giờ làm (bấm Vào ca để nhận)', 'outside working hours (press Vào ca)'],
+  'not-present': ['chưa bấm Vào ca và không mở Lumio', 'not on shift and Lumio not open'],
+  full: ['đã giữ đủ số khách tối đa', 'holding the maximum'],
+  'weight-zero': ['tỉ lệ 0%', 'share 0%'],
+};
+const MISS: Record<string, [string, string]> = {
+  'nobody-on-duty': ['không ai đang trong ca', 'nobody was on shift'],
+  'everyone-full': ['ai cũng đã giữ đủ số khách tối đa', 'everyone was at the maximum'],
+  'nobody-in-list': ['chưa tích ai nhận turn', 'nobody is ticked to take turns'],
+  'no-match': ['không ai nhận được trang/nhóm này', 'nobody takes this Page / group'],
 };
 
 const hhmm = (iso: string) => { try { return new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }); } catch { return ''; } };
@@ -219,6 +239,12 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
           <div>
             <div style={ui.label}>{T('Nhân viên nhận turn (theo thứ tự lượt)', 'Who takes turns (in turn order)')}</div>
             <p style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '0 0 6px', lineHeight: 1.5 }}>{T('Nhân viên bấm “Vào ca” trong Hộp thư là bắt đầu nhận khách; điện thoại reo cả khi tắt app. Hết giờ làm Lumio tự cho ra ca.', 'Staff press “Vào ca” in the Inbox to start taking customers; the phone rings even with the app closed. Lumio ends the shift after their hours.')}</p>
+            {view.lastMiss && (
+              <div style={{ margin: '0 0 8px', padding: '9px 11px', borderRadius: 10, background: 'var(--wash-red)', color: 'var(--ink-bad)', fontSize: 12.5, lineHeight: 1.5 }}>
+                <b>{T('Khách gần nhất không được chia', 'Last customer not given to anyone')}</b>{view.lastMiss.customer ? ` (${view.lastMiss.customer}, ${hhmm(view.lastMiss.at)})` : ` (${hhmm(view.lastMiss.at)})`}: {vi ? MISS[view.lastMiss.why]?.[0] : MISS[view.lastMiss.why]?.[1]}.
+                {' '}{T('Khi có người vào ca, khách đang chờ (trong 24 giờ) sẽ tự được chia.', 'When someone starts a shift, waiting customers (last 24 h) are given out automatically.')}
+              </div>
+            )}
             {view.pushOn === false && (
               <div style={{ margin: '0 0 8px', padding: '8px 10px', borderRadius: 10, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)', fontSize: 12.5, fontWeight: 600, lineHeight: 1.45 }}>
                 {T('Máy chủ chưa bật thông báo đẩy (thiếu VAPID trên Render) — điện thoại nhân viên sẽ chưa reo.', 'Push is not configured on the server (VAPID missing on Render) — staff phones will not ring yet.')}
@@ -234,6 +260,9 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
                     {a.shiftOn
                       ? dot(true, a.shiftUntil ? T(`đã vào ca · tới ${hhmm(a.shiftUntil)}`, `on shift · until ${hhmm(a.shiftUntil)}`) : T('đã vào ca', 'on shift'))
                       : dot(false, T('chưa vào ca', 'not on shift'))}
+                    {!a.onDuty && (a.blockers ?? []).length > 0 && (
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-warn)' }}>↳ {(a.blockers ?? []).map((b) => (vi ? BLOCK[b]?.[0] : BLOCK[b]?.[1]) ?? b).join(' · ')}</span>
+                    )}
                     {a.devices !== undefined && (a.devices > 0
                       ? dot(true, T(`📱 ${a.devices} máy nhận thông báo`, `📱 ${a.devices} phone(s) get alerts`))
                       : <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-bad)' }}>📵 {T('chưa bật thông báo — nhắc bạn ấy', 'no alerts on — remind them')}</span>)}

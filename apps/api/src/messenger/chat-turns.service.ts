@@ -87,7 +87,13 @@ export interface AgentView {
   shiftUntil: string | null;
   /** Phones/browsers of this person that get push (owner's view only). */
   devices?: number;
+  /** rt206: why this person is not taking customers right now (empty = taking them). */
+  blockers: TurnBlocker[];
 }
+
+/** rt206 — the reasons a person is not given a customer, in words the owner can act on. */
+export type TurnBlocker = 'not-in-list' | 'away' | 'off-hours' | 'not-present' | 'full' | 'weight-zero';
+export type TurnMiss = { at: string; customer: string | null; why: 'rules-off' | 'nobody-in-list' | 'nobody-on-duty' | 'everyone-full' | 'no-match'; agents: { name: string; blockers: TurnBlocker[] }[] };
 
 const INBOX_ROLES = [UserRole.SALON_ADMIN, UserRole.STAFF] as const;
 const TICK_MS = 60_000;
@@ -194,6 +200,13 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         turnsToday: turnsBy.get(u.id) ?? 0,
         shiftOn: inShift,
         shiftUntil: inShift ? sh?.until ?? null : null,
+        blockers: ([
+          !inList(u.id) ? 'not-in-list' : null,
+          set.needStatus && status === 'away' ? 'away' : null,
+          set.needShift && onShift === false && !inShift ? 'off-hours' : null,
+          set.needOnline && !online ? 'not-present' : null,
+          set.maxOpenPerAgent > 0 && (openBy.get(u.id) ?? 0) >= set.maxOpenPerAgent ? 'full' : null,
+        ].filter(Boolean) as TurnBlocker[]),
       };
     });
     // The queue order: the salon's own list order when it made one, else by name.
@@ -216,7 +229,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       if (set.mode !== 'round-robin') return null;
       const all = await this.agents(tenantId, set);
       const pool = all.filter((a) => a.inRotation);
-      if (!pool.length) return null;
+      if (!pool.length) { this.noteMiss(tenantId, { at: new Date().toISOString(), customer: null, why: 'nobody-in-list', agents: all.map((a) => ({ name: a.name, blockers: a.blockers })) }); return null; }
       // Đợt 2: which Pages each person takes, group A first for ad customers, weights.
       const team = await this.teamOf(tenantId);
       const th = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { pageId: true, channel: true, adId: true, adAt: true } }).catch(() => null) as { pageId?: string | null; channel?: string | null; adId?: string | null; adAt?: Date | null } | null;
@@ -255,7 +268,15 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         if (p.userId) { pick = p; break; }
         pick = p;
       }
-      if (!pick.userId) return null;
+      if (!pick.userId) {
+        const team2 = team;
+        const all2 = all.map((a) => ({ name: a.name, blockers: [...a.blockers, ...((team2.members[a.userId]?.weight ?? 1) <= 0 && set.rotation === 'weighted' ? ['weight-zero' as TurnBlocker] : [])] }));
+        const anyOnDuty = pool.some((a) => a.onDuty);
+        const anyFree = pool.some((a) => a.onDuty && !a.blockers.includes('full'));
+        const c = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { senderName: true } }).catch(() => null) as { senderName?: string | null } | null;
+        this.noteMiss(tenantId, { at: new Date().toISOString(), customer: c?.senderName ?? null, why: !anyOnDuty ? 'nobody-on-duty' : !anyFree ? 'everyone-full' : 'no-match', agents: all2 });
+        return null;
+      }
       await this.recordTurn(tenantId, threadId, pick.userId, opts.reason && opts.reason !== 'new' ? opts.reason : pick.reason, opts.excludeUserId ?? null, null, pick.reason === 'usual-technician' ? false : true);
       return pick.userId;
     } catch (e) {
@@ -288,6 +309,55 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       tag: `chat-turn-${threadId}`,
     }).catch(() => undefined);
     void this.staff?.notifyTurn(tenantId, userId, threadId, { hop, fromAd, mins }).catch(() => undefined);
+  }
+
+  // ------------------------------------------------- why nobody got it (rt206) ----
+
+  /** The last customer this salon's rules could not give to anyone, and why — shown on the Chia turn tab. */
+  private readonly misses = new Map<string, TurnMiss>();
+  private noteMiss(tenantId: string, m: TurnMiss): void {
+    this.misses.set(tenantId, m);
+    if (this.misses.size > 2000) this.misses.delete(this.misses.keys().next().value as string);
+  }
+  lastMiss(tenantId: string): TurnMiss | null { return this.misses.get(tenantId) ?? null; }
+
+  /**
+   * A person answered a conversation nobody held: it is theirs now (so the
+   * next customer line does not go to someone else). Never moves one that
+   * someone holds. Never throws.
+   */
+  async claimIfFree(tenantId: string, threadId: string, userId: string): Promise<void> {
+    try {
+      const r = await this.db.messengerThread.updateMany({ where: { id: threadId, tenantId, assignedUserId: null }, data: { assignedUserId: userId, assignedAt: new Date(), assignHops: 0, handoffAt: new Date() } as never });
+      // handoffAt with it: they have just answered, so the turn is not "unanswered" and is never passed on for it.
+      if (r.count) await this.db.chatAssignmentLog?.create({ data: { tenantId, threadId, userId, byUserId: userId, reason: 'took-by-reply' } }).catch(() => undefined);
+    } catch { /* never break a reply */ }
+  }
+
+  /**
+   * Customers waiting with nobody holding them — they wrote last, within the
+   * last 24 hours — are given out now. Runs every minute and the moment
+   * someone presses "Vào ca", so a customer who wrote while nobody was on
+   * shift is not left with no one.
+   */
+  async distributeWaiting(tenantId: string, now: Date = new Date()): Promise<number> {
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as ConnRow;
+    if (settingsOf(conn).mode !== 'round-robin') return 0;
+    const rows = await this.db.messengerThread.findMany({
+      where: { tenantId, status: 'open', assignedUserId: null, lastCustomerAt: { gte: new Date(now.getTime() - 24 * 3600_000) } },
+      select: { id: true, customerId: true, lastCustomerAt: true, lastMessageAt: true },
+      orderBy: { lastCustomerAt: 'asc' },
+      take: 10,
+    }).catch(() => []) as { id: string; customerId: string | null; lastCustomerAt: Date | null; lastMessageAt: Date | null }[];
+    let n = 0;
+    for (const t of rows) {
+      // The customer spoke last (no reply from anyone since): they are waiting.
+      if (t.lastMessageAt && t.lastCustomerAt && t.lastMessageAt.getTime() - t.lastCustomerAt.getTime() > 1000) continue;
+      const to = await this.route(tenantId, t.id, t.customerId);
+      if (!to) break; // nobody free: the rest would fail the same way
+      n += 1;
+    }
+    return n;
   }
 
   // ---------------------------------------------------------------- team (đợt 2) ----
@@ -398,7 +468,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     }).catch(() => []) ?? [];
     const me = agents.find((a) => a.userId === user.userId) ?? null;
     const team = await this.teamOf(tenantId);
-    return { settings, agents, me, recent, team, sources: await this.sources(tenantId), canEdit: isAdmin, pushOn: this.push?.enabled() ?? false };
+    return { settings, agents, me, recent, team, sources: await this.sources(tenantId), canEdit: isAdmin, pushOn: this.push?.enabled() ?? false, lastMiss: isAdmin ? this.lastMiss(tenantId) : null };
   }
 
   async updateSettings(user: AuthenticatedUser, dto: Record<string, unknown>) {
@@ -465,6 +535,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       create: { tenantId, userId, status: on ? 'available' : 'away', lastSeenAt: now },
     }).catch(() => undefined);
     this.events.publish(tenantId, 'thread');
+    if (on) void this.distributeWaiting(tenantId, now).catch(() => 0);
     return { on, until };
   }
 
@@ -580,6 +651,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         await this.nightReport(tenantId, now).catch((e) => this.logger.warn(`turn report failed: ${String(e).slice(0, 120)}`));
         await this.closeShifts(tenantId, now).catch((e) => this.logger.warn(`shift close failed: ${String(e).slice(0, 120)}`));
         await this.remind(tenantId, now).catch((e) => this.logger.warn(`turn reminder failed: ${String(e).slice(0, 120)}`));
+        await this.distributeWaiting(tenantId, now).catch((e) => this.logger.warn(`waiting customers not given out: ${String(e).slice(0, 120)}`));
         const mins = [set.reassignUnreadMins, set.reassignUnrepliedMins, set.reassignAdMins].filter((m) => m > 0);
         if (!mins.length) continue;
         const shortest = Math.min(...mins);

@@ -2650,7 +2650,7 @@ export class MessengerService implements OnModuleInit {
           handoff: true, handoffAt: new Date(),
         } as never,
       });
-      await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, messageId: null, recipientId: thread.senderId, at: wAt, channel: 'web' };
     }
@@ -2675,7 +2675,7 @@ export class MessengerService implements OnModuleInit {
         } as never,
       }).catch(() => undefined);
       if (!zr.ok) throw new BadRequestException(zr.error || 'Zalo từ chối tin nhắn (có thể đã quá cửa sổ trả lời).');
-      await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, messageId: null, recipientId: thread.senderId, at: zAt, channel: 'zalo' };
     }
@@ -2799,7 +2799,7 @@ export class MessengerService implements OnModuleInit {
       where: { id: thread.id, tenantId },
       data: { handoff: true, handoffAt: new Date() } as never,
     }).catch(() => undefined);
-    await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+    await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
     const ch = ((thread as unknown as { channel?: string }).channel === 'instagram') ? 'instagram' : 'messenger';
     return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: sentAtIso, channel: ch };
   }
@@ -2876,7 +2876,7 @@ export class MessengerService implements OnModuleInit {
     };
     if (web) {
       const at = await record({}, true);
-      await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, at, channel: 'web', url };
     }
@@ -2887,7 +2887,7 @@ export class MessengerService implements OnModuleInit {
       const zr = await sendZaloImage(sendToken, thread.senderId, url);
       const at = await record(zr.ok ? {} : { failed: true }, zr.ok);
       if (!zr.ok) throw new BadRequestException(zr.error || 'Zalo từ chối ảnh (có thể đã quá cửa sổ trả lời).');
-      await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, at, channel: 'zalo', url };
     }
@@ -2913,7 +2913,7 @@ export class MessengerService implements OnModuleInit {
       throw new BadRequestException(out.error?.message || 'Facebook rejected the photo (the messaging window may have closed).');
     }
     const at = await record({ messageId: out.message_id || null }, true);
-    await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+    await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); await this.turns?.claimIfFree(tenantId, thread.id, user.userId); void this.turns?.noteReply(tenantId, thread.id, user.userId);
     this.events.publish(tenantId, 'message');
     return { ok: true as const, at, channel: channel === 'instagram' ? 'instagram' : 'messenger', url };
   }
@@ -3943,7 +3943,10 @@ export class MessengerService implements OnModuleInit {
     // would take it out from under them mid-sentence, which is the exact thing
     // this whole piece of work exists to stop.
     const owner = (thread as unknown as { assignedUserId?: string | null }).assignedUserId ?? null;
-    if (!owner && !thread.handoff) {
+    // rt206: a conversation the AI handed to a person (handoff) and nobody holds
+    // is exactly the one that needs a person — it is given out too. Taking it
+    // ("Tôi nhận") or replying assigns it, so a held one is never moved.
+    if (!owner) {
       const assignTo = this.turns
         ? await this.turns.route(page.tenantId, thread.id, (thread as unknown as { customerId?: string | null }).customerId ?? null)
         : null;

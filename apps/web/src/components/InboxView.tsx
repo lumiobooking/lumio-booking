@@ -24,6 +24,8 @@
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PhotoPicker, PhotoWaiting, SaveToLibrary, usePhotoSuggest } from './photos/PhotoPicker';
+import { TurnBadge } from './TurnBadge';
+import { MessengerAlertCard } from './MessengerAlertCard';
 import { fmtInTz } from '../lib/datetime';
 import { useAuth } from '../lib/auth';
 import { apiFetch, apiStream, apiImage, apiImageCached } from '../lib/api';
@@ -1271,10 +1273,12 @@ export function InboxView() {
             const lab = (r.labels ?? []).slice(0, 2);
             // v2: the avatar's corner mark already says which page; the name is not repeated on every row.
             const page = !v2 && pageNames.size > 1 && r.pageName ? r.pageName : null;
-            if (!chip && !lab.length && !page) return v2 ? pileChip(r) : null;
+            const turnMark = (r.fromAd || r.turnDueAt) ? <TurnBadge fromAd={r.fromAd} dueAt={r.turnDueAt} vi={vi} /> : null;
+            if (!chip && !lab.length && !page && !turnMark) return v2 ? pileChip(r) : null;
             return (<>
               {v2 && pileChip(r)}
               <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, minWidth: 0, marginTop: 2, overflow: 'hidden' }}>
+                {turnMark}
                 {chip}
                 {lab.map((l) => (
                   <span key={l.id} style={{ height: 20, padding: '0 7px', borderRadius: 999, border: `1px solid ${l.color}`, color: l.color, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -1407,6 +1411,7 @@ export function InboxView() {
               <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>{turns.settings.botFirst ? (vi ? 'bàn giao khi khách cần người thật' : 'hands over when a person is needed') : (vi ? 'bot chỉ phụ' : 'the bot only assists')}</span>
             </span>
           </div>
+          {turnsOn && turns.me && <MessengerAlertCard token={token ?? null} vi={vi} />}
           {turnsOn && turns.me && (
             <button onClick={() => void toggleMyStatus()} style={{ height: 32, borderRadius: 9, border: `1px solid ${myStatus === 'available' ? '#22c55e' : 'var(--c334155)'}`, background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: myStatus === 'available' ? '#22c55e' : 'var(--c64748b)' }} />

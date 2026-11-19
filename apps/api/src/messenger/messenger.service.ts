@@ -59,6 +59,8 @@ import { habitLine, profileFrom } from '../common/customer-profile';
 import { InboxEventsService } from './inbox-events.service';
 import { PhotoLibraryService, sentUrls } from './photo-library.service';
 import { ChatPayService } from './chat-pay.service';
+import { StaffAlertsService } from './staff-alerts.service';
+import { adIdOf, isAdThread, parseStaffCommand, turnDueAt } from './staff-alerts';
 import { isKind as isPhotoKind, toolAnswer as photoToolAnswer, wordsOf as wordsOfPhoto, type PhotoKind } from './photo-library';
 import { PushService } from '../push/push.service';
 import { pushPayload } from '../notifications/push-payload';
@@ -362,6 +364,8 @@ export class MessengerService implements OnModuleInit {
     @Optional() private readonly photoLibrary?: PhotoLibraryService,
     // Mã QR đặt cọc: a transfer picture is read only when this chat has an open request.
     @Optional() private readonly chatPay?: ChatPayService,
+    // A team member's own Messenger as their turn alert (./staff-alerts).
+    @Optional() private readonly staffAlerts?: StaffAlertsService,
   ) {}
 
   /** Did THIS salon's conversation receive this picture from the customer? (Guards "save to library".) */
@@ -1647,6 +1651,7 @@ export class MessengerService implements OnModuleInit {
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
     const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? DEFAULT_ACTIVE_MINS;
     const botFirst = turnSettingsOf(conn as never).botFirst;
+    const turnSet = turnSettingsOf(conn as never);
     // A page of the list, newest first. The first page used to be the WHOLE
     // list: fifty rows, no way to ask for more. On a busy Page fifty
     // conversations is one or two days, and the owner's exact words were
@@ -1664,6 +1669,7 @@ export class MessengerService implements OnModuleInit {
         updatedAt: true, channel: true,
         handoffAt: true, handoffMode: true, assignedUserId: true, status: true,
         lastCustomerAt: true, readAt: true, lastMessageAt: true, followUpAt: true, followUpNote: true,
+        assignedAt: true, assignHops: true, adId: true, adAt: true,
         threadLabels: { select: { label: { select: { id: true, name: true, color: true } } } },
         // User has firstName/lastName, NOT name. Selecting a field Prisma does
         // not know throws at runtime, and the stale generated client in the dev
@@ -1713,6 +1719,9 @@ export class MessengerService implements OnModuleInit {
         labels: ((r as unknown as { threadLabels?: { label: { id: string; name: string; color: string } }[] }).threadLabels ?? []).map((t) => t.label),
         assignedName: who || null,
         waitingMinutes: waitingMinutes(r as never, now, botFirst),
+        // Chia turn: from an ad, and when this turn passes on if nobody answers (the countdown).
+        fromAd: isAdThread(r as never, now),
+        turnDueAt: turnSet.mode === 'round-robin' ? turnDueAt(r as never, turnSet, now)?.toISOString() ?? null : null,
         // Who must act (./thread-ownership customerWroteLast): the customer's
         // message is the last one, and it was not a goodbye the AI rightly
         // leaves alone ("cảm ơn em", a thumbs-up).
@@ -3361,6 +3370,11 @@ export class MessengerService implements OnModuleInit {
         const senderId = ev.sender?.id;
         if (!senderId) continue;
         this.traceWebhook(entryId, ev.message?.is_echo ? 'echo' : ev.message || ev.postback ? 'messaging' : 'other', ev.message?.text || ev.postback?.title || '');
+        // A team member talking to Lumio through the Page ("LUMIO 123456",
+        // "vào ca", "Nhận khách") — handled here, never a customer conversation.
+        if (!ev.message?.is_echo && channel === 'messenger' && this.staffAlerts && await this.staffMessage(entryId, senderId, ev).catch(() => false)) continue;
+        // A customer who came from an ad: noted on their conversation (shorter turn times).
+        const adId = adIdOf(ev);
         // "Get Started" tap: the customer opened the chat but hasn't typed yet.
         // This is the salon's ONE chance to speak first — greet immediately.
         // A package tap is read BEFORE the "and no message" guard. That guard
@@ -3417,11 +3431,28 @@ export class MessengerService implements OnModuleInit {
         // "seen" and nothing else. Now it is a turn like any other.
         const media = metaAttachments(ev.message);
         if (!text && !media.length) continue;
+        if (adId) await this.markFromAd(entryId, senderId, adId).catch(() => undefined);
         await this.handleMessage(entryId, senderId, text || describeMedia(media), ev.timestamp, channel, media, { tap: Boolean(ev.message?.quick_reply) }).catch((e) =>
           this.logger.warn(`handleMessage failed: ${String(e).slice(0, 160)}`),
         );
+        if (adId) await this.markFromAd(entryId, senderId, adId).catch(() => undefined);
       }
     }
+  }
+
+  /** Is this Page message a team member's command? Cheap unless it could be. */
+  private async staffMessage(entryId: string, senderId: string, ev: MessagingEvent): Promise<boolean> {
+    const page = await this.pageByEntry(entryId);
+    if (!page || page.pageId !== entryId) return false; // Messenger only (not the Instagram id)
+    const cmd = parseStaffCommand(ev.message?.text, ev.message?.quick_reply?.payload ?? ev.postback?.payload);
+    return this.staffAlerts!.onPageMessage(page.tenantId, page.pageId, page.pageToken, senderId, cmd);
+  }
+
+  /** The customer came from an ad: stamped on their conversation of THIS Page's salon. */
+  private async markFromAd(entryId: string, senderId: string, adId: string): Promise<void> {
+    const page = await this.pageByEntry(entryId);
+    if (!page) return;
+    await this.prisma.messengerThread.updateMany({ where: { tenantId: page.tenantId, pageId: page.pageId, senderId }, data: { adId, adAt: new Date() } as never });
   }
 
   /**

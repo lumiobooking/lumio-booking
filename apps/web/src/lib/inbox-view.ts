@@ -25,6 +25,10 @@ export interface InboxRow {
   state?: ThreadState;
   handoff?: boolean;
   assignedName?: string | null;
+  /** Chia turn: the customer came from an ad (shorter turn times). */
+  fromAd?: boolean;
+  /** When this turn passes to the next person if nobody answers. */
+  turnDueAt?: string | null;
   assignedUserId?: string | null;
   /** Which connected Page or Instagram account this arrived on. */
   pageId?: string | null;

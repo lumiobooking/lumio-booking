@@ -1771,6 +1771,8 @@ model MessengerConnection {
   chatReassignUnreadMins    Int @default(0)       // 0 = never · pass it on if not opened in X min
   chatReassignUnrepliedMins Int @default(0)       // 0 = never · pass it on if not answered in X min
   chatMaxHops         Int      @default(3)        // how many times one conversation may be passed on
+  chatReassignAdMins  Int      @default(0)        // 0 = as other customers · a customer from an ad is passed on after X min unanswered
+  chatEscalateMins    Int      @default(0)        // 0 = never · tell the owner/managers when a customer waits X min with no human reply
   chatAgentIds        String[] @default([])       // who takes turns; empty = every inbox user
   bizIntro  String? // one-line business description the bot uses when introducing the company
   aiInstruction String? // brand-voice / extra guidance for the bot
@@ -1912,6 +1914,11 @@ model MessengerThread {
   // passed on for want of an answer. Drive the reassignment rules.
   assignedAt DateTime?
   assignHops Int @default(0)
+  /// The customer came from an ad (Click-to-Messenger / Instagram ad): its ad id and when. Shorter turn times apply.
+  adId        String?
+  adAt        DateTime?
+  /// When the owner/managers were last told this customer had waited too long (once per wait).
+  escalatedAt DateTime?
   assignmentLogs ChatAssignmentLog[]
 
   @@unique([pageId, senderId])

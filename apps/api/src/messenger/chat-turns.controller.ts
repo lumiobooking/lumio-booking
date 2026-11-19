@@ -7,6 +7,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { ChatTurnsService } from './chat-turns.service';
+import { StaffAlertsService } from './staff-alerts.service';
 
 export class ChatTurnSettingsDto {
   @IsOptional() @IsIn(['off', 'round-robin']) mode?: 'off' | 'round-robin';
@@ -21,6 +22,8 @@ export class ChatTurnSettingsDto {
   @IsOptional() @IsInt() @Min(0) @Max(240) reassignUnreadMins?: number;
   @IsOptional() @IsInt() @Min(0) @Max(240) reassignUnrepliedMins?: number;
   @IsOptional() @IsInt() @Min(0) @Max(10) maxHops?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(240) reassignAdMins?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(240) escalateMins?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) @MaxLength(64, { each: true }) agentIds?: string[];
 }
 
@@ -41,7 +44,24 @@ export class AssignThreadDto {
 @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
 @Controller('messenger')
 export class ChatTurnsController {
-  constructor(private readonly turns: ChatTurnsService) {}
+  constructor(private readonly turns: ChatTurnsService, private readonly alerts: StaffAlertsService) {}
+
+  /** My own Messenger as my turn alert: linked? on shift? (each person sees only their own). */
+  @Get('turns/messenger')
+  myMessenger(@CurrentUser() user: AuthenticatedUser) {
+    return this.alerts.mine(user);
+  }
+
+  /** A one-time code to send to the salon's Page ("LUMIO 123456"), 15 minutes. */
+  @Post('turns/messenger/code')
+  messengerCode(@CurrentUser() user: AuthenticatedUser) {
+    return this.alerts.newCode(user);
+  }
+
+  @Post('turns/messenger/unlink')
+  messengerUnlink(@CurrentUser() user: AuthenticatedUser) {
+    return this.alerts.unlink(user);
+  }
 
   @Get('turns')
   view(@CurrentUser() user: AuthenticatedUser) {

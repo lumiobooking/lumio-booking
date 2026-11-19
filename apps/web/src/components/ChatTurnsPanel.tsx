@@ -27,6 +27,10 @@ export interface TurnSettings {
   reassignUnrepliedMins: number;
   maxHops: number;
   agentIds: string[];
+  /** A customer from an ad is passed on after this many minutes unanswered (0 = as others). */
+  reassignAdMins?: number;
+  /** Tell the owner when a customer waits this long with no human reply (0 = never). */
+  escalateMins?: number;
 }
 export interface TurnAgent {
   userId: string; name: string; role: string; inRotation: boolean;
@@ -89,10 +93,10 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
   const nameOf = (id: string | null) => view.agents.find((a) => a.userId === id)?.name ?? T('(người đã rời)', '(former staff)');
 
   const row: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ccbd5e1)', cursor: edit ? 'pointer' : 'default' };
-  type NumKey = 'onlineMins' | 'maxOpenPerAgent' | 'reassignUnreadMins' | 'reassignUnrepliedMins' | 'maxHops';
+  type NumKey = 'onlineMins' | 'maxOpenPerAgent' | 'reassignUnreadMins' | 'reassignUnrepliedMins' | 'maxHops' | 'reassignAdMins' | 'escalateMins';
   // Typing changes the box; leaving it saves — not one request per keystroke.
   const num = (key: NumKey, max: number, min = 0) => (
-    <input type="number" min={min} max={max} disabled={!edit} value={s[key]}
+    <input type="number" min={min} max={max} disabled={!edit} value={s[key] ?? 0}
       onChange={(e) => setDraft({ ...s, [key]: Math.min(max, Math.max(min, Number(e.target.value) || 0)) })}
       onBlur={() => { if (view && s[key] !== view.settings[key]) void save({ [key]: s[key] } as Partial<TurnSettings>); }}
       style={{ ...ui.input, width: 84, padding: '6px 8px' }} />
@@ -188,7 +192,16 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
                 {num('reassignUnrepliedMins', 240)}{T('phút', 'min')}</label>
               <label style={{ ...row, flexWrap: 'wrap' }}>{T('Mỗi hội thoại chuyển tối đa', 'Pass one conversation on at most')}
                 {num('maxHops', 10)}{T('lần', 'times')}</label>
+              <label style={{ ...row, flexWrap: 'wrap' }}><b style={{ color: 'var(--ink-bad)' }}>{T('Khách từ quảng cáo', 'Customers from ads')}</b>{T(': chuyển nếu chưa trả lời sau', ': pass on if not answered after')}
+                {num('reassignAdMins', 240)}{T('phút (0 = như khách thường)', 'min (0 = like everyone else)')}</label>
             </div>
+          </div>
+
+          {/* 4b. Nobody answered at all */}
+          <div>
+            <div style={ui.label}>{T('Báo khẩn cho chủ tiệm', 'Urgent alert to the owner')}</div>
+            <label style={{ ...row, flexWrap: 'wrap' }}>{T('Khi khách chờ quá', 'When a customer has waited over')}
+              {num('escalateMins', 240)}{T('phút mà chưa ai trả lời (0 = tắt). Báo qua app và Messenger của chủ tiệm nếu đang vào ca.', 'min with no reply (0 = off). Sent to the app, and the owner’s Messenger when on shift.')}</label>
           </div>
 
           {/* 5. The team, in turn order */}

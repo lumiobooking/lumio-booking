@@ -5,6 +5,8 @@ import { PushService } from '../push/push.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { InboxEventsService } from './inbox-events.service';
 import { isOnDuty, isOnShift, pickAgent, reassignDue, type PickReason } from './chat-assignment';
+import { StaffAlertsService } from './staff-alerts.service';
+import { escalationDue, isAdThread, unrepliedMinsFor, windowOpen } from './staff-alerts';
 
 /**
  * Chat turns ("chia turn") — who in the salon follows up which conversation.
@@ -34,6 +36,10 @@ export interface TurnSettings {
   reassignUnrepliedMins: number;
   maxHops: number;
   agentIds: string[];
+  /** A customer from an ad is passed on after this many minutes unanswered (0 = as everyone else). */
+  reassignAdMins: number;
+  /** Tell the owner/managers when a customer has waited this long with no human reply (0 = never). */
+  escalateMins: number;
 }
 
 type ConnRow = Record<string, unknown> | null;
@@ -55,6 +61,8 @@ export function settingsOf(c: ConnRow): TurnSettings {
     reassignUnrepliedMins: n('chatReassignUnrepliedMins', 0),
     maxHops: n('chatMaxHops', 3),
     agentIds: Array.isArray(c?.chatAgentIds) ? (c!.chatAgentIds as string[]).filter((x) => typeof x === 'string') : [],
+    reassignAdMins: n('chatReassignAdMins', 0),
+    escalateMins: n('chatEscalateMins', 0),
   };
 }
 
@@ -87,7 +95,12 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly events: InboxEventsService,
     @Optional() private readonly push?: PushService,
-  ) {}
+    // A team member's own Messenger as their turn alert (./staff-alerts). Optional: without it, push only.
+    @Optional() private readonly staff?: StaffAlertsService,
+  ) {
+    // "Bỏ qua" on Messenger passes the turn on through the same routing.
+    this.staff?.setSkipRouter((tenantId, threadId, fromUserId) => this.route(tenantId, threadId, null, { excludeUserId: fromUserId, reason: 'reassign-unreplied' }));
+  }
 
   onModuleInit(): void {
     if (process.env.NODE_ENV === 'test') return;
@@ -142,6 +155,9 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const turnsBy = new Map<string, number>(logs.map((r: { userId: string; _count: number }) => [r.userId, Number(r._count) || 0]));
     const clock = await this.salonClock(tenantId);
     const now = new Date();
+    // On shift through their own Messenger ("vào ca") counts as having Lumio open.
+    const links = this.staff ? await this.staff.linksOf(tenantId).catch(() => ({})) : {};
+    const onMsgr = (id: string) => windowOpen((links as Record<string, never>)[id], now);
     const inList = (id: string) => (set.agentIds.length ? set.agentIds.includes(id) : true);
 
     const views = users.map((u) => {
@@ -149,7 +165,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       const hours = u.staffMember?.workingHours ?? [];
       const onShift = !u.staffMember || !hours.length ? null : (clock ? isOnShift(hours, clock.weekday, clock.minutes) : null);
       const status = p?.status === 'away' ? 'away' as const : 'available' as const;
-      const online = !!p?.lastSeenAt && now.getTime() - new Date(p.lastSeenAt).getTime() <= Math.max(1, set.onlineMins) * 60_000;
+      const online = onMsgr(u.id) || (!!p?.lastSeenAt && now.getTime() - new Date(p.lastSeenAt).getTime() <= Math.max(1, set.onlineMins) * 60_000);
       return {
         userId: u.id,
         name: [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email,
@@ -158,7 +174,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         status,
         online,
         onShift,
-        onDuty: isOnDuty({ status, onShift, lastSeenAt: p?.lastSeenAt ?? null }, set, now),
+        onDuty: isOnDuty({ status, onShift, lastSeenAt: onMsgr(u.id) ? now : p?.lastSeenAt ?? null }, set, now),
         openThreads: openBy.get(u.id) ?? 0,
         turnsToday: turnsBy.get(u.id) ?? 0,
       };
@@ -223,13 +239,18 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     }
     await this.db.chatAssignmentLog?.create({ data: { tenantId, threadId, userId, fromUserId, byUserId, reason: String(reason) } }).catch(() => undefined);
     this.events.publish(tenantId, 'thread');
-    const t = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { senderName: true, lastText: true } }).catch(() => null) as { senderName?: string | null } | null;
+    const t = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { senderName: true, lastText: true, adId: true, adAt: true } }).catch(() => null) as { senderName?: string | null; adId?: string | null; adAt?: Date | null } | null;
+    const now = new Date();
+    const fromAd = !!t && isAdThread(t, now);
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as ConnRow;
+    const mins = t ? unrepliedMinsFor(t, settingsOf(conn), now) : 0;
     void this.push?.sendToUser(tenantId, userId, {
-      title: hop ? 'Chuyển turn cho bạn' : 'Bạn có turn chat mới',
-      body: `${t?.senderName || 'Khách'} đang nhắn — mở Inbox để theo dõi.`,
-      url: '/salon/inbox',
+      title: fromAd ? 'Khách mới từ QUẢNG CÁO' : hop ? 'Chuyển turn cho bạn' : 'Bạn có turn chat mới',
+      body: `${t?.senderName || 'Khách'} đang nhắn${mins > 0 ? ` — trả lời trong ${mins} phút` : ''}. Mở Inbox để trả lời.`,
+      url: `/salon/inbox?thread=${threadId}`,
       tag: `chat-turn-${threadId}`,
     }).catch(() => undefined);
+    void this.staff?.notifyTurn(tenantId, userId, threadId, { hop, fromAd, mins }).catch(() => undefined);
   }
 
   // ---------------------------------------------------------------- API ----
@@ -264,6 +285,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       ['onlineMins', 'chatOnlineMins', 1, 120], ['maxOpenPerAgent', 'chatMaxOpenPerAgent', 0, 50],
       ['reassignUnreadMins', 'chatReassignUnreadMins', 0, 240], ['reassignUnrepliedMins', 'chatReassignUnrepliedMins', 0, 240],
       ['maxHops', 'chatMaxHops', 0, 10],
+      ['reassignAdMins', 'chatReassignAdMins', 0, 240], ['escalateMins', 'chatEscalateMins', 0, 240],
     ];
     for (const [k, col, lo, hi] of ints) { const v = clampInt(dto[k], lo, hi); if (v !== undefined) data[col] = v; }
     if (Array.isArray(dto.agentIds)) {
@@ -339,20 +361,26 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     let moved = 0;
     try {
       const conns = await this.db.messengerConnection.findMany({
-        where: { chatAssignMode: 'round-robin', OR: [{ chatReassignUnreadMins: { gt: 0 } }, { chatReassignUnrepliedMins: { gt: 0 } }] },
+        where: { chatAssignMode: 'round-robin', OR: [{ chatReassignUnreadMins: { gt: 0 } }, { chatReassignUnrepliedMins: { gt: 0 } }, { chatReassignAdMins: { gt: 0 } }, { chatEscalateMins: { gt: 0 } }] },
         take: 500,
       }).catch(() => []) as Record<string, unknown>[];
       for (const c of conns) {
         const tenantId = String(c.tenantId);
         const set = settingsOf(c);
-        const shortest = Math.min(...[set.reassignUnreadMins, set.reassignUnrepliedMins].filter((m) => m > 0));
+        if (set.escalateMins > 0) await this.escalate(tenantId, set, now).catch((e) => this.logger.warn(`escalation failed: ${String(e).slice(0, 120)}`));
+        const mins = [set.reassignUnreadMins, set.reassignUnrepliedMins, set.reassignAdMins].filter((m) => m > 0);
+        if (!mins.length) continue;
+        const shortest = Math.min(...mins);
         const threads = await this.db.messengerThread.findMany({
           where: { tenantId, status: 'open', assignedUserId: { not: null }, assignedAt: { lte: new Date(now.getTime() - shortest * 60_000) }, assignHops: { lt: set.maxHops } },
-          select: { id: true, customerId: true, status: true, assignedUserId: true, assignedAt: true, readAt: true, handoffAt: true, handoffMode: true, assignHops: true },
+          select: { id: true, customerId: true, status: true, assignedUserId: true, assignedAt: true, readAt: true, handoffAt: true, handoffMode: true, assignHops: true, adId: true, adAt: true },
           take: 50,
-        }).catch(() => []) as { id: string; customerId: string | null; assignedUserId: string; assignedAt: Date }[];
+        }).catch(() => []) as { id: string; customerId: string | null; assignedUserId: string; assignedAt: Date; adId?: string | null; adAt?: Date | null }[];
         for (const t of threads) {
-          const why = reassignDue(t as never, { unreadMins: set.reassignUnreadMins, unrepliedMins: set.reassignUnrepliedMins, maxHops: set.maxHops }, now);
+          // A customer from an ad is passed on sooner when the salon set it (./staff-alerts).
+          const un = unrepliedMinsFor(t, set, now);
+          const unread = isAdThread(t, now) && set.reassignAdMins > 0 && set.reassignUnreadMins > 0 ? Math.min(set.reassignUnreadMins, set.reassignAdMins) : set.reassignUnreadMins;
+          const why = reassignDue(t as never, { unreadMins: unread, unrepliedMins: un, maxHops: set.maxHops }, now);
           if (!why) continue;
           // Claim it first: only if nobody moved it since we read it.
           const claimed = await this.db.messengerThread.updateMany({
@@ -375,5 +403,37 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       this.ticking = false;
     }
     return moved;
+  }
+
+  /**
+   * A customer has waited too long with nobody from the team answering:
+   * tell the salon's owners (push, and their own Messenger when on shift),
+   * once per wait. Only conversations a person is meant to handle — given to
+   * someone, or handed over by the AI.
+   */
+  async escalate(tenantId: string, set: TurnSettings, now: Date = new Date()): Promise<number> {
+    const since = new Date(now.getTime() - 6 * 3600_000);
+    const rows = await this.db.messengerThread.findMany({
+      where: { tenantId, status: 'open', lastCustomerAt: { gte: since, lte: new Date(now.getTime() - set.escalateMins * 60_000) }, OR: [{ assignedUserId: { not: null } }, { handoff: true }] },
+      select: { id: true, status: true, senderName: true, lastCustomerAt: true, handoffAt: true, escalatedAt: true, assignedUserId: true, assignHops: true, adId: true, adAt: true },
+      take: 50,
+    }).catch(() => []) as { id: string; status: string; senderName: string | null; lastCustomerAt: Date; handoffAt: Date | null; escalatedAt: Date | null; assignedUserId: string | null; assignHops: number; adId: string | null; adAt: Date | null }[];
+    const due = rows.filter((t) => escalationDue(t, set.escalateMins, now));
+    if (!due.length) return 0;
+    const owners = await this.prisma.user.findMany({ where: { tenantId, isActive: true, role: UserRole.SALON_ADMIN }, select: { id: true } }).catch(() => []);
+    for (const t of due) {
+      const done = await this.db.messengerThread.updateMany({ where: { id: t.id, tenantId, OR: [{ escalatedAt: null }, { escalatedAt: { lt: t.lastCustomerAt } }] }, data: { escalatedAt: now } }).catch(() => ({ count: 0 }));
+      if (!done.count) continue;
+      const waited = Math.round((now.getTime() - new Date(t.lastCustomerAt).getTime()) / 60_000);
+      const text = `🚨 ${t.senderName || 'Khách'}${isAdThread(t, now) ? ' (từ QUẢNG CÁO)' : ''} đã chờ ${waited} phút, chưa ai trả lời${t.assignHops ? ` · đã chuyển ${t.assignHops} lần` : ''}.`;
+      for (const o of owners) {
+        void this.push?.sendToUser(tenantId, o.id, { title: 'Khách chờ quá lâu', body: text, url: `/salon/inbox?thread=${t.id}`, tag: `chat-escalate-${t.id}` }).catch(() => undefined);
+      }
+      void this.staff?.notifyEscalation(tenantId, owners.map((o) => o.id), `${text}
+Mở Lumio › Hộp thư để trả lời.`).catch(() => 0);
+      await this.db.auditLog?.create({ data: { tenantId, action: 'messenger.turn_escalated', resourceType: 'messenger', resourceId: t.id, metadata: { waited } } }).catch(() => undefined);
+      this.events.publish(tenantId, 'thread');
+    }
+    return due.length;
   }
 }

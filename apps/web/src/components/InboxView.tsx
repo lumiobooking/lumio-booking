@@ -23,6 +23,7 @@
  */
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PhotoPicker, PhotoWaiting, usePhotoSuggest } from './photos/PhotoPicker';
 import { fmtInTz } from '../lib/datetime';
 import { useAuth } from '../lib/auth';
 import { apiFetch, apiStream, apiImage, apiImageCached } from '../lib/api';
@@ -973,6 +974,14 @@ export function InboxView() {
    * which decides — not this screen — whether this conversation may be written to.
    */
   const photoRef = useRef<HTMLInputElement | null>(null);
+  // The library picker (19/11/2026): suggestions for what the customer last wrote, and what the AI holds for approval.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const photoKey = detail ? `${detail.id}:${detail.history?.length ?? 0}` : '';
+  const { data: photoSuggest, reload: reloadPhotoSuggest } = usePhotoSuggest(token ?? null, detail?.id ?? null, photoKey);
+  async function afterLibrarySend() {
+    if (!detail) return;
+    await Promise.all([loadList(), loadThread(detail.id), reloadPhotoSuggest()]);
+  }
   async function sendPhoto(file: File | null | undefined) {
     if (!file || !detail || !token) return;
     if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { setErr(vi ? 'Chỉ gửi được ảnh JPG, PNG hoặc WebP.' : 'Only JPG, PNG or WebP photos can be sent.'); return; }
@@ -1835,11 +1844,19 @@ export function InboxView() {
                 {narrow && <button type="button" onClick={() => setComposerMode('reply')} style={{ ...chipBase, minHeight: 36 }}>{vi ? 'Quay lại trả lời' : 'Back to reply'}</button>}
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+            {!noteMode && (
+              <PhotoWaiting token={token ?? null} threadId={detail.id} vi={vi} suggest={photoSuggest} disabled={notice.blocked}
+                onSent={() => void afterLibrarySend()} onError={(m) => setErr(m)} />
+            )}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, position: 'relative' }}>
+              {!noteMode && pickerOpen && (
+                <PhotoPicker token={token ?? null} threadId={detail.id} vi={vi} narrow={narrow} suggest={photoSuggest} disabled={notice.blocked || busy}
+                  onClose={() => setPickerOpen(false)} onSent={() => void afterLibrarySend()} onUpload={() => photoRef.current?.click()} onError={(m) => setErr(m)} />
+              )}
               {!noteMode && (
                 <>
                   <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={(e) => void sendPhoto(e.target.files?.[0])} />
-                  <button type="button" disabled={notice.blocked || busy} onClick={() => photoRef.current?.click()}
+                  <button type="button" disabled={notice.blocked || busy} onClick={() => setPickerOpen((x) => !x)} aria-expanded={pickerOpen}
                     aria-label={vi ? 'Gửi ảnh cho khách' : 'Send a photo to the customer'} title={vi ? 'Gửi ảnh cho khách' : 'Send a photo to the customer'}
                     style={{ width: 48, height: 48, borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c0b1220)', color: 'var(--ccbd5e1)', flexShrink: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: (notice.blocked || busy) ? 0.5 : 1 }}>
                     <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="8.5" cy="10" r="1.6" /><path d="M21 16l-5-5-8 8" /></svg>

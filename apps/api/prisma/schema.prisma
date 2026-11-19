@@ -329,6 +329,7 @@ model Tenant {
   voiceLine            VoiceLine?
   contentIdeas         ContentIdea[]
   mediaFingerprints    MediaFingerprint[]
+  mediaLibrary         MediaLibraryItem[]
   contentSuggestions   ContentSuggestion[]
   contentWeeks         ContentWeek[]
   scheduledPosts       ScheduledPost[]
@@ -4245,4 +4246,39 @@ model MediaFingerprint {
   @@index([sha256])
   @@index([tenantId, createdAt])
   @@map("media_fingerprints")
+}
+
+/// Thư viện ảnh gửi khách (19/11/2026): the pictures ONE salon lets its chat
+/// (AI or a person) send — samples, price list, storefront, guides, promos and
+/// customers' results with consent. Chosen by these labels, never by captions.
+model MediaLibraryItem {
+  id         String    @id @default(uuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  url        String
+  /// sample | price_list | storefront | guide | promo | result
+  kind       String
+  title      String    @default("")
+  serviceId  String?
+  tags       String[]  @default([])
+  aiAllowed  Boolean   @default(true)
+  expiresAt  DateTime?
+  /// face | phone | other_shop — found when the picture was read; blocks the AI until consent.
+  flags      String[]  @default([])
+  consent    Boolean   @default(false)
+  /// ready | pending (imported from posts, waiting for the owner)
+  status     String    @default("ready")
+  /// upload | service | branding | post | chat
+  source     String    @default("upload")
+  /// price list only: the menu prices it was checked against
+  priceSig   String?
+  sentCount  Int       @default(0)
+  lastSentAt DateTime?
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([tenantId, kind])
+  @@index([tenantId, url])
+  @@map("media_library")
 }

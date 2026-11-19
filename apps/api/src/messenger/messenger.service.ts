@@ -56,6 +56,8 @@ import { aiBookingNote, noteLangForMarket, type AiChannel } from '../bookings/ai
 import { leadDossier, rawMemoryFallback, LeadFacts, customerDossier, type KnownCustomer } from './lead-memory';
 import { habitLine, profileFrom } from '../common/customer-profile';
 import { InboxEventsService } from './inbox-events.service';
+import { PhotoLibraryService, sentUrls } from './photo-library.service';
+import { isKind as isPhotoKind, toolAnswer as photoToolAnswer, wordsOf as wordsOfPhoto, type PhotoKind } from './photo-library';
 import { PushService } from '../push/push.service';
 import { pushPayload } from '../notifications/push-payload';
 import { ChatTurnsService, settingsOf as turnSettingsOf } from './chat-turns.service';
@@ -354,6 +356,8 @@ export class MessengerService implements OnModuleInit {
     // Which new behaviours are live for which salon (common/ai-release). Optional:
     // without it every staged behaviour is simply off, as before it existed.
     @Optional() private readonly release?: AiReleaseService,
+    // Thư viện ảnh gửi khách: pictures chosen by their labels. Optional: without it send_photos uses the old sources.
+    @Optional() private readonly photoLibrary?: PhotoLibraryService,
   ) {}
 
   /**
@@ -5127,7 +5131,7 @@ KEEP IT SIMPLE — these rules beat everything else:
 - Never read a SINGLE detail back to be confirmed as they give it. If they just typed a name, a phone number or a time, accept it and move on to the next missing piece — the one full recap before booking (see CONFIRM BEFORE BOOKING) is the only read-back. "Just to confirm, is 512-555-1234 your number?" is exactly what NOT to do.
 - If a detail they give now differs from one you already had, the NEW one silently wins. Never ask the customer to choose between two versions of their own phone number, name or time.
 - When they don't know what they want, suggest 2-3 popular services — not the whole menu. Share the full list only if they ask.
-- PICTURES: when they ask what a service looks like, for samples/designs ("có mẫu nào không", "show me some designs"), for the price list, or where the shop is, call send_photos FIRST and then write one short line; the pictures arrive above your words. If it answers NONE, answer in words and say the salon will send photos shortly — never describe pictures that were not sent.
+- PICTURES: when they ask what a service looks like, for samples/designs ("có mẫu nào không", "show me some designs"), for the price list, or where the shop is, call send_photos FIRST (put the look they describe — style, colour, length — in style) and then write one short line; the pictures arrive above your words. If it answers NONE, answer in words and say the salon will send photos shortly — never describe pictures that were not sent.
 - No jargon, no policies, no long explanations unless they ask. Turn settings into plain words a customer would say: "Do I need to book ahead?" → "Booking ahead holds your spot — I can book you today." Never recite internal numbers like "at least 1 hour in advance, up to 60 days ahead" unless they ask exactly that.
 - PRICES: one short sentence — the price, and the promo in a few words if one applies ("Acrylic full set is $45, and it's 20% off this month"). Never walk through arithmetic (each, both, totals, savings) unless they ask for a total.
 - Off-topic question? Answer in one friendly line, then gently return to the booking.
@@ -5309,6 +5313,7 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
             kind: { type: 'string', enum: ['service', 'price_list', 'storefront', 'posts'] },
             serviceName: { type: 'string', description: "For 'service': the service name as in get_services, or the customer's words for it." },
             query: { type: 'string', description: "For 'posts': a word to look for in the salon's recent posts (a design, a colour, a service). Empty = the latest." },
+            style: { type: 'string', description: "The customer's own words for the look they want: style, colour, length, shape (e.g. 'French trắng', 'mắt mèo xanh', 'nude ngắn'). Empty when they just ask for samples." },
           },
           required: ['kind'],
         },
@@ -7344,6 +7349,13 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (name === 'send_photos') {
         if (!ctx?.pageToken || !ctx.senderId) return 'Could not send pictures in this chat.';
         const kind = String(input.kind || '');
+        // The salon's picture library first (by labels); a salon that has not
+        // started one keeps the old sources below, unchanged.
+        const lib = await this.libraryPhotos(tenantId, ctx, kind, input, dry).catch((e) => {
+          this.logger.warn(`photo library pick failed: ${String((e as Error)?.message ?? e).slice(0, 120)}`);
+          return null;
+        });
+        if (lib) return lib;
         const picked = await this.photosFor(tenantId, kind, String(input.serviceName || input.query || '').trim());
         if (!picked.urls.length) {
           return kind === 'price_list' ? 'NONE — the salon has not uploaded a price-list image. Give the prices in words from get_services instead.'
@@ -7418,6 +7430,63 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * Posts older than the media-retention window are skipped: their files are
    * gone (mediaPurgedAt).
    */
+  /**
+   * send_photos from the salon's own library (19/11/2026). Returns the tool
+   * answer, or null when this salon has no ready library picture of that kind
+   * (the old sources then answer, as before). The library decides: send the
+   * strong matches; send one close picture and ask; hold them for a person
+   * (the salon's setting for that kind); or none — and never a picture
+   * already sent in this conversation, an expired promotion, a price list
+   * older than the prices, or a flagged picture without consent.
+   */
+  private async libraryPhotos(
+    tenantId: string,
+    ctx: { pageToken?: string; senderId?: string; channel?: string; threadId?: string; photos?: { urls: string[]; label: string }[] },
+    rawKind: string,
+    input: Record<string, unknown>,
+    dry: boolean,
+  ): Promise<string | null> {
+    if (!this.photoLibrary) return null;
+    const kind: PhotoKind | null = rawKind === 'service' || rawKind === 'posts' ? 'sample' : isPhotoKind(rawKind) ? rawKind : null;
+    if (!kind) return null;
+    const svcWords = String(input.serviceName ?? '').trim();
+    const style = String(input.style ?? input.query ?? '').trim();
+    const serviceId = kind === 'sample' && svcWords ? await this.resolveServiceId(tenantId, '', svcWords).catch(() => null) : null;
+    const thread = ctx.threadId ? await this.prisma.messengerThread.findFirst({ where: { id: ctx.threadId, tenantId }, select: { history: true } }).catch(() => null) : null;
+    const sent = sentUrls((Array.isArray(thread?.history) ? thread!.history : []) as { role?: string; images?: unknown }[]);
+    for (const p of ctx.photos ?? []) for (const u of p.urls) sent.add(u);
+    const words = wordsOfPhoto(serviceId ? style : `${svcWords} ${style}`);
+    const got = await this.photoLibrary.pickForAi(tenantId, kind, serviceId, words, sent);
+    if (!got) return null;
+    const { result, rules } = got;
+    const label = [svcWords, style].filter(Boolean).join(' ') || (kind === 'price_list' ? 'bảng giá' : kind === 'storefront' ? 'mặt tiền tiệm' : 'mẫu');
+    if (result.decision === 'approve' || (result.decision === 'none' && !result.allSent && rules.whenNone === 'notify' && kind === 'sample')) {
+      if (ctx.threadId && !dry) {
+        await this.photoLibrary.addPending(tenantId, ctx.threadId, result.picked.map((p) => p.item.id), label);
+        this.events.publish(tenantId, 'message');
+      }
+      return result.decision === 'approve' ? photoToolAnswer(result, 0, label) : photoToolAnswer(result, 0, label);
+    }
+    if (result.decision !== 'send' && result.decision !== 'ask') return photoToolAnswer(result, 0, label);
+    if (!ctx.pageToken || !ctx.senderId) return 'Could not send pictures in this chat.';
+    const ch = (ctx.channel === 'instagram' || ctx.channel === 'zalo' || ctx.channel === 'web' ? ctx.channel : 'messenger') as Channel;
+    const okIds: string[] = [];
+    const okUrls: string[] = [];
+    for (const p of result.picked) {
+      const r = dry ? { ok: true } : await this.sendImage(ctx.pageToken, ctx.senderId, p.item.url, ch);
+      if (r.ok) { okIds.push(p.item.id); okUrls.push(p.item.url); }
+    }
+    if (okUrls.length) {
+      ctx.photos = [...(ctx.photos ?? []), { urls: okUrls, label }];
+      if (!dry) {
+        await this.photoLibrary.markSent(tenantId, okIds);
+        await this.photoLibrary.logAiSend(tenantId, ctx.threadId ?? null, okIds, `${result.decision}: ${label}`);
+        if (ctx.threadId) await this.photoLibrary.clearPending(tenantId, ctx.threadId);
+      }
+    }
+    return photoToolAnswer(result, okUrls.length, label);
+  }
+
   private async photosFor(tenantId: string, kind: string, q: string): Promise<{ urls: string[]; label: string }> {
     const https = (u: unknown): u is string => typeof u === 'string' && /^https:\/\//i.test(u) && !/\.svg(\?|$)/i.test(u);
     const uniq = (arr: string[]) => Array.from(new Set(arr)).slice(0, 3);

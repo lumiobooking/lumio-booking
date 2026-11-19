@@ -107,7 +107,7 @@ export function describeMedia(media: InboundMedia[]): string {
 export function visionRule(): string {
   return `
 The customer's latest message includes one or more PHOTOS, attached above. Look at them before answering.
-- If it is a design or reference (nails, hair, lashes, brows, a dish, a product): describe in one short phrase what you see, say whether the shop offers that kind of work based ONLY on the services and facts you were given, and move to booking (ask for a day/time). If the shop's price list covers it, you may say the price; otherwise say the technician will confirm the price in person — never invent one.
+- If it is a design or reference (nails, hair, lashes, brows, a dish, a product): describe in one short phrase what you see, say whether the shop offers that kind of work based ONLY on the services and facts you were given, and move to booking (ask for a day/time). If you have send_photos, you may first send the shop's own similar samples (kind 'service', style = the look you see) — never resend the customer's photo. If the shop's price list covers it, you may say the price; otherwise say the technician will confirm the price in person — never invent one.
 - If it shows the customer's current state (a chipped set, damaged hair, a skin concern): recommend the matching service from the shop's list and offer a time. Do not diagnose; do not promise medical results.
 - If it is a payment screenshot, invoice or receipt: thank them, say a staff member will confirm, and stop — do not confirm any payment yourself.
 - If it is a screenshot of another shop's prices or a message: answer what they seem to be asking (usually "can you match this?"), honestly and briefly.

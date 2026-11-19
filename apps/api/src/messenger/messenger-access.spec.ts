@@ -39,6 +39,9 @@ const STAFF_MAY = [
   'inboxUi', 'threadLead',
   // A photo from the reply box: the same people who may type a reply (18/11/2026).
   'sendPhoto',
+  // Thư viện ảnh gửi khách (19/11/2026): seeing the library to pick from, the suggestions beside a chat,
+  // sending one picture (server re-checks it is this salon's and not locked) and dismissing a waiting one.
+  'photoLibrary', 'photoSuggest', 'sendLibraryPhoto', 'clearPhotoWaiting',
   // The top of the AI page (which staff may already view): this salon's numbers, nothing to change.
   'aiOverview',
   // Turning notifications on for their own phone is NOT here: that already
@@ -54,6 +57,8 @@ const STAFF_MUST_NOT = [
   // and where posts go. Owner and Lumio staff only, like disconnect.
   'keepOnly',
   'importFacts', 'suggestGreeting',
+  // Changing the picture library and its rules is the owner's.
+  'addPhoto', 'importPhotos', 'photoRules', 'savePhotoRules', 'updatePhoto', 'deletePhoto',
   // Pulling the Page's past conversations into the inbox reads the Page token
   // and writes threads for the whole shop — the owner's (or Lumio's) call.
   'importConversations',

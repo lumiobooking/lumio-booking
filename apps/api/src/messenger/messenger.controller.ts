@@ -7,6 +7,7 @@ import { KnowledgeGapsService } from './knowledge-gaps.service';
 import { AiDigestService } from './ai-digest.service';
 import { BotReportService } from './bot-report.service';
 import { UploadsService } from '../uploads/uploads.service';
+import { PhotoLibraryService } from './photo-library.service';
 import { resolveTenantScope } from '../common/tenant/tenant-context';
 import { HandoffDto, LeadStatusDto, ThreadLeadDto, RenameThreadDto, SendTestDto, SuggestGreetingDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -28,6 +29,12 @@ import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
  * means a route only becomes reachable by staff when somebody typed INBOX_ROLES
  * on it, never by accident.
  */
+/** The picture library, or a plain error when it is not wired (never a crash). Kept outside the class: it is not a route. */
+function libOf(photos?: PhotoLibraryService): PhotoLibraryService {
+  if (!photos) throw new BadRequestException('Photo library unavailable.');
+  return photos;
+}
+
 const INBOX_ROLES = [UserRole.SALON_ADMIN, UserRole.STAFF] as const;
 
 /** Salon-admin management of the Messenger booking bot (tenant-scoped). */
@@ -42,7 +49,84 @@ export class MessengerController {
     private readonly digest: AiDigestService,
     // The salon's own upload folder, for a photo a person sends from the Inbox. Optional so a storage problem never takes the Inbox down.
     @Optional() private readonly uploads?: UploadsService,
+    // Thư viện ảnh gửi khách (19/11/2026). Optional so a library problem never takes the Inbox down.
+    @Optional() private readonly photos?: PhotoLibraryService,
   ) {}
+
+  // ---- Thư viện ảnh gửi khách. Reading it: owner and staff (the Inbox picker). Changing it: owner only (class default).
+  @Roles(...INBOX_ROLES)
+  @Get('photo-library')
+  photoLibrary(@CurrentUser() user: AuthenticatedUser) {
+    return libOf(this.photos).list(user);
+  }
+
+  /** A new picture: stored in the CALLER'S salon folder, then labelled. */
+  @Post('photo-library')
+  async addPhoto(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    if (!this.uploads) throw new BadRequestException('STORAGE_NOT_CONFIGURED');
+    const dataUrl = typeof dto?.dataUrl === 'string' ? dto.dataUrl : '';
+    if (!/^data:image\/(png|jpe?g|webp);base64,/.test(dataUrl)) throw new BadRequestException('Chỉ thêm được ảnh JPG, PNG hoặc WebP.');
+    const url = await this.uploads.uploadDataUrl(tenantId, dataUrl);
+    return libOf(this.photos).create(user, url, dto ?? {});
+  }
+
+  @Post('photo-library/import')
+  importPhotos(@CurrentUser() user: AuthenticatedUser) {
+    return libOf(this.photos).reimport(user);
+  }
+
+  @Get('photo-library/rules')
+  photoRules(@CurrentUser() user: AuthenticatedUser) {
+    return libOf(this.photos).getRules(user);
+  }
+
+  @Post('photo-library/rules')
+  savePhotoRules(@CurrentUser() user: AuthenticatedUser, @Body() dto: unknown) {
+    return libOf(this.photos).setRules(user, dto);
+  }
+
+  @Post('photo-library/:id')
+  updatePhoto(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: Record<string, unknown>) {
+    return libOf(this.photos).update(user, id, dto ?? {});
+  }
+
+  @Post('photo-library/:id/delete')
+  deletePhoto(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return libOf(this.photos).remove(user, id);
+  }
+
+  /** Beside a conversation: pictures that fit what the customer last wrote, and any the AI is holding for a person. */
+  @Roles(...INBOX_ROLES)
+  @Get('threads/:id/photo-suggest')
+  photoSuggest(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return libOf(this.photos).suggest(user, id);
+  }
+
+  /** A person sends one library picture. Same window, ownership and audit rules as any photo from the reply box. */
+  @Roles(...INBOX_ROLES)
+  @Post('threads/:id/photo-library')
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('messengerAi')
+  async sendLibraryPhoto(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { itemId?: unknown }) {
+    const lib = libOf(this.photos);
+    await this.svc.assertOwnThread(user, id);
+    const item = await lib.sendable(user, String(dto?.itemId ?? ''));
+    const out = await this.svc.sendManualPhoto(user, id, item.url);
+    await lib.afterPersonSent(user, item.tenantId, id, item.id);
+    return out;
+  }
+
+  /** "Bỏ qua" on a waiting suggestion. */
+  @Roles(...INBOX_ROLES)
+  @Post('threads/:id/photo-waiting/clear')
+  async clearPhotoWaiting(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    await this.svc.assertOwnThread(user, id);
+    const tenantId = resolveTenantScope(user);
+    if (tenantId) await libOf(this.photos).clearPending(tenantId, id);
+    return { ok: true };
+  }
 
   // How the bot is doing: conversations → bookings, where the rest stopped, next steps.
   // Salon admin only (class default); one salon's rows only.

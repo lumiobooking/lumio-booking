@@ -32,14 +32,15 @@ import { AiInstructionsTab } from '../../../components/AiInstructionsTab';
 import { TeachAiPanel, canTeachAi, type InsChannel } from '../../../components/TeachAiPanel';
 import { usePaged } from '../../../components/ListFilter';
 import { BotReportBox } from '../../../components/BotReportBox';
+import { PhotoLibrary } from '../../../components/photos/PhotoLibrary';
 import { KnowledgeGapsBox } from '../../../components/KnowledgeGapsBox';
 import { AiTop, AiStepBar, AiWatch, type AiStep } from '../../../components/ai/AiOnePage';
 import { aiTiles, readiness, type AiOverview, type ReadyGo } from '../../../lib/ai-readiness';
 import { Empty, PageBar, Search, SubTabs, Switch, type SubTab, ghostBtn as kitGhost, primaryBtn as kitPrimary } from '../../../components/ai/aiKit';
 
 type Lang = 'en' | 'vi' | 'es' | 'zh' | 'ko' | 'fr' | 'ja';
-type Tab = 'home' | 'learn' | 'sim' | 'overview' | 'teach' | 'persona' | 'knowledge' | 'booking' | 'chat' | 'voice' | 'memory' | 'sandbox';
-const TABS: Tab[] = ['home', 'learn', 'sim', 'persona', 'knowledge', 'teach', 'booking', 'memory', 'chat', 'voice', 'overview', 'sandbox'];
+type Tab = 'home' | 'learn' | 'sim' | 'overview' | 'teach' | 'persona' | 'knowledge' | 'booking' | 'chat' | 'voice' | 'memory' | 'sandbox' | 'photos';
+const TABS: Tab[] = ['home', 'learn', 'sim', 'persona', 'knowledge', 'teach', 'photos', 'booking', 'memory', 'chat', 'voice', 'overview', 'sandbox'];
 /**
  * Five tabs, in the order an owner needs them (mockup "Trang AI 5 thẻ", 16/11/2026):
  * how the AI is doing → what it needs to be taught → what it knows → trying it → settings.
@@ -49,7 +50,7 @@ type Group = 'home' | 'learn' | 'knowledge' | 'check' | 'settings';
 const GROUPS: { id: Group; vi: string; en: string; tabs: Tab[] }[] = [
   { id: 'home', vi: 'Tổng quan', en: 'Overview', tabs: ['home'] },
   { id: 'learn', vi: 'Cần dạy', en: 'To teach', tabs: ['learn'] },
-  { id: 'knowledge', vi: 'Kiến thức', en: 'Knowledge', tabs: ['knowledge', 'teach', 'memory'] },
+  { id: 'knowledge', vi: 'Kiến thức', en: 'Knowledge', tabs: ['knowledge', 'teach', 'photos', 'memory'] },
   { id: 'check', vi: 'Thử & kiểm tra', en: 'Try & check', tabs: ['sandbox', 'sim', 'overview'] },
   { id: 'settings', vi: 'Cài đặt', en: 'Settings', tabs: ['persona', 'booking', 'chat', 'voice'] },
 ];
@@ -59,7 +60,7 @@ const GROUPS: { id: Group; vi: string; en: string; tabs: Tab[] }[] = [
  * watch it. Where the new layout is not live, the five tabs above stand.
  */
 const STEPS: { id: AiStep; tabs: Tab[] }[] = [
-  { id: 'teach', tabs: ['learn', 'teach', 'knowledge', 'memory'] },
+  { id: 'teach', tabs: ['learn', 'teach', 'knowledge', 'photos', 'memory'] },
   { id: 'try', tabs: ['sandbox', 'sim'] },
   { id: 'on', tabs: ['chat', 'voice', 'persona', 'booking'] },
   { id: 'watch', tabs: ['overview'] },
@@ -71,9 +72,9 @@ function readAiUi(tenantId: string | null | undefined): AiOverview | null {
 }
 const groupOf = (t: Tab): Group => GROUPS.find((g) => g.tabs.includes(t))?.id ?? 'home';
 /** One small picture per section, so the list reads at a glance. */
-const TAB_ICON: Record<Tab, string> = { home: '📊', learn: '🎓', sim: '🎭', persona: '🙂', knowledge: '📚', teach: '✍️', booking: '📅', memory: '🗂️', chat: '💬', voice: '📞', overview: '🩺', sandbox: '🧪' };
+const TAB_ICON: Record<Tab, string> = { home: '📊', learn: '🎓', sim: '🎭', persona: '🙂', knowledge: '📚', teach: '✍️', booking: '📅', memory: '🗂️', photos: '🖼️', chat: '💬', voice: '📞', overview: '🩺', sandbox: '🧪' };
 /** Old links (?tab=channels) land on the messages section. */
-const ALIAS: Record<string, Tab> = { channels: 'chat' };
+const ALIAS: Record<string, Tab> = { channels: 'chat', 'photo-library': 'photos' };
 const LANGS: { id: Lang; label: string }[] = [
   { id: 'en', label: 'English' }, { id: 'vi', label: 'Tiếng Việt' }, { id: 'es', label: 'Español' },
   { id: 'zh', label: '中文' }, { id: 'ko', label: '한국어' }, { id: 'fr', label: 'Français' }, { id: 'ja', label: '日本語' },
@@ -195,6 +196,7 @@ function Inner() {
     teach: L(vi, 'Lời dặn của chủ tiệm', 'Owner’s instructions'),
     booking: L(vi, 'Đặt lịch & chuyển người', 'Booking & hand-off'),
     memory: L(vi, 'Trí nhớ khách', 'Customer memory'),
+    photos: L(vi, 'Ảnh gửi khách', 'Photos for customers'),
     chat: L(vi, 'Cách trả lời tin nhắn', 'How it answers messages'),
     voice: L(vi, 'Cách nói trên điện thoại', 'How it talks on the phone'),
     overview: L(vi, 'Sức khoẻ & việc gọi lại', 'Health & callbacks'),
@@ -330,6 +332,7 @@ function Inner() {
             {tab === 'chat' && <ChatSection brain={brain} patch={patch} vi={vi} canEdit={canEdit} view={view} token={token} />}
             {tab === 'voice' && <VoiceSection brain={brain} patch={patch} vi={vi} canEdit={canEdit} view={view} />}
             {tab === 'memory' && <Memory token={token} vi={vi} canEdit={canEdit} />}
+            {tab === 'photos' && <PhotoLibrary token={token} vi={vi} canEdit={canEdit} />}
             {tab === 'sandbox' && <Sandbox token={token} vi={vi} />}
           </div>
         )}

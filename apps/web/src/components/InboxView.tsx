@@ -526,6 +526,15 @@ export function InboxView() {
     return () => window.clearInterval(id);
   }, [loadTurns]);
   const turnsOn = turns?.settings.mode === 'round-robin';
+  // rt209: a team member opens on THEIR customers ("Của tôi") when chat turns are on;
+  // the owner keeps the whole inbox. Once — a tap on another tab is respected.
+  const mineDefaulted = useRef(false);
+  useEffect(() => {
+    if (mineDefaulted.current || !turns || !turnsOn || authUser?.role !== 'STAFF' || authUser?.supportSession) return;
+    mineDefaulted.current = true;
+    setFilter('mine');
+    setQueue('mine');
+  }, [turns, turnsOn, authUser?.role, authUser?.supportSession]);
   /** rt205: the live stream refreshes the turn state too (read through a ref so the stream is not re-opened). */
   const loadTurnsRef = useRef<(() => Promise<void>) | null>(null);
   loadTurnsRef.current = loadTurns;
@@ -1297,10 +1306,15 @@ export function InboxView() {
             // v2: the avatar's corner mark already says which page; the name is not repeated on every row.
             const page = !v2 && pageNames.size > 1 && r.pageName ? r.pageName : null;
             const turnMark = (r.fromAd || r.turnDueAt) ? <TurnBadge fromAd={r.fromAd} dueAt={r.turnDueAt} vi={vi} /> : null;
-            if (!chip && !lab.length && !page && !turnMark) return v2 ? pileChip(r) : null;
+            // rt209: "this customer is yours" — said on the row, so a team member sees at a glance which ones to answer.
+            const mineMark = r.assignedUserId && r.assignedUserId === me
+              ? <span style={{ height: 20, padding: '0 8px', borderRadius: 999, background: 'var(--ink-good)', color: '#ffffff', fontWeight: 700, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>👤 {vi ? 'Của bạn' : 'Yours'}</span>
+              : null;
+            if (!chip && !lab.length && !page && !turnMark && !mineMark) return v2 ? pileChip(r) : null;
             return (<>
               {v2 && pileChip(r)}
               <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, minWidth: 0, marginTop: 2, overflow: 'hidden' }}>
+                {mineMark}
                 {turnMark}
                 {chip}
                 {lab.map((l) => (

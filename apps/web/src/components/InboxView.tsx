@@ -637,7 +637,7 @@ export function InboxView() {
   const loadList = useCallback(async () => {
     if (!token) return;
     try {
-      const r = await apiFetch<InboxRow[]>('/messenger/threads', { token });
+      const r = await apiFetch<InboxRow[]>('/messenger/threads', { token, quiet: true });
       const next = Array.isArray(r) ? r : [];
       // Nothing new -> nothing repaints. See `same` and `keepRows` above: this
       // is the difference between a list that sits still and one that blinks
@@ -741,7 +741,7 @@ export function InboxView() {
       // somebody looked. `markRead: false` on that one path keeps the blue mark
       // until a human clicks the row.
       if (markRead) void apiFetch(`/messenger/threads/${id}/read`, { method: 'POST', token }).catch(() => undefined);
-      const fullD = await apiFetch<ThreadDetail>(`/messenger/threads/${id}`, { token });
+      const fullD = await apiFetch<ThreadDetail>(`/messenger/threads/${id}`, { token, quiet: true });
       remember(fullD);
       if (openRef.current === id) setDetail((cur) => (cur && same(cur, fullD) ? cur : fullD));
     } catch (e) { setErr(String(e)); }
@@ -1084,7 +1084,7 @@ export function InboxView() {
     if (!oldest) return;
     setMoreState('loading');
     try {
-      const r = await apiFetch<InboxRow[]>(`/messenger/threads?before=${encodeURIComponent(oldest.updatedAt)}&beforeId=${encodeURIComponent(oldest.id)}&take=200`, { token });
+      const r = await apiFetch<InboxRow[]>(`/messenger/threads?before=${encodeURIComponent(oldest.updatedAt)}&beforeId=${encodeURIComponent(oldest.id)}&take=200`, { token, quiet: true });
       const page = Array.isArray(r) ? r : [];
       setOlder((cur) => { const seen = new Set(cur.map((x) => x.id)); return [...cur, ...page.filter((x) => !seen.has(x.id))]; });
       setMoreState(page.length < 200 ? 'end' : 'idle');
@@ -1100,7 +1100,7 @@ export function InboxView() {
   useEffect(() => {
     if (!token) return;
     let gone = false;
-    const ask = () => { void apiFetch<{ total?: number }>('/messenger/threads-count', { token }).then((r) => { if (!gone && typeof r?.total === 'number') setTotal(r.total); }).catch(() => undefined); };
+    const ask = () => { void apiFetch<{ total?: number }>('/messenger/threads-count', { token, quiet: true }).then((r) => { if (!gone && typeof r?.total === 'number') setTotal(r.total); }).catch(() => undefined); };
     ask();
     const t = window.setInterval(ask, 60_000);
     return () => { gone = true; window.clearInterval(t); };
@@ -1127,7 +1127,7 @@ export function InboxView() {
   useEffect(() => {
     if (!token) return;
     let gone = false;
-    const ask = () => { void apiFetch<{ totals?: { all?: number } }>('/messenger/prospects?days=90', { token }).then((r) => { if (!gone && typeof r?.totals?.all === 'number') setProspectCount(r.totals.all); }).catch(() => undefined); };
+    const ask = () => { void apiFetch<{ totals?: { all?: number } }>('/messenger/prospects?days=90', { token, quiet: true }).then((r) => { if (!gone && typeof r?.totals?.all === 'number') setProspectCount(r.totals.all); }).catch(() => undefined); };
     const t0 = window.setTimeout(ask, 1500); // after the list itself
     const t = window.setInterval(ask, 5 * 60_000);
     return () => { gone = true; window.clearTimeout(t0); window.clearInterval(t); };
@@ -1187,7 +1187,8 @@ export function InboxView() {
   const canMore = loaded && paged.length >= 100 && paged.length < MAX_ROWS && moreState === 'idle' && !prospectMode;
   useEffect(() => {
     if (!canMore || !bulk) return;
-    const t = window.setTimeout(() => void loadMoreRef.current(), 250);
+    // rt220: a pause between pages so a click on a conversation is never queued behind the history.
+    const t = window.setTimeout(() => void loadMoreRef.current(), 1500);
     return () => window.clearTimeout(t);
   }, [canMore, bulk, paged.length]);
   const canMoreRef = useRef(false);

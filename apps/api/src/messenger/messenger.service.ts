@@ -215,6 +215,8 @@ export function factLiveOn(f: BotFact, day: string): boolean {
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
+/** rt220: how long Meta's copy of one conversation is reused before asking Meta again. */
+const META_HISTORY_TTL_MS = 5 * 60_000;
 /** A card a dry run would have sent (./dry-run DryRunResult.cards). */
 type DryCard = { name: string; price: string; tag?: string; points?: string[] };
 /** A lead's stage. QUOTED and CLOSING (17/11/2026) are the two steps a sale spends most of its life in. */
@@ -2223,6 +2225,7 @@ export class MessengerService implements OnModuleInit {
     // Read the real transcript from Meta. The local buffer is the fallback, not
     // the source — see fetchMetaHistory for why they are different things.
     let turns = localTurns;
+    let metaFetched = false;
     if (full && row.pageId && row.senderId) {
       const pgTok = await this.prisma.messengerPage
         .findUnique({ where: { pageId: String(row.pageId) }, select: { pageToken: true, igId: true } })
@@ -2234,7 +2237,13 @@ export class MessengerService implements OnModuleInit {
         // customer line) is in our own buffer and is merged on top below, so
         // the screen shows it at once.
         const cachedMeta = this.metaHistoryCache.get(String(row.id));
-        const meta = cachedMeta && Date.now() - cachedMeta.at < 20_000 ? cachedMeta.turns : await this.fetchMetaHistory(
+        // rt220: 5 minutes, not 20 s. Every live refresh of an open conversation
+        // asked Meta again (and re-wrote up to 400 log rows) — with the team
+        // working, the server spent its time on Graph calls and the screen sat
+        // on "Máy chủ đang khởi động". Anything newer than Meta's copy is in our
+        // own buffer and is merged on top, so nothing on screen is older.
+        const fresh = !(cachedMeta && Date.now() - cachedMeta.at < META_HISTORY_TTL_MS);
+        const meta = !fresh ? cachedMeta!.turns : await this.fetchMetaHistory(
           String(row.pageId), tok, String(row.senderId),
           (row as { channel?: string }).channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER',
           // The IG account id is who the salon IS on Instagram. Without it
@@ -2246,13 +2255,14 @@ export class MessengerService implements OnModuleInit {
           if (this.metaHistoryCache.size > 500) this.metaHistoryCache.delete(this.metaHistoryCache.keys().next().value as string);
         }
         if (meta && meta.length) historySource = 'meta';
+        metaFetched = fresh;
         turns = mergeHistory(meta as never, localTurns as never) as unknown as Turn[];
       }
     }
     // rt204: whatever Meta still holds is copied into the permanent log the
     // first time anyone opens the conversation — older messages included —
     // so deleting it on Meta later takes nothing away from the salon.
-    if (historySource === 'meta') {
+    if (historySource === 'meta' && metaFetched) {
       const rows = logRowsFrom(tenantId, String(row.id), turns, 400);
       if (rows.length) void (this.prisma as unknown as { messengerMessageLog: { createMany: (a: unknown) => Promise<unknown> } }).messengerMessageLog.createMany({ data: rows, skipDuplicates: true }).catch(() => undefined);
     }
@@ -3545,16 +3555,17 @@ export class MessengerService implements OnModuleInit {
   }
   async startHistoryImport(user: AuthenticatedUser, daysRaw?: number) {
     const tenantId = this.tenantId(user);
-    const days = [30, 90, 180, 365].includes(Number(daysRaw)) ? Number(daysRaw) : 90;
+    // rt220: 0 = everything Meta still has ("tất cả"), not only the last year.
+    const days = [0, 30, 90, 180, 365].includes(Number(daysRaw)) ? Number(daysRaw) : 90;
     const cur = this.historyJobs.get(tenantId);
     if (cur?.running) return cur;
     const job = { running: true, days, startedAt: new Date().toISOString(), finishedAt: null as string | null, scanned: 0, imported: 0, updated: 0, error: null as string | null };
     this.historyJobs.set(tenantId, job);
     await this.audit(tenantId, 'messenger.history_import_started', { userId: user.userId, metadata: { days } });
-    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const since = days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString() : undefined;
     void (async () => {
       try {
-        const r = await this.syncConversations(tenantId, { limit: 100, lines: 20, reply: false, pages: 60, since, onProgress: (n) => { job.scanned = n; } });
+        const r = await this.syncConversations(tenantId, { limit: 100, lines: 20, reply: false, pages: days > 0 ? 60 : 150, since, onProgress: (n) => { job.scanned = n; } });
         job.imported = r.imported; job.updated = r.updated;
         if (r.errors.length) job.error = r.errors.slice(0, 2).join(' · ');
       } catch (e) {

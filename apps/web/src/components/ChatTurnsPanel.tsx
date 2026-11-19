@@ -441,13 +441,14 @@ function HistoryImportBox({ token, vi }: { token: string | null; vi: boolean }) 
           <option value={90}>{T('90 ngày qua', 'Last 90 days')}</option>
           <option value={180}>{T('6 tháng qua', 'Last 6 months')}</option>
           <option value={365}>{T('1 năm qua', 'Last year')}</option>
+          <option value={0}>{T('Tất cả (mọi tin Meta còn giữ)', 'Everything Meta still has')}</option>
         </select>
         <button type="button" disabled={!!job?.running} onClick={() => void start()} style={{ height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid var(--ink-link)', background: 'transparent', color: 'var(--ink-link)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', opacity: job?.running ? 0.6 : 1 }}>
           {job?.running ? T('Đang kéo…', 'Pulling…') : T('Kéo tin cũ', 'Pull')}
         </button>
       </span>
       {job?.running && <span style={{ fontSize: 12.5, color: 'var(--ink-link)', fontWeight: 600 }}>{T(`Đang kéo về… đã quét ${job.scanned} cuộc trò chuyện. Có thể mất vài phút — anh/chị cứ làm việc khác.`, `Pulling… ${job.scanned} conversations scanned. This can take a few minutes.`)}</span>}
-      {job && !job.running && job.finishedAt && <span style={{ fontSize: 12.5, color: 'var(--ink-good)', fontWeight: 600 }}>{T(`Xong (${job.days} ngày): thêm ${job.imported} cuộc mới, cập nhật ${job.updated} cuộc.`, `Done (${job.days} days): ${job.imported} new, ${job.updated} updated.`)}</span>}
+      {job && !job.running && job.finishedAt && <span style={{ fontSize: 12.5, color: 'var(--ink-good)', fontWeight: 600 }}>{T(`Xong (${job.days ? `${job.days} ngày` : 'tất cả'}): thêm ${job.imported} cuộc mới, cập nhật ${job.updated} cuộc.`, `Done (${job.days} days): ${job.imported} new, ${job.updated} updated.`)}</span>}
       {(job?.error || err) && <span style={{ fontSize: 12, color: 'var(--ink-bad)' }}>{job?.error || err}</span>}
     </div>
   );

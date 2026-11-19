@@ -1,7 +1,7 @@
 // Thin client for the Lumio Booking backend API.
 import { blockText, outsideHoursText } from './desk-hours';
 import { writeKind, successText, cacheable, cacheKey, GetCache, SLOW_NOTICE_MS, slowText, preservesCache } from './api-feedback';
-import { notify } from './feedback';
+import { notify, notifyOnce } from './feedback';
 import { networkNotice, isAbortError, GET_RETRY_DELAY_MS } from './net-notice';
 
 // The page is leaving (reload, link, an OAuth consent redirect). Requests the
@@ -318,7 +318,8 @@ async function fetchOnce<T>(path: string, options: ApiOptions, key: string): Pro
   // If the answer takes long enough that the app starts to look dead, say WHY.
   // Render spins the API down when idle; the first request of the morning can
   // take tens of seconds, and a wordless spinner that long reads as "broken".
-  const slowTimer = setTimeout(() => notify('info', slowText(toastVi)), SLOW_NOTICE_MS);
+  // rt220: a background read (quiet) never raises it, and it is said once at a time, not once per request.
+  const slowTimer = setTimeout(() => { if (!quiet) notifyOnce('info', slowText(toastVi)); }, SLOW_NOTICE_MS);
 
   const send = () => fetch(`${API_URL}${path}`, {
     method,

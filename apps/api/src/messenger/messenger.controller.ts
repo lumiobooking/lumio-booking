@@ -520,7 +520,7 @@ export class MessengerController {
   /** rt212: pull every conversation of the last N days from Meta, in the background (owner only). */
   @Post('import-history')
   importHistory(@CurrentUser() user: AuthenticatedUser, @Body() dto: { days?: number }) {
-    return this.svc.startHistoryImport(user, Number(dto?.days) || 90);
+    return this.svc.startHistoryImport(user, dto?.days === undefined || dto?.days === null ? 90 : Number(dto.days));
   }
 
   /** rt212: how the pull is going. */

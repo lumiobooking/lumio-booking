@@ -47,6 +47,7 @@ function readUi2(): boolean {
 /** Routes a paying salon's own accounts never open, whatever their capabilities. */
 const TEAM_ONLY = new Set(Object.values(SCREEN_BY_HREF).filter((i) => i.team).map((i) => i.href));
 
+const GROUP_ICON: Record<string, string> = { ops: 'desk', clients: 'heart', growth: 'sparkle', finance: 'wallet', account: 'gear' };
 const GROUP_KEY: Record<string, string> = {
   ops: 'navg.ops', clients: 'navg.clients', growth: 'navg.growth', finance: 'navg.finance', account: 'navg.account',
 };
@@ -124,6 +125,47 @@ const ShellMountedContext = createContext(false);
  */
 const NavAccessContext = createContext<(href: string) => boolean>(() => true);
 export const useNavAccess = () => useContext(NavAccessContext);
+
+
+/**
+ * The sidebar menu, redesigned 19/11/2026 from the approved mockup "Menu Lumio
+ * · nổi khối" — ONLY the menu, nothing else in the app. The sign-in page's soft
+ * surface: groups are raised pills in the logo blue, an open group is pressed
+ * in, the current page is the one solid blue pill, pages inside a group are
+ * plain rows set in. Light and dark both, through its own scoped tokens.
+ */
+const SN_CSS = `
+.sn-side{--sn-bg:#151d2c;--sn-d:#0b1019;--sn-l:#1f2a3f;--sn-in:#0d131e;--sn-ink:#7cc4ff;--sn-text:#cbd5e1;--sn-icon:#8a97aa;--sn-muted:#94a3b8;--sn-line:#253047;background:var(--sn-bg)!important;border-right:1px solid var(--sn-line)!important}
+html[data-theme='light'] .sn-side{--sn-bg:#e8eef6;--sn-d:#c3cedd;--sn-l:#ffffff;--sn-in:#c7d1df;--sn-ink:#0659b8;--sn-text:#33465f;--sn-icon:#8a97aa;--sn-muted:#5a6b84;--sn-line:#d6dfeb}
+.sn-brand{display:flex;align-items:center;gap:12px;padding:4px 4px 12px}
+.sn-mk{width:56px;height:56px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--sn-bg);box-shadow:6px 6px 12px var(--sn-d),-6px -6px 12px var(--sn-l)}
+.sn-mk img{width:36px;height:36px;display:block}
+.sn-wm{display:flex;flex-direction:column;line-height:1.1;min-width:0}
+.sn-wm b{font-size:19px;font-weight:800;letter-spacing:-.3px;white-space:nowrap;color:var(--sn-text)}
+.sn-wm b span{color:#0a80f5}
+.sn-wm small{font-size:12px;font-weight:600;color:var(--sn-muted);margin-top:3px}
+.sn-nav{display:flex;flex-direction:column;gap:10px;padding:6px 6px 12px}
+.sn-band{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:0 13px;border:0;border-radius:15px;cursor:pointer;text-align:left;font:inherit;font-size:14.5px;font-weight:800;color:var(--sn-ink)!important;background:var(--sn-bg)!important;box-shadow:5px 5px 10px var(--sn-d),-5px -5px 10px var(--sn-l);white-space:nowrap;text-decoration:none;transition:box-shadow .2s,background .25s,color .2s}
+.sn-band:hover{box-shadow:7px 7px 14px var(--sn-d),-7px -7px 14px var(--sn-l)}
+.sn-band .sn-chev{margin-left:auto;transition:transform .25s;flex-shrink:0}
+.sn-band .sn-count + .sn-chev{margin-left:8px}
+.sn-band[aria-expanded="true"]{box-shadow:inset 4px 4px 9px var(--sn-in),inset -4px -4px 9px var(--sn-l)}
+.sn-band[aria-expanded="true"] .sn-chev{transform:rotate(90deg)}
+.sn-band.on,.sn-row.on{background:linear-gradient(135deg,#1a8cff,#0a6fd8 55%,#0659b8)!important;color:#fff!important;box-shadow:0 8px 18px rgba(10,111,216,.35)}
+.sn-kids{display:flex;flex-direction:column;gap:3px;padding:8px 0 2px 8px}
+.sn-row{display:flex;align-items:center;gap:11px;min-height:42px;padding:0 12px;border-radius:13px;font-size:14px;font-weight:500;color:var(--sn-text)!important;background:transparent!important;text-decoration:none;line-height:1.2;transition:box-shadow .2s}
+.sn-row:hover{box-shadow:4px 4px 9px var(--sn-d),-4px -4px 9px var(--sn-l)}
+.sn-row .sn-ic{color:var(--sn-icon);display:grid;place-items:center;width:20px;flex-shrink:0}
+.sn-row.on{font-weight:700}
+.sn-row.on .sn-ic{color:#fff}
+.sn-count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#e11d48;color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;letter-spacing:0;flex-shrink:0}
+.on .sn-count{background:#fff;color:#0659b8}
+.sn-lang{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 6px 10px}
+.sn-lang button{padding:4px 10px;border-radius:999px;font-size:11.5px;font-weight:700;cursor:pointer;border:0;background:transparent;color:var(--sn-muted)}
+.sn-lang button[aria-pressed="true"]{background:#0659b8;color:#fff}
+.sn-foot{border-top:1px solid var(--sn-line)!important}
+@media (prefers-reduced-motion:reduce){.sn-side *{transition:none!important}}
+`;
 
 export function SalonShell({ children }: { children: ReactNode }) {
   const alreadyInShell = useContext(ShellMountedContext);
@@ -522,72 +564,47 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     // a scheduled post that failed to publish is otherwise silent, and the
     // salon goes on believing its Facebook Page is being looked after.
     const badge = itemBadge(item);
+    // The menu's grammar (mockup "Menu Lumio · nổi khối"): a top-level entry is
+    // a raised pill like the groups; a page inside a group is a plain row; the
+    // current page — and only it — is the solid logo-blue pill.
     return (
       <Link
         key={item.href}
         href={go(item)}
         onClick={() => setDrawerOpen(false)}
-        className="sn-item"
-        // The mockup's grammar: the current page is a SOFT indigo pill (tinted
-        // background, indigo text), not a solid block — the sidebar stays one
-        // quiet column and exactly one thing on it glows. The icon rides
-        // currentColor, so it changes state with the words instead of beside
-        // them, which is precisely what emoji could never do.
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: indent ? '8px 10px 8px 14px' : '9px 12px', borderRadius: 10, fontSize: 13.5,
-          textDecoration: 'none', lineHeight: 1.2,
-          color: active ? 'var(--ca5b4fc)' : 'var(--ccbd5e1)',
-          background: active ? 'var(--c1e1b4b)' : 'transparent',
-          fontWeight: active ? 700 : 500,
-        }}
+        className={`${indent ? 'sn-row' : 'sn-band'}${active ? ' on' : ''}`}
+        aria-current={active ? 'page' : undefined}
       >
-        <span style={{ color: active ? 'var(--ca5b4fc)' : 'var(--c94a3b8)', display: 'grid', placeItems: 'center', width: 20 }}><NavIcon name={item.icon} /></span>
-        <span style={{ minWidth: 0 }}>{menuLabel(item)}</span>
-        {badge > 0 && (
-          <span style={{
-            marginLeft: 'auto', minWidth: 19, height: 19, padding: '0 5px', borderRadius: 20,
-            background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700,
-            display: 'grid', placeItems: 'center',
-          }}>{badge > 9 ? '9+' : badge}</span>
-        )}
+        <span className="sn-ic" style={{ display: 'grid', placeItems: 'center', width: 20 }}><NavIcon name={item.icon} size={18} /></span>
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{menuLabel(item)}</span>
+        {badge > 0 && <span className="sn-count">{badge > 9 ? '9+' : badge}</span>}
       </Link>
     );
   };
 
   const navList = (
-    <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <nav className="sn-nav">
       {can(DASHBOARD.href) && renderLink(DASHBOARD, false)}
       {visibleGroups.map((grp) => {
-        const open = !!openGroups[grp.id];
         const hasActive = grp.items.some((it) => it.href === owner);
+        // The group holding the current page is always open, so the page is
+        // never hidden; the others keep whatever each person last chose.
+        const open = hasActive || !!openGroups[grp.id];
+        // A badge inside a folded group would be invisible — and the Inbox
+        // lives inside one. The folded group carries the sum.
+        const folded = open ? 0 : grp.items.reduce((sum, it) => sum + itemBadge(it), 0);
         return (
-          <div key={grp.id} style={{ marginTop: 6 }}>
-            <button
-              onClick={() => toggleGroup(grp.id)}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
-                padding: '12px 12px 4px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                background: 'transparent', color: hasActive && !open ? 'var(--ca5b4fc)' : 'var(--c64748b)',
-                fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, textTransform: 'uppercase',
-              }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {tr(GROUP_KEY[grp.id], lang)}
-                {hasActive && !open && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#6366f1' }} />}
-                {/* A badge inside a folded group would be invisible — and the
-                    Inbox lives inside one. The folded header carries the sum. */}
-                {!open && (() => {
-                  const n = grp.items.reduce((sum, it) => sum + itemBadge(it), 0);
-                  return n > 0 ? (
-                    <span style={{ minWidth: 17, height: 17, padding: '0 5px', borderRadius: 20, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: 0, display: 'grid', placeItems: 'center' }}>{n > 9 ? '9+' : n}</span>
-                  ) : null;
-                })()}
-              </span>
-              <span style={{ fontSize: 10, opacity: 0.8, transition: 'transform .15s', transform: open ? 'rotate(90deg)' : 'none' }}>▸</span>
+          <div key={grp.id}>
+            <button type="button" className="sn-band" aria-expanded={open}
+              onClick={() => { if (!hasActive) toggleGroup(grp.id); }}
+              title={hasActive ? (lang === 'vi' ? 'Nhóm của trang đang xem luôn mở' : 'The group of the page you are on stays open') : undefined}>
+              <span className="sn-ic" style={{ display: 'grid', placeItems: 'center', width: 20 }}><NavIcon name={GROUP_ICON[grp.id] ?? 'cog'} size={18} /></span>
+              {tr(GROUP_KEY[grp.id], lang)}
+              {folded > 0 && <span className="sn-count">{folded > 9 ? '9+' : folded}</span>}
+              <svg className="sn-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
             </button>
             {open && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+              <div className="sn-kids">
                 {grp.items.map((item) => renderLink(item, true))}
               </div>
             )}
@@ -598,7 +615,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   );
 
   const footer = (
-    <div style={{ marginTop: 'auto', borderTop: '1px solid var(--c1f2937)', paddingTop: 14 }}>
+    <div className="sn-foot" style={{ marginTop: 'auto', borderTop: '1px solid var(--c1f2937)', paddingTop: 14 }}>
       <div style={{ marginBottom: 10 }}>
         <ShareBookingLink />
       </div>
@@ -620,26 +637,29 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   );
 
   const brand = (
-    <div style={{ padding: '4px 10px 18px' }}>
-      {/* Wraps instead of spilling: with the menu's scrollbar showing (Windows,
-          an iPad with a mouse) logo + market + EN/VI were wider than the menu
-          and "VI" was cut off at its edge. */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <LumioLogo size={30} />
-          <MarketBadge compact />
-        </div>
-        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+    <div>
+      <style dangerouslySetInnerHTML={{ __html: SN_CSS }} />
+      <div className="sn-brand">
+        <span className="sn-mk">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo/lumio-mark.png" alt="" width={36} height={36} />
+        </span>
+        <span className="sn-wm">
+          <b>Lumio <span>Booking</span></b>
+          <small>{user.tenantName || tr('shell.subtitle', lang)}</small>
+        </span>
+      </div>
+      {/* Market and language stay one tap away, below the name. */}
+      <div className="sn-lang">
+        <MarketBadge compact />
+        <span style={{ display: 'flex', gap: 2 }}>
           {(['en', 'vi'] as const).map((l) => (
-            <button key={l} onClick={() => setLang(l)} aria-label={l === 'en' ? 'English' : 'Tiếng Việt'}
-              style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                border: `1px solid ${lang === l ? '#6366f1' : 'var(--c334155)'}`, background: lang === l ? '#6366f1' : 'transparent', color: lang === l ? '#fff' : 'var(--c94a3b8)' }}>
+            <button key={l} type="button" onClick={() => setLang(l)} aria-pressed={lang === l} aria-label={l === 'en' ? 'English' : 'Tiếng Việt'}>
               {l === 'en' ? 'EN' : 'VI'}
             </button>
           ))}
-        </div>
+        </span>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 2 }}>{tr('shell.subtitle', lang)}</div>
     </div>
   );
 
@@ -707,7 +727,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
                 menu was still showing. 70/71 puts the menu and its backdrop
                 over everything, which is what a modal drawer means. */}
             <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 70 }} />
-            <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 'min(82vw, 300px)', background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '18px 14px', paddingTop: 'calc(18px + env(safe-area-inset-top, 0px))', paddingBottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', display: 'flex', flexDirection: 'column', overflowY: 'auto', WebkitOverflowScrolling: 'touch', zIndex: 71, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}>
+            <aside className="sn-side" style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 'min(86vw, 310px)', background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '18px 14px', paddingTop: 'calc(18px + env(safe-area-inset-top, 0px))', paddingBottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', display: 'flex', flexDirection: 'column', overflowY: 'auto', WebkitOverflowScrolling: 'touch', zIndex: 71, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 {brand}
                 <button onClick={() => setDrawerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>✕</button>
@@ -729,9 +749,9 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
 
   // ---------------------------- Desktop ----------------------------
   return (
-    <div style={{ minHeight: '100dvh', display: 'grid', gridTemplateColumns: navHidden ? '1fr' : '230px 1fr', background: 'var(--c0b1120)' }}>
+    <div style={{ minHeight: '100dvh', display: 'grid', gridTemplateColumns: navHidden ? '1fr' : '272px 1fr', background: 'var(--c0b1120)' }}>
       {!navHidden && (
-        <aside style={{ background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '20px 14px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100dvh', overflowY: 'auto' }}>
+        <aside className="sn-side" style={{ background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '18px 12px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100dvh', overflowY: 'auto' }}>
           {brand}
           <BranchSwitcher />
           {navList}

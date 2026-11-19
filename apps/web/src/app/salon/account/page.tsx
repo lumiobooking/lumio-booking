@@ -28,11 +28,20 @@ function Inner() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // rt205: how this person signs in — phone, e-mail or Facebook — and whether a current password is needed.
+  const [info, setInfo] = useState<{ kind: 'phone' | 'email' | 'facebook'; login: string | null; needsCurrent: boolean; canChangeEmail: boolean } | null>(null);
+  useEffect(() => {
+    if (!token || user?.supportSession) return;
+    void apiFetch<{ kind: 'phone' | 'email' | 'facebook'; login: string | null; needsCurrent: boolean; canChangeEmail: boolean }>('/me/login-info', { token }).then(setInfo).catch(() => setInfo(null));
+  }, [token, user?.supportSession]);
+  const needsCurrent = info ? info.needsCurrent : true;
+  const [newPhone, setNewPhone] = useState('');
+  const canEmail = info ? info.canChangeEmail : true;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setErr(null); setMsg(null);
-    if (!currentPassword) { setErr(t('ac.needCurrentPw')); return; }
+    if (needsCurrent && !currentPassword) { setErr(t('ac.needCurrentPw')); return; }
     if (newPassword && newPassword !== confirm) { setErr(t('ac.pwMismatch')); return; }
     if (newPassword && newPassword.length < 8) { setErr(t('ac.pwShort')); return; }
     setBusy(true);
@@ -40,9 +49,10 @@ function Inner() {
       const r = await apiFetch<{ ok: boolean; email: string; passwordChanged?: boolean }>('/me/account', {
         method: 'PATCH', token,
         body: {
-          currentPassword,
-          newEmail: newEmail.trim() && newEmail.trim() !== currentEmail ? newEmail.trim() : undefined,
+          currentPassword: currentPassword || undefined,
+          newEmail: canEmail && newEmail.trim() && newEmail.trim() !== currentEmail ? newEmail.trim() : undefined,
           newPassword: newPassword || undefined,
+          newPhone: !canEmail && newPhone.trim() ? newPhone.trim() : undefined,
         },
       });
       setCurrentPassword(''); setNewPassword(''); setConfirm('');
@@ -52,7 +62,8 @@ function Inner() {
         setTimeout(() => logout(), 1400);
         return;
       }
-      setMsg(t('ac.saved').replace('{email}', r.email) + (newPassword ? ' ' + t('ac.savedPw') : ''));
+      setMsg(canEmail ? t('ac.saved').replace('{email}', r.email) + (newPassword ? ' ' + t('ac.savedPw') : '') : (lang === 'vi' ? 'Đã lưu. Lần sau đăng nhập bằng số điện thoại mới.' : 'Saved. Sign in with the new phone next time.'));
+      setNewPhone('');
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : t('ac.updateFail'));
     } finally { setBusy(false); }
@@ -83,10 +94,22 @@ function Inner() {
       {msg && <div style={{ background: 'var(--c064e3b)', color: 'var(--ca7f3d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
       <form onSubmit={save} style={ui.card}>
-        <label style={{ display: 'block', marginBottom: 12 }}>
-          <span style={ui.label}>{t('ac.loginEmail')}</span>
-          <input style={ui.input} type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-        </label>
+        {canEmail ? (
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            <span style={ui.label}>{t('ac.loginEmail')}</span>
+            <input style={ui.input} type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+          </label>
+        ) : (
+          <div style={{ marginBottom: 12, fontSize: 14, color: 'var(--ce2e8f0)' }}>
+            {info?.kind === 'phone'
+              ? (lang === 'vi' ? <>Bạn đăng nhập bằng <b>số điện thoại {info.login}</b>.</> : <>You sign in with <b>phone {info.login}</b>.</>)
+              : (lang === 'vi' ? <>Bạn đăng nhập bằng <b>Facebook</b>.</> : <>You sign in with <b>Facebook</b>.</>)}
+            <label style={{ display: 'block', marginTop: 10 }}>
+              <span style={ui.label}>{info?.kind === 'phone' ? (lang === 'vi' ? 'Đổi số điện thoại đăng nhập (không bắt buộc)' : 'Change sign-in phone (optional)') : (lang === 'vi' ? 'Số điện thoại để đăng nhập không cần Facebook' : 'Phone to sign in without Facebook')}</span>
+              <input style={ui.input} type="tel" inputMode="tel" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="0913 456 142" />
+            </label>
+          </div>
+        )}
 
         <div style={{ borderTop: '1px solid var(--c334155)', margin: '6px 0 12px', paddingTop: 12, fontSize: 13, color: 'var(--ccbd5e1)', fontWeight: 600 }}>{t('ac.changePw')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
@@ -96,10 +119,14 @@ function Inner() {
             <input style={ui.input} type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label>
         </div>
 
-        <label style={{ display: 'block', marginTop: 12 }}>
-          <span style={ui.label}>{t('ac.currentPw')}</span>
-          <input style={ui.input} type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
-        </label>
+        {needsCurrent ? (
+          <label style={{ display: 'block', marginTop: 12 }}>
+            <span style={ui.label}>{t('ac.currentPw')}</span>
+            <input style={ui.input} type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
+          </label>
+        ) : (
+          <p style={{ margin: '12px 0 0', fontSize: 12.5, color: 'var(--c94a3b8)' }}>{lang === 'vi' ? 'Đặt mật khẩu lần đầu — sau đó bạn cũng đăng nhập được bằng mật khẩu này.' : 'Set your first password — you can then also sign in with it.'}</p>
+        )}
 
         <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, marginTop: 16 }}>{busy ? t('ac.saving') : t('ac.save')}</button>
       </form>

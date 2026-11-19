@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { inboxBus } from './inbox-events';
 
 /**
  * Live inbox updates, pushed instead of polled.
@@ -33,6 +34,22 @@ export class InboxEventsService {
 
   /** tenantId → the listeners currently watching that salon's inbox. */
   private readonly subs = new Map<string, Set<(evt: string) => void>>();
+  /** rt205: writes arrive in bursts (one customer message = several writes); one nudge per burst. */
+  private readonly soon = new Map<string, { timer: NodeJS.Timeout; kind: 'message' | 'thread' }>();
+
+  constructor() {
+    inboxBus.on('nudge', (tenantId: string, kind: 'message' | 'thread') => this.publishSoon(tenantId, kind));
+  }
+
+  /** Coalesce within 120 ms — fast enough to read as instant, slow enough to merge a burst. */
+  publishSoon(tenantId: string, kind: 'message' | 'thread' = 'thread'): void {
+    if (!tenantId || !this.subs.get(tenantId)?.size) return;
+    const cur = this.soon.get(tenantId);
+    if (cur) { if (kind === 'message') cur.kind = 'message'; return; }
+    const entry = { kind, timer: setTimeout(() => { this.soon.delete(tenantId); this.publish(tenantId, entry.kind); }, 120) };
+    entry.timer.unref?.();
+    this.soon.set(tenantId, entry);
+  }
 
   subscribe(tenantId: string, fn: (evt: string) => void): () => void {
     let set = this.subs.get(tenantId);

@@ -67,7 +67,7 @@ const HREF_CAP: Record<string, string> = {
 };
 const ALL_CAPS = Object.values(HREF_CAP);
 /** rt200: everything a messages-only team member may open. */
-const CHAT_ONLY_HREFS = new Set(['/salon/inbox']);
+const CHAT_ONLY_HREFS = new Set(['/salon/inbox', '/salon/account']);
 
 // Remember the salon's POS entitlement between page loads so the nav renders
 // the correct items immediately (no flash of locked items).

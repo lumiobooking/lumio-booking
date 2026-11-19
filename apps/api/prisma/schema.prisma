@@ -4337,3 +4337,27 @@ model SocialLogin {
   @@index([userId])
   @@map("social_logins")
 }
+
+/// rt204 — every message of every conversation, kept for good. Append-only:
+/// no API updates or deletes a row. What a person deletes or hides on Meta
+/// stays here, so the owner can always see what was said and by whom.
+model MessengerMessageLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  threadId  String
+  /// sha256 of role|at|content — the same message written twice is one row.
+  fp        String
+  /// customer | ai | staff | page (sent from Meta's own inbox / another tool)
+  role      String
+  byName    String?
+  content   String
+  images    Json?
+  messageId String?
+  failed    Boolean  @default(false)
+  at        DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([threadId, fp])
+  @@index([tenantId, threadId, at])
+  @@map("messenger_message_log")
+}

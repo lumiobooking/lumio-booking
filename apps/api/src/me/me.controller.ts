@@ -1,3 +1,4 @@
+import { phoneEmail, phoneKey } from '../staff-invite/staff-invite';
 import { BadRequestException, Body, Controller, Get, NotFoundException, Optional, Patch, Post } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
@@ -111,21 +112,57 @@ export class MeController {
     return { theme };
   }
 
+  /**
+   * rt205: how this person signs in, for "Tài khoản của tôi" — a phone number,
+   * an e-mail, or Facebook — and whether changing the password needs the
+   * current one (someone who joined with Facebook never had one to type).
+   */
+  @Get('login-info')
+  async loginInfo(@CurrentUser() user: AuthenticatedUser) {
+    const u = await this.prisma.user.findUnique({ where: { id: user.userId }, select: { email: true, passwordChangedAt: true } });
+    if (!u) throw new NotFoundException('Account not found');
+    const fb = await this.firstPasswordFree(user.userId, u.passwordChangedAt);
+    const tel = /^tel-(\d+)@staff\.lumiobooking\.invalid$/.exec(u.email);
+    const viaFb = /^fb-.+@staff\.lumiobooking\.invalid$/.test(u.email);
+    return { kind: tel ? 'phone' : viaFb ? 'facebook' : 'email', login: tel ? tel[1] : viaFb ? null : u.email, needsCurrent: !fb, canChangeEmail: !tel && !viaFb };
+  }
+
+  /** Joined with Facebook and never set a password: the first one needs no "current". */
+  private async firstPasswordFree(userId: string, passwordChangedAt: Date | null): Promise<boolean> {
+    if (passwordChangedAt) return false;
+    const n = await (this.prisma as unknown as { socialLogin: { count: (a: unknown) => Promise<number> } }).socialLogin.count({ where: { userId } }).catch(() => 0);
+    return n > 0;
+  }
+
   // and/or password. Works for any role (Super Admin, Salon Admin, Staff).
   // Current password is required to authorise the change.
   @Patch('account')
   async updateAccount(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { currentPassword?: string; newEmail?: string; newPassword?: string },
+    @Body() dto: { currentPassword?: string; newEmail?: string; newPassword?: string; newPhone?: string },
   ) {
     const u = await this.prisma.user.findUnique({ where: { id: user.userId } });
     if (!u) throw new NotFoundException('Account not found');
-    if (!dto.currentPassword || !(await verifySecret(dto.currentPassword, u.passwordHash))) {
+    // rt205: a team member who joined with Facebook sets a first password without one to type.
+    const firstFree = !!dto.newPassword && !dto.newEmail && (await this.firstPasswordFree(u.id, u.passwordChangedAt));
+    if (!firstFree && (!dto.currentPassword || !(await verifySecret(dto.currentPassword, u.passwordHash)))) {
       throw new BadRequestException('Current password is incorrect');
     }
     const data: { email?: string; passwordHash?: string; passwordChangedAt?: Date } = {};
-    if (dto.newEmail && dto.newEmail.trim() && dto.newEmail.trim() !== u.email) {
+    // A login made from a phone number or Facebook keeps its hidden address; it is not an e-mail to edit.
+    const hiddenLogin = /@staff\.lumiobooking\.invalid$/.test(u.email);
+    if (!hiddenLogin && dto.newEmail && dto.newEmail.trim() && dto.newEmail.trim() !== u.email) {
       data.email = dto.newEmail.trim().toLowerCase();
+    }
+    // rt205: a phone / Facebook login signs in with a phone number; it may set or change that number.
+    if (hiddenLogin && dto.newPhone) {
+      const p = phoneKey(dto.newPhone);
+      if (!p) throw new BadRequestException('Số điện thoại chưa đúng.');
+      if (phoneEmail(p) !== u.email) {
+        // A Facebook login has no password anyone knows: a number alone would be a door with no lock.
+        if (/^fb-/.test(u.email) && !dto.newPassword && !u.passwordChangedAt) throw new BadRequestException('Đặt mật khẩu cùng lúc với số điện thoại.');
+        data.email = phoneEmail(p);
+      }
     }
     if (dto.newPassword) {
       if (dto.newPassword.length < 8) throw new BadRequestException('New password must be at least 8 characters');
@@ -138,8 +175,9 @@ export class MeController {
     try {
       await this.prisma.user.update({ where: { id: u.id }, data });
     } catch {
-      throw new BadRequestException('That email is already in use by another account');
+      throw new BadRequestException(hiddenLogin && dto.newPhone ? 'Số điện thoại này đã có tài khoản khác.' : 'That email is already in use by another account');
     }
+    if (u.tenantId) await this.prisma.auditLog.create({ data: { tenantId: u.tenantId, userId: u.id, action: data.passwordHash ? 'auth.password_changed' : 'auth.email_changed', resourceType: 'user', resourceId: u.id } }).catch(() => undefined);
     // passwordChanged tells the client to log out immediately and re-login.
     return { ok: true, email: data.email ?? u.email, passwordChanged: !!data.passwordHash };
   }

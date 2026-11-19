@@ -1,4 +1,5 @@
 import { rescueOpen } from './turn-shift';
+import { logRowsFrom } from './message-log';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { onSale, salePrice } from '../common/discount';
 import { discountRules, promoKnowledge, type PromoInputs } from './promo-knowledge';
@@ -1292,13 +1293,16 @@ export class MessengerService implements OnModuleInit {
     return { ok: true, detached: others.length, ...(await this.get(user)) };
   }
 
-  private async audit(tenantId: string, action: string): Promise<void> {
-    try { await this.prisma.auditLog.create({ data: { tenantId, action, resourceType: 'messenger' } }); } catch { /* never break */ }
+  /** rt204: who did it and on which conversation, when known — the record an owner searches when something went wrong. */
+  private async audit(tenantId: string, action: string, who?: { userId?: string | null; threadId?: string | null; metadata?: Record<string, unknown> }): Promise<void> {
+    try { await this.prisma.auditLog.create({ data: { tenantId, action, resourceType: 'messenger', ...(who?.userId ? { userId: who.userId } : {}), ...(who?.threadId ? { resourceId: who.threadId } : {}), ...(who?.metadata ? { metadata: who.metadata as never } : {}) } }); } catch { /* never break */ }
     if (/^messenger\.(settings|facts|turn)/.test(action)) requestBotCatchUp(tenantId, action);
   }
 
   // ---------------------------------------------------------------- learn, then answer
   private readonly catchUpTimers = new Map<string, NodeJS.Timeout>();
+  /** rt205: Meta's transcript per conversation, for 20 s (live refreshes merge our newer turns on top). */
+  private readonly metaHistoryCache = new Map<string, { at: number; turns: Turn[] | null }>();
   /** Threads being re-asked after an update: a reply that is still "I'll check" is not sent again. */
   private readonly reasking = new Set<string>();
 
@@ -1510,6 +1514,11 @@ export class MessengerService implements OnModuleInit {
     const userId = parsed?.user_id ? String(parsed.user_id) : '';
     if (userId) {
       // PSID is page-scoped; delete every conversation thread for this sender.
+      // rt204: the customer's own deletion request (Meta's Data Deletion
+      // callback) is the one thing that also clears the permanent log — it is
+      // the customer's right, not a staff action.
+      const ids = await this.prisma.messengerThread.findMany({ where: { senderId: userId }, select: { id: true } }).catch(() => [] as { id: string }[]);
+      if (ids.length) await (this.prisma as unknown as { messengerMessageLog: { deleteMany: (a: unknown) => Promise<unknown> } }).messengerMessageLog.deleteMany({ where: { threadId: { in: ids.map((t) => t.id) } } }).catch(() => undefined);
       await this.prisma.messengerThread.deleteMany({ where: { senderId: userId } }).catch(() => undefined);
     }
     return { url: `${web}/data-deletion?id=${code}`, confirmation_code: code };
@@ -2006,16 +2015,32 @@ export class MessengerService implements OnModuleInit {
         .catch(() => null);
       const tok = pgTok?.pageToken || (conn as { pageToken?: string } | null)?.pageToken;
       if (tok) {
-        const meta = await this.fetchMetaHistory(
+        // rt205: a live refresh must not wait on Meta every time. Meta's copy is
+        // kept 20 s per conversation; what changed since (a reply, a new
+        // customer line) is in our own buffer and is merged on top below, so
+        // the screen shows it at once.
+        const cachedMeta = this.metaHistoryCache.get(String(row.id));
+        const meta = cachedMeta && Date.now() - cachedMeta.at < 20_000 ? cachedMeta.turns : await this.fetchMetaHistory(
           String(row.pageId), tok, String(row.senderId),
           (row as { channel?: string }).channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER',
           // The IG account id is who the salon IS on Instagram. Without it
           // every bot reply in an Instagram thread was drawn as the customer.
           [pgTok?.igId, (conn as { igId?: string | null } | null)?.igId],
         );
+        if (meta && meta !== cachedMeta?.turns) {
+          this.metaHistoryCache.set(String(row.id), { at: Date.now(), turns: meta });
+          if (this.metaHistoryCache.size > 500) this.metaHistoryCache.delete(this.metaHistoryCache.keys().next().value as string);
+        }
         if (meta && meta.length) historySource = 'meta';
         turns = mergeHistory(meta as never, localTurns as never) as unknown as Turn[];
       }
+    }
+    // rt204: whatever Meta still holds is copied into the permanent log the
+    // first time anyone opens the conversation — older messages included —
+    // so deleting it on Meta later takes nothing away from the salon.
+    if (historySource === 'meta') {
+      const rows = logRowsFrom(tenantId, String(row.id), turns, 400);
+      if (rows.length) void (this.prisma as unknown as { messengerMessageLog: { createMany: (a: unknown) => Promise<unknown> } }).messengerMessageLog.createMany({ data: rows, skipDuplicates: true }).catch(() => undefined);
     }
 
     // Canned replies, taken from the facts the salon already wrote for the bot.
@@ -2266,7 +2291,7 @@ export class MessengerService implements OnModuleInit {
     await this.prisma.messengerNote.create({
       data: { tenantId, threadId: row.id, authorId: user.userId, authorName, text: body.slice(0, 2000) },
     } as never);
-    await this.audit(tenantId, 'messenger.note_added');
+    await this.audit(tenantId, 'messenger.note_added', { userId: user.userId, threadId: row.id });
     return this.listNotes(user, threadId);
   }
 
@@ -2298,6 +2323,13 @@ export class MessengerService implements OnModuleInit {
 
   async deleteNote(user: AuthenticatedUser, threadId: string, noteId: string) {
     const tenantId = this.tenantId(user);
+    // rt204: staff cannot remove what was written in a conversation — only
+    // the owner may take a note away, and its text stays in the audit log.
+    if (!(String(user.role) === 'SALON_ADMIN' || user.supportSession === true || String(user.role) === 'SUPER_ADMIN')) {
+      throw new ForbiddenException('Chỉ chủ tiệm mới xoá được ghi chú.');
+    }
+    const note = await this.prisma.messengerNote.findFirst({ where: { id: noteId, tenantId, threadId } as never, select: { text: true, authorName: true } as never }).catch(() => null) as { text?: string; authorName?: string } | null;
+    if (note) await this.audit(tenantId, 'messenger.note_deleted', { userId: user.userId, threadId, metadata: { text: String(note.text ?? '').slice(0, 2000), author: note.authorName ?? null } });
     // Scoped by tenantId AND threadId: an id from another salon's inbox must
     // not delete anything here.
     await this.prisma.messengerNote.deleteMany({ where: { id: noteId, tenantId, threadId } } as never).catch(() => undefined);
@@ -2501,7 +2533,7 @@ export class MessengerService implements OnModuleInit {
         ? { status, readAt: new Date(), handoff: false, handoffMode: 'auto', assignedUserId: null }
         : { status }) as never,
     });
-    await this.audit(tenantId, status === 'spam' ? 'messenger.thread_spam' : 'messenger.thread_status');
+    await this.audit(tenantId, status === 'spam' ? 'messenger.thread_spam' : 'messenger.thread_status', { userId: user.userId, threadId: row.id, metadata: { status } });
     this.events.publish(tenantId, 'message');
     return { ok: true };
   }
@@ -2515,7 +2547,7 @@ export class MessengerService implements OnModuleInit {
     const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!row) throw new NotFoundException('Thread not found');
     await this.prisma.messengerThread.update({ where: { id: row.id }, data: { senderName: clean } });
-    await this.audit(tenantId, 'messenger.thread_renamed');
+    await this.audit(tenantId, 'messenger.thread_renamed', { userId: user.userId, threadId: row.id, metadata: { name: clean } });
     return { ok: true as const, name: clean };
   }
 
@@ -2618,7 +2650,7 @@ export class MessengerService implements OnModuleInit {
           handoff: true, handoffAt: new Date(),
         } as never,
       });
-      await this.audit(tenantId, 'messenger.manual_send'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, messageId: null, recipientId: thread.senderId, at: wAt, channel: 'web' };
     }
@@ -2643,7 +2675,7 @@ export class MessengerService implements OnModuleInit {
         } as never,
       }).catch(() => undefined);
       if (!zr.ok) throw new BadRequestException(zr.error || 'Zalo từ chối tin nhắn (có thể đã quá cửa sổ trả lời).');
-      await this.audit(tenantId, 'messenger.manual_send'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, messageId: null, recipientId: thread.senderId, at: zAt, channel: 'zalo' };
     }
@@ -2767,9 +2799,36 @@ export class MessengerService implements OnModuleInit {
       where: { id: thread.id, tenantId },
       data: { handoff: true, handoffAt: new Date() } as never,
     }).catch(() => undefined);
-    await this.audit(tenantId, 'messenger.manual_send'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+    await this.audit(tenantId, 'messenger.manual_send', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
     const ch = ((thread as unknown as { channel?: string }).channel === 'instagram') ? 'instagram' : 'messenger';
     return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: sentAtIso, channel: ch };
+  }
+
+  /**
+   * rt204 — the permanent record of one conversation, for the owner: every
+   * message logged (append-only; also what was deleted or hidden on Meta),
+   * and every action on it — who sent, who took it, notes, status, turns.
+   */
+  async threadRecord(user: AuthenticatedUser, threadId: string) {
+    const tenantId = this.tenantId(user);
+    if (!(String(user.role) === 'SALON_ADMIN' || user.supportSession === true || String(user.role) === 'SUPER_ADMIN')) throw new ForbiddenException('Chỉ chủ tiệm xem được lịch sử lưu trữ.');
+    const thread = await this.prisma.messengerThread.findFirst({ where: { id: String(threadId ?? ''), tenantId }, select: { id: true, senderName: true } });
+    if (!thread) throw new NotFoundException('Thread not found');
+    const db = this.prisma as unknown as Record<string, any>;
+    const messages = await db.messengerMessageLog.findMany({ where: { tenantId, threadId: thread.id }, orderBy: { at: 'asc' }, take: 3000, select: { role: true, byName: true, content: true, images: true, failed: true, at: true } }).catch(() => []);
+    const audits = await this.prisma.auditLog.findMany({ where: { tenantId, resourceId: thread.id }, orderBy: { createdAt: 'asc' }, take: 1000, select: { action: true, userId: true, metadata: true, createdAt: true } }).catch(() => []);
+    const turns = await db.chatAssignmentLog?.findMany({ where: { tenantId, threadId: thread.id }, orderBy: { createdAt: 'asc' }, take: 1000, select: { userId: true, fromUserId: true, byUserId: true, reason: true, createdAt: true } }).catch(() => []) ?? [];
+    const ids = new Set<string>();
+    for (const a of audits) if (a.userId) ids.add(a.userId);
+    for (const t of turns as { userId?: string | null; fromUserId?: string | null; byUserId?: string | null }[]) for (const id of [t.userId, t.fromUserId, t.byUserId]) if (id) ids.add(id);
+    const people = ids.size ? await this.prisma.user.findMany({ where: { tenantId, id: { in: [...ids] } }, select: { id: true, firstName: true, lastName: true } }).catch(() => []) : [];
+    const name = (id?: string | null) => { if (!id) return null; const u = people.find((p) => p.id === id); return u ? [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || 'Nhân viên' : 'Nhân viên cũ'; };
+    const actions = [
+      ...audits.map((a) => ({ at: a.createdAt, kind: a.action, who: name(a.userId), detail: (a.metadata ?? null) as unknown })),
+      ...(turns as { userId?: string | null; fromUserId?: string | null; byUserId?: string | null; reason: string; createdAt: Date }[]).map((t) => ({ at: t.createdAt, kind: `turn.${t.reason}`, who: name(t.byUserId) ?? null, detail: { to: name(t.userId), from: name(t.fromUserId) } as unknown })),
+    ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    await this.audit(tenantId, 'messenger.record_viewed', { userId: user.userId, threadId: thread.id });
+    return { customer: thread.senderName ?? null, messages, actions };
   }
 
   /** 404 unless this conversation belongs to the caller's salon. */
@@ -2817,7 +2876,7 @@ export class MessengerService implements OnModuleInit {
     };
     if (web) {
       const at = await record({}, true);
-      await this.audit(tenantId, 'messenger.manual_photo'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, at, channel: 'web', url };
     }
@@ -2828,7 +2887,7 @@ export class MessengerService implements OnModuleInit {
       const zr = await sendZaloImage(sendToken, thread.senderId, url);
       const at = await record(zr.ok ? {} : { failed: true }, zr.ok);
       if (!zr.ok) throw new BadRequestException(zr.error || 'Zalo từ chối ảnh (có thể đã quá cửa sổ trả lời).');
-      await this.audit(tenantId, 'messenger.manual_photo'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+      await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
       this.events.publish(tenantId, 'message');
       return { ok: true as const, at, channel: 'zalo', url };
     }
@@ -2854,7 +2913,7 @@ export class MessengerService implements OnModuleInit {
       throw new BadRequestException(out.error?.message || 'Facebook rejected the photo (the messaging window may have closed).');
     }
     const at = await record({ messageId: out.message_id || null }, true);
-    await this.audit(tenantId, 'messenger.manual_photo'); void this.turns?.noteReply(tenantId, thread.id, user.userId);
+    await this.audit(tenantId, 'messenger.manual_photo', { userId: user.userId, threadId: thread.id }); void this.turns?.noteReply(tenantId, thread.id, user.userId);
     this.events.publish(tenantId, 'message');
     return { ok: true as const, at, channel: channel === 'instagram' ? 'instagram' : 'messenger', url };
   }

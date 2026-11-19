@@ -361,6 +361,17 @@ export class MessengerController {
     return this.svc.getThread(user, id, full !== '0');
   }
 
+  /**
+   * rt204: the permanent record of one conversation — every message ever
+   * logged (also those deleted or hidden on Meta) and who did what. The owner
+   * (and a Lumio support session) only.
+   */
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('threads/:id/record')
+  record(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.threadRecord(user, id);
+  }
+
   /** Three lines and a draft reply for the person taking this chat over (handoff-brief). Sends nothing. */
   @Roles(...INBOX_ROLES)
   @UseGuards(FeaturePolicyGuard)

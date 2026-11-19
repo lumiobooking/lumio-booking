@@ -36,6 +36,7 @@ import { Linkified } from './Linkified';
 import { PushSetup } from './PushSetup';
 import type { TurnsView } from './ChatTurnsPanel';
 import { ShiftButton } from './ShiftButton';
+import { ThreadRecord } from './ThreadRecord';
 import { useLang } from '../lib/i18n';
 import { setOpenConversation } from '../lib/inbox-sound';
 import { uiLocale } from '../lib/datetime';
@@ -480,6 +481,9 @@ export function InboxView() {
   const mayTeach = canTeachAi(authUser);
   // The follow-up wording is a salon setting (owner only, like the rest of Settings).
   const mayEditNudge = authUser?.role === 'SALON_ADMIN' || authUser?.role === 'SUPER_ADMIN';
+  /** rt204: the permanent record of a conversation — the owner (or Lumio support) only. */
+  const mayRecord = mayEditNudge || !!authUser?.supportSession;
+  const [recordFor, setRecordFor] = useState<string | null>(null);
   const [brief, setBrief] = useState<{ id: string; loading?: boolean; err?: string; data?: { want: string; done: string; missing: string; reply: string } } | null>(null);
   const [whyOpen, setWhyOpen] = useState<number | null>(null);
   const [teach, setTeach] = useState<{ index: number; question: string; reply: string; nudge?: boolean } | null>(null);
@@ -522,6 +526,9 @@ export function InboxView() {
     return () => window.clearInterval(id);
   }, [loadTurns]);
   const turnsOn = turns?.settings.mode === 'round-robin';
+  /** rt205: the live stream refreshes the turn state too (read through a ref so the stream is not re-opened). */
+  const loadTurnsRef = useRef<(() => Promise<void>) | null>(null);
+  loadTurnsRef.current = loadTurns;
   /** rt198: "Vào ca" / "Ra ca" — one button; the phone rings with the app closed while on shift. */
   const myShift = !!turns?.me?.shiftOn;
   const [shiftBusy, setShiftBusy] = useState(false);
@@ -753,12 +760,25 @@ export function InboxView() {
     let retry: ReturnType<typeof setTimeout> | null = null;
     let gone = false;
 
+    // rt205: one refresh at a time; a nudge that lands meanwhile runs once more
+    // right after — nothing is dropped and nothing piles up.
+    let running = false;
+    let again = false;
     const refresh = () => {
-      void loadList();
-      // A poll is not a person. Refreshing the open thread re-reads it only
-      // when the person has not deliberately parked it as unread — otherwise
-      // the next tick would quietly undo the press.
-      if (openRef.current) void loadThread(openRef.current, keepUnreadRef.current !== openRef.current, true);
+      if (running) { again = true; return; }
+      running = true;
+      void Promise.all([
+        loadList(),
+        // A poll is not a person. Refreshing the open thread re-reads it only
+        // when the person has not deliberately parked it as unread — otherwise
+        // the next tick would quietly undo the press.
+        openRef.current ? loadThread(openRef.current, keepUnreadRef.current !== openRef.current, true) : Promise.resolve(),
+        // Shift and turn state (Vào ca, who holds whom) moves with the same nudge.
+        loadTurnsRef.current?.() ?? Promise.resolve(),
+      ]).catch(() => undefined).finally(() => {
+        running = false;
+        if (again) { again = false; refresh(); }
+      });
     };
 
     const connect = () => {
@@ -1749,6 +1769,7 @@ export function InboxView() {
                 {[
                   { k: 'unread', label: vi ? 'Để lại chưa đọc' : 'Mark unread', run: () => markUnread(detail.id) },
                   { k: 'rename', label: ind(vi ? 'Đặt tên khách' : 'Set customer name'), run: () => renameThread() },
+                  ...(mayRecord ? [{ k: 'record', label: vi ? '🗂 Lịch sử lưu trữ' : '🗂 Permanent record', run: async () => setRecordFor(detail.id) }] : []),
                   ...(isSpamRow(detail)
                     ? [{ k: 'unspam', label: vi ? 'Không phải spam' : 'Not spam', run: () => act('status', { status: 'open' }) }]
                     : [{ k: 'spam', label: vi ? 'Chuyển vào Spam' : 'Move to Spam', run: () => act('status', { status: 'spam' }) }]),
@@ -1969,6 +1990,7 @@ export function InboxView() {
                   {[
                     { k: 'unread', label: `● ${vi ? 'Để lại chưa đọc' : 'Mark unread'}`, run: () => markUnread(detail.id) },
                     { k: 'rename', label: `✎ ${ind(vi ? 'Đặt tên khách' : 'Set customer name')}`, run: () => renameThread() },
+                    ...(mayRecord ? [{ k: 'record', label: vi ? '🗂 Lịch sử lưu trữ' : '🗂 Permanent record', run: async () => setRecordFor(detail.id) }] : []),
                     ...(isSpamRow(detail)
                       ? [{ k: 'unspam', label: vi ? 'Không phải spam' : 'Not spam', run: () => act('status', { status: 'open' }) }]
                       : [{ k: 'spam', label: `⊘ ${vi ? 'Chuyển vào Spam' : 'Move to Spam'}`, run: () => act('status', { status: 'spam' }) }]),
@@ -2566,8 +2588,8 @@ export function InboxView() {
               <div key={n.id} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 10px', borderRadius: 10, background: 'var(--c0b1220)', border: '1px solid var(--line)', fontSize: 12.5, lineHeight: 1.45 }}>
                 <span style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11.5, color: 'var(--c64748b)' }}>
                   <strong style={{ color: 'var(--ccbd5e1)' }}>{n.authorName}</strong><span>·</span><span>{fmtInTz(n.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
-                  <button onClick={() => void apiFetch(`/messenger/threads/${detail.id}/notes/${n.id}/delete`, { method: 'POST', token: token! }).then(() => loadThread(detail.id))} title={vi ? 'Xoá ghi chú' : 'Delete note'} aria-label={vi ? 'Xoá ghi chú' : 'Delete note'}
-                    style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', fontSize: 13, padding: 0, fontFamily: 'inherit' }}>×</button>
+{mayRecord &&                   <button onClick={() => void apiFetch(`/messenger/threads/${detail.id}/notes/${n.id}/delete`, { method: 'POST', token: token! }).then(() => loadThread(detail.id))} title={vi ? 'Xoá ghi chú' : 'Delete note'} aria-label={vi ? 'Xoá ghi chú' : 'Delete note'}
+                    style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', fontSize: 13, padding: 0, fontFamily: 'inherit' }}>×</button>}
                 </span>
                 <span style={{ color: 'var(--ce2e8f0)', whiteSpace: 'pre-wrap' }}>{n.text}</span>
               </div>
@@ -2635,6 +2657,7 @@ export function InboxView() {
 
       {err && <div style={{ ...ui.card, borderColor: 'var(--c7f1d1d)', color: 'var(--ink-bad)', marginBottom: 12, fontSize: 13 }}>{err}</div>}
 
+      {recordFor && <ThreadRecord token={token ?? null} threadId={recordFor} vi={vi} onClose={() => setRecordFor(null)} />}
       <div ref={cardRef} onClick={() => { if (moreOpen) setMoreOpen(false); }} style={{ ...ui.card, padding: 0, overflow: 'hidden', display: narrow ? 'flex' : 'grid',
         ...(narrow ? {} : { height: cardH ?? undefined }),
         gridTemplateColumns: narrow ? undefined

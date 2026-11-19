@@ -24,6 +24,7 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
   // is a few megabytes; the cost of deleting one someone still needed is a
   // dispute you cannot answer.
   static readonly AUDIT_DAYS = 180;        // who changed what — useful while a dispute is fresh
+  static readonly CHAT_AUDIT_DAYS = 730;   // rt204: staff actions in conversations
   static readonly NOTIFICATION_DAYS = 90;  // proof a reminder was sent
   static readonly DEAD_WALKIN_DAYS = 30;   // cancelled tickets that never took money
   private readonly BATCH = 5000;           // keep each delete short so nothing locks up
@@ -77,9 +78,15 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
     // when the log pruning below is switched off, because the bin promises a
     // fixed window and must keep that promise.
     const trash = await this.trash.purgeExpired();
-    const auditLogs = await this.prisma.auditLog.deleteMany({
-      where: { createdAt: { lt: this.daysAgo(RetentionService.AUDIT_DAYS) } },
+    // rt204: what staff did in conversations is kept two years, not six months —
+    // it is what an owner reads when a customer says "nobody answered me".
+    const general = await this.prisma.auditLog.deleteMany({
+      where: { createdAt: { lt: this.daysAgo(RetentionService.AUDIT_DAYS) }, NOT: { action: { startsWith: 'messenger.' } } },
     });
+    const chat = await this.prisma.auditLog.deleteMany({
+      where: { createdAt: { lt: this.daysAgo(RetentionService.CHAT_AUDIT_DAYS) }, action: { startsWith: 'messenger.' } },
+    });
+    const auditLogs = { count: (general?.count ?? 0) + (chat?.count ?? 0) };
 
     const notifications = await this.prisma.notification.deleteMany({
       where: { createdAt: { lt: this.daysAgo(RetentionService.NOTIFICATION_DAYS) } },

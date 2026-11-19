@@ -7,6 +7,11 @@ import { bucketFor } from './payment-methods';
 import { DEFAULT_CATEGORIES } from '../finance/finance-calc';
 import { ensureFinanceSetup, type SetupDb } from '../finance/finance-setup';
 import { dayKeyTz } from '../common/salon-time';
+import { UserRole } from '@prisma/client';
+import { cleanAlerts, varianceMatters } from '../restaurant/night-alerts';
+import { cleanStaffCaps, hasCapability } from '../auth/capabilities';
+
+const FOOD_TRADES = new Set(['RESTAURANT', 'CAFE', 'BAKERY', 'BUBBLE_TEA', 'FAST_FOOD']);
 
 /**
  * Cashier shifts — "ca thu ngân".
@@ -201,7 +206,51 @@ export class CashShiftsService {
     const requireShift = Boolean((pos as { requireShift?: boolean }).requireShift);
     const s = await this.db.cashShift.findFirst({ where: { tenantId, status: 'OPEN' } }) as ShiftRow | null;
     if (!s) return { requireShift, shift: null, summary: null };
-    return { requireShift, shift: this.view(s), summary: await this.summarize(tenantId, s) };
+    const rules = await this.closeRules(tenantId);
+    return {
+      requireShift, shift: this.view(s), summary: await this.summarize(tenantId, s),
+      closeRules: { witness: rules.witness, noteFromCents: rules.noteFromCents },
+    };
+  }
+
+  /**
+   * The owner's rules for closing a shift (Thông báo › restaurant.alerts,
+   * 19/11/2026): a second person's PIN, and a written reason when the drawer
+   * is off by more than the limit. Food businesses get the reason rule by
+   * default; other salons only once they saved the settings.
+   */
+  private async closeRules(tenantId: string): Promise<{ witness: boolean; noteFromCents: number | null }> {
+    const [row, industry] = await Promise.all([
+      Promise.resolve().then(() => this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'restaurant.alerts' } } })).catch(() => null),
+      Promise.resolve().then(() => this.settings.getIndustry(tenantId)).catch(() => ''),
+    ]);
+    if (!row && !FOOD_TRADES.has(String(industry))) return { witness: false, noteFromCents: null };
+    const a = cleanAlerts(row?.value ?? {});
+    return { witness: a.witnessOnClose, noteFromCents: a.varianceCents };
+  }
+
+  /**
+   * The person who checked the drawer: an owner or a manager of THIS salon,
+   * not the one closing, by their own approval PIN (the default 0000 does not
+   * count — a witness must have set a real PIN).
+   */
+  private async witnessFor(tenantId: string, pin: unknown, closerId: string): Promise<{ id: string; name: string }> {
+    const clean = String(pin ?? '').trim();
+    if (!clean) throw new BadRequestException('WITNESS_PIN_REQUIRED: cần PIN của chủ hoặc quản lý kiểm két.');
+    const people = await this.prisma.user.findMany({
+      where: { tenantId, isActive: true, id: { not: closerId }, approvalPinHash: { not: null } } as never,
+      select: { id: true, role: true, firstName: true, email: true, approvalPinHash: true } as never,
+    }) as unknown as { id: string; role: string; firstName: string | null; email: string; approvalPinHash: string }[];
+    const cards = people.length
+      ? await this.prisma.staffMember.findMany({ where: { tenantId, userId: { in: people.map((p) => p.id) } }, select: { userId: true, staffRole: true, permissions: true } as never }) as unknown as { userId: string; staffRole: string | null; permissions: unknown }[]
+      : [];
+    const { verifySecret } = await import('../auth/password.util');
+    for (const p of people) {
+      const sm = cards.find((c) => c.userId === p.id);
+      const may = p.role === 'SALON_ADMIN' || (p.role === 'STAFF' && hasCapability(UserRole.STAFF, (sm?.staffRole ?? null) as never, 'pos.void', cleanStaffCaps(sm?.permissions) ?? undefined));
+      if (may && await verifySecret(clean, p.approvalPinHash)) return { id: p.id, name: (p.firstName ?? '').trim() || p.email.split('@')[0] };
+    }
+    throw new BadRequestException('WITNESS_PIN_WRONG: PIN không đúng, hoặc là PIN của chính người đóng ca.');
   }
 
   async open(user: AuthenticatedUser, dto: { openingCents?: number; note?: string }) {
@@ -264,23 +313,30 @@ export class CashShiftsService {
     return { shift: this.view(m.shift), summary: await this.summarize(tenantId, m.shift) };
   }
 
-  async close(user: AuthenticatedUser, dto: { countedCents?: number; note?: string }) {
+  async close(user: AuthenticatedUser, dto: { countedCents?: number; note?: string; witnessPin?: string }) {
     const tenantId = this.tenantId(user);
     const s = await this.db.cashShift.findFirst({ where: { tenantId, status: 'OPEN' } }) as ShiftRow | null;
     if (!s) throw new BadRequestException('Không có ca nào đang mở.');
     const counted = this.cents(dto.countedCents, 'Tiền đếm được');
     const summary = await this.summarize(tenantId, s);
+    const note = (dto.note ?? '').toString().trim().slice(0, 500);
+    const rules = await this.closeRules(tenantId);
+    if (rules.noteFromCents !== null && varianceMatters(counted - summary.expectedCashCents, rules.noteFromCents) && !note) {
+      throw new BadRequestException('NOTE_REQUIRED: két lệch — ghi lý do chênh lệch trước khi đóng ca.');
+    }
+    const witness = rules.witness ? await this.witnessFor(tenantId, dto.witnessPin, user.userId) : null;
+    if (witness) (summary as unknown as { witnessName?: string }).witnessName = witness.name;
     const name = await this.nameOf(user);
     const closed = await this.db.cashShift.update({
       where: { id: s.id },
       data: {
         status: 'CLOSED', closedByUserId: user.userId, closedByName: name, closedAt: new Date(),
         expectedCashCents: summary.expectedCashCents, countedCents: counted, varianceCents: counted - summary.expectedCashCents,
-        closeNote: (dto.note ?? '').toString().trim().slice(0, 500) || null,
+        closeNote: note || null,
         summary: summary as unknown as object,
       },
     }) as ShiftRow;
-    await this.audit.log({ tenantId, userId: user.userId, action: 'pos.shift_closed', resourceType: 'cash_shift', resourceId: s.id, metadata: { expectedCashCents: summary.expectedCashCents, countedCents: counted, varianceCents: counted - summary.expectedCashCents } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'pos.shift_closed', resourceType: 'cash_shift', resourceId: s.id, metadata: { expectedCashCents: summary.expectedCashCents, countedCents: counted, varianceCents: counted - summary.expectedCashCents, ...(witness ? { witnessUserId: witness.id } : {}), ...(note ? { note } : {}) } });
     return { shift: this.view(closed), summary };
   }
 

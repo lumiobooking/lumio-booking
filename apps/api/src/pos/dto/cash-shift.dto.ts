@@ -16,4 +16,6 @@ export class ShiftMovementDto {
 export class CloseShiftDto {
   @IsInt() @Min(0) countedCents!: number;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
+  // A second person's approval PIN, when the owner asks for one (restaurant alerts).
+  @IsOptional() @IsString() @MaxLength(6) witnessPin?: string;
 }

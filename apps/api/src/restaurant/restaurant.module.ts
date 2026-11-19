@@ -5,10 +5,11 @@ import { PushModule } from '../push/push.module';
 import { RestaurantController } from './restaurant.controller';
 import { PublicTableController } from './public-table.controller';
 import { RestaurantService } from './restaurant.service';
+import { NightLogService } from './night-log.service';
 
 @Module({
   imports: [PosModule, SettingsModule, PushModule],
   controllers: [RestaurantController, PublicTableController],
-  providers: [RestaurantService],
+  providers: [RestaurantService, NightLogService],
 })
 export class RestaurantModule {}

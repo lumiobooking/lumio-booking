@@ -153,6 +153,7 @@ export function RestaurantHome() {
             {L('Chốt ca và đếm két', 'Close the till and count')}
           </Link>
         )}
+        <Row href="/salon/pos/log" value="" label={<span style={{ color: C.ink, ...one }}>{L('Nhật ký đêm nay · ai làm gì', 'Tonight’s log · who did what')}</span>} />
       </Card>
 
       <Card>

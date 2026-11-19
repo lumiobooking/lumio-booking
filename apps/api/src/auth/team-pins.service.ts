@@ -38,7 +38,7 @@ export class TeamPinsService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
   private guard(user: AuthenticatedUser): string {
-    if (!maySetTeamPins(user)) throw new ForbiddenException('Only the salon owner or Lumio Support can set PINs for others.');
+    if (!maySetTeamPins(user)) throw new ForbiddenException('Chỉ chủ tiệm hoặc Lumio Support được đặt PIN cho người khác.');
     return user.tenantId as string;
   }
 
@@ -82,22 +82,71 @@ export class TeamPinsService {
     const target = people.find((p) => p.id === String(targetId ?? ''));
     // Another salon's person, a removed one, or someone who may not approve:
     // all look the same from here.
-    if (!target) throw new NotFoundException('That person is not an approver of this salon.');
+    if (!target) throw new NotFoundException('Người này không phải chủ / quản lý của tiệm.');
     const clean = String(pin ?? '').trim();
     if (!clean) {
       await this.prisma.user.update({ where: { id: target.id }, data: { approvalPinHash: null } as never });
       await this.audit.log({ tenantId, userId: user.userId, action: 'approval_pin.cleared_for', resourceType: 'user', resourceId: target.id, metadata: { bySupport: !!user.supportSession } });
       return { ok: true, set: false };
     }
-    if (!/^\d{4,6}$/.test(clean)) throw new BadRequestException('The PIN is 4 to 6 digits.');
-    if (clean === '0000') throw new BadRequestException('Pick a PIN other than 0000 — that is the default everyone knows.');
+    if (!/^\d{4,6}$/.test(clean)) throw new BadRequestException('PIN gồm 4–6 chữ số.');
+    if (clean === '0000') throw new BadRequestException('Không dùng 0000 — đó là PIN mặc định ai cũng biết. Chọn 4–6 số khác.');
     for (const o of people) {
       if (o.id !== target.id && o.approvalPinHash && await verifySecret(clean, o.approvalPinHash)) {
-        throw new BadRequestException('Someone else in this salon uses that PIN — pick another.');
+        throw new BadRequestException('PIN này trùng với người khác trong tiệm — chọn PIN khác.');
       }
     }
     await this.prisma.user.update({ where: { id: target.id }, data: { approvalPinHash: await hashSecret(clean) } as never });
     await this.audit.log({ tenantId, userId: user.userId, action: 'approval_pin.set_for', resourceType: 'user', resourceId: target.id, metadata: { bySupport: !!user.supportSession } });
     return { ok: true, set: true };
+  }
+
+  // ------------------------------------------------------------------
+  // Sign-in passwords of the salon's logins, set by Lumio Support (19/11/2026).
+  // "giao diện đổi mật khẩu cũng mất luôn": inside a salon, support needs to
+  // change the salon's own logins (e.g. a shared login everyone knows), not
+  // the support account's. Support sessions only — the salon's owner changes
+  // staff logins under Nhân viên and their own under Tài khoản của tôi.
+
+  private supportOnly(user: AuthenticatedUser): string {
+    if (!user.supportSession || user.supportLevel === 'content' || !user.tenantId) {
+      throw new ForbiddenException('Chỉ Lumio Support (đang vào tiệm) được đổi mật khẩu cho tài khoản của tiệm.');
+    }
+    return user.tenantId;
+  }
+
+  async logins(user: AuthenticatedUser): Promise<{ people: { id: string; name: string; email: string; role: 'OWNER' | 'STAFF'; active: boolean }[] }> {
+    const tenantId = this.supportOnly(user);
+    const rows = await this.prisma.user.findMany({
+      where: { tenantId, role: { in: [UserRole.SALON_ADMIN, UserRole.STAFF] } },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true, isActive: true },
+      orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+      take: 500,
+    }) as { id: string; email: string; firstName: string | null; lastName: string | null; role: UserRole; isActive: boolean }[];
+    return {
+      people: rows.map((u) => ({
+        id: u.id,
+        name: [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email.split('@')[0],
+        email: u.email,
+        role: u.role === UserRole.SALON_ADMIN ? 'OWNER' : 'STAFF',
+        active: u.isActive,
+      })),
+    };
+  }
+
+  async setLoginPassword(user: AuthenticatedUser, targetId: string, password: unknown): Promise<{ ok: true; email: string }> {
+    const tenantId = this.supportOnly(user);
+    const pw = typeof password === 'string' ? password : '';
+    if (pw.length < 8) throw new BadRequestException('Mật khẩu cần ít nhất 8 ký tự.');
+    if (pw.length > 200) throw new BadRequestException('Mật khẩu quá dài.');
+    const row = await this.prisma.user.findFirst({
+      where: { id: String(targetId ?? ''), tenantId, role: { in: [UserRole.SALON_ADMIN, UserRole.STAFF] } },
+      select: { id: true, email: true },
+    });
+    if (!row) throw new NotFoundException('Không tìm thấy tài khoản này trong tiệm.');
+    // passwordChangedAt signs that person out everywhere: the old password stops at once.
+    await this.prisma.user.update({ where: { id: row.id }, data: { passwordHash: await hashSecret(pw), passwordChangedAt: new Date() } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'user.password_set_by_support', resourceType: 'user', resourceId: row.id, metadata: { bySupport: true } });
+    return { ok: true, email: row.email };
   }
 }

@@ -61,21 +61,21 @@ describe('team approval PINs', () => {
   it('refuses 0000, bad PINs and a PIN another approver already uses', async () => {
     const { svc } = setup([owner('oA', 'A', 'h:1111'), owner('o2', 'A')]);
     await expect(svc.set(support, 'o2', '0000')).rejects.toThrow(/0000/);
-    await expect(svc.set(support, 'o2', '12a4')).rejects.toThrow(/4 to 6/);
-    await expect(svc.set(support, 'o2', '1111')).rejects.toThrow(/Someone else/);
+    await expect(svc.set(support, 'o2', '12a4')).rejects.toThrow(/4–6/);
+    await expect(svc.set(support, 'o2', '1111')).rejects.toThrow(/trùng/);
     await expect(svc.set(support, 'oA', '1111')).resolves.toMatchObject({ set: true });
   });
 
   it('a staff member cannot set anyone’s PIN', async () => {
     const { svc } = setup([owner('oA', 'A')]);
-    await expect(svc.set({ userId: 'cash', role: 'STAFF', tenantId: 'A' } as never, 'oA', '4826')).rejects.toThrow(/owner or Lumio Support/);
+    await expect(svc.set({ userId: 'cash', role: 'STAFF', tenantId: 'A' } as never, 'oA', '4826')).rejects.toThrow(/chủ tiệm hoặc Lumio Support/);
     await expect(svc.list({ userId: 'cash', role: 'STAFF', tenantId: 'A' } as never)).rejects.toThrow();
   });
 
   it('CROSS-TENANT: salon A (owner or support) cannot touch salon B people', async () => {
     const { svc, users } = setup([owner('oA', 'A'), owner('oB', 'B')]);
-    await expect(svc.set(support, 'oB', '4826')).rejects.toThrow(/not an approver/);
-    await expect(svc.set(ownerA, 'oB', '4826')).rejects.toThrow(/not an approver/);
+    await expect(svc.set(support, 'oB', '4826')).rejects.toThrow(/không phải chủ/);
+    await expect(svc.set(ownerA, 'oB', '4826')).rejects.toThrow(/không phải chủ/);
     expect(users[1].approvalPinHash).toBeNull();
     expect((await svc.list(ownerA)).people.map((p) => p.id)).toEqual(['oA']);
   });
@@ -85,5 +85,46 @@ describe('team approval PINs', () => {
     await expect(svc.set(ownerA, 'oA', '')).resolves.toEqual({ ok: true, set: false });
     expect(users[0].approvalPinHash).toBeNull();
     expect(logs[0].action).toBe('approval_pin.cleared_for');
+  });
+});
+
+describe('salon login passwords set by Lumio Support', () => {
+  function mk(users: Record<string, any>[]) {
+    const logs: any[] = [];
+    const prisma: any = {
+      user: {
+        findMany: jest.fn(async ({ where }: any) => users.filter((u) => u.tenantId === where.tenantId)),
+        findFirst: jest.fn(async ({ where }: any) => users.find((u) => u.id === where.id && u.tenantId === where.tenantId) ?? null),
+        update: jest.fn(async ({ where, data }: any) => Object.assign(users.find((u) => u.id === where.id)!, data)),
+      },
+    };
+    return { svc: new TeamPinsService(prisma, { log: async (x: any) => { logs.push(x); } } as never), users, logs };
+  }
+  const people = () => [
+    { id: 'oA', tenantId: 'A', email: 'nauchilldem@x.vn', firstName: null, lastName: null, role: 'SALON_ADMIN', isActive: true, passwordHash: 'old' },
+    { id: 'oB', tenantId: 'B', email: 'b@x.vn', firstName: 'Bình', lastName: null, role: 'SALON_ADMIN', isActive: true, passwordHash: 'old' },
+  ];
+
+  it('support changes a salon login; the person is signed out; audit never holds the password', async () => {
+    const { svc, users, logs } = mk(people());
+    await expect(svc.setLoginPassword(support, 'oA', 'Moi-Mat-Khau-2026')).resolves.toEqual({ ok: true, email: 'nauchilldem@x.vn' });
+    expect(users[0].passwordHash).toBe('h:Moi-Mat-Khau-2026');
+    expect(users[0].passwordChangedAt).toBeInstanceOf(Date);
+    expect(logs[0]).toMatchObject({ action: 'user.password_set_by_support', tenantId: 'A', resourceId: 'oA' });
+    expect(JSON.stringify(logs)).not.toContain('Moi-Mat-Khau');
+    expect((await svc.logins(support)).people.map((p) => p.id)).toEqual(['oA']);
+  });
+
+  it('refuses short passwords, the salon owner, staff and the content level', async () => {
+    const { svc } = mk(people());
+    await expect(svc.setLoginPassword(support, 'oA', 'short')).rejects.toThrow(/8 ký tự/);
+    await expect(svc.setLoginPassword(ownerA, 'oA', 'Moi-Mat-Khau-2026')).rejects.toThrow(/Lumio Support/);
+    await expect(svc.logins({ userId: 'x', role: 'SALON_ADMIN', tenantId: 'A', supportSession: true, supportLevel: 'content' } as never)).rejects.toThrow();
+  });
+
+  it('CROSS-TENANT: support inside salon A cannot change salon B logins', async () => {
+    const { svc, users } = mk(people());
+    await expect(svc.setLoginPassword(support, 'oB', 'Moi-Mat-Khau-2026')).rejects.toThrow(/Không tìm thấy/);
+    expect(users[1].passwordHash).toBe('old');
   });
 });

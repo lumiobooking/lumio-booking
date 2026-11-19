@@ -35,7 +35,11 @@ export interface ShiftSummary {
   /** Restaurants: dishes taken back after the kitchen had them, this shift. */
   voidedItems?: { count: number; totalCents: number; list: { name: string; quantity: number; amountCents: number; reason: string | null; at: string }[] };
 }
-export interface ShiftState { requireShift: boolean; shift: ShiftView | null; summary: ShiftSummary | null }
+export interface ShiftState {
+  requireShift: boolean; shift: ShiftView | null; summary: ShiftSummary | null;
+  /** The owner's rules (Nhật ký › Thông báo): a second person's PIN, and a reason when the drawer is off by this much. */
+  closeRules?: { witness: boolean; noteFromCents: number | null };
+}
 
 const TENDER_LABEL: Record<string, [string, string]> = {
   CASH: ['Tiền mặt', 'Cash'], CARD: ['Thẻ', 'Card'], TRANSFER: ['Chuyển khoản', 'Transfer'], VIETQR: ['VietQR', 'VietQR'],
@@ -65,6 +69,7 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
   useEffect(() => { if (token) apiFetch<{ id: string; direction: 'IN' | 'OUT'; name: string }[]>('/pos/shifts/categories', { token }).then(setCats).catch(() => setCats([])); }, [token]);
   const [counted, setCounted] = useState('');
   const [closeNote, setCloseNote] = useState('');
+  const [witnessPin, setWitnessPin] = useState('');
   const [confirmClose, setConfirmClose] = useState(false);
   const [closed, setClosed] = useState<{ shift: ShiftView; summary: ShiftSummary } | null>(null);
 
@@ -86,6 +91,7 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
       const r = await apiFetch<{ shift: ShiftView; summary: ShiftSummary }>('/pos/shifts/open', { method: 'POST', token, body: { openingCents: toMinorUnits(opening || '0', currency), note: openNote } });
       const next = { requireShift: st?.requireShift ?? false, ...r };
       setSt(next); onState?.(next); setOpening(''); setOpenNote('');
+      void load(); // picks up the owner's closing rules
     } catch (e) { say(e); } finally { setBusy(false); }
   }
 
@@ -94,7 +100,7 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
     setBusy(true); setErr(null);
     try {
       const r = await apiFetch<{ shift: ShiftView; summary: ShiftSummary }>('/pos/shifts/current/movements', { method: 'POST', token, body: { kind: mvKind, amountCents: toMinorUnits(mvAmount || '0', currency), reason: mvReason.trim() || undefined, categoryId: mvCat || undefined } });
-      setSt((s) => ({ requireShift: s?.requireShift ?? false, ...r })); setMvAmount(''); setMvReason(''); setMvCat('');
+      setSt((s) => ({ requireShift: s?.requireShift ?? false, closeRules: s?.closeRules, ...r })); setMvAmount(''); setMvReason(''); setMvCat('');
     } catch (e) { say(e); } finally { setBusy(false); }
   }
 
@@ -103,7 +109,7 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
     setBusy(true); setErr(null);
     try {
       const r = await apiFetch<{ shift: ShiftView; summary: ShiftSummary }>(`/pos/shifts/current/movements/${id}`, { method: 'DELETE', token });
-      setSt((s) => ({ requireShift: s?.requireShift ?? false, ...r }));
+      setSt((s) => ({ requireShift: s?.requireShift ?? false, closeRules: s?.closeRules, ...r }));
     } catch (e) { say(e); } finally { setBusy(false); }
   }
 
@@ -111,7 +117,8 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
     if (!token) return;
     setBusy(true); setErr(null);
     try {
-      const r = await apiFetch<{ shift: ShiftView; summary: ShiftSummary }>('/pos/shifts/current/close', { method: 'POST', token, body: { countedCents: toMinorUnits(counted || '0', currency), note: closeNote } });
+      const r = await apiFetch<{ shift: ShiftView; summary: ShiftSummary }>('/pos/shifts/current/close', { method: 'POST', token, body: { countedCents: toMinorUnits(counted || '0', currency), note: closeNote, ...(witnessPin ? { witnessPin } : {}) } });
+      setWitnessPin('');
       setClosed(r);
       const next = { requireShift: st?.requireShift ?? false, shift: null, summary: null };
       setSt(next); onState?.(next); setConfirmClose(false);
@@ -122,6 +129,9 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
   const sum = st?.summary ?? null;
   const countedCents = counted.trim() === '' ? null : toMinorUnits(counted, currency);
   const variance = countedCents === null || !sum ? null : countedCents - sum.expectedCashCents;
+  const rules = st?.closeRules ?? { witness: false, noteFromCents: null };
+  const needNote = variance !== null && variance !== 0 && rules.noteFromCents !== null && Math.abs(variance) >= rules.noteFromCents;
+  const canClose = countedCents !== null && (!needNote || closeNote.trim() !== '') && (!rules.witness || /^\d{4,6}$/.test(witnessPin));
 
   const head = (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
@@ -252,9 +262,14 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
               {variance === 0 ? L('Khớp — không chênh lệch.', 'Balanced — no variance.') : `${L('Chênh lệch', 'Variance')}: ${signed(variance, fmt)} ${variance < 0 ? L('(thiếu)', '(short)') : L('(dư)', '(over)')}`}
             </div>
           )}
-          <input value={closeNote} onChange={(e) => setCloseNote(e.target.value)} placeholder={L('Ghi chú bàn giao (không bắt buộc)', 'Hand-over note (optional)')} style={inp} />
+          <input value={closeNote} onChange={(e) => setCloseNote(e.target.value)} placeholder={needNote ? L('Lý do chênh lệch (bắt buộc)', 'Why the drawer is off (required)') : L('Ghi chú bàn giao (không bắt buộc)', 'Hand-over note (optional)')} style={{ ...inp, ...(needNote && !closeNote.trim() ? { borderColor: 'var(--ink-bad)' } : {}) }} />
+          {rules.witness && (
+            <label style={lab}>{L('Người kiểm két nhập PIN (chủ hoặc quản lý, không phải người đóng ca)', 'Checked by: owner or manager PIN (not the person closing)')}
+              <input type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={witnessPin} onChange={(e) => setWitnessPin(e.target.value.replace(/\D/g, ''))} placeholder="••••" style={{ ...inp, fontSize: 18, letterSpacing: 4 }} />
+            </label>
+          )}
           {!confirmClose ? (
-            <button type="button" disabled={busy || countedCents === null} onClick={() => setConfirmClose(true)} style={{ ...ui.primaryBtn, padding: '12px 14px', fontSize: 15, opacity: countedCents === null ? 0.5 : 1 }}>{L('Chốt ca', 'Close shift')}</button>
+            <button type="button" disabled={busy || !canClose} onClick={() => setConfirmClose(true)} style={{ ...ui.primaryBtn, padding: '12px 14px', fontSize: 15, opacity: canClose ? 1 : 0.5 }}>{L('Chốt ca', 'Close shift')}</button>
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" disabled={busy} onClick={() => void close()} style={{ ...ui.primaryBtn, flex: 1, padding: '12px 14px', fontSize: 15, background: '#dc2626' }}>{L('Xác nhận chốt & bàn giao', 'Confirm close & hand over')}</button>

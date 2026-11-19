@@ -167,7 +167,7 @@ export function RestaurantReport() {
           </Card>
 
           <Card tone="warn">
-            <H2>{L('Kiểm soát tiền', 'Money checks')}</H2>
+            <H2 right={<Link href="/salon/pos/log" style={{ fontSize: 14, fontWeight: 600, color: C.link, textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Nhật ký', 'Log')}</Link>}>{L('Kiểm soát tiền', 'Money checks')}</H2>
             {s.voided.map(({ order: v, replacement: r }) => (
               <div key={v.id} style={{ border: '1px solid rgba(239,68,68,.45)', background: 'rgba(239,68,68,.06)', borderRadius: 14, padding: '2px 14px', margin: '8px 0' }}>
                 <Row first label={L(`Bill huỷ #${v.orderNumber}`, `Voided #${v.orderNumber}`)} value={<s style={{ color: C.bad }}>{money(v.totalCents)}</s>} />

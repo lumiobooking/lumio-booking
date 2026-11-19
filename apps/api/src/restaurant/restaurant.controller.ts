@@ -5,6 +5,7 @@ import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { RestaurantService } from './restaurant.service';
+import { NightLogService } from './night-log.service';
 import {
   AcceptQrDto, AddLineDto, BankFeedDto, HoldDto, MergeCheckDto, ReadyDto, SendDto, MoveCheckDto, OpenCheckDto, PayCheckDto, PrebillDto, SaveRestaurantSettingsDto, SoldOutDto, SplitCheckDto,
   UpdateCheckDto, UpdateLineDto, VoidCheckDto, VoidLineDto,
@@ -20,7 +21,7 @@ import {
 @Caps('pos')
 @Controller('restaurant')
 export class RestaurantController {
-  constructor(private readonly svc: RestaurantService) {}
+  constructor(private readonly svc: RestaurantService, private readonly night: NightLogService) {}
 
   @Get('floor')
   floor(@CurrentUser() user: AuthenticatedUser) { return this.svc.floor(user); }
@@ -41,6 +42,24 @@ export class RestaurantController {
   @Caps('reports')
   @Get('voids')
   voids(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('to') to?: string) { return this.svc.voidsReport(user, from, to); }
+
+  /** The night log: every till action from audit_logs for an ISO window. Staff without reports see only their own. */
+  @Get('log')
+  log(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('to') to?: string) { return this.night.log(user, from, to); }
+
+  /** Who gets which alert, thresholds, and each owner / manager's phones. Owner only. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('alerts')
+  alerts(@CurrentUser() user: AuthenticatedUser) { return this.night.readAlerts(user); }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('alerts')
+  @HttpCode(200)
+  saveAlerts(@CurrentUser() user: AuthenticatedUser, @Body() body: Record<string, unknown>) { return this.night.saveAlerts(user, body); }
+
+  /** A test alert to my own phones. */
+  @Post('alerts/test')
+  testAlert(@CurrentUser() user: AuthenticatedUser) { return this.night.testAlert(user); }
 
   @Get('settings')
   settings(@CurrentUser() user: AuthenticatedUser) { return this.svc.readSettings(user); }

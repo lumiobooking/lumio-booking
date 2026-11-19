@@ -5,6 +5,7 @@ import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { CashShiftsService } from './cash-shifts.service';
+import { RateLimit } from '../common/security/rate-limit.guard';
 import { CloseShiftDto, OpenShiftDto, ShiftMovementDto } from './dto/cash-shift.dto';
 
 /**
@@ -47,6 +48,8 @@ export class CashShiftsController {
   }
 
   @Post('current/close')
+  // A wrong witness PIN can be retried, not brute-forced.
+  @RateLimit(10, 60_000)
   close(@CurrentUser() user: AuthenticatedUser, @Body() dto: CloseShiftDto) {
     return this.shifts.close(user, dto);
   }

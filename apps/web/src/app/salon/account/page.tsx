@@ -64,10 +64,11 @@ function Inner() {
   if (user?.supportSession) {
     return (
       <section style={{ maxWidth: 560 }}>
-        <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{lang === 'vi' ? 'PIN duyệt của tiệm' : "The salon's approval PINs"}</h1>
+        <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{lang === 'vi' ? 'Tài khoản của tiệm' : "The salon's logins"}</h1>
         <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>
-          {lang === 'vi' ? 'Bạn đang ở chế độ Lumio Support. Email và mật khẩu của tài khoản support không đổi ở đây.' : 'You are in a Lumio Support session. The support login’s email and password are not changed here.'}
+          {lang === 'vi' ? 'Bạn đang ở chế độ Lumio Support: đổi mật khẩu đăng nhập và PIN duyệt cho người của tiệm. Mật khẩu của tài khoản support@ đổi ở trang Lumio Support, không phải ở đây.' : 'Lumio Support session: change the salon people’s sign-in passwords and approval PINs. The support login’s own password is changed in Lumio Support, not here.'}
         </p>
+        <TeamLoginPasswords />
         <TeamApprovalPins />
       </section>
     );
@@ -268,6 +269,7 @@ function TeamApprovalPins() {
   async function save(id: string, clear: boolean) {
     setErr(null); setMsg(null);
     if (!clear && (!/^\d{4,6}$/.test(pin) || pin !== again)) { setErr(L('PIN gồm 4–6 số và phải nhập giống nhau 2 lần.', 'The PIN is 4–6 digits, typed the same twice.')); return; }
+    if (!clear && pin === '0000') { setErr(L('Không dùng 0000 — đó là PIN mặc định ai cũng biết. Chọn 4–6 số khác.', 'Not 0000 — that is the default everyone knows. Pick other digits.')); return; }
     setBusy(true);
     try {
       await apiFetch('/auth/approval-pins/team/' + encodeURIComponent(id), { method: 'POST', token, body: { pin: clear ? '' : pin } });
@@ -312,6 +314,81 @@ function TeamApprovalPins() {
                 <button type="button" disabled={busy} onClick={() => void save(p.id, false)} style={ui.primaryBtn}>{busy ? '…' : L('Lưu PIN', 'Save PIN')}</button>
                 {p.set && <button type="button" disabled={busy} onClick={() => void save(p.id, true)} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer' }}>{L('Xoá PIN', 'Remove PIN')}</button>}
               </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type TeamLogin = { id: string; name: string; email: string; role: 'OWNER' | 'STAFF'; active: boolean };
+
+/**
+ * Lumio Support, inside a salon: a new sign-in password for one of the
+ * salon's logins (19/11/2026) — e.g. the shared login everyone at the till
+ * knows. That person is signed out everywhere; the audit log says who did it.
+ */
+function TeamLoginPasswords() {
+  const { token } = useAuth();
+  const { lang } = useLang();
+  const vi = lang === 'vi';
+  const L = (v: string, e: string) => ind(vi ? v : e);
+  const [people, setPeople] = useState<TeamLogin[] | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [pw, setPw] = useState('');
+  const [again, setAgain] = useState('');
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ people: TeamLogin[] }>('/auth/team-logins', { token }).then((r) => setPeople(r?.people ?? [])).catch((e) => { setPeople([]); setErr(e instanceof Error ? e.message : String(e)); });
+  }, [token]);
+
+  async function save(p: TeamLogin) {
+    setErr(null); setMsg(null);
+    if (pw.length < 8) { setErr(L('Mật khẩu cần ít nhất 8 ký tự.', 'At least 8 characters.')); return; }
+    if (pw !== again) { setErr(L('Hai lần nhập mật khẩu chưa giống nhau.', 'The two passwords differ.')); return; }
+    setBusy(true);
+    try {
+      await apiFetch('/auth/team-logins/' + encodeURIComponent(p.id) + '/password', { method: 'POST', token, body: { password: pw } });
+      setPw(''); setAgain(''); setOpen(null); setShow(false);
+      setMsg(L(`Đã đổi mật khẩu cho ${p.email}. Người dùng tài khoản này bị đăng xuất và phải đăng nhập lại bằng mật khẩu mới.`, `Password changed for ${p.email}. Anyone using it is signed out and must sign in with the new one.`));
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ ...ui.card, marginTop: 16 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>🔐 {L('Mật khẩu đăng nhập của tiệm', "The salon's sign-in passwords")}</div>
+      <p style={{ fontSize: 13, color: 'var(--c94a3b8)', margin: '4px 0 12px' }}>
+        {L('Đổi mật khẩu cho chủ hoặc nhân viên của tiệm (ví dụ tài khoản dùng chung mà ai cũng biết). Người đó bị đăng xuất ngay trên mọi máy.', 'Set a new password for the owner or a staff login (e.g. a shared login everyone knows). They are signed out on every device at once.')}
+      </p>
+      {err && <div style={ui.banner}>{err}</div>}
+      {msg && <div style={{ fontSize: 13, color: 'var(--ink-good)', marginBottom: 10 }}>{msg}</div>}
+      {people === null ? <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>…</div> : people.map((p) => (
+        <div key={p.id} style={{ borderTop: '1px solid var(--c334155)', padding: '10px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name} · {p.role === 'OWNER' ? L('Chủ', 'Owner') : L('Nhân viên', 'Staff')}{p.active ? '' : ` · ${L('đã tắt', 'off')}`}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.email}</div>
+            </div>
+            <button type="button" onClick={() => { setOpen(open === p.id ? null : p.id); setPw(''); setAgain(''); setErr(null); }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap' }}>{L('Đổi mật khẩu', 'Change password')}</button>
+          </div>
+          {open === p.id && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+                <label><span style={ui.label}>{L('Mật khẩu mới (từ 8 ký tự)', 'New password (8+)')}</span>
+                  <input style={ui.input} type={show ? 'text' : 'password'} autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} /></label>
+                <label><span style={ui.label}>{L('Nhập lại', 'Again')}</span>
+                  <input style={ui.input} type={show ? 'text' : 'password'} autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} /></label>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 13, color: 'var(--ccbd5e1)' }}>
+                <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> {L('Hiện mật khẩu', 'Show password')}
+              </label>
+              <button type="button" disabled={busy} onClick={() => void save(p)} style={{ ...ui.primaryBtn, marginTop: 10 }}>{busy ? '…' : L('Lưu mật khẩu mới', 'Save new password')}</button>
             </div>
           )}
         </div>

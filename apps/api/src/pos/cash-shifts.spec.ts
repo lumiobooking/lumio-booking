@@ -153,3 +153,51 @@ describe('a cashier shift', () => {
     expect(await svc.openShiftId('B')).toBeNull();
   });
 });
+
+describe('closing rules from the restaurant alerts (19/11/2026)', () => {
+  function withRules(value: unknown, industry = 'RESTAURANT', approvers: Record<string, any>[] = []) {
+    const made = makeService();
+    made.prisma.setting = { findUnique: jest.fn(async ({ where }: any) => (where.tenantId_key.tenantId === 'A' && value ? { value } : null)) };
+    const settings: any = { getPosSettings: jest.fn(async () => ({ requireShift: false })), getIndustry: jest.fn(async () => industry) };
+    made.prisma.user.findMany = jest.fn(async ({ where }: any) => approvers.filter((u) => u.tenantId === where.tenantId && u.id !== where.id.not));
+    made.prisma.staffMember = { findMany: jest.fn(async () => []) };
+    const svc = new CashShiftsService(made.prisma, settings, made.audit);
+    return { ...made, svc };
+  }
+
+  it('a restaurant must write why the drawer is off by more than the limit', async () => {
+    const { svc } = withRules(null);
+    await svc.open(lan, { openingCents: 3_000_000 });
+    await expect(svc.close(lan, { countedCents: 2_000_000 })).rejects.toThrow(/NOTE_REQUIRED/);
+    await expect(svc.close(lan, { countedCents: 2_000_000, note: 'Thiếu, đang hỏi lại thu ngân' })).resolves.toMatchObject({ shift: { closeNote: 'Thiếu, đang hỏi lại thu ngân' } });
+  });
+
+  it('a nail salon without saved settings closes as before', async () => {
+    const { svc } = withRules(null, 'NAIL_SALON');
+    await svc.open(lan, { openingCents: 3_000_000 });
+    await expect(svc.close(lan, { countedCents: 2_000_000 })).resolves.toBeTruthy();
+  });
+
+  it('with a witness required: needs a real PIN of someone else in this salon, and logs who', async () => {
+    jest.resetModules();
+    jest.doMock('../auth/password.util', () => ({ verifySecret: async (s: string, h: string) => h === `h:${s}` }));
+    const { CashShiftsService: Svc } = await import('./cash-shifts.service');
+    const made = withRules({ witnessOnClose: true }, 'RESTAURANT', [
+      { id: 'u1', tenantId: 'A', role: 'SALON_ADMIN', firstName: 'Lan', email: 'lan@x', approvalPinHash: 'h:1111' },
+      { id: 'm1', tenantId: 'A', role: 'SALON_ADMIN', firstName: 'Minh', email: 'minh@x', approvalPinHash: 'h:4826' },
+      { id: 'b1', tenantId: 'B', role: 'SALON_ADMIN', firstName: 'Bình', email: 'b@x', approvalPinHash: 'h:7777' },
+    ]);
+    const settings: any = { getPosSettings: jest.fn(async () => ({ requireShift: false })), getIndustry: jest.fn(async () => 'RESTAURANT') };
+    const svc = new Svc(made.prisma, settings, made.audit);
+    await svc.open(lan, { openingCents: 100 });
+    await expect(svc.close(lan, { countedCents: 100 })).rejects.toThrow(/WITNESS_PIN_REQUIRED/);
+    // Her own PIN does not count; another salon's PIN does not count (CROSS-TENANT).
+    await expect(svc.close(lan, { countedCents: 100, witnessPin: '1111' })).rejects.toThrow(/WITNESS_PIN_WRONG/);
+    await expect(svc.close(lan, { countedCents: 100, witnessPin: '7777' })).rejects.toThrow(/WITNESS_PIN_WRONG/);
+    await expect(svc.close(lan, { countedCents: 100, witnessPin: '0000' })).rejects.toThrow(/WITNESS_PIN_WRONG/);
+    const r = await svc.close(lan, { countedCents: 100, witnessPin: '4826' });
+    expect((r.summary as any).witnessName).toBe('Minh');
+    expect(made.audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'pos.shift_closed', metadata: expect.objectContaining({ witnessUserId: 'm1' }) }));
+    jest.dontMock('../auth/password.util');
+  });
+});

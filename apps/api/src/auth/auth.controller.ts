@@ -22,6 +22,10 @@ class TeamPinDto {
   @IsOptional() @IsString() @MaxLength(6) pin?: string;
 }
 
+class TeamPasswordDto {
+  @IsString() @MinLength(8) @MaxLength(200) password!: string;
+}
+
 class ChangePasswordDto {
   @IsString() @MaxLength(200) currentPassword!: string;
   @IsString() @MinLength(8) @MaxLength(200) newPassword!: string;
@@ -85,6 +89,19 @@ export class AuthController {
   @HttpCode(200)
   setTeamApprovalPin(@CurrentUser() user: AuthenticatedUser, @Param('userId') userId: string, @Body() dto: TeamPinDto) {
     return this.teamPins.set(user, userId, dto.pin ?? '');
+  }
+
+  // The salon's logins and a new sign-in password for one — Lumio Support inside a salon only.
+  @Get('team-logins')
+  teamLogins(@CurrentUser() user: AuthenticatedUser) {
+    return this.teamPins.logins(user);
+  }
+
+  @RateLimit(20, 60_000)
+  @Post('team-logins/:userId/password')
+  @HttpCode(200)
+  setTeamLoginPassword(@CurrentUser() user: AuthenticatedUser, @Param('userId') userId: string, @Body() dto: TeamPasswordDto) {
+    return this.teamPins.setLoginPassword(user, userId, dto.password);
   }
 
   @RateLimit(10, 60_000)

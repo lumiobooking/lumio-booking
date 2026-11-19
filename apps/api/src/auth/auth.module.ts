@@ -19,6 +19,7 @@ import { SupportScopeGuard } from '../support/support-scope.guard';
     JwtModule.register({}),
   ],
   controllers: [AuthController],
+  exports: [AuthService],
   providers: [
     AuthService,
     TeamPinsService,

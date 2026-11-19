@@ -15,7 +15,7 @@ import type { StaffRole } from '@prisma/client';
  */
 // Plain strings, not the generated enum: this runs at import time, and the rule
 // must not depend on how recent the generated client is.
-export const FRONT_ONLY_ROLES: string[] = ['RECEPTIONIST', 'WAITER', 'KITCHEN'];
+export const FRONT_ONLY_ROLES: string[] = ['RECEPTIONIST', 'WAITER', 'KITCHEN', 'CHAT'];
 
 export function isFrontOnly(role: StaffRole | string | null | undefined): boolean {
   return !!role && FRONT_ONLY_ROLES.includes(String(role));

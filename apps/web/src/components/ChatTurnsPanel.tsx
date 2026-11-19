@@ -1,4 +1,5 @@
 'use client';
+import { StaffInvitePanel } from './StaffInvitePanel';
 
 import { useCallback, useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
@@ -250,6 +251,13 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
               ))}
               {!view.agents.length && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{T('Chưa có nhân viên nào có tài khoản đăng nhập.', 'No team member has a login yet.')}</div>}
             </div>
+            {/* rt200: add people to the team right here — link + Facebook, no accounts to create. */}
+            {view.canEdit && (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--ink-link)' }}>＋ {T('Thêm nhân viên nhận tin (gửi link mời)', 'Add people (send an invite link)')}</summary>
+                <div style={{ marginTop: 8 }}><StaffInvitePanel token={token} vi={vi} /></div>
+              </details>
+            )}
             {edit && !s.agentIds.length && view.agents.length > 1 && (
               <p style={{ fontSize: 11.5, color: 'var(--c64748b)', margin: '6px 0 0' }}>{T('Đang chia cho tất cả mọi người. Bỏ tick một người để chọn danh sách riêng và sắp thứ tự lượt.', 'Everyone takes turns. Untick someone to pick your own list and set the order.')}</p>
             )}

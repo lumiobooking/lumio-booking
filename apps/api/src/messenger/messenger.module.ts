@@ -1,3 +1,4 @@
+import { StaffInviteModule } from '../staff-invite/staff-invite.module';
 import { AiDigestService } from './ai-digest.service';
 import { AiGoldenController, AiGoldenService } from './ai-golden.service';
 import { SupportAiLeaksController, SupportAiFleetController } from './support-ai-leaks.controller';
@@ -28,7 +29,7 @@ import { PhotoLibraryService } from './photo-library.service';
 import { ChatPayService } from './chat-pay.service';
 import { StaffAlertsService } from './staff-alerts.service';
 @Module({
-  imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule, UploadsModule],
+  imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule, UploadsModule, StaffInviteModule],
   controllers: [SupportAiLeaksController, SupportAiFleetController, AiGoldenController, MessengerController, ChatTurnsController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
   providers: [OAuthGate, InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService, ChatFollowUpScheduler, KnowledgeGapsService, BotReportService, AiDigestService, AiGoldenService, PhotoLibraryService, ChatPayService, StaffAlertsService],
   exports: [InboxEventsService, MessengerService, ChatTurnsService, PhotoLibraryService, ChatPayService],

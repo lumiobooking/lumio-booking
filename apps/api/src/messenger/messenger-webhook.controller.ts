@@ -1,4 +1,6 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Optional, Post, Query, Req, Res } from '@nestjs/common';
+import { StaffInviteService } from '../staff-invite/staff-invite.service';
+import { isStaffState } from '../staff-invite/staff-invite';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { MessengerService } from './messenger.service';
@@ -19,7 +21,7 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 @SkipRateLimit()
 @Controller('messenger')
 export class MessengerWebhookController {
-  constructor(private readonly svc: MessengerService, private readonly gate: OAuthGate) {}
+  constructor(private readonly svc: MessengerService, private readonly gate: OAuthGate, @Optional() private readonly staffLogin?: StaffInviteService) {}
 
   @Public()
   @Get('webhook')
@@ -59,6 +61,8 @@ export class MessengerWebhookController {
     @Query('error') error: string,
     @Res() res: Response,
   ) {
+    // rt200: a team member's "Đăng nhập với Facebook" shares this redirect (already allowed in the Meta app).
+    if (this.staffLogin && isStaffState(state)) { res.redirect(await this.staffLogin.callback(code || '', state || '', error || '')); return; }
     // The grant is applied only from the salon's own signed-in session (common/oauth-gate.service.ts).
     const parked = error ? null : await this.gate.park('facebook', tenantOfState(this.svc, state || ''), { code: code || '', state: state || '' });
     res.redirect(parked ?? await this.svc.oauthCallback(code || '', state || '', error || ''));

@@ -6,7 +6,7 @@ import { readSession, clearAllSessions, AUTH_KEY, leaveSupportSession, planForRe
 
 export type UserRole = 'SUPER_ADMIN' | 'SALON_ADMIN' | 'STAFF' | 'SUPPORT';
 
-export type StaffRole = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN' | 'WAITER' | 'KITCHEN';
+export type StaffRole = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN' | 'WAITER' | 'KITCHEN' | 'CHAT';
 
 export interface AuthUser {
   id: string;
@@ -30,7 +30,7 @@ export interface AuthUser {
   supportCustom?: boolean;
 }
 
-interface LoginResponse {
+export interface LoginResponse {
   accessToken: string;
   user: AuthUser;
 }
@@ -40,6 +40,8 @@ interface AuthState {
   user: AuthUser | null;
   ready: boolean; // true once we've read persisted state
   login: (email: string, password: string, captchaToken?: string) => Promise<AuthUser>;
+  /** rt200: take a session the server issued another way (Đăng nhập với Facebook). */
+  adopt: (res: LoginResponse) => AuthUser;
   logout: () => void;
 }
 
@@ -116,6 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res.user;
   }
 
+  function adopt(res: LoginResponse): AuthUser {
+    setToken(res.accessToken);
+    setUser(res.user);
+    setSessionTenant(res.user.tenantId ?? null);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(res));
+    localStorage.removeItem('lumio_active_branch');
+    return res.user;
+  }
+
   function logout() {
     setToken(null);
     setUser(null);
@@ -126,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ token, user, ready, login, logout }}>
+    <AuthContext.Provider value={{ token, user, ready, login, adopt, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -151,6 +162,8 @@ export function homeFor(user: { role: string; staffRole?: string | null; capabil
   if (user.role === 'SUPPORT') return '/agency';
   if (user.role !== 'STAFF') return '/salon';
   const caps = user.capabilities ?? [];
+  // rt200: "Tư vấn tin nhắn" — customer messages only.
+  if (user.staffRole === 'CHAT') return '/salon/inbox';
   // A technician stays in the technicians' app even when the owner lets her
   // help at the till — those screens are one tap away from the salon menu.
   if (user.staffRole === 'TECHNICIAN' || !caps.length) return '/staff/today';

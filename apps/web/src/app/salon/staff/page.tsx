@@ -14,6 +14,7 @@ import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../c
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { PayFields, payBody, payFormFrom, paySummary, type PayForm } from './PayFields';
 import { AccessBlock, LoginSection, PermissionChecklist, RoleMatrix, useAccessCatalog } from './AccessPanel';
+import { StaffInvitePanel } from '../../../components/StaffInvitePanel';
 import { TimeOffPanel } from './TimeOffPanel';
 import { ConfirmDialog } from './TimeOffDialog';
 import { ind, uiIndustry } from '../../../lib/ui-industry';
@@ -28,7 +29,7 @@ interface Service {
   category?: { id: string; name: string } | null;
 }
 
-type Role = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN' | 'WAITER' | 'KITCHEN';
+type Role = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN' | 'WAITER' | 'KITCHEN' | 'CHAT';
 
 interface StaffMember {
   id: string;
@@ -140,6 +141,7 @@ function RoleBadge({ role, takes }: { role?: Role; takes?: boolean }) {
     MANAGER: { label: t('st.roleManager'), bg: '#155e75', fg: '#a5f3fc' },
     WAITER: { label: lang === 'vi' ? 'Phục vụ' : 'Server', bg: 'var(--c14532d)', fg: 'var(--cbbf7d0)' },
     KITCHEN: { label: lang === 'vi' ? 'Bếp' : 'Kitchen', bg: '#9a3412', fg: '#ffedd5' },
+    CHAT: { label: lang === 'vi' ? 'Tư vấn tin nhắn' : 'Messages', bg: '#1e3a8a', fg: '#bfdbfe' },
   };
   const m = map[r];
   return (
@@ -269,6 +271,9 @@ function StaffInner() {
   // the list jump straight to Account & access.
   const [editTab, setEditTab] = useState<'profile' | 'access'>('profile');
   const [showRoles, setShowRoles] = useState(false);
+  // rt200: invite by link + Facebook (the owner only).
+  const [showInvite, setShowInvite] = useState(false);
+  const isOwner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN' || !!user?.supportSession;
   // Time off (nghỉ phép): opened by the button, or straight from the owner's push (?timeoff=1).
   const [showTimeOff, setShowTimeOff] = useState(false);
   const [pendingOff, setPendingOff] = useState(0);
@@ -357,6 +362,11 @@ function StaffInner() {
           <button type="button" onClick={() => setShowRoles((v) => !v)} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>
             {lang === 'vi' ? (showRoles ? 'Ẩn vai trò & quyền' : '🔐 Vai trò & quyền') : (showRoles ? 'Hide roles & access' : '🔐 Roles & access')}
           </button>
+          {isOwner && (
+            <button type="button" onClick={() => setShowInvite((v) => !v)} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>
+              🔗 {lang === 'vi' ? 'Mời bằng link' : 'Invite by link'}
+            </button>
+          )}
           {canEdit && (
             <button onClick={() => { setShowForm(true); setCreatedMsg(null); }} style={ui.primaryBtn}>
               {t('st.newStaff')}
@@ -364,6 +374,11 @@ function StaffInner() {
           )}
         </div>
       </div>
+      {showInvite && isOwner && (
+        <div style={{ marginBottom: 16 }}>
+          <StaffInvitePanel token={token} vi={lang === 'vi'} />
+        </div>
+      )}
       {showRoles && (
         <div style={{ ...ui.card, marginBottom: 16 }}>
           <RoleMatrix vi={lang === 'vi'} presets={rolePresets} />
@@ -773,7 +788,7 @@ function StaffEditPanel({
               takesAppointments={form.takesAppointments}
               onChange={(staffRole, takesAppointments) => { up('staffRole', staffRole); up('takesAppointments', takesAppointments); setPerms(null); }}
             />
-            <PermissionChecklist vi={vi} role={form.staffRole} presets={presets} custom={perms} onChange={(v) => { setPerms(v); setSaved(false); }} />
+            {form.staffRole !== 'CHAT' && <PermissionChecklist vi={vi} role={form.staffRole} presets={presets} custom={perms} onChange={(v) => { setPerms(v); setSaved(false); }} />}
             {accessChanged && member.user && (
               <div style={{ fontSize: 12.5, color: 'var(--ink-warn)', lineHeight: 1.45 }}>
                 {L('Khi lưu, người này sẽ được đăng xuất để quyền mới áp dụng ngay. Họ chỉ cần đăng nhập lại.', 'When you save, this person is signed out so the new access applies at once. They just sign in again.')}

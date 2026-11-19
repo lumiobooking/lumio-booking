@@ -66,6 +66,8 @@ const HREF_CAP: Record<string, string> = {
   '/salon/chain': 'reports', // multi-branch consolidated report
 };
 const ALL_CAPS = Object.values(HREF_CAP);
+/** rt200: everything a messages-only team member may open. */
+const CHAT_ONLY_HREFS = new Set(['/salon/inbox']);
 
 // Remember the salon's POS entitlement between page loads so the nav renders
 // the correct items immediately (no flash of locked items).
@@ -290,6 +292,8 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // The menu shows only what passes both.
   const can = (href: string) => {
     if (!canSee(href, isSupport, hiddenHrefs)) return false;
+    // rt200: "Tư vấn tin nhắn" — the Inbox and nothing else (uncapped screens included).
+    if (!isSupport && user?.role === 'STAFF' && user?.staffRole === 'CHAT' && !CHAT_ONLY_HREFS.has(href)) return false;
     if (TEAM_ONLY.has(href) && !(isSupport || user?.role === 'SUPER_ADMIN')) return false;
     const c = HREF_CAP[href];
     // Client forms open with either: the desk (customers) sees signed / missing,
@@ -347,7 +351,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   const visibleGroups = GROUPS
     .map((g) => ({ ...g, items: g.items.filter(itemVisible) }))
     .filter((g) => g.items.length > 0);
-  const firstAllowedHref = (can(DASHBOARD.href) && DASHBOARD.href) || (visibleGroups[0]?.items[0] && go(visibleGroups[0].items[0])) || '/salon';
+  const firstAllowedHref = (user?.staffRole === 'CHAT' && can('/salon/inbox') && '/salon/inbox') || (can(DASHBOARD.href) && DASHBOARD.href) || (visibleGroups[0]?.items[0] && go(visibleGroups[0].items[0])) || '/salon';
 
   useEffect(() => {
     if (!ready) return;

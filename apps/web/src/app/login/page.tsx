@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { homeFor, useAuth } from '../../lib/auth';
+import { apiFetch } from '../../lib/api';
 import { useLang } from '../../lib/i18n';
 import { BRAND_BLUE } from '../../components/LumioLogo';
 
@@ -52,7 +53,7 @@ const CSS = `
 .lg2-lang button{height:30px;padding:0 12px;border:0;border-radius:999px;font-size:12.5px;font-weight:700;cursor:pointer;background:transparent;color:var(--muted)}
 .lg2-lang button[aria-pressed="true"]{background:var(--deep);color:#ffffff}
 .lg2-card{position:relative;width:100%;max-width:432px;perspective:1400px}
-.lg2-flip{position:relative;height:640px;transform-style:preserve-3d;transition:transform .85s cubic-bezier(.3,1.25,.4,1)}
+.lg2-flip{position:relative;height:700px;transform-style:preserve-3d;transition:transform .85s cubic-bezier(.3,1.25,.4,1)}
 .lg2-flip.back{transform:rotateY(180deg)}
 .lg2-side{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:32px;background:var(--soft);box-shadow:20px 20px 40px var(--sd),-20px -20px 40px var(--sl);padding:28px 30px}
 .lg2-side.b{transform:rotateY(180deg)}
@@ -89,6 +90,10 @@ const CSS = `
 .lg2-btn:hover:not(:disabled){color:#ffffff;background:linear-gradient(135deg,#1a8cff,#0a6fd8 55%,#0659b8);box-shadow:0 12px 26px rgba(10,111,216,.38)}
 .lg2-btn:active:not(:disabled){box-shadow:inset 6px 6px 12px rgba(4,40,90,.35)}
 .lg2-btn:disabled{opacity:.6;cursor:not-allowed}
+.lg2-fb{width:100%;height:48px;border:0;border-radius:14px;background:#1877f2;color:#ffffff;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px}
+.lg2-fb:disabled{opacity:.6;cursor:not-allowed}
+.lg2-or{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--muted);margin:-4px 0}
+.lg2-or::before,.lg2-or::after{content:"";flex:1;height:1px;background:var(--sd)}
 .lg2-btn i{position:absolute;left:12%;right:12%;bottom:-10px;height:4px;border-radius:4px;background:linear-gradient(90deg,transparent,var(--blue),transparent);filter:blur(2px);animation:lg2glow 2.4s ease-in-out infinite}
 .lg2-round{width:48px;height:48px;border:0;border-radius:50%;background:var(--soft);box-shadow:6px 6px 12px var(--sd),-6px -6px 12px var(--sl);color:var(--deep);font-size:24px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:transform .25s,background .2s,color .2s}
 .lg2-round:hover{background:var(--deep);color:#ffffff;transform:rotate(90deg)}
@@ -128,6 +133,32 @@ export default function LoginPage() {
   const [human, setHuman] = useState(false);
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // rt200: "Đăng nhập với Facebook" for team members who joined by an invite link.
+  const [fbBusy, setFbBusy] = useState(false);
+  useEffect(() => {
+    const fb = new URLSearchParams(window.location.search).get('fb');
+    if (!fb) return;
+    const vi = (localStorage.getItem('lumio_lang') ?? 'vi') !== 'en';
+    const M: Record<string, [string, string]> = {
+      none: ['Facebook này chưa vào tiệm nào. Nhờ chủ tiệm gửi link mời, mở link rồi bấm “Đăng nhập với Facebook”.', 'This Facebook account has not joined a salon yet. Ask the owner for an invite link.'],
+      cancel: ['Bạn đã huỷ đăng nhập Facebook.', 'Facebook sign-in was cancelled.'],
+      expired: ['Phiên đăng nhập đã hết hạn — bấm lại “Đăng nhập với Facebook”.', 'The sign-in expired — press the Facebook button again.'],
+      failed: ['Facebook chưa xác nhận được — thử lại sau ít phút.', 'Facebook could not confirm — try again in a minute.'],
+      'invite-used': ['Link mời đã dùng hết lượt. Nhờ chủ tiệm tạo link mới.', 'This invite link is used up. Ask the owner for a new one.'],
+      'invite-expired': ['Link mời đã hết hạn. Nhờ chủ tiệm tạo link mới.', 'This invite link has expired. Ask the owner for a new one.'],
+      'invite-revoked': ['Link mời đã bị huỷ hoặc tài khoản đã bị khoá. Liên hệ chủ tiệm.', 'This invite was cancelled or the login is turned off. Ask the owner.'],
+      'invite-missing': ['Link mời không đúng. Nhờ chủ tiệm gửi lại.', 'This invite link is not valid. Ask the owner to send it again.'],
+    };
+    const m = M[fb];
+    if (m) setError(vi ? m[0] : m[1]);
+  }, []);
+  async function facebookLogin() {
+    setFbBusy(true); setError(null);
+    try {
+      const r = await apiFetch<{ url: string }>('/auth/facebook/start', { method: 'POST', body: { mode: 'login' } });
+      window.location.assign(r.url);
+    } catch (e) { setError(String((e as Error)?.message ?? e)); setFbBusy(false); }
+  }
   const [phase, setPhase] = useState<'idle' | 'busy' | 'ok'>('idle');
   const [shake, setShake] = useState(false);
   const [intro, setIntro] = useState(true);
@@ -319,6 +350,12 @@ export default function LoginPage() {
 
                 <button type="submit" className="lg2-btn" disabled={busy} tabIndex={flipped ? -1 : 0}>
                   {L('ĐĂNG NHẬP', 'SIGN IN')} {Ico.arrow}<i aria-hidden="true" />
+                </button>
+
+                <div className="lg2-or">{L('nhân viên', 'team members')}</div>
+                <button type="button" className="lg2-fb" onClick={() => void facebookLogin()} disabled={fbBusy} tabIndex={flipped ? -1 : 0}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#ffffff" d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.04V9.41c0-3.02 1.8-4.7 4.54-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.95.93-1.95 1.88v2.27h3.32l-.53 3.49h-2.79V24C19.61 23.1 24 18.1 24 12.07z" /></svg>
+                  {fbBusy ? L('Đang mở Facebook…', 'Opening Facebook…') : L('Đăng nhập với Facebook', 'Continue with Facebook')}
                 </button>
 
                 <div className="lg2-center" style={{ marginTop: 6 }}>

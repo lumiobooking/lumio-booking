@@ -19,9 +19,9 @@ import { isTableIndustry } from '../../../lib/restaurant-till';
 /** The groups this business needs: the restaurant block only for restaurants, cafés, quán ăn. */
 const groupsFor = () => ACCESS_GROUPS.filter((g) => g.id !== 'restaurant' || isTableIndustry(uiIndustry()));
 /** The roles this business uses. */
-const rolesFor = (): Role[] => (isTableIndustry(uiIndustry()) ? ['MANAGER', 'RECEPTIONIST', 'WAITER', 'KITCHEN', 'TECHNICIAN'] : ['MANAGER', 'RECEPTIONIST', 'TECHNICIAN']);
+const rolesFor = (): Role[] => (isTableIndustry(uiIndustry()) ? ['MANAGER', 'RECEPTIONIST', 'WAITER', 'KITCHEN', 'TECHNICIAN', 'CHAT'] : ['MANAGER', 'RECEPTIONIST', 'TECHNICIAN', 'CHAT']);
 
-export type Role = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN' | 'WAITER' | 'KITCHEN';
+export type Role = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN' | 'WAITER' | 'KITCHEN' | 'CHAT';
 type Cap = string;
 
 /** Fallback when the catalogue cannot be read — mirrors api/src/auth/capabilities.ts. */
@@ -31,6 +31,7 @@ const FALLBACK_PRESETS: Record<Role, Cap[]> = {
   TECHNICIAN: [],
   WAITER: ['pos'],
   KITCHEN: ['kitchen'],
+  CHAT: ['inbox'],
 };
 
 /** The screens, grouped the way an owner thinks about them. */
@@ -113,6 +114,7 @@ const ROLE_TEXT: Record<Role, { vi: string; en: string; emoji: string; whoVi: st
   RECEPTIONIST: { vi: 'Lễ tân', en: 'Receptionist', emoji: '💵', whoVi: 'Quầy lễ tân: nhận khách, đặt/dời lịch, giao thợ, tính tiền. Không thấy doanh thu, báo cáo, lương.', whoEn: 'Front desk: greet, book and move, hand to techs, check out. No takings, reports or pay.' },
   MANAGER: { vi: 'Quản lý', en: 'Manager', emoji: '👔', whoVi: 'Gần như toàn quyền vận hành, trừ cài đặt tiệm, gói Lumio và kết nối tài khoản.', whoEn: 'Runs the shop: everything except settings, the Lumio plan and connected accounts.' },
   WAITER: { vi: 'Phục vụ', en: 'Server', emoji: '🍽️', whoVi: 'Điện thoại / iPad: mở bàn, gọi món, báo bếp, yêu cầu thanh toán. Đăng nhập vào thẳng sơ đồ bàn. Thu tiền chỉ khi chủ cho phép (Cài đặt nhà hàng › Ai được thu tiền).', whoEn: 'Phone / iPad: open tables, order, send to the kitchen, ask for the bill. Signs in to the floor plan. Takes money only if the owner allows it.' },
+  CHAT: { vi: 'Tư vấn tin nhắn', en: 'Messages only', emoji: '💬', whoVi: 'Chỉ Hộp thư: trả lời khách nhắn Fanpage / Instagram, nhận turn, bấm Vào ca. Không thấy lịch, tiền, danh sách khách. Vào bằng link mời + Facebook.', whoEn: 'Inbox only: answers customers on the Page / Instagram, takes turns. No calendar, money or client list. Joins by invite link + Facebook.' },
   KITCHEN: { vi: 'Bếp', en: 'Kitchen', emoji: '🔥', whoVi: 'Máy tính bảng ở bếp: chỉ màn hình bếp (món cần làm, báo xong, báo hết món). Không thấy bàn, tiền hay mục nào khác.', whoEn: 'The kitchen tablet: only the kitchen screen (dishes to cook, done, sold out). No tables, money or other screens.' },
 };
 

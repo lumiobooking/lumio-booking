@@ -31,6 +31,7 @@ enum StaffRole {
   TECHNICIAN // Own schedule/work only (staff portal)
   WAITER // Restaurants: takes orders at the tables (the table till); pays only if the owner allows
   KITCHEN // Restaurants: the kitchen screen and sold-out dishes, nothing else
+  CHAT // Answers customer messages only (the Inbox) — joins by invite link + Facebook (rt200)
 }
 
 enum UserRole {
@@ -4293,4 +4294,46 @@ model MediaLibraryItem {
   @@index([tenantId, kind])
   @@index([tenantId, url])
   @@map("media_library")
+}
+
+// ===========================================================================
+// rt200 — staff join by an invite link and sign in with Facebook (identity
+// only: name + app-scoped id; no Page, no messages, no friends).
+// ===========================================================================
+
+/// An owner's invite link. The token is shown once; only its SHA-256 is kept.
+model StaffInvite {
+  id          String     @id @default(uuid())
+  tenantId    String
+  tokenHash   String     @unique
+  /// Always written explicitly (no DB default: the CHAT value is added in its own migration).
+  staffRole   StaffRole
+  label       String?
+  maxUses     Int        @default(1)
+  uses        Int        @default(0)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdById String?
+  createdAt   DateTime   @default(now())
+
+  @@index([tenantId])
+  @@map("staff_invites")
+}
+
+/// "Đăng nhập với Facebook" for a team member of ONE salon. The same person in
+/// two salons has two rows (and two Lumio logins).
+model SocialLogin {
+  id             String    @id @default(uuid())
+  tenantId       String
+  userId         String
+  provider       String
+  providerUserId String
+  displayName    String?
+  createdAt      DateTime  @default(now())
+  lastLoginAt    DateTime?
+
+  @@unique([provider, providerUserId, tenantId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("social_logins")
 }

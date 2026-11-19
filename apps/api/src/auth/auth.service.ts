@@ -105,11 +105,28 @@ export class AuthService {
       this.log.warn(`login refused: wrong password for ${maskEmail(wanted)}`);
       throw new UnauthorizedException('Invalid credentials');
     }
+    return this.startSession(user, maskEmail(wanted));
+  }
+
+  /**
+   * rt200: a session for someone already proven another way — "Đăng nhập với
+   * Facebook" (staff-invite). Same checks as a password login from here on:
+   * the account switched on, the salon active.
+   */
+  private loadUser(id: string) { return this.prisma.user.findUnique({ where: { id }, include: { tenant: true } }); }
+
+  async sessionForUser(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { tenant: true } });
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+    return this.startSession(user, `user ${userId.slice(0, 8)}`);
+  }
+
+  private async startSession(user: NonNullable<Awaited<ReturnType<AuthService['loadUser']>>>, who: string) {
     // The right password on an account the salon turned off: say so — it is
     // the owner who can turn it back on, and "invalid credentials" sent
     // people to retype a password that was never the problem.
     if (!user.isActive) {
-      this.log.warn(`login refused: account turned off for ${maskEmail(wanted)}`);
+      this.log.warn(`login refused: account turned off for ${who}`);
       throw new UnauthorizedException('This login has been turned off. Ask the salon owner to turn it back on.');
     }
 

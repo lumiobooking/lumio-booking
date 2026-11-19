@@ -38,14 +38,18 @@ export type Capability =
   // receptionist sees only signed / missing and a technician their own
   // clients; the owner can hand it to anyone (12/11/2026).
   | 'forms'             // read every client's signed forms, send / print them
-  | 'forms.edit';       // change the salon's forms and when they are asked
+  | 'forms.edit'        // change the salon's forms and when they are asked
+  // rt200: the "Tư vấn tin nhắn" role — customer messages and nothing else.
+  // A role preset only, never ticked per person (the Inbox needs no cap for
+  // the desk roles), so it is left out of STAFF_GRANTABLE.
+  | 'inbox';
 
 export const ALL_CAPS: Capability[] = [
   'dashboard', 'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist',
   'customers', 'services', 'products', 'staff', 'payroll', 'reviews', 'marketing',
   'inventory', 'reports', 'payments', 'notifications', 'integrations', 'billing', 'settings',
   'pos.discount', 'pos.void', 'bookings.delete', 'customers.delete', 'kitchen',
-  'forms', 'forms.edit',
+  'forms', 'forms.edit', 'inbox',
 ];
 
 // Owner-only areas no staff account is ever handed, whatever its role or the
@@ -54,7 +58,7 @@ export const ALL_CAPS: Capability[] = [
 export const OWNER_ONLY: Capability[] = ['integrations', 'billing', 'settings'];
 
 /** Everything a staff account CAN be given. */
-export const STAFF_GRANTABLE: Capability[] = ALL_CAPS.filter((c) => !OWNER_ONLY.includes(c));
+export const STAFF_GRANTABLE: Capability[] = ALL_CAPS.filter((c) => !OWNER_ONLY.includes(c) && c !== 'inbox');
 
 const MANAGER_CAPS: Capability[] = [...STAFF_GRANTABLE];
 
@@ -76,6 +80,8 @@ export const ROLE_PRESETS: Record<StaffRole, Capability[]> = {
   WAITER: ['pos'],
   // The kitchen tablet: the kitchen screen and "sold out", nothing else.
   KITCHEN: ['kitchen'],
+  // rt200: answers customer messages in the Inbox — no calendar, no money, no clients list.
+  CHAT: ['inbox'],
 };
 
 /**

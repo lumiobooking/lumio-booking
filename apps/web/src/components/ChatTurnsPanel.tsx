@@ -256,7 +256,7 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
               <label style={{ ...row, flexWrap: 'wrap' }}>{T('Nhân viên chưa trả lời khách sau', 'The person has not replied after')}
                 {num('reassignUnrepliedMins', 240)}{T('phút', 'min')}</label>
               <label style={{ ...row, flexWrap: 'wrap' }}>{T('Mỗi hội thoại chuyển tối đa', 'Pass one conversation on at most')}
-                {num('maxHops', 10)}{T('lần', 'times')}</label>
+                {num('maxHops', 10)}{T('lần — hết lượt mà vẫn chưa ai trả lời thì báo ngay cho chủ tiệm và cả nhóm đang trong ca (ai rảnh bấm vào là nhận)', 'times — then the owner and everyone on shift are told at once (whoever is free takes it)')}</label>
               <label style={{ ...row, flexWrap: 'wrap' }}><b style={{ color: 'var(--ink-bad)' }}>{T('Khách từ quảng cáo', 'Customers from ads')}</b>{T(': chuyển nếu chưa trả lời sau', ': pass on if not answered after')}
                 {num('reassignAdMins', 240)}{T('phút (0 = như khách thường)', 'min (0 = like everyone else)')}</label>
             </div>

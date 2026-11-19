@@ -150,3 +150,46 @@ describe('rt211 — old customers given out to follow up', () => {
     await expect(svc.distributeBacklog({ userId: 'lan', role: 'STAFF', tenantId: 'A' } as never, 30)).rejects.toThrow();
   });
 });
+
+describe('rt213 — the turn moves when the person given it does nothing', () => {
+  it('only the person holding the turn opening it counts as opened', async () => {
+    const logs: Record<string, unknown>[] = [];
+    const assignedAt = new Date(Date.now() - 5 * 60_000);
+    const prisma = {
+      messengerThread: { findFirst: jest.fn(async () => ({ assignedUserId: 'trang', assignedAt })) },
+      chatAssignmentLog: {
+        findFirst: jest.fn(async () => null),
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => { logs.push({ ...data, createdAt: new Date() }); return {}; }),
+        findMany: jest.fn(async () => logs),
+      },
+    };
+    const svc = new ChatTurnsService(prisma as never, { publish: jest.fn() } as never);
+    await svc.noteOpened('A', 't1', 'owner'); // the owner looking
+    expect(logs).toHaveLength(0);
+    await svc.noteOpened('A', 't1', 'trang');
+    expect(logs).toEqual([expect.objectContaining({ reason: 'opened', userId: 'trang' })]);
+    const opened = await (svc as unknown as { openedAt: (t: string, r: unknown[]) => Promise<Map<string, Date>> }).openedAt('A', [{ id: 't1', assignedUserId: 'trang', assignedAt }, { id: 't1', assignedUserId: 'nhi', assignedAt }]);
+    expect(opened.get('t1')).toBeInstanceOf(Date);
+  });
+
+  it('passes used up and still no answer: the owner and the team are told at once, even with alerts off', async () => {
+    const pushed: { userId: string; title: string }[] = [];
+    const t = { id: 't1', status: 'open', senderName: 'Viet Nguyen', lastCustomerAt: new Date(Date.now() - 3 * 60_000), handoffAt: null, escalatedAt: null, assignedUserId: 'trang', assignHops: 3, adId: null, adAt: null };
+    const prisma = {
+      messengerThread: { findMany: jest.fn(async () => [t]), updateMany: jest.fn(async () => ({ count: 1 })), groupBy: jest.fn(async () => []) },
+      user: { findMany: jest.fn(async ({ where }: { where: { role?: string } }) => (where.role === 'SALON_ADMIN' ? [{ id: 'owner' }] : [{ id: 'nhi', firstName: 'Nhi', lastName: null, email: 'n@x', role: 'STAFF', staffMember: { isActive: true, staffRole: 'CHAT', permissions: null, workingHours: [] } }])) },
+      tenant: { findUnique: jest.fn(async () => ({ timezone: 'Asia/Ho_Chi_Minh' })) },
+      messengerConnection: { findUnique: jest.fn(async () => ({ chatAssignMode: 'round-robin' })) },
+      setting: { findMany: jest.fn(async () => []) },
+      chatAgentPresence: { findMany: jest.fn(async () => [{ userId: 'nhi', status: 'available', lastSeenAt: new Date() }]) },
+      chatAssignmentLog: { groupBy: jest.fn(async () => []) },
+      auditLog: { create: jest.fn(async () => ({})) },
+    };
+    const push = { sendToUser: jest.fn(async (_t: string, userId: string, p: { title: string }) => { pushed.push({ userId, title: p.title }); return 1; }) };
+    const svc = new ChatTurnsService(prisma as never, { publish: jest.fn() } as never, push as never);
+    const { settingsOf } = await import('./chat-turns.service');
+    const n = await svc.escalate('A', { ...settingsOf({ chatAssignMode: 'round-robin', chatMaxHops: 3, chatEscalateMins: 0 }) }, new Date());
+    expect(n).toBe(1);
+    expect(pushed.map((p) => p.userId).sort()).toEqual(['nhi', 'owner']);
+  });
+});

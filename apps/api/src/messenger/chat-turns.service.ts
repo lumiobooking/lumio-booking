@@ -185,7 +185,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const open = await this.db.messengerThread.groupBy({ by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null } }, _count: true }).catch(() => []) as { assignedUserId: string; _count: number }[];
     const openBy = new Map(open.map((r) => [r.assignedUserId, Number(r._count) || 0]));
     const since = new Date(Date.now() - 24 * 3600_000);
-    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: ['unassign', 'first-reply', 'backlog'] } }, _count: true }).catch(() => []) ?? [];
+    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: ['unassign', 'first-reply', 'backlog', 'opened'] } }, _count: true }).catch(() => []) ?? [];
     const turnsBy = new Map<string, number>(logs.map((r: { userId: string; _count: number }) => [r.userId, Number(r._count) || 0]));
     const clock = await this.salonClock(tenantId);
     const now = new Date();
@@ -459,6 +459,28 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     return this.team(user);
   }
 
+  /** rt213: the person holding a turn opened it (once per turn). Never throws. */
+  async noteOpened(tenantId: string, threadId: string, userId: string): Promise<void> {
+    try {
+      const t = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { assignedUserId: true, assignedAt: true } }) as { assignedUserId: string | null; assignedAt: Date | null } | null;
+      if (!t?.assignedAt || t.assignedUserId !== userId) return;
+      const seen = await this.db.chatAssignmentLog?.findFirst({ where: { tenantId, threadId, userId, reason: 'opened', createdAt: { gte: t.assignedAt } }, select: { id: true } });
+      if (!seen) await this.db.chatAssignmentLog?.create({ data: { tenantId, threadId, userId, reason: 'opened' } });
+    } catch { /* never break reading */ }
+  }
+
+  /** When the person holding each of these turns opened it (only their own opening counts). */
+  private async openedAt(tenantId: string, rows: { id: string; assignedUserId: string | null; assignedAt: Date | null }[]): Promise<Map<string, Date>> {
+    const out = new Map<string, Date>();
+    if (!rows.length) return out;
+    const logs = await this.db.chatAssignmentLog?.findMany({ where: { tenantId, threadId: { in: rows.map((r) => r.id) }, reason: 'opened' }, select: { threadId: true, userId: true, createdAt: true } }).catch(() => []) ?? [];
+    for (const r of rows) {
+      const mine = (logs as { threadId: string; userId: string | null; createdAt: Date }[]).filter((l) => l.threadId === r.id && l.userId === r.assignedUserId && (!r.assignedAt || l.createdAt >= r.assignedAt));
+      if (mine.length) out.set(r.id, mine[mine.length - 1].createdAt);
+    }
+    return out;
+  }
+
   /**
    * A person answered: the first answer on a turn they hold is logged, so the
    * scoreboard can time it. Never throws.
@@ -660,6 +682,8 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       take: 50,
     }).catch(() => []) as { id: string; status: string; senderName: string | null; assignedUserId: string; assignedAt: Date; readAt: Date | null; handoffAt: Date | null }[];
     let n = 0;
+    const opened = await this.openedAt(tenantId, rows);
+    for (const t of rows) t.readAt = opened.get(t.id) ?? null;
     for (const t of rows) {
       if (!remindDue(t, now)) continue;
       void this.push?.sendToUser(tenantId, t.assignedUserId, { title: '⏰ Nhắc lại: khách đang chờ bạn', body: `${t.senderName || 'Khách'} chưa được trả lời. Bấm để mở và trả lời ngay.`, url: `/salon/inbox?thread=${t.id}`, tag: `chat-turn-${t.id}-again` }).catch(() => undefined);
@@ -738,7 +762,8 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       for (const c of conns) {
         const tenantId = String(c.tenantId);
         const set = settingsOf(c);
-        if (set.escalateMins > 0) await this.escalate(tenantId, set, now).catch((e) => this.logger.warn(`escalation failed: ${String(e).slice(0, 120)}`));
+        // rt213: also when the alert minutes are off — a customer whose passes ran out is announced anyway.
+        await this.escalate(tenantId, set, now).catch((e) => this.logger.warn(`escalation failed: ${String(e).slice(0, 120)}`));
         await this.nightReport(tenantId, now).catch((e) => this.logger.warn(`turn report failed: ${String(e).slice(0, 120)}`));
         await this.closeShifts(tenantId, now).catch((e) => this.logger.warn(`shift close failed: ${String(e).slice(0, 120)}`));
         await this.remind(tenantId, now).catch((e) => this.logger.warn(`turn reminder failed: ${String(e).slice(0, 120)}`));
@@ -750,7 +775,10 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
           where: { tenantId, status: 'open', assignedUserId: { not: null }, assignedAt: { lte: new Date(now.getTime() - shortest * 60_000) }, assignHops: { lt: set.maxHops } },
           select: { id: true, customerId: true, status: true, assignedUserId: true, assignedAt: true, readAt: true, handoffAt: true, handoffMode: true, assignHops: true, adId: true, adAt: true },
           take: 50,
-        }).catch(() => []) as { id: string; customerId: string | null; assignedUserId: string; assignedAt: Date; adId?: string | null; adAt?: Date | null }[];
+        }).catch(() => []) as { id: string; customerId: string | null; assignedUserId: string; assignedAt: Date; adId?: string | null; adAt?: Date | null; readAt?: Date | null }[];
+        // rt213: "opened" means opened by the person holding it — someone else looking does not count.
+        const opened = await this.openedAt(tenantId, threads);
+        for (const t of threads) t.readAt = opened.get(t.id) ?? null;
         for (const t of threads) {
           // A customer from an ad is passed on sooner when the salon set it (./staff-alerts).
           const un = unrepliedMinsFor(t, set, now);
@@ -813,7 +841,12 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       select: { id: true, status: true, senderName: true, lastCustomerAt: true, handoffAt: true, escalatedAt: true, assignedUserId: true, assignHops: true, adId: true, adAt: true },
       take: 50,
     }).catch(() => []) as { id: string; status: string; senderName: string | null; lastCustomerAt: Date; handoffAt: Date | null; escalatedAt: Date | null; assignedUserId: string | null; assignHops: number; adId: string | null; adAt: Date | null }[];
-    const due = rows.filter((t) => escalationDue(t, set.escalateMins, now));
+    // rt213: passed on the maximum number of times and still nobody answered:
+    // tell the owner and the team NOW (after one minute), not after the alert
+    // minutes — the passes are what used that time already. Old customers
+    // given out to follow up (hops 99) are not live chats and are left out.
+    const exhausted = (t: { assignHops: number }) => set.maxHops > 0 && t.assignHops >= set.maxHops && t.assignHops < 99;
+    const due = rows.filter((t) => (set.escalateMins > 0 && escalationDue(t, set.escalateMins, now)) || (exhausted(t) && escalationDue(t, 1, now)));
     if (!due.length) return 0;
     const owners = await this.prisma.user.findMany({ where: { tenantId, isActive: true, role: UserRole.SALON_ADMIN }, select: { id: true } }).catch(() => []);
     // rt198: everyone on shift hears it too — whoever is free takes it.

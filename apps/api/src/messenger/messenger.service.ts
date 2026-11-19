@@ -2423,6 +2423,11 @@ export class MessengerService implements OnModuleInit {
     const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('Thread not found');
     await this.prisma.messengerThread.update({ where: { id: row.id }, data: { readAt: new Date() } as never });
+    // rt213: the turn rule "not opened in X min" asks whether the PERSON GIVEN
+    // the customer opened it — not whether anyone did (the owner looking used
+    // to count as the assignee opening it, and the turn never moved).
+    const assignee = (row as unknown as { assignedUserId?: string | null }).assignedUserId;
+    if (assignee && assignee === user.userId) void this.turns?.noteOpened(tenantId, row.id, user.userId);
     return { ok: true };
   }
 

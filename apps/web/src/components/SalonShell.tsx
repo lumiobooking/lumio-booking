@@ -1,5 +1,6 @@
 'use client';
 
+import { FOOD_INDUSTRIES } from '../lib/use-food';
 import { ClientDrawerHost } from './ClientDrawer';
 import { PushBanner } from './PushBanner';
 import { ReactNode, createContext, useContext, useCallback, useEffect, useState } from 'react';
@@ -284,7 +285,10 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // …and opens the first of them this person may see.
   const go = (item: NavItem) => (item.tabs ? (item.tabs.find(screenVisible)?.href ?? item.href) : item.href);
   const menuLabel = (item: NavItem) => (item.hubKey ? tr(item.hubKey, lang) : NAV_KEY[item.href] ? tr(NAV_KEY[item.href], lang) : item.label);
-  const tabLabel = (t: NavItem) => (t.tabKey ? tr(t.tabKey, lang) : NAV_KEY[t.href] ? tr(NAV_KEY[t.href], lang) : t.label);
+  const tabLabel = (t: NavItem) => (
+    // A restaurant's Reports tab opens the night report, not the technicians' one (components/restaurant).
+    t.href === '/salon/pos/report' && FOOD_INDUSTRIES.has(uiIndustry()) ? (lang === 'vi' ? 'Báo cáo đêm' : 'Night report')
+      : t.tabKey ? tr(t.tabKey, lang) : NAV_KEY[t.href] ? tr(NAV_KEY[t.href], lang) : t.label);
   const hrefVisible = (href: string) => { const it = SCREEN_BY_HREF[href]; return it ? screenVisible(it) : can(href); };
   // The menu entry this page lives under (a tab answers with its entry).
   const owner = menuOwner(pathname);

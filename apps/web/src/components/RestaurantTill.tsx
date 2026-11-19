@@ -49,6 +49,8 @@ interface Settings {
   qrOrdering: 'off' | 'confirm' | 'auto'; serviceChargePercent: number; vatPercent: number; vatIncluded: boolean; bank: BankAccount | null;
   /** Event / opening discounts and holiday surcharges by date. */
   priceRules?: PriceRule[];
+  /** The hour the business day starts (0–8): a 01:43 bill counts in the night it belongs to. */
+  dayStartHour?: number;
 }
 interface Table { id: string; name: string; seats: number; area: string | null }
 /** A table inside a bill that spans several tables (see joinOf on the floor). */
@@ -1693,6 +1695,12 @@ function SettingsModal({ vi, token, settings, categories, onClose, onSaved }: { 
           <input type="number" value={s.warnMinutes} aria-label={L('Vàng sau', 'Yellow after')} onChange={(e) => setS({ ...s, warnMinutes: Number(e.target.value) })} style={{ ...sel, width: 70, textAlign: 'center' }} />
           <input type="number" value={s.lateMinutes} aria-label={L('Đỏ sau', 'Red after')} onChange={(e) => setS({ ...s, lateMinutes: Number(e.target.value) })} style={{ ...sel, width: 70, textAlign: 'center' }} />
         </span>
+      </label>
+      <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <span>{L('Ngày kinh doanh bắt đầu lúc (bill sau nửa đêm tính cho đêm trước)', 'Business day starts at (after-midnight bills count in the night before)')}</span>
+        <select value={s.dayStartHour ?? 4} onChange={(e) => setS({ ...s, dayStartHour: Number(e.target.value) })} style={sel} aria-label={L('Giờ bắt đầu ngày kinh doanh', 'Business day start')}>
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((h) => <option key={h} value={h}>{`${String(h).padStart(2, '0')}:00`}</option>)}
+        </select>
       </label>
       <b>{L('Ai được thu tiền', 'Who may take payment')}</b>
       <span style={{ fontSize: 12.5, color: C.muted }}>{L('Không chọn ai = mọi người có quyền Thu ngân đều thu được. Chọn người thì những người khác (phục vụ) chỉ gọi món và bấm “Yêu cầu thanh toán”.', 'Pick nobody = everyone with checkout access can take payment. Pick people and everyone else (servers) can only order and “Ask to pay”.')}</span>

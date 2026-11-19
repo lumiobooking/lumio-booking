@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { SalonShell } from '../../../../components/SalonShell';
 import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
@@ -10,6 +10,8 @@ import { useLang, tr } from '../../../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../../components/MobileCard';
 import { StaffPerformance } from '../../../../components/staff/StaffPerformance';
+import { useIsFood } from '../../../../lib/use-food';
+import { RestaurantReport } from '../../../../components/restaurant/RestaurantReport';
 
 interface StaffRow {
   staffId: string; name: string;
@@ -21,9 +23,11 @@ interface Report {
 }
 
 export default function PosReportPage() {
+  // Restaurants: the night report (money in, and every way it can leave). Salons: the technicians' report, as before.
+  const food = useIsFood();
   return (
     <SalonShell>
-      <Inner />
+      {food === null ? null : food ? <Suspense fallback={null}><RestaurantReport /></Suspense> : <Inner />}
     </SalonShell>
   );
 }

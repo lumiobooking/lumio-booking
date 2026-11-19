@@ -15,6 +15,8 @@ import { useLiveTopics } from '../../lib/useLiveEvents';
 import { useIsMobile } from '../../lib/responsive';
 import { uiCurrency } from '../../lib/ui-currency';
 import { hiddenHrefsFor, ind, uiIndustry } from '../../lib/ui-industry';
+import { useIsFood } from '../../lib/use-food';
+import { RestaurantHome } from '../../components/restaurant/RestaurantHome';
 
 /* =============================================================================
  * THE OWNER'S HOME SCREEN — as drawn in the approved mockup ("Lumio Dashboard
@@ -64,9 +66,11 @@ const STAFF_COLORS = ['#be185d', '#0e7490', '#7c3aed', '#c2410c', '#15803d', '#1
 const onHue = (bg: string): React.CSSProperties => ({ background: bg, color: '#fff' });
 
 export default function DashboardPage() {
+  // Restaurants and cafés get their own home (tonight, last night, the money checks); everyone else, this one.
+  const food = useIsFood();
   return (
     <SalonShell>
-      <Inner />
+      {food === null ? null : food ? <RestaurantHome /> : <Inner />}
     </SalonShell>
   );
 }

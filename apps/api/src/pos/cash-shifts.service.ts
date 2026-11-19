@@ -163,7 +163,7 @@ export class CashShiftsService {
         db.tableCheck.findMany({ where: { tenantId, status: { in: ['OPEN', 'PAYING'] } }, select: { number: true, tableIds: true, lines: { where: { tenantId }, select: { quantity: true, unitPriceCents: true, state: true } } } }),
         db.tableCheckLine.findMany({
           where: { tenantId, state: 'VOID', voidedAt: { gte: openedAt, ...(shift.closedAt ? { lte: shift.closedAt } : {}) }, NOT: { voidReason: 'MERGED' } },
-          select: { name: true, quantity: true, unitPriceCents: true, voidReason: true, voidedAt: true }, orderBy: { voidedAt: 'asc' }, take: 200,
+          select: { name: true, quantity: true, unitPriceCents: true, voidReason: true, voidedAt: true }, orderBy: { voidedAt: 'asc' }, take: 5000,
         }),
       ]);
       if (!open.length && !voided.length) return {};

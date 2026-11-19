@@ -37,6 +37,11 @@ export class RestaurantController {
   @Get('people')
   people(@CurrentUser() user: AuthenticatedUser) { return this.svc.people(user); }
 
+  /** Dishes taken back after the kitchen had them, and tables closed without a bill, for an ISO window. Owner and managers (reports). */
+  @Caps('reports')
+  @Get('voids')
+  voids(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('to') to?: string) { return this.svc.voidsReport(user, from, to); }
+
   @Get('settings')
   settings(@CurrentUser() user: AuthenticatedUser) { return this.svc.readSettings(user); }
 

@@ -444,6 +444,67 @@ export class RestaurantService {
   }
 
   /**
+   * WHAT WAS TAKEN BACK, AND BY WHOM (18/11/2026). An owner found 11 million
+   * dong missing from one night's till; the shift sheet said 476 dishes had
+   * been taken back after the kitchen had them, worth 24 million, and showed
+   * only the first fifty with no names. This is the full list for a window:
+   * every dish voided after it was sent, who took it back, who approved it,
+   * the reason, the table — and the tables closed without a bill. This
+   * restaurant's rows only; names only of this restaurant's own users.
+   */
+  async voidsReport(user: AuthenticatedUser, fromStr?: string, toStr?: string) {
+    const tenantId = this.tenantId(user);
+    const from = new Date(String(fromStr ?? ''));
+    const to = new Date(String(toStr ?? ''));
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to <= from) throw new BadRequestException('BAD_RANGE');
+    if (to.getTime() - from.getTime() > 45 * 86_400_000) throw new BadRequestException('RANGE_TOO_LONG');
+    const MAX = 5000;
+    const [lines, checks, ctx, names] = await Promise.all([
+      this.prisma.tableCheckLine.findMany({
+        where: { tenantId, state: 'VOID', voidedAt: { gte: from, lte: to }, NOT: { voidReason: 'MERGED' } },
+        select: { name: true, quantity: true, unitPriceCents: true, voidReason: true, voidByUserId: true, voidApprovedBy: true, voidedAt: true, sentAt: true, check: { select: { number: true, tableIds: true, status: true } } },
+        orderBy: { voidedAt: 'asc' }, take: MAX + 1,
+      }),
+      this.prisma.tableCheck.findMany({
+        where: { tenantId, status: 'VOID', closedAt: { gte: from, lte: to }, NOT: { voidReason: 'MERGED' } },
+        select: { number: true, tableIds: true, openedAt: true, closedAt: true, voidReason: true },
+        orderBy: { closedAt: 'asc' }, take: 500,
+      }),
+      this.context(tenantId),
+      this.tableNames(tenantId),
+    ]);
+    const truncated = lines.length > MAX;
+    const rows = lines.slice(0, MAX);
+    const ids = [...new Set(rows.flatMap((l) => [l.voidByUserId, l.voidApprovedBy]).filter((x): x is string => !!x))];
+    const users = ids.length ? await this.prisma.user.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, firstName: true, email: true } }) : [];
+    const who = new Map(users.map((u) => [u.id, (u.firstName ?? '').trim() || (u.email ? u.email.split('@')[0] : '')]));
+    const nameOf = (id: string | null) => (id ? who.get(id) || null : null);
+    const out = rows.map((l) => ({
+      at: (l.voidedAt ?? new Date()).toISOString(),
+      name: l.name, quantity: l.quantity, amountCents: l.quantity * l.unitPriceCents,
+      reason: l.voidReason, by: nameOf(l.voidByUserId), approvedBy: l.voidApprovedBy && l.voidApprovedBy !== l.voidByUserId ? nameOf(l.voidApprovedBy) : null,
+      table: checkLabel(l.check.tableIds, names, l.check.number, ctx.lang), checkNumber: l.check.number,
+      sentAt: l.sentAt ? l.sentAt.toISOString() : null, wholeCheck: l.check.status === 'VOID',
+    }));
+    const group = (key: (r: (typeof out)[number]) => string) => {
+      const m = new Map<string, { key: string; items: number; amountCents: number }>();
+      for (const r of out) { const k = key(r); const x = m.get(k) ?? { key: k, items: 0, amountCents: 0 }; x.items += r.quantity; x.amountCents += r.amountCents; m.set(k, x); }
+      return [...m.values()].sort((a, b) => b.amountCents - a.amountCents);
+    };
+    return {
+      from: from.toISOString(), to: to.toISOString(), truncated,
+      totals: { items: out.reduce((s, r) => s + r.quantity, 0), amountCents: out.reduce((s, r) => s + r.amountCents, 0), lines: out.length },
+      byReason: group((r) => (r.reason ?? '').trim().toLowerCase() || '—'),
+      byUser: group((r) => r.by ?? '—'),
+      lines: out,
+      checks: checks.map((c) => ({
+        number: c.number, table: checkLabel(c.tableIds, names, c.number, ctx.lang),
+        openedAt: c.openedAt.toISOString(), closedAt: c.closedAt ? c.closedAt.toISOString() : null, reason: c.voidReason,
+      })),
+    };
+  }
+
+  /**
    * Take back a dish the kitchen already has. A reason is required, approval
    * per the restaurant's rule, and the station gets a CANCEL ticket. Part of a
    * line can be taken back: the rest stays sent.

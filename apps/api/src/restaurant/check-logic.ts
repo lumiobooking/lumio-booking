@@ -50,6 +50,12 @@ export interface RestaurantSettings {
    * shown on the guest check and the receipt as their own line.
    */
   priceRules: PriceRule[];
+  /**
+   * The hour a business day starts (0–8, salon-local). A restaurant that sells
+   * past midnight counts a 01:43 bill in the night it belongs to; the reports
+   * and the home screen cut days here instead of at midnight (18/11/2026).
+   */
+  dayStartHour: number;
 }
 
 export interface PriceRule {
@@ -83,6 +89,7 @@ export const DEFAULT_SETTINGS: RestaurantSettings = {
   vatIncluded: true,
   bank: null,
   priceRules: [],
+  dayStartHour: 4,
 };
 
 const KEY_RE = /^[A-Z0-9_]{2,20}$/;
@@ -136,7 +143,14 @@ export function cleanSettings(raw: unknown): RestaurantSettings {
     vatIncluded: bool(r.vatIncluded, true),
     bank: cleanBank(r.bank),
     priceRules: cleanPriceRules(r.priceRules),
+    dayStartHour: dayStartHourOf(r.dayStartHour),
   };
+}
+
+/** 0–8 o'clock; anything else is the default (04:00: after the late bars close, before the breakfast shops open). */
+export function dayStartHourOf(v: unknown): number {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && /^\d$/.test(v.trim()) ? Number(v) : NaN;
+  return Number.isInteger(n) && n >= 0 && n <= 8 ? n : DEFAULT_SETTINGS.dayStartHour;
 }
 
 function pct(v: unknown, min: number, max: number): number {

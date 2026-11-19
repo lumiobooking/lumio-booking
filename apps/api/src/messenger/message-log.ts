@@ -53,7 +53,10 @@ export function logRowsFrom(tenantId: string, threadId: string, history: unknown
     const at = new Date(atMs).toISOString();
     rows.push({
       tenantId, threadId, fp: fingerprint(threadId, role, at, content), role,
-      byName: role === 'staff' ? (t.by ? String(t.by).slice(0, 80) : null) : null,
+      // rt215: a Page row that was not a person says so, so "a person answered" can tell them apart.
+      byName: role === 'staff' ? (t.by ? String(t.by).slice(0, 80) : null)
+        : role === 'page' && String(t.source ?? '') === 'meta-ai' ? 'Meta AI'
+        : role === 'page' && String(t.source ?? '') === 'automation' ? 'Tự động (Page)' : null,
       content, ...(images.length ? { images } : {}),
       messageId: t.messageId ? String(t.messageId).slice(0, 200) : null,
       failed: t.failed === true, at: new Date(atMs),

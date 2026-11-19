@@ -1,5 +1,6 @@
 import { rescueOpen } from './turn-shift';
 import { FOLD_FROM, FOLD_TO, searchPattern } from './thread-search';
+import { customerPhoneFrom, phoneKeyOf, prospectDays, prospectPhone } from './prospects';
 import { logRowsFrom } from './message-log';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { onSale, salePrice } from '../common/discount';
@@ -1677,6 +1678,80 @@ export class MessengerService implements OnModuleInit {
     return rows.map((r) => r.id);
   }
 
+  /**
+   * rt215 — "Khách tiềm năng": conversations in the last `days` days where the
+   * customer left a phone number (typed it, or it was saved on the chat) and
+   * never booked / signed up. Newest first, as a map thread → phone. Only this
+   * salon's rows are ever read.
+   */
+  async prospectIds(tenantId: string, daysRaw?: unknown, max = 300): Promise<Map<string, string>> {
+    const days = prospectDays(daysRaw);
+    const since = new Date(Date.now() - days * 86_400_000);
+    // 1. Customer lines that hold something like a number (database-side, so
+    //    thousands of conversations cost one query, not thousands of rows).
+    const typed = await this.prisma.$queryRaw<{ id: string; texts: unknown }[]>(Prisma.sql`
+      SELECT t.id, jsonb_agg(e) AS texts
+      FROM messenger_threads t, jsonb_array_elements(CASE WHEN jsonb_typeof(t.history::jsonb) = 'array' THEN t.history::jsonb ELSE '[]'::jsonb END) e
+      WHERE t."tenantId" = ${tenantId} AND t.status <> 'spam'
+        AND COALESCE(t."lastCustomerAt", t."updatedAt") >= ${since}
+        AND e->>'role' = 'user' AND (e->>'content') ~ '[0-9][0-9 .()-]{7,}[0-9]'
+      GROUP BY t.id
+      LIMIT 3000`).catch((e) => { this.logger.warn(`prospect scan failed: ${String(e).slice(0, 160)}`); return [] as { id: string; texts: unknown }[]; });
+    const phoneTyped = new Map<string, string>();
+    for (const r of typed) { const p = customerPhoneFrom(r.texts); if (p) phoneTyped.set(r.id, p); }
+    // 2. Numbers saved on the conversation: the linked customer, a lead card.
+    const linked = await this.prisma.messengerThread.findMany({
+      where: { tenantId, status: { not: 'spam' }, customerId: { not: null }, OR: [{ lastCustomerAt: { gte: since } }, { lastCustomerAt: null, updatedAt: { gte: since } }] } as never,
+      select: { id: true, customerId: true, customer: { select: { phone: true } } } as never, take: 3000,
+    }).catch(() => []) as unknown as { id: string; customerId: string; customer: { phone: string | null } | null }[];
+    const leads = await this.prisma.salesLead.findMany({ where: { tenantId, threadId: { not: null } }, select: { threadId: true, phone: true, status: true }, orderBy: { createdAt: 'asc' }, take: 5000 }).catch(() => []) as { threadId: string | null; phone: string; status: string }[];
+    const leadOf = new Map<string, { phone: string; status: string }>();
+    for (const l of leads) if (l.threadId) leadOf.set(l.threadId, { phone: l.phone, status: l.status });
+    const phoneSaved = new Map<string, string>();
+    const custOf = new Map<string, string>();
+    for (const t of linked) { custOf.set(t.id, t.customerId); if (t.customer?.phone && t.customer.phone.replace(/\D/g, '').length >= 8) phoneSaved.set(t.id, t.customer.phone); }
+    for (const [tid, l] of leadOf) if (!phoneSaved.has(tid) && l.phone && l.phone.replace(/\D/g, '').length >= 8) phoneSaved.set(tid, l.phone);
+    const ids = [...new Set([...phoneTyped.keys(), ...phoneSaved.keys()])];
+    if (!ids.length) return new Map();
+    // 3. Booked? By the linked customer, or any customer of this salon with that number.
+    const wantKeys = new Set(ids.map((id) => phoneKeyOf(phoneSaved.get(id) || phoneTyped.get(id))).filter((k) => k.length >= 8));
+    const customers = wantKeys.size ? await this.prisma.customer.findMany({
+      where: { tenantId, OR: [{ id: { in: [...new Set(ids.map((id) => custOf.get(id)).filter(Boolean) as string[])] } }, ...[...wantKeys].slice(0, 2000).map((k) => ({ phone: { endsWith: k.slice(-9) } }))] },
+      select: { id: true, phone: true }, take: 5000,
+    }).catch(() => []) : [];
+    const bookedCust = new Set((await this.prisma.appointment.groupBy({
+      by: ['customerId'], where: { tenantId, customerId: { in: customers.map((c) => c.id) }, status: { notIn: ['CANCELLED', 'REJECTED'] as never } } as never,
+    }).catch(() => []) as unknown as { customerId: string }[]).map((r) => r.customerId));
+    const bookedKeys = new Set(customers.filter((c) => bookedCust.has(c.id)).map((c) => phoneKeyOf(c.phone)));
+    const order = await this.prisma.messengerThread.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, lastCustomerAt: true, updatedAt: true }, orderBy: { updatedAt: 'desc' } }).catch(() => []) as { id: string; lastCustomerAt: Date | null; updatedAt: Date }[];
+    order.sort((a, b) => (b.lastCustomerAt ?? b.updatedAt).getTime() - (a.lastCustomerAt ?? a.updatedAt).getTime());
+    const out = new Map<string, string>();
+    for (const t of order) {
+      const cust = custOf.get(t.id);
+      const ph = phoneSaved.get(t.id) || phoneTyped.get(t.id) || '';
+      const booked = (!!cust && bookedCust.has(cust)) || bookedKeys.has(phoneKeyOf(ph));
+      const p = prospectPhone({ threadId: t.id, phoneTyped: phoneTyped.get(t.id) ?? null, phoneSaved: phoneSaved.get(t.id) ?? null, leadStatus: leadOf.get(t.id)?.status ?? null, booked });
+      if (p) out.set(t.id, p);
+      if (out.size >= max) break;
+    }
+    return out;
+  }
+
+  /**
+   * rt215 — the owner gives every prospect nobody holds to the team to follow
+   * up (evenly, one notification per person). Owner only; this salon only.
+   */
+  async giveOutProspects(user: AuthenticatedUser, daysRaw?: unknown) {
+    const tenantId = this.tenantId(user);
+    if (!(String(user.role) === 'SALON_ADMIN' || user.supportSession === true || String(user.role) === 'SUPER_ADMIN')) throw new ForbiddenException('Only the salon admin can give out customers.');
+    if (!this.turns) throw new BadRequestException('Chia turn chưa sẵn sàng.');
+    const map = await this.prospectIds(tenantId, daysRaw, 1000);
+    const free = await this.prisma.messengerThread.findMany({ where: { tenantId, id: { in: [...map.keys()] }, assignedUserId: null }, select: { id: true } }).catch(() => []);
+    const freeIds = new Set(free.map((f) => f.id));
+    const ordered = [...map.keys()].filter((id) => freeIds.has(id));
+    return this.turns.giveOut(user, ordered, { reason: 'prospect', title: 'Bạn được giao khách tiềm năng để gọi lại', body: (n) => `${n} khách đã để lại số điện thoại nhưng chưa đặt — mở Tin nhắn › Của tôi.`, audit: 'messenger.prospects_given' });
+  }
+
   /** rt214 — how many conversations this person can see in all, so the screen can say "100 / 2.340". */
   async countThreads(user: AuthenticatedUser): Promise<{ total: number }> {
     const tenantId = this.tenantId(user);
@@ -1688,7 +1763,7 @@ export class MessengerService implements OnModuleInit {
     return { total };
   }
 
-  async listThreads(user: AuthenticatedUser, opts: { before?: string; take?: number; q?: string } = {}) {
+  async listThreads(user: AuthenticatedUser, opts: { before?: string; take?: number; q?: string; prospects?: boolean; days?: number } = {}) {
     const tenantId = this.tenantId(user);
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
     const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? DEFAULT_ACTIVE_MINS;
@@ -1705,13 +1780,14 @@ export class MessengerService implements OnModuleInit {
     const before = opts.before ? new Date(opts.before) : null;
     const listTeam = this.turns ? await this.turns.teamOf(tenantId).catch(() => null) : null;
     const ownOnly = String(user.role) === 'STAFF' && !user.supportSession && listTeam && !listTeam.staffSeeAll;
-    const found = opts.q ? await this.searchThreadIds(tenantId, opts.q, ownOnly ? user.userId : null, take) : null;
+    const prospects = opts.prospects ? await this.prospectIds(tenantId, opts.days, 300) : null;
+    const found = prospects ? [...prospects.keys()] : opts.q ? await this.searchThreadIds(tenantId, opts.q, ownOnly ? user.userId : null, take) : null;
     if (found && !found.length) return [];
     const rows = await this.prisma.messengerThread.findMany({
       where: found
-        ? { tenantId, id: { in: found } }
+        ? { tenantId, id: { in: found }, ...(ownOnly ? { OR: [{ assignedUserId: user.userId }, { assignedUserId: null }] } : {}) }
         : { tenantId, ...(ownOnly ? { OR: [{ assignedUserId: user.userId }, { assignedUserId: null }] } : {}), ...(before && !Number.isNaN(before.getTime()) ? { updatedAt: { lt: before } } : {}) },
-      orderBy: { updatedAt: 'desc' }, take,
+      orderBy: { updatedAt: 'desc' }, take: prospects ? 300 : take,
       select: {
         id: true, senderId: true, senderName: true, lastText: true, handoff: true, pageId: true,
         updatedAt: true, channel: true,
@@ -1766,6 +1842,7 @@ export class MessengerService implements OnModuleInit {
         lastMessageAt: (r as unknown as { lastMessageAt?: Date | null }).lastMessageAt ?? row.updatedAt,
         labels: ((r as unknown as { threadLabels?: { label: { id: string; name: string; color: string } }[] }).threadLabels ?? []).map((t) => t.label),
         assignedName: who || null,
+        ...(prospects ? { prospectPhone: prospects.get((r as unknown as { id: string }).id) ?? null } : {}),
         waitingMinutes: waitingMinutes(r as never, now, botFirst),
         // Chia turn: from an ad, and when this turn passes on if nobody answers (the countdown).
         fromAd: isAdThread(r as never, now),
@@ -4041,6 +4118,8 @@ export class MessengerService implements OnModuleInit {
     // rt206: a conversation the AI handed to a person (handoff) and nobody holds
     // is exactly the one that needs a person — it is given out too. Taking it
     // ("Tôi nhận") or replying assigns it, so a held one is never moved.
+    // rt215: a customer writing again to someone who already answered starts a new turn (clock and passes restart).
+    if (owner) await this.turns?.noteCustomer(page.tenantId, thread.id).catch(() => false);
     if (!owner) {
       const assignTo = this.turns
         ? await this.turns.route(page.tenantId, thread.id, (thread as unknown as { customerId?: string | null }).customerId ?? null)

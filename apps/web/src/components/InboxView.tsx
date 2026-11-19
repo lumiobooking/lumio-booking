@@ -496,15 +496,21 @@ export function InboxView() {
   const [moreState, setMoreState] = useState<'idle' | 'loading' | 'end'>('idle');
   /** rt214: what a search found on the server — kept apart so "load more" keeps its place. */
   const [found, setFound] = useState<InboxRow[]>([]);
+  /** rt215: "Khách tiềm năng" — left a phone number, never booked. When on, the list is only them. */
+  const [prospectMode, setProspectMode] = useState(false);
+  const [prospects, setProspects] = useState<InboxRow[] | null>(null);
+  const [prospectDays, setProspectDays] = useState<30 | 90 | 365>(90);
+  const [prospectMsg, setProspectMsg] = useState<string | null>(null);
   const paged = useMemo(() => {
     const ids = new Set(topRows.map((r) => r.id));
     return older.length ? [...topRows, ...older.filter((r) => !ids.has(r.id))] : topRows;
   }, [topRows, older]);
   const rows = useMemo(() => {
+    if (prospectMode) return prospects ?? [];
     if (!found.length) return paged;
     const ids = new Set(paged.map((r) => r.id));
     return [...paged, ...found.filter((r) => !ids.has(r.id))];
-  }, [paged, found]);
+  }, [paged, found, prospectMode, prospects]);
   /** Reply / internal note: two tabs of the one composer. */
   const [composerMode, setComposerMode] = useState<'reply' | 'note'>('reply');
   const [allCanned, setAllCanned] = useState(false);
@@ -1115,10 +1121,44 @@ export function InboxView() {
     return () => { gone = true; window.clearTimeout(t); };
   }, [query, token]);
 
+  const loadProspects = useCallback(async () => {
+    if (!token) return;
+    try {
+      const r = await apiFetch<InboxRow[]>(`/messenger/threads?prospects=1&days=${prospectDays}`, { token });
+      setProspects(Array.isArray(r) ? r : []);
+    } catch (e) { setErr(String(e)); setProspects([]); }
+  }, [token, prospectDays]);
+  useEffect(() => {
+    if (!prospectMode) return;
+    setProspects(null);
+    void loadProspects();
+    const t = window.setInterval(() => void loadProspects(), 60_000);
+    return () => window.clearInterval(t);
+  }, [prospectMode, loadProspects]);
+  function toggleProspects() {
+    setProspectMsg(null);
+    setProspectMode((on) => {
+      // Every prospect shows, not only the ones a queue would pick.
+      if (!on) { setQueue('all'); setFilter('all'); }
+      return !on;
+    });
+  }
+  async function giveOutProspects() {
+    if (!token) return;
+    setBusy(true); setProspectMsg(null);
+    try {
+      const r = await apiFetch<{ total: number; per: { name: string; n: number }[] }>('/messenger/prospects/give-out', { method: 'POST', token, body: JSON.stringify({ days: prospectDays }) });
+      setProspectMsg(r.total
+        ? `Đã chia ${r.total} khách: ${r.per.filter((p) => p.n).map((p) => `${p.name} ${p.n}`).join(' · ')}`
+        : 'Không còn khách tiềm năng nào chưa có người giữ.');
+      await loadProspects();
+    } catch (e) { setProspectMsg(String(e).replace(/^Error:\s*/, '')); } finally { setBusy(false); }
+  }
+
   const moreRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef(loadMore);
   loadMoreRef.current = loadMore;
-  const canMore = loaded && paged.length >= 100 && moreState === 'idle' && !query.trim();
+  const canMore = loaded && paged.length >= 100 && moreState === 'idle' && !query.trim() && !prospectMode;
   useEffect(() => {
     const el = moreRef.current;
     if (!el || !canMore || typeof IntersectionObserver === 'undefined') return;
@@ -1342,6 +1382,7 @@ export function InboxView() {
             return (
               <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 1.4, color: ev ? 'var(--c64748b)' : r.unread ? 'var(--ce2e8f0)' : 'var(--c94a3b8)', fontWeight: r.unread && !ev ? 500 : 400, fontStyle: ev ? 'italic' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {r.prospectPhone ? <b style={{ color: 'var(--ink-warn)', fontWeight: 700 }}>📞 {r.prospectPhone}{r.assignedName ? ` · ${r.assignedName}` : (vi ? ' · chưa ai giữ' : ' · unheld')} — </b> : null}
                   {ev ? systemEventLabel(ev, vi) : (r.lastText || (vi ? '(chưa có tin nhắn)' : '(no message yet)'))}
                 </span>
                 {r.unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#4f46e5', flexShrink: 0 }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
@@ -1599,11 +1640,40 @@ export function InboxView() {
               placeholder={vi ? 'Tìm tên, số điện thoại, nội dung…' : 'Search name, phone, message…'}
               style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: narrow ? 16 : 13.5, color: 'var(--ce2e8f0)', fontFamily: 'inherit' }} />
           </label>
+          <button type="button" onClick={toggleProspects} aria-pressed={prospectMode} title={vi ? 'Khách tiềm năng: đã để lại số điện thoại nhưng chưa đặt' : 'Prospects: left a phone, never booked'}
+            style={{ height: narrow ? 42 : 38, padding: '0 12px', borderRadius: 10, flexShrink: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
+              border: `1px solid ${prospectMode ? '#d97706' : 'var(--c334155)'}`, background: prospectMode ? '#d97706' : 'var(--c0f172a)', color: prospectMode ? '#ffffff' : 'var(--ccbd5e1)' }}>
+            📞 {vi ? 'Tiềm năng' : 'Prospects'}
+          </button>
           {!narrow && unreadCount > 0 && (
             <button onClick={() => void markAllRead()} disabled={busy} aria-label={vi ? 'Đánh dấu đã đọc tất cả' : 'Mark all read'} title={vi ? `Đánh dấu đã đọc tất cả (${unreadCount})` : `Mark all read (${unreadCount})`}
               style={{ width: 38, height: 38, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>✓✓</button>
           )}
         </div>
+        {prospectMode && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
+            <span style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--ce2e8f0)' }}>
+              <b>{prospects === null ? (vi ? 'Đang lọc…' : 'Filtering…') : `${prospects.length.toLocaleString('vi-VN')} ${vi ? 'khách tiềm năng' : 'prospects'}`}</b>
+              {vi ? ' — đã để lại số điện thoại nhưng chưa đặt lịch / chưa đăng ký. Mở từng khách để gọi hoặc nhắn lại.' : ' — left a phone number, never booked. Open each to call or message back.'}
+            </span>
+            <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              {([30, 90, 365] as const).map((d) => (
+                <button key={d} type="button" onClick={() => setProspectDays(d)} aria-pressed={prospectDays === d}
+                  style={{ height: 32, padding: '0 11px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600,
+                    border: `1px solid ${prospectDays === d ? '#4f46e5' : 'var(--c334155)'}`, background: prospectDays === d ? 'var(--c1e1b4b)' : 'transparent', color: prospectDays === d ? 'var(--ca5b4fc)' : 'var(--ccbd5e1)' }}>
+                  {d === 365 ? (vi ? '1 năm' : '1 year') : `${d} ${vi ? 'ngày' : 'days'}`}
+                </button>
+              ))}
+              {mayEditNudge && (prospects?.some((r) => !r.assignedUserId) ?? false) && (
+                <button type="button" onClick={() => void giveOutProspects()} disabled={busy}
+                  style={{ height: 32, padding: '0 12px', borderRadius: 9, border: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, background: '#2563eb', color: '#ffffff', opacity: busy ? 0.6 : 1 }}>
+                  {vi ? `Chia ${prospects!.filter((r) => !r.assignedUserId).length} khách chưa ai giữ cho nhân viên` : 'Give unheld ones to the team'}
+                </button>
+              )}
+            </span>
+            {prospectMsg && <span style={{ fontSize: 12.5, color: 'var(--ink-good)', fontWeight: 600 }}>{prospectMsg}</span>}
+          </div>
+        )}
         {v2 ? (narrow ? (
           <div className="no-bar" role="group" aria-label={vi ? 'Hàng chờ' : 'Queues'} style={{ display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             {(['needs', 'ai', 'followup', 'mine', 'done', 'all', ...((counts.spam > 0 || queue === 'spam') ? ['spam'] : [])] as InboxQueue[]).map((q) => {
@@ -1713,7 +1783,7 @@ export function InboxView() {
         {restRows.length > 0 && filter !== 'waiting' && sectionHead(waitingRows.length ? (vi ? `Còn lại · ${restRows.length}` : `Everything else · ${restRows.length}`) : (vi ? `${restRows.length} hội thoại` : `${restRows.length} conversations`))}
         {filter !== 'waiting' && restRows.map(rowView)}
         </>)}
-        {loaded && (total !== null || searching) && (
+        {loaded && !prospectMode && (total !== null || searching) && (
           <span style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--c64748b)', padding: '6px 0 2px' }}>
             {searching
               ? (vi ? 'Đang tìm trong toàn bộ hội thoại…' : 'Searching every conversation…')
@@ -1723,7 +1793,7 @@ export function InboxView() {
           </span>
         )}
         <div ref={moreRef} aria-hidden style={{ height: 1, flexShrink: 0 }} />
-                {loaded && paged.length >= 100 && moreState !== 'end' && !query.trim() && (
+                {loaded && paged.length >= 100 && moreState !== 'end' && !query.trim() && !prospectMode && (
           <button onClick={() => void loadMore()} disabled={moreState === 'loading'} style={{ margin: narrow ? '6px 0 12px' : '8px 12px 4px', height: 38, flexShrink: 0, borderRadius: 10, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             {moreState === 'loading' ? (vi ? 'Đang tải…' : 'Loading…') : (vi ? 'Tải thêm hội thoại cũ hơn' : 'Load older conversations')}
           </button>

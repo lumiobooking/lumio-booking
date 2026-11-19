@@ -18,6 +18,8 @@ export type ChannelKind = 'messenger' | 'instagram' | 'zalo' | 'web';
 
 export interface InboxRow {
   id: string;
+  /** rt215: the number this prospect left (only in the "Khách tiềm năng" list). */
+  prospectPhone?: string | null;
   senderId?: string | null;
   senderName?: string | null;
   lastText?: string | null;

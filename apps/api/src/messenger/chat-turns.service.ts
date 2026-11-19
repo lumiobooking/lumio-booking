@@ -185,7 +185,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const open = await this.db.messengerThread.groupBy({ by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null } }, _count: true }).catch(() => []) as { assignedUserId: string; _count: number }[];
     const openBy = new Map(open.map((r) => [r.assignedUserId, Number(r._count) || 0]));
     const since = new Date(Date.now() - 24 * 3600_000);
-    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: ['unassign', 'first-reply', 'backlog', 'opened'] } }, _count: true }).catch(() => []) ?? [];
+    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: ['unassign', 'first-reply', 'backlog', 'opened', 'prospect', 'customer-back'] } }, _count: true }).catch(() => []) ?? [];
     const turnsBy = new Map<string, number>(logs.map((r: { userId: string; _count: number }) => [r.userId, Number(r._count) || 0]));
     const clock = await this.salonClock(tenantId);
     const now = new Date();
@@ -313,6 +313,11 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       where: { id: threadId, tenantId },
       data: { assignedUserId: userId, assignedAt: new Date(), ...(hop ? { assignHops: { increment: 1 } } : { assignHops: 0 }) },
     }).catch(() => undefined);
+    // rt215: "Tôi nhận" by an earlier holder locks a conversation against
+    // being passed on. When the rules give it to someone else that lock is
+    // the old holder's, not the new one's — left in place it froze the turn
+    // for good with whoever got it next.
+    if (!byUserId) await this.db.messengerThread.updateMany({ where: { id: threadId, tenantId, handoffMode: 'locked' }, data: { handoffMode: 'auto' } }).catch(() => undefined);
     if (movePointer) {
       await this.prisma.messengerConnection.update({ where: { tenantId }, data: { chatLastAssignedId: userId } as never }).catch(() => undefined);
     }
@@ -425,6 +430,39 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     return { days, total, per: people.map((p) => ({ name: p.name, n: given.get(p.userId) ?? 0 })) };
   }
 
+  /**
+   * rt215 — give these conversations (nobody holds them) out among the people
+   * ticked in Chia turn who open the Inbox, fewest open first, as follow-ups
+   * (assignHops 99: never passed on by the timers). One notification each.
+   * The owner only; every id is re-checked against this salon on write.
+   */
+  async giveOut(user: AuthenticatedUser, threadIds: string[], opts: { reason: string; title: string; body: (n: number) => string; audit: string }) {
+    const tenantId = this.tenantOf(user);
+    if (!(user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN)) throw new ForbiddenException('Only the salon admin can give out conversations.');
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as ConnRow;
+    const set = settingsOf(conn);
+    const people = (await this.agents(tenantId, set)).filter((a) => a.inRotation && a.canInbox && a.role === 'STAFF');
+    if (!people.length) throw new BadRequestException('Chưa có nhân viên nào được tích trong danh sách Chia turn.');
+    const load = new Map(people.map((p) => [p.userId, p.openThreads]));
+    const given = new Map<string, number>();
+    const now = new Date();
+    for (const id of threadIds.slice(0, 1000)) {
+      const to = [...people].sort((a, b) => (load.get(a.userId)! - load.get(b.userId)!))[0].userId;
+      const r = await this.db.messengerThread.updateMany({ where: { id, tenantId, assignedUserId: null }, data: { assignedUserId: to, assignedAt: now, assignHops: 99 } }).catch(() => ({ count: 0 }));
+      if (!r.count) continue;
+      await this.db.chatAssignmentLog?.create({ data: { tenantId, threadId: id, userId: to, byUserId: user.userId, reason: opts.reason } }).catch(() => undefined);
+      load.set(to, (load.get(to) ?? 0) + 1);
+      given.set(to, (given.get(to) ?? 0) + 1);
+    }
+    for (const [uid, n] of given) {
+      void this.push?.sendToUser(tenantId, uid, { title: opts.title, body: opts.body(n), url: '/salon/inbox', tag: `turn-${opts.reason}` }).catch(() => undefined);
+    }
+    const total = [...given.values()].reduce((a, b) => a + b, 0);
+    await this.db.auditLog?.create({ data: { tenantId, userId: user.userId, action: opts.audit, resourceType: 'tenant', resourceId: tenantId, metadata: { total } } }).catch(() => undefined);
+    this.events.publish(tenantId, 'thread');
+    return { total, per: people.map((p) => ({ name: p.name, n: given.get(p.userId) ?? 0 })) };
+  }
+
   // ---------------------------------------------------------------- team (đợt 2) ----
 
   async teamOf(tenantId: string): Promise<TeamConfig> {
@@ -479,6 +517,75 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       if (mine.length) out.set(r.id, mine[mine.length - 1].createdAt);
     }
     return out;
+  }
+
+  /**
+   * rt215 — when a PERSON last answered each conversation: a team member in
+   * Lumio, or someone replying from Meta's own inbox. Not Lumio's AI, Meta's AI
+   * or the Page's automatic messages. Before, the "replied" test read
+   * handoffAt, which the AI handing over, Meta's AI and even a missed echo of
+   * our own AI's reply also stamp — so a customer only the AI had answered
+   * counted as answered and stayed with the person who never wrote a word.
+   * Null when the log cannot be read (the caller keeps its old test).
+   */
+  private async humanReplyAt(tenantId: string, ids: string[]): Promise<Map<string, Date> | null> {
+    if (!ids.length) return new Map();
+    if (!this.db.messengerMessageLog?.groupBy) return null;
+    try {
+      const rows = await this.db.messengerMessageLog.groupBy({
+        by: ['threadId'],
+        where: { tenantId, threadId: { in: ids }, failed: false, OR: [{ role: 'staff' }, { role: 'page', byName: null }] },
+        _max: { at: true },
+      }) as { threadId: string; _max: { at: Date | null } }[];
+      const out = new Map<string, Date>();
+      for (const r of rows) if (r._max?.at) out.set(r.threadId, new Date(r._max.at));
+      return out;
+    } catch { return null; }
+  }
+
+  /** Put each row's "replied" time to a person's last reply (see humanReplyAt). */
+  private async withHumanReply<T extends { id: string; handoffAt?: Date | null }>(tenantId: string, rows: T[]): Promise<T[]> {
+    const replied = await this.humanReplyAt(tenantId, rows.map((r) => r.id));
+    if (replied) for (const r of rows) r.handoffAt = replied.get(r.id) ?? null;
+    return rows;
+  }
+
+  /**
+   * rt215 — the customer wrote again on a conversation someone holds. When the
+   * holder had already answered this turn (or it was an old customer given out
+   * to follow up), this message starts a NEW turn: the clock restarts and the
+   * passes count from zero, so if the holder does not open / answer it in time
+   * it goes on to the next person like a new customer. Before, the clock still
+   * counted from the day it was first given, the old opening and reply looked
+   * like answers to the new message, and the conversation sat with that person.
+   * While the holder has not answered yet, the turn already running keeps its
+   * clock (more messages from the customer do not buy them more time).
+   */
+  async noteCustomer(tenantId: string, threadId: string, now: Date = new Date()): Promise<boolean> {
+    try {
+      const t = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { assignedUserId: true, assignedAt: true, assignHops: true, status: true } }) as { assignedUserId: string | null; assignedAt: Date | null; assignHops: number; status: string } | null;
+      if (!t?.assignedUserId || !t.assignedAt || t.status === 'spam') return false;
+      const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as ConnRow;
+      if (settingsOf(conn).mode !== 'round-robin') return false;
+      let fresh = (t.assignHops ?? 0) >= 99;
+      if (!fresh) {
+        const replied = await this.humanReplyAt(tenantId, [threadId]);
+        const at = replied?.get(threadId);
+        fresh = !!at && at.getTime() >= new Date(t.assignedAt).getTime();
+      }
+      if (!fresh) return false;
+      const r = await this.db.messengerThread.updateMany({
+        where: { id: threadId, tenantId, assignedUserId: t.assignedUserId, assignedAt: t.assignedAt },
+        data: { assignedAt: now, assignHops: 0 },
+      }).catch(() => ({ count: 0 }));
+      if (!r.count) return false;
+      await this.db.chatAssignmentLog?.create({ data: { tenantId, threadId, userId: t.assignedUserId, reason: 'customer-back' } }).catch(() => undefined);
+      const th = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { senderName: true, adId: true, adAt: true } }).catch(() => null) as { senderName?: string | null; adId?: string | null; adAt?: Date | null } | null;
+      const mins = th ? unrepliedMinsFor(th, settingsOf(conn), now) : 0;
+      void this.push?.sendToUser(tenantId, t.assignedUserId, { title: '💬 Khách của bạn nhắn lại', body: `${th?.senderName || 'Khách'} vừa nhắn${mins > 0 ? ` — trả lời trong ${mins} phút, nếu không sẽ chuyển người khác` : ''}.`, url: `/salon/inbox?thread=${threadId}`, tag: `chat-turn-${threadId}` }).catch(() => undefined);
+      this.events.publish(tenantId, 'thread');
+      return true;
+    } catch { return false; }
   }
 
   /**
@@ -684,6 +791,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     let n = 0;
     const opened = await this.openedAt(tenantId, rows);
     for (const t of rows) t.readAt = opened.get(t.id) ?? null;
+    await this.withHumanReply(tenantId, rows);
     for (const t of rows) {
       if (!remindDue(t, now)) continue;
       void this.push?.sendToUser(tenantId, t.assignedUserId, { title: '⏰ Nhắc lại: khách đang chờ bạn', body: `${t.senderName || 'Khách'} chưa được trả lời. Bấm để mở và trả lời ngay.`, url: `/salon/inbox?thread=${t.id}`, tag: `chat-turn-${t.id}-again` }).catch(() => undefined);
@@ -779,6 +887,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         // rt213: "opened" means opened by the person holding it — someone else looking does not count.
         const opened = await this.openedAt(tenantId, threads);
         for (const t of threads) t.readAt = opened.get(t.id) ?? null;
+        await this.withHumanReply(tenantId, threads as unknown as { id: string; handoffAt?: Date | null }[]);
         for (const t of threads) {
           // A customer from an ad is passed on sooner when the salon set it (./staff-alerts).
           const un = unrepliedMinsFor(t, set, now);
@@ -845,6 +954,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     // tell the owner and the team NOW (after one minute), not after the alert
     // minutes — the passes are what used that time already. Old customers
     // given out to follow up (hops 99) are not live chats and are left out.
+    await this.withHumanReply(tenantId, rows);
     const exhausted = (t: { assignHops: number }) => set.maxHops > 0 && t.assignHops >= set.maxHops && t.assignHops < 99;
     const due = rows.filter((t) => (set.escalateMins > 0 && escalationDue(t, set.escalateMins, now)) || (exhausted(t) && escalationDue(t, 1, now)));
     if (!due.length) return 0;

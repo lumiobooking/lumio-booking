@@ -1,4 +1,5 @@
 import { rescueOpen } from './turn-shift';
+import { FOLD_FROM, FOLD_TO, searchPattern } from './thread-search';
 import { logRowsFrom } from './message-log';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { onSale, salePrice } from '../common/discount';
@@ -1657,7 +1658,37 @@ export class MessengerService implements OnModuleInit {
    * Deriving it here means the webhook and the screen can never disagree about
    * who owns a conversation, because they call the same function.
    */
-  async listThreads(user: AuthenticatedUser, opts: { before?: string; take?: number } = {}) {
+  /**
+   * rt214 — ids of this salon's conversations matching a search, newest first,
+   * over EVERY conversation (not only the page on screen). Staff who see only
+   * their own see only their own here too. Null: no search asked.
+   */
+  private async searchThreadIds(tenantId: string, q: unknown, ownUserId: string | null, take: number): Promise<string[] | null> {
+    const pattern = searchPattern(q);
+    if (!pattern) return null;
+    const fold = (col: Prisma.Sql) => Prisma.sql`translate(lower(coalesce(${col}, '')), ${FOLD_FROM}, ${FOLD_TO})`;
+    const own = ownUserId ? Prisma.sql`AND ("assignedUserId" = ${ownUserId} OR "assignedUserId" IS NULL)` : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT id FROM messenger_threads
+      WHERE "tenantId" = ${tenantId} ${own}
+        AND (${fold(Prisma.sql`"senderName"`)} LIKE ${pattern} OR ${fold(Prisma.sql`"lastText"`)} LIKE ${pattern} OR "senderId" LIKE ${pattern})
+      ORDER BY "updatedAt" DESC
+      LIMIT ${take}`).catch(() => [] as { id: string }[]);
+    return rows.map((r) => r.id);
+  }
+
+  /** rt214 — how many conversations this person can see in all, so the screen can say "100 / 2.340". */
+  async countThreads(user: AuthenticatedUser): Promise<{ total: number }> {
+    const tenantId = this.tenantId(user);
+    const team = this.turns ? await this.turns.teamOf(tenantId).catch(() => null) : null;
+    const ownOnly = String(user.role) === 'STAFF' && !user.supportSession && team && !team.staffSeeAll;
+    const total = await this.prisma.messengerThread.count({
+      where: { tenantId, status: { not: 'spam' }, ...(ownOnly ? { OR: [{ assignedUserId: user.userId }, { assignedUserId: null }] } : {}) } as never,
+    }).catch(() => 0);
+    return { total };
+  }
+
+  async listThreads(user: AuthenticatedUser, opts: { before?: string; take?: number; q?: string } = {}) {
     const tenantId = this.tenantId(user);
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
     const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? DEFAULT_ACTIVE_MINS;
@@ -1674,8 +1705,12 @@ export class MessengerService implements OnModuleInit {
     const before = opts.before ? new Date(opts.before) : null;
     const listTeam = this.turns ? await this.turns.teamOf(tenantId).catch(() => null) : null;
     const ownOnly = String(user.role) === 'STAFF' && !user.supportSession && listTeam && !listTeam.staffSeeAll;
+    const found = opts.q ? await this.searchThreadIds(tenantId, opts.q, ownOnly ? user.userId : null, take) : null;
+    if (found && !found.length) return [];
     const rows = await this.prisma.messengerThread.findMany({
-      where: { tenantId, ...(ownOnly ? { OR: [{ assignedUserId: user.userId }, { assignedUserId: null }] } : {}), ...(before && !Number.isNaN(before.getTime()) ? { updatedAt: { lt: before } } : {}) },
+      where: found
+        ? { tenantId, id: { in: found } }
+        : { tenantId, ...(ownOnly ? { OR: [{ assignedUserId: user.userId }, { assignedUserId: null }] } : {}), ...(before && !Number.isNaN(before.getTime()) ? { updatedAt: { lt: before } } : {}) },
       orderBy: { updatedAt: 'desc' }, take,
       select: {
         id: true, senderId: true, senderName: true, lastText: true, handoff: true, pageId: true,

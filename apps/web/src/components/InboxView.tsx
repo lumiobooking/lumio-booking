@@ -494,10 +494,17 @@ export function InboxView() {
    *  from here, so nothing is ever listed twice. */
   const [older, setOlder] = useState<InboxRow[]>([]);
   const [moreState, setMoreState] = useState<'idle' | 'loading' | 'end'>('idle');
-  const rows = useMemo(() => {
+  /** rt214: what a search found on the server — kept apart so "load more" keeps its place. */
+  const [found, setFound] = useState<InboxRow[]>([]);
+  const paged = useMemo(() => {
     const ids = new Set(topRows.map((r) => r.id));
     return older.length ? [...topRows, ...older.filter((r) => !ids.has(r.id))] : topRows;
   }, [topRows, older]);
+  const rows = useMemo(() => {
+    if (!found.length) return paged;
+    const ids = new Set(paged.map((r) => r.id));
+    return [...paged, ...found.filter((r) => !ids.has(r.id))];
+  }, [paged, found]);
   /** Reply / internal note: two tabs of the one composer. */
   const [composerMode, setComposerMode] = useState<'reply' | 'note'>('reply');
   const [allCanned, setAllCanned] = useState(false);
@@ -1064,7 +1071,7 @@ export function InboxView() {
   /** The next hundred conversations older than the oldest one on screen. */
   async function loadMore() {
     if (!token || moreState === 'loading') return;
-    const oldest = rows.reduce<string | null>((m, r) => (!m || r.updatedAt < m ? r.updatedAt : m), null);
+    const oldest = paged.reduce<string | null>((m, r) => (!m || r.updatedAt < m ? r.updatedAt : m), null);
     if (!oldest) return;
     setMoreState('loading');
     try {
@@ -1074,6 +1081,51 @@ export function InboxView() {
       setMoreState(page.length < 100 ? 'end' : 'idle');
     } catch (e) { setErr(String(e)); setMoreState('idle'); }
   }
+
+  // rt214 — "mục tin nhắn tất cả chỉ có 100 tin". The list is sent a hundred
+  // at a time; the next hundred used to wait for a button at the very bottom
+  // that nobody scrolled to, and the search only looked through what was on
+  // screen. Now: the total is shown, the next page loads by itself as the list
+  // nears its end, and a search asks the server over every conversation.
+  const [total, setTotal] = useState<number | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    let gone = false;
+    const ask = () => { void apiFetch<{ total?: number }>('/messenger/threads-count', { token }).then((r) => { if (!gone && typeof r?.total === 'number') setTotal(r.total); }).catch(() => undefined); };
+    ask();
+    const t = window.setInterval(ask, 60_000);
+    return () => { gone = true; window.clearInterval(t); };
+  }, [token]);
+
+  const [searching, setSearching] = useState(false);
+  useEffect(() => {
+    const q = query.trim();
+    if (!token || q.length < 2) { setSearching(false); setFound([]); return; }
+    let gone = false;
+    setSearching(true);
+    const t = window.setTimeout(() => {
+      void apiFetch<InboxRow[]>(`/messenger/threads?q=${encodeURIComponent(q)}&take=200`, { token })
+        .then((r) => {
+          if (gone) return;
+          setFound(Array.isArray(r) ? r : []);
+        })
+        .catch(() => undefined)
+        .finally(() => { if (!gone) setSearching(false); });
+    }, 350);
+    return () => { gone = true; window.clearTimeout(t); };
+  }, [query, token]);
+
+  const moreRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+  const canMore = loaded && paged.length >= 100 && moreState === 'idle' && !query.trim();
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el || !canMore || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) void loadMoreRef.current(); }, { rootMargin: '400px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [canMore, paged.length]);
 
   /** Clear every unread mark in the shop, then repaint from the server. */
   async function markAllRead() {
@@ -1661,7 +1713,17 @@ export function InboxView() {
         {restRows.length > 0 && filter !== 'waiting' && sectionHead(waitingRows.length ? (vi ? `Còn lại · ${restRows.length}` : `Everything else · ${restRows.length}`) : (vi ? `${restRows.length} hội thoại` : `${restRows.length} conversations`))}
         {filter !== 'waiting' && restRows.map(rowView)}
         </>)}
-                {loaded && rows.length >= 100 && moreState !== 'end' && (
+        {loaded && (total !== null || searching) && (
+          <span style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--c64748b)', padding: '6px 0 2px' }}>
+            {searching
+              ? (vi ? 'Đang tìm trong toàn bộ hội thoại…' : 'Searching every conversation…')
+              : query.trim()
+                ? (vi ? `Đã tìm trong toàn bộ ${total!.toLocaleString('vi-VN')} hội thoại` : `Searched all ${total} conversations`)
+                : (vi ? `Đang hiện ${Math.min(paged.length, total!).toLocaleString('vi-VN')} / ${total!.toLocaleString('vi-VN')} hội thoại` : `Showing ${Math.min(paged.length, total!)} of ${total}`)}
+          </span>
+        )}
+        <div ref={moreRef} aria-hidden style={{ height: 1, flexShrink: 0 }} />
+                {loaded && paged.length >= 100 && moreState !== 'end' && !query.trim() && (
           <button onClick={() => void loadMore()} disabled={moreState === 'loading'} style={{ margin: narrow ? '6px 0 12px' : '8px 12px 4px', height: 38, flexShrink: 0, borderRadius: 10, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             {moreState === 'loading' ? (vi ? 'Đang tải…' : 'Loading…') : (vi ? 'Tải thêm hội thoại cũ hơn' : 'Load older conversations')}
           </button>

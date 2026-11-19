@@ -3,7 +3,7 @@
 import { StaffShell } from '../../../components/StaffShell';
 import { InboxView } from '../../../components/InboxView';
 import { useAuth } from '../../../lib/auth';
-import { useChatSeat } from '../../../lib/chat-seat';
+import { useChatSeatState } from '../../../lib/chat-seat';
 
 /**
  * The technician's way in to customer messages — the SAME Inbox the owner uses.
@@ -16,8 +16,16 @@ import { useChatSeat } from '../../../lib/chat-seat';
  */
 export default function StaffInboxPage() {
   const { token } = useAuth();
-  const seat = useChatSeat(token);
-  if (seat) {
+  const seat = useChatSeatState(token);
+  if (seat === 'loading') {
+    // rt214: still asking — never flash "not allowed" at someone who is.
+    return (
+      <StaffShell title="Tin nhắn" wide>
+        <div style={{ textAlign: 'center', padding: '80px 16px', fontSize: 13.5, color: 'var(--c94a3b8)' }}>Đang mở tin nhắn…</div>
+      </StaffShell>
+    );
+  }
+  if (seat === 'yes') {
     return (
       <StaffShell title="Tin nhắn" wide>
         <InboxView />

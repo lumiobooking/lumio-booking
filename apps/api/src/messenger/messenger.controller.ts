@@ -282,8 +282,15 @@ export class MessengerController {
 
   @Roles(...INBOX_ROLES)
   @Get('threads')
-  threads(@CurrentUser() user: AuthenticatedUser, @Query('before') before?: string, @Query('take') take?: string) {
-    return this.svc.listThreads(user, { before: before || undefined, take: take ? Number(take) : undefined });
+  threads(@CurrentUser() user: AuthenticatedUser, @Query('before') before?: string, @Query('take') take?: string, @Query('q') q?: string) {
+    return this.svc.listThreads(user, { before: before || undefined, take: take ? Number(take) : undefined, q: q ? String(q).slice(0, 120) : undefined });
+  }
+
+  /** rt214 — how many conversations in all (scoped like the list). */
+  @Roles(...INBOX_ROLES)
+  @Get('threads-count')
+  threadsCount(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.countThreads(user);
   }
 
   /** Which Inbox this salon sees (release channel) and what kind of page it is. */

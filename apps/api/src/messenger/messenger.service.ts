@@ -3184,7 +3184,7 @@ export class MessengerService implements OnModuleInit {
   private readonly syncSeen = new Map<string, string>();
   /** Per Page: Meta's last refusal to mirror Instagram (kept, not logged every minute). */
   private readonly igSyncErrors = new Map<string, string>();
-  async syncConversations(tenantId: string, opts: { limit?: number; reply?: boolean; incremental?: boolean; lines?: number } = {}) {
+  async syncConversations(tenantId: string, opts: { limit?: number; reply?: boolean; incremental?: boolean; lines?: number; /** rt212: follow Meta's pages back in time */ pages?: number; /** rt212: stop at conversations last active before this ISO time */ since?: string; onProgress?: (scanned: number) => void } = {}) {
     const pages = await this.prisma.messengerPage.findMany({ where: { tenantId, enabled: true }, select: { pageId: true, pageToken: true, pageName: true, igId: true } }).catch(() => [] as { pageId: string; pageToken: string; pageName: string | null; igId: string | null }[]);
     const conn = pages.length ? null : await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageId: true, pageToken: true, pageName: true, igId: true } });
     const targets = (pages.length ? pages : conn?.pageId && conn.pageToken ? [{ pageId: conn.pageId, pageToken: conn.pageToken, pageName: conn.pageName, igId: conn.igId }] : [])
@@ -3210,7 +3210,7 @@ export class MessengerService implements OnModuleInit {
       ];
       for (const src of sources) {
       const url = `${GRAPH}/${pg.pageId}/conversations?platform=${src.platform}&limit=${take}&fields=id,updated_time,participants,messages.limit(${lines}){message,from,created_time}&access_token=${encodeURIComponent(pg.pageToken)}`;
-      let json: { data?: { id: string; updated_time?: string; participants?: { data?: { id: string; name?: string; username?: string }[] }; messages?: { data?: { message?: string; from?: { id: string; name?: string }; created_time?: string }[] } }[]; error?: { message?: string; code?: number } };
+      let json: { data?: { id: string; updated_time?: string; participants?: { data?: { id: string; name?: string; username?: string }[] }; messages?: { data?: { message?: string; from?: { id: string; name?: string }; created_time?: string }[] } }[]; error?: { message?: string; code?: number }; paging?: { next?: string } };
       try {
         const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
         json = (await res.json().catch(() => ({}))) as typeof json;
@@ -3225,12 +3225,30 @@ export class MessengerService implements OnModuleInit {
         continue;
       }
       if (src.platform === 'instagram') this.igSyncErrors.delete(pg.pageId);
+      // rt212: the old conversations too — Meta's pages followed back in time,
+      // until the chosen date or the page cap. Newest first, so a stop leaves
+      // the most recent customers in.
+      if ((opts.pages ?? 1) > 1 && Array.isArray(json.data)) {
+        let next = json.paging?.next;
+        let n = 1;
+        while (next && n < (opts.pages ?? 1)) {
+          const tail = json.data[json.data.length - 1]?.updated_time ?? '';
+          if (opts.since && tail && tail < opts.since) break;
+          const more = await fetch(next, { signal: AbortSignal.timeout(20000) }).then((r) => r.json()).catch(() => null) as typeof json | null;
+          if (!more || more.error || !Array.isArray(more.data) || !more.data.length) break;
+          json.data.push(...more.data);
+          next = more.paging?.next;
+          n += 1;
+          opts.onProgress?.(json.data.length);
+        }
+      }
       const seenBefore = opts.incremental ? this.syncSeen.get(src.key) ?? null : null;
       let newest = seenBefore ?? '';
       for (const conv of json.data || []) {
         if (conv.updated_time && conv.updated_time > newest) newest = conv.updated_time;
         // Unchanged since the last tick: nothing to read.
         if (seenBefore && conv.updated_time && conv.updated_time <= seenBefore) { skipped++; continue; }
+        if (opts.since && conv.updated_time && conv.updated_time < opts.since) { skipped++; continue; }
         const other = src.platform === 'instagram'
           ? igCustomer(conv.participants?.data, src.entry, pg.pageId)
           : (() => { const o = (conv.participants?.data || []).find((p) => p.id !== pg.pageId); return o ? { id: o.id, name: o.name || null } : null; })();
@@ -3292,6 +3310,43 @@ export class MessengerService implements OnModuleInit {
     }
     if (imported || updated) this.events.publish(tenantId, 'message');
     return { imported, updated, skipped, answered, errors };
+  }
+
+  /**
+   * rt212 — "Kéo tin cũ từ Meta": every conversation of the salon's Pages (and
+   * Instagram) active in the last `days` days, followed back through Meta's
+   * pages, brought into the inbox — up to 20 lines each here; the full
+   * transcript is read from Meta (and kept for good, rt204) when someone opens
+   * it. Runs in the background, one job per salon; nothing is answered by the
+   * AI and nobody's phone rings for these. The owner only.
+   */
+  private readonly historyJobs = new Map<string, { running: boolean; days: number; startedAt: string; finishedAt: string | null; scanned: number; imported: number; updated: number; error: string | null }>();
+  historyJob(user: AuthenticatedUser) {
+    return this.historyJobs.get(this.tenantId(user)) ?? null;
+  }
+  async startHistoryImport(user: AuthenticatedUser, daysRaw?: number) {
+    const tenantId = this.tenantId(user);
+    const days = [30, 90, 180, 365].includes(Number(daysRaw)) ? Number(daysRaw) : 90;
+    const cur = this.historyJobs.get(tenantId);
+    if (cur?.running) return cur;
+    const job = { running: true, days, startedAt: new Date().toISOString(), finishedAt: null as string | null, scanned: 0, imported: 0, updated: 0, error: null as string | null };
+    this.historyJobs.set(tenantId, job);
+    await this.audit(tenantId, 'messenger.history_import_started', { userId: user.userId, metadata: { days } });
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    void (async () => {
+      try {
+        const r = await this.syncConversations(tenantId, { limit: 100, lines: 20, reply: false, pages: 60, since, onProgress: (n) => { job.scanned = n; } });
+        job.imported = r.imported; job.updated = r.updated;
+        if (r.errors.length) job.error = r.errors.slice(0, 2).join(' · ');
+      } catch (e) {
+        job.error = String((e as Error)?.message ?? e).slice(0, 200);
+      } finally {
+        job.running = false;
+        job.finishedAt = new Date().toISOString();
+        await this.audit(tenantId, 'messenger.history_import_done', { userId: user.userId, metadata: { days, imported: job.imported, updated: job.updated } }).catch(() => undefined);
+      }
+    })();
+    return job;
   }
 
   /** The status page's button: the same mirror, for this salon, now. */

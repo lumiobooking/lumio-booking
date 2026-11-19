@@ -496,6 +496,18 @@ export class MessengerController {
     return this.svc.importConversations(user, Number(dto?.limit) || 50);
   }
 
+  /** rt212: pull every conversation of the last N days from Meta, in the background (owner only). */
+  @Post('import-history')
+  importHistory(@CurrentUser() user: AuthenticatedUser, @Body() dto: { days?: number }) {
+    return this.svc.startHistoryImport(user, Number(dto?.days) || 90);
+  }
+
+  /** rt212: how the pull is going. */
+  @Get('import-history')
+  importHistoryStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.historyJob(user);
+  }
+
   /** Read the salon's website or connected Page and propose Bot-facts rows. */
   @Post('import-facts')
   @UseGuards(FeaturePolicyGuard)

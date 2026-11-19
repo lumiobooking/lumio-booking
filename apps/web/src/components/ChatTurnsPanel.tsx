@@ -315,6 +315,7 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
               {!view.agents.length && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{T('Chưa có nhân viên nào có tài khoản đăng nhập.', 'No team member has a login yet.')}</div>}
             </div>
             {/* rt200: add people to the team right here — link + Facebook, no accounts to create. */}
+            {view.canEdit && <HistoryImportBox token={token} vi={vi} />}
             {view.canEdit && <BacklogBox token={token} vi={vi} />}
             {view.canEdit && (
               <details style={{ marginTop: 8 }}>
@@ -397,6 +398,54 @@ function BacklogBox({ token, vi }: { token: string | null; vi: boolean }) {
             </>}
       </span>
       {res && <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-good)' }}>{res}</span>}
+    </div>
+  );
+}
+
+/**
+ * rt212 — "Kéo tin cũ từ Meta": every conversation of the last 30/90/180/365
+ * days brought into the inbox, in the background; then "Chia khách cũ" gives
+ * them out. Nothing is answered by the AI; nobody's phone rings for these.
+ */
+type HistJob = { running: boolean; days: number; scanned: number; imported: number; updated: number; error: string | null; finishedAt: string | null } | null;
+function HistoryImportBox({ token, vi }: { token: string | null; vi: boolean }) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  const [days, setDays] = useState(90);
+  const [job, setJob] = useState<HistJob>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const poll = useCallback(async () => {
+    if (!token) return;
+    try { setJob(await apiFetch<HistJob>('/messenger/import-history', { token })); } catch { /* keep the last */ }
+  }, [token]);
+  useEffect(() => { void poll(); }, [poll]);
+  useEffect(() => {
+    if (!job?.running) return;
+    const id = window.setInterval(() => { void poll(); }, 3000);
+    return () => window.clearInterval(id);
+  }, [job?.running, poll]);
+  const start = async () => {
+    if (!token) return;
+    setErr(null);
+    try { setJob(await apiFetch<HistJob>('/messenger/import-history', { method: 'POST', token, body: { days } })); } catch (e) { setErr(String((e as Error)?.message ?? e)); }
+  };
+  return (
+    <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <b style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>⤵️ {T('Kéo tin nhắn cũ từ Meta về Lumio', 'Pull old conversations from Meta')}</b>
+      <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{T('Lấy mọi cuộc trò chuyện trên Fanpage và Instagram trong khoảng thời gian chọn. AI không trả lời và không ai bị báo chuông cho các tin cũ này. Xong rồi bấm “Chia khách cũ” bên dưới để giao cho nhân viên.', 'Brings in every Page and Instagram conversation of the chosen period. The AI does not answer them and no phone rings. Then use “Give them out” below.')}</span>
+      <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} disabled={!!job?.running} style={{ height: 32, borderRadius: 8, border: '1px solid var(--line-strong)', background: 'transparent', color: 'var(--ce2e8f0)', padding: '0 8px', fontFamily: 'inherit' }}>
+          <option value={30}>{T('30 ngày qua', 'Last 30 days')}</option>
+          <option value={90}>{T('90 ngày qua', 'Last 90 days')}</option>
+          <option value={180}>{T('6 tháng qua', 'Last 6 months')}</option>
+          <option value={365}>{T('1 năm qua', 'Last year')}</option>
+        </select>
+        <button type="button" disabled={!!job?.running} onClick={() => void start()} style={{ height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid var(--ink-link)', background: 'transparent', color: 'var(--ink-link)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', opacity: job?.running ? 0.6 : 1 }}>
+          {job?.running ? T('Đang kéo…', 'Pulling…') : T('Kéo tin cũ', 'Pull')}
+        </button>
+      </span>
+      {job?.running && <span style={{ fontSize: 12.5, color: 'var(--ink-link)', fontWeight: 600 }}>{T(`Đang kéo về… đã quét ${job.scanned} cuộc trò chuyện. Có thể mất vài phút — anh/chị cứ làm việc khác.`, `Pulling… ${job.scanned} conversations scanned. This can take a few minutes.`)}</span>}
+      {job && !job.running && job.finishedAt && <span style={{ fontSize: 12.5, color: 'var(--ink-good)', fontWeight: 600 }}>{T(`Xong (${job.days} ngày): thêm ${job.imported} cuộc mới, cập nhật ${job.updated} cuộc.`, `Done (${job.days} days): ${job.imported} new, ${job.updated} updated.`)}</span>}
+      {(job?.error || err) && <span style={{ fontSize: 12, color: 'var(--ink-bad)' }}>{job?.error || err}</span>}
     </div>
   );
 }

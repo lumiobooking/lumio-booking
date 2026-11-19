@@ -60,6 +60,8 @@ const STAFF_MUST_NOT = [
   'keepOnly',
   // rt204: the permanent record of a conversation — the owner's, not staff's.
   'record',
+  // rt212: pulling the old conversations from Meta.
+  'importHistory', 'importHistoryStatus',
   'importFacts', 'suggestGreeting',
   // Changing the picture library and its rules is the owner's.
   'addPhoto', 'importPhotos', 'photoRules', 'savePhotoRules', 'updatePhoto', 'deletePhoto', 'saveChatPhoto',

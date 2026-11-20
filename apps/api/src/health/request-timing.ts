@@ -24,7 +24,11 @@ export function routeKey(method: string, baseUrl: string | undefined, routePath:
   return `${String(method || 'GET').toUpperCase()} ${path}`.slice(0, 160);
 }
 
+/** Long-polls wait on purpose (the print agent asks "any job?" and holds 25 s): not slowness. */
+const LONG_POLL = /print-agent\/jobs$/;
+
 export function recordTiming(key: string, ms: number, status: number, now = Date.now()): void {
+  if (LONG_POLL.test(key)) return;
   samples.push({ at: now, key, ms, status });
   if (samples.length > MAX) samples.splice(0, samples.length - MAX);
 }

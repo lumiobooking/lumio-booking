@@ -2265,7 +2265,7 @@ export class MessengerService implements OnModuleInit {
         );
         if (meta && meta !== cachedMeta?.turns) {
           this.metaHistoryCache.set(String(row.id), { at: Date.now(), turns: meta });
-          if (this.metaHistoryCache.size > 500) this.metaHistoryCache.delete(this.metaHistoryCache.keys().next().value as string);
+          if (this.metaHistoryCache.size > 150) this.metaHistoryCache.delete(this.metaHistoryCache.keys().next().value as string);
         }
         if (meta && meta.length) historySource = 'meta';
         metaFetched = fresh;
@@ -2292,8 +2292,21 @@ export class MessengerService implements OnModuleInit {
     // allow the one-step version. The dev sandbox's generated client is stale
     // and types it loosely, so a direct cast compiles here and fails on the
     // real build — which is exactly how this reached Render.
-    const facts = await this.factsOf(tenantId, conn);
-    const todayKey = dayKeyTz(new Date(), await this.tzOf(tenantId));
+    // rt223: the seven lookups below are independent — asked at once, not in
+    // a queue (GET /messenger/threads/:id measured ~0.9 s p50, every click).
+    const pFacts = this.factsOf(tenantId, conn).catch(() => [] as BotFact[]);
+    const pTz = this.tzOf(tenantId).catch(() => 'America/Los_Angeles');
+    const pPg = row.pageId ? this.prisma.messengerPage.findUnique({ where: { pageId: String(row.pageId) }, select: { pageName: true } }).catch(() => null) : Promise.resolve(null);
+    const pFollow = this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_FOLLOWUP_KEY }, select: { value: true } }).catch(() => null);
+    const pLang = this.salonLangOf(tenantId).catch(() => 'vi' as never);
+    const pNotes = this.prisma.messengerNote.findMany({
+      where: { tenantId, threadId: String(row.id) },
+      orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, text: true, authorName: true, createdAt: true },
+    } as never).catch(() => []);
+    const pBookingUrl = this.bookingUrlOf(tenantId).catch(() => null);
+    const facts = await pFacts;
+    const todayKey = dayKeyTz(new Date(), await pTz);
     const canned = facts
       .filter((f) => f && factLiveOn(f, todayKey) && String(f.label ?? '').trim() && String(f.value ?? '').trim())
       .slice(0, 12)
@@ -2303,23 +2316,18 @@ export class MessengerService implements OnModuleInit {
     // Nailstop & Beauty" because a salon with two Pages needs to know which
     // one they are about to answer as — the customer sees the Page's name, not
     // the salon's.
-    const pg = row.pageId
-      ? await this.prisma.messengerPage.findUnique({ where: { pageId: String(row.pageId) }, select: { pageName: true } }).catch(() => null)
-      : null;
+    const pg = await pPg;
 
     // Which bot lines were reminders (see the history mapping below).
     const nudgeLines = new Set(localTurns.filter((t) => t && t.nudge).map((t) => String(t.content ?? '').trim()));
-    const followRow = await this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_FOLLOWUP_KEY }, select: { value: true } }).catch(() => null);
+    const followRow = await pFollow;
     const followSettings = followUpSettingsFrom(followRow?.value);
     // Our own stage directions ("[Khách gửi 1 ảnh]") in the salon's language.
-    const stageLang = await this.salonLangOf(tenantId);
+    const stageLang = await pLang;
     const followCustom = { vi: followSettings.messageVi, en: followSettings.messageEn, vi2: followSettings.messageVi2, en2: followSettings.messageEn2 };
 
-    const notes = await this.prisma.messengerNote.findMany({
-      where: { tenantId, threadId: String(row.id) },
-      orderBy: { createdAt: 'desc' }, take: 50,
-      select: { id: true, text: true, authorName: true, createdAt: true },
-    } as never).catch(() => []);
+    const notes = await pNotes;
+    const bookingUrlNow = await pBookingUrl;
 
     return {
       ...row,
@@ -2338,7 +2346,7 @@ export class MessengerService implements OnModuleInit {
       })(),
       canned,
       pageName: pg?.pageName ?? null,
-      bookingUrl: await this.bookingUrlOf(tenantId),
+      bookingUrl: bookingUrlNow,
       // Never hand the page token or anything else secret to a browser.
       // Photos ride along so the inbox shows what the customer showed the bot.
       // Messages the salon took off its own screen. Filtered HERE, on the way

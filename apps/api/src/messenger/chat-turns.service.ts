@@ -172,7 +172,18 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
 
   /** Everyone who could take a turn in this salon, with the facts the rules need. */
   async agents(tenantId: string, s?: TurnSettings): Promise<AgentView[]> {
-    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
+    // rt223: the eight lookups below do not depend on each other — asked at
+    // once instead of one after another (GET /messenger/turns measured ~1.1 s
+    // p50, called on every inbox refresh; each round trip to the database
+    // costs the same whether it waits in line or not).
+    const since = new Date(Date.now() - 24 * 3600_000);
+    const pPresence = Promise.resolve().then(() => this.db.chatAgentPresence?.findMany({ where: { tenantId }, select: { userId: true, status: true, lastSeenAt: true } }) ?? []).catch(() => []);
+    const pOpen = Promise.resolve().then(() => this.db.messengerThread.groupBy({ by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null } }, _count: true })).catch(() => []);
+    const pLogs = Promise.resolve().then(() => this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: NOT_TURNS } }, _count: true, _max: { createdAt: true } }) ?? []).catch(() => []);
+    const pClock = this.salonClock(tenantId).catch(() => null);
+    const pLinks = this.staff ? this.staff.linksOf(tenantId).catch(() => ({})) : Promise.resolve({});
+    const pShifts = this.shiftsOf(tenantId).catch(() => new Map<string, Shift>());
+    const conn = s ? null : await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
     const set = s ?? settingsOf(conn as ConnRow);
     const users = await this.prisma.user.findMany({
       where: { tenantId, isActive: true, role: { in: INBOX_ROLES as unknown as UserRole[] } },
@@ -186,22 +197,21 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       id: string; firstName: string | null; lastName: string | null; email: string; role: string;
       staffMember: { isActive: boolean; staffRole?: string | null; permissions?: unknown; workingHours: { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[] } | null;
     }[];
-    const presence = await this.db.chatAgentPresence?.findMany({ where: { tenantId }, select: { userId: true, status: true, lastSeenAt: true } }).catch(() => []) ?? [];
+    const presence = (await pPresence) as { userId: string; status: string; lastSeenAt: Date | null }[];
     const presBy = new Map<string, { status: string; lastSeenAt: Date | null }>(presence.map((p: { userId: string; status: string; lastSeenAt: Date | null }) => [p.userId, p]));
-    const open = await this.db.messengerThread.groupBy({ by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null } }, _count: true }).catch(() => []) as { assignedUserId: string; _count: number }[];
+    const open = (await pOpen) as { assignedUserId: string; _count: number }[];
     const openBy = new Map(open.map((r) => [r.assignedUserId, Number(r._count) || 0]));
-    const since = new Date(Date.now() - 24 * 3600_000);
-    const logs = await this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: NOT_TURNS } }, _count: true, _max: { createdAt: true } }).catch(() => []) ?? [];
+    const logs = (await pLogs) as { userId: string; _count: number; _max?: { createdAt?: Date | null } }[];
     const turnsBy = new Map<string, number>(logs.map((r: { userId: string; _count: number }) => [r.userId, Number(r._count) || 0]));
     const lastBy = new Map<string, number>(logs.map((r: { userId: string; _max?: { createdAt?: Date | null } }) => [r.userId, r._max?.createdAt ? new Date(r._max.createdAt).getTime() : 0]));
-    const clock = await this.salonClock(tenantId);
+    const clock = await pClock;
     const now = new Date();
     // On shift through their own Messenger ("vào ca") counts as having Lumio open.
-    const links = this.staff ? await this.staff.linksOf(tenantId).catch(() => ({})) : {};
+    const links = await pLinks;
     const onMsgr = (id: string) => windowOpen((links as Record<string, never>)[id], now);
     const inList = (id: string) => (set.agentIds.length ? set.agentIds.includes(id) : true);
     // rt198: "Vào ca" pressed in Lumio counts as present, app open or not.
-    const shifts = await this.shiftsOf(tenantId);
+    const shifts = await pShifts;
 
     const views = users.map((u) => {
       const p = presBy.get(u.id);
@@ -767,6 +777,13 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const tenantId = this.tenantOf(user);
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as ConnRow;
     const settings = settingsOf(conn);
+    // rt223: what does not depend on the team list is asked alongside it.
+    const pRecent = Promise.resolve().then(() => this.db.chatAssignmentLog?.findMany({
+      where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 20,
+      select: { id: true, threadId: true, userId: true, fromUserId: true, reason: true, createdAt: true, thread: { select: { senderName: true } } },
+    }) ?? []).catch(() => []);
+    const pTeam = this.teamOf(tenantId).catch(() => DEFAULT_TEAM);
+    const pSources = this.sources(tenantId).catch(() => [] as { key: string; label: string }[]);
     const agents = await this.agents(tenantId, settings);
     const isAdmin = user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN;
     // Who of the team will actually hear a customer: their registered phones.
@@ -777,13 +794,10 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         a.devices = c.web + c.native;
       }));
     }
-    const recent = await this.db.chatAssignmentLog?.findMany({
-      where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 20,
-      select: { id: true, threadId: true, userId: true, fromUserId: true, reason: true, createdAt: true, thread: { select: { senderName: true } } },
-    }).catch(() => []) ?? [];
+    const recent = await pRecent;
     const me = agents.find((a) => a.userId === user.userId) ?? null;
-    const team = await this.teamOf(tenantId);
-    return { settings, agents, me, recent, team, sources: await this.sources(tenantId), canEdit: isAdmin, pushOn: this.push?.enabled() ?? false, lastMiss: isAdmin ? this.lastMiss(tenantId) : null };
+    const team = await pTeam;
+    return { settings, agents, me, recent, team, sources: await pSources, canEdit: isAdmin, pushOn: this.push?.enabled() ?? false, lastMiss: isAdmin ? this.lastMiss(tenantId) : null };
   }
 
   async updateSettings(user: AuthenticatedUser, dto: Record<string, unknown>) {

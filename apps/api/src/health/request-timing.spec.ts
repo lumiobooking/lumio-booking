@@ -16,5 +16,8 @@ describe('rt222 — request timings on /api/health', () => {
     expect(r.slowest.find((x) => x.route === 'GET /old')).toBeUndefined();
     expect(r.over6s10m).toBe(1);
     expect(r.eventLoopDelayMs).toHaveProperty('p99');
+    // rt223: the print agent's 25 s long-poll is by design, not slowness.
+    recordTiming('GET /api/print-agent/jobs', 25000, 200, now);
+    expect(timingReport(now).slowest.find((x) => x.route.includes('print-agent'))).toBeUndefined();
   });
 });

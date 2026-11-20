@@ -79,3 +79,37 @@ export function historyWrite(params: { model?: string; action?: string; args?: {
   }
   return null;
 }
+
+/**
+ * rt225 — the permanent log read back as a conversation. "Tin cũ load lúc được
+ * lúc không, và chưa đầy đủ": the screen leaned on Meta's copy (at most 200
+ * messages, and nothing at all when the Graph call failed or hung) with our
+ * 20-line buffer as the fallback. The log already holds every message Lumio
+ * has seen — live ones and everything copied from Meta on earlier opens — so
+ * it is the floor: Meta adds to it, never replaces it.
+ */
+export type LogRow = { role: string; byName: string | null; content: string; images?: unknown; messageId: string | null; failed: boolean; at: Date };
+export function turnsFromLog(rows: LogRow[]): Record<string, unknown>[] {
+  return rows
+    .filter((r) => r && String(r.content ?? '').trim())
+    .map((r) => {
+      const at = new Date(r.at).toISOString();
+      if (r.role === 'customer') return { role: 'user', content: r.content, at, ...(r.messageId ? { messageId: r.messageId } : {}), ...(Array.isArray(r.images) && r.images.length ? { images: r.images } : {}) };
+      const source = r.role === 'page' ? (r.byName === 'Meta AI' ? 'meta-ai' : r.byName === 'Tự động (Page)' ? 'automation' : 'page') : undefined;
+      return {
+        role: 'assistant', content: r.content, at,
+        ...(r.role === 'staff' ? { manual: true, ...(r.byName ? { by: r.byName } : {}) } : {}),
+        ...(source ? { source, ...(source === 'page' ? { manual: true } : {}) } : {}),
+        ...(r.messageId ? { messageId: r.messageId } : {}),
+        ...(r.failed ? { failed: true } : {}),
+        ...(Array.isArray(r.images) && r.images.length ? { images: r.images } : {}),
+      };
+    });
+}
+
+/** Log turns older than the first turn of `base` (what Meta no longer returns), oldest first. */
+export function olderThan(logTurns: Record<string, unknown>[], base: { at?: unknown }[]): Record<string, unknown>[] {
+  const first = base.map((t) => Date.parse(String(t?.at ?? ''))).filter(Number.isFinite).sort((a, b) => a - b)[0];
+  if (!Number.isFinite(first)) return [];
+  return logTurns.filter((t) => Date.parse(String(t.at ?? '')) < first);
+}

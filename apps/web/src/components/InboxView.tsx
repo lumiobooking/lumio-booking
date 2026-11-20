@@ -654,6 +654,7 @@ export function InboxView() {
       setRows((cur) => keepRows(cur, next));
       setListErr(null);
       setLoaded(true);
+      return next;
     } catch (e) {
       // A failed refresh must not blank the list someone is reading — but it
       // must SAY SO. This used to swallow the error entirely, and the screen
@@ -664,6 +665,7 @@ export function InboxView() {
       // nobody goes looking for messages they have been told do not exist.
       setListErr(String(e));
       setLoaded(true);
+      return null;
     }
   }, [token]);
 
@@ -797,20 +799,33 @@ export function InboxView() {
     // right after — nothing is dropped and nothing piles up.
     let running = false;
     let again = false;
+    // rt226 — "load nhiều lần liên tục". Every write anywhere in the salon (the
+    // AI answering another customer, a turn passed, a label) nudges this
+    // screen, and every nudge re-read the OPEN conversation in full (Meta copy,
+    // the whole permanent log) plus the turn board — a second-long fetch every
+    // second or two, with the bubbles repainting under the reader. Now the
+    // list is read first (one light query), and the open conversation is
+    // re-read only when ITS row changed; the turn board at most every 15 s.
+    let openStamp: { id: string; at: string } | null = null;
+    let turnsAt = 0;
     const refresh = () => {
       if (running) { again = true; return; }
       running = true;
-      void Promise.all([
-        loadList(),
-        // A poll is not a person. Refreshing the open thread re-reads it only
-        // when the person has not deliberately parked it as unread — otherwise
-        // the next tick would quietly undo the press.
-        // rt221: mark read only when there is something unread — a refresh that
-        // re-marks a read conversation was a write that triggered the next refresh.
-        openRef.current ? loadThread(openRef.current, keepUnreadRef.current !== openRef.current && !!rowsRef.current.find((r) => r.id === openRef.current)?.unread, true) : Promise.resolve(),
-        // Shift and turn state (Vào ca, who holds whom) moves with the same nudge.
-        loadTurnsRef.current?.() ?? Promise.resolve(),
-      ]).catch(() => undefined).finally(() => {
+      void (async () => {
+        const next = await loadList();
+        const id = openRef.current;
+        if (id) {
+          const row = (next ?? rowsRef.current).find((r) => r.id === id);
+          const stamp = row ? String(row.updatedAt) : '';
+          if (!openStamp || openStamp.id !== id || openStamp.at !== stamp) {
+            openStamp = { id, at: stamp };
+            // A poll is not a person: mark read only when there is something
+            // unread and the person has not parked it as unread (rt221).
+            await loadThread(id, keepUnreadRef.current !== id && !!row?.unread, true);
+          }
+        }
+        if (Date.now() - turnsAt > 15_000) { turnsAt = Date.now(); await (loadTurnsRef.current?.() ?? Promise.resolve()); }
+      })().catch(() => undefined).finally(() => {
         running = false;
         if (again) { again = false; refresh(); }
       });

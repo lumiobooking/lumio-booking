@@ -85,3 +85,29 @@ describe('rt204 — every history write lands in the log', () => {
     expect(created).toHaveLength(1);
   });
 });
+
+describe('rt225 — the permanent log is the floor of every conversation', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { turnsFromLog, olderThan } = require('./message-log') as typeof import('./message-log');
+  const at = (m: number) => new Date(Date.UTC(2026, 9, 1, 10, m));
+  const rows = [
+    { role: 'customer', byName: null, content: 'Giá gel?', messageId: 'm1', failed: false, at: at(0) },
+    { role: 'ai', byName: null, content: 'Dạ 250k', messageId: null, failed: false, at: at(1) },
+    { role: 'staff', byName: 'Lan', content: 'Chị qua 3h nhé', messageId: 'm3', failed: false, at: at(2) },
+    { role: 'page', byName: 'Meta AI', content: 'Meta trả lời', messageId: null, failed: false, at: at(3) },
+    { role: 'page', byName: null, content: 'Từ app Meta', messageId: null, failed: false, at: at(4) },
+  ];
+  it('reads back who wrote what', () => {
+    const t = turnsFromLog(rows);
+    expect(t.map((x) => x.role)).toEqual(['user', 'assistant', 'assistant', 'assistant', 'assistant']);
+    expect(t[2]).toMatchObject({ manual: true, by: 'Lan' });
+    expect(t[3]).toMatchObject({ source: 'meta-ai' });
+    expect(t[3].manual).toBeUndefined();
+    expect(t[4]).toMatchObject({ source: 'page', manual: true });
+  });
+  it('keeps what Meta no longer returns, in front', () => {
+    const t = turnsFromLog(rows);
+    expect(olderThan(t, [{ at: at(2).toISOString() }]).map((x) => x.content)).toEqual(['Giá gel?', 'Dạ 250k']);
+    expect(olderThan(t, [])).toEqual([]);
+  });
+});

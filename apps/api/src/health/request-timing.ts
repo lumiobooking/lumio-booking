@@ -53,6 +53,8 @@ export function timingReport(now = Date.now(), top = 8) {
     eventLoopDelayMs: { p99: Math.round(loop.percentile(99) / 1e6), max: Math.round(Math.max(loopMaxSeen, loop.max / 1e6)) },
     memoryMb: { rss: Math.round(mem.rss / 1048576), heap: Math.round(mem.heapUsed / 1048576) },
     slowest: routes,
+    // rt226: what is asked most often — a screen re-reading itself shows up here, not in "slowest".
+    busiest: [...by.entries()].map(([key, a]) => ({ route: key, n: a.length, p50: Math.round(pct(a, 0.5)) })).sort((x, y) => y.n - x.n).slice(0, top),
   };
 }
 

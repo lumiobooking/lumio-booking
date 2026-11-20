@@ -1,7 +1,7 @@
 import { rescueOpen } from './turn-shift';
 import { FOLD_FROM, FOLD_TO, searchPattern } from './thread-search';
 import { customerEmailFrom, customerPhoneFrom, phoneKeyOf, prospectContact, prospectDays } from './prospects';
-import { logRowsFrom } from './message-log';
+import { logRowsFrom, olderThan, turnsFromLog, type LogRow } from './message-log';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { onSale, salePrice } from '../common/discount';
 import { discountRules, promoKnowledge, type PromoInputs } from './promo-knowledge';
@@ -2272,11 +2272,33 @@ export class MessengerService implements OnModuleInit {
         turns = mergeHistory(meta as never, localTurns as never) as unknown as Turn[];
       }
     }
+    // rt225: the permanent log is the floor. Meta failed or hung → the whole
+    // story from our own records; Meta answered but no longer reaches back as
+    // far as we do → our older messages go in front of it. Never fewer
+    // messages than Lumio has already seen.
+    if (full) {
+      const logRows = await (this.prisma as unknown as { messengerMessageLog: { findMany: (a: unknown) => Promise<LogRow[]> } }).messengerMessageLog.findMany({
+        where: { tenantId, threadId: String(row.id) }, orderBy: { at: 'desc' }, take: 1000,
+        select: { role: true, byName: true, content: true, images: true, messageId: true, failed: true, at: true },
+      }).catch(() => [] as LogRow[]);
+      if (logRows.length) {
+        const logTurns = turnsFromLog([...logRows].reverse());
+        if (historySource !== 'meta') {
+          if (logTurns.length > localTurns.length) {
+            turns = mergeHistory(logTurns as never, localTurns as never) as unknown as Turn[];
+            historySource = 'meta';
+          }
+        } else {
+          const older = olderThan(logTurns, turns as never);
+          if (older.length) turns = [...(older as unknown as Turn[]), ...turns];
+        }
+      }
+    }
     // rt204: whatever Meta still holds is copied into the permanent log the
     // first time anyone opens the conversation — older messages included —
     // so deleting it on Meta later takes nothing away from the salon.
     if (historySource === 'meta' && metaFetched) {
-      const rows = logRowsFrom(tenantId, String(row.id), turns, 400);
+      const rows = logRowsFrom(tenantId, String(row.id), turns, 600);
       if (rows.length) void (this.prisma as unknown as { messengerMessageLog: { createMany: (a: unknown) => Promise<unknown> } }).messengerMessageLog.createMany({ data: rows, skipDuplicates: true }).catch(() => undefined);
     }
 
@@ -8151,7 +8173,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         + `?platform=${platform}&user_id=${encodeURIComponent(psid)}`
         + `&fields=messages.limit(100){id,message,from,created_time}`
         + `&access_token=${encodeURIComponent(pageToken)}`;
-      const r = await fetch(url);
+      // rt225: never wait on Meta for ever — a hung Graph call held the whole
+      // conversation on "loading" (the permanent log fills in meanwhile).
+      const r = await fetch(url, { signal: AbortSignal.timeout(7_000) });
       const j = (await r.json().catch(() => ({}))) as {
         data?: { messages?: { data?: { id?: string; message?: string; created_time?: string; from?: { id?: string } }[]; paging?: { next?: string } } }[];
         error?: { message?: string };
@@ -8166,13 +8190,18 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // One more page when there is one — 200 messages covers months of a
       // salon conversation. "Không đầy đủ" was the owner's exact complaint,
       // and 60 was an arbitrary first guess, not a limit Meta imposes.
-      const next = j.data?.[0]?.messages?.paging?.next;
-      if (next && msgs.length >= 100) {
+      // rt225: up to 5 pages (500 messages), 10 s in all — older still comes
+      // from the permanent log, which keeps everything ever copied.
+      let next = j.data?.[0]?.messages?.paging?.next;
+      const until = Date.now() + 10_000;
+      for (let page = 1; next && page < 5 && Date.now() < until; page += 1) {
         try {
-          const r2 = await fetch(next);
-          const j2 = (await r2.json().catch(() => ({}))) as { data?: { id?: string; message?: string; created_time?: string; from?: { id?: string } }[] };
-          if (Array.isArray(j2.data)) msgs.push(...j2.data.slice(0, 100));
-        } catch { /* the first hundred still stand */ }
+          const r2 = await fetch(next, { signal: AbortSignal.timeout(6_000) });
+          const j2 = (await r2.json().catch(() => ({}))) as { data?: { id?: string; message?: string; created_time?: string; from?: { id?: string } }[]; paging?: { next?: string } };
+          if (!Array.isArray(j2.data) || !j2.data.length) break;
+          msgs.push(...j2.data.slice(0, 100));
+          next = j2.paging?.next;
+        } catch { break; /* what came so far still stands */ }
       }
 
       // Meta writes its own notes into the Page inbox — "Beathe đã trả lời

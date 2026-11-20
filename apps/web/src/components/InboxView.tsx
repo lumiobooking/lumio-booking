@@ -360,6 +360,8 @@ interface ThreadDetail extends InboxRow {
   /** 'meta' = full transcript · 'local' = Meta refused, 12-turn buffer only ·
    *  'partial' = the fast first paint, full answer still on its way. */
   historySource?: 'partial' | 'meta' | 'local';
+  /** rt227: the customer only commented on a post — a reply goes as ONE private message to the comment. */
+  commentOnly?: boolean;
   customer: CustomerCtx | null;
   replyWindow?: { open: boolean; minutesLeft: number | null };
   /** Which of Meta's three windows this conversation is in. See api human-agent.ts. */
@@ -2278,6 +2280,14 @@ export function InboxView() {
             {isSpamRow(detail) && (
               <div style={{ alignSelf: 'center', textAlign: 'center', fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 12px' }}>
                 {vi ? 'Hội thoại này đang ở Spam — bot không trả lời. Không có gì bị xoá.' : 'This conversation is in Spam — the bot does not reply. Nothing was deleted.'}
+              </div>
+            )}
+            {detail.commentOnly && (
+              <div role="note" style={{ margin: '8px 0', padding: '10px 12px', borderRadius: 12, border: '1px solid var(--ink-warn)', fontSize: 13, lineHeight: 1.5, color: 'var(--ce2e8f0)' }}>
+                <b style={{ color: 'var(--ink-warn)' }}>{vi ? '💬 Khách mới BÌNH LUẬN bài viết, chưa nhắn tin cho Page.' : '💬 This customer only commented on a post.'}</b>{' '}
+                {vi
+                  ? 'Meta chỉ cho gửi 1 tin riêng qua bình luận (trong 7 ngày) — Lumio tự gửi theo cách đó khi bạn bấm Gửi. Hãy viết 1 tin đủ ý và mời khách nhắn lại. Khi khách trả lời, cuộc trò chuyện chạy bình thường.'
+                  : 'Meta allows ONE private reply to the comment (within 7 days) — Lumio sends it that way. Make it count and invite them to message back.'}
               </div>
             )}
             {detail.historySource === 'local' && (

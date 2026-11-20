@@ -2,6 +2,7 @@ import { rescueOpen } from './turn-shift';
 import { FOLD_FROM, FOLD_TO, searchPattern } from './thread-search';
 import { customerEmailFrom, customerPhoneFrom, phoneKeyOf, prospectContact, prospectDays } from './prospects';
 import { logRowsFrom, olderThan, turnsFromLog, type LogRow } from './message-log';
+import { COMMENT_ONLY_REASON, UNREACHABLE_REASON, commentOnly, pickComment, postIdFromNotice, type GraphComment } from './comment-reply';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { onSale, salePrice } from '../common/discount';
 import { discountRules, promoKnowledge, type PromoInputs } from './promo-knowledge';
@@ -2396,6 +2397,8 @@ export class MessengerService implements OnModuleInit {
           // wording (settings › chat-followup), which no AI instruction reaches.
           // Meta's copy drops our flag, so the local buffer and the known lines decide.
           ...(t.role === 'assistant' && !t.manual && ((t as { nudge?: boolean }).nudge || nudgeLines.has(String(t.content ?? '').trim()) || isNudgeLine(t.content, followCustom)) ? { nudge: true } : {}) })),
+      // rt227: the customer only commented on a post (Meta's notice is the last word) — the inbox explains how a reply reaches them.
+      commentOnly: !!commentOnly(turns as never),
       state: view.state,
       stateReason: view.reason,
       waitingMinutes: waitingMinutes(row as never, now, botFirst),
@@ -3058,9 +3061,16 @@ export class MessengerService implements OnModuleInit {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ recipient: { id: thread.senderId }, ...win.body, message: { text: body.slice(0, 1900) } }),
     });
-    const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: { message?: string } };
+    let out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: { message?: string; code?: number; error_subcode?: number } };
+    let viaComment = false;
+    // rt227: #551 on someone who only commented on a post — answer them the one
+    // way Meta allows, a private reply to their comment.
+    if ((!res.ok || out.error) && (out.error?.code === 551 || out.error?.error_subcode === 1545041)) {
+      const pr = await this.privateReplyToComment(thread as never, sendToken, body).catch(() => null);
+      if (pr?.message_id) { out = { message_id: pr.message_id }; viaComment = true; }
+    }
     this.rememberSentMid(out.message_id);
-    if (!res.ok || out.error) {
+    if (!viaComment && (!res.ok || out.error)) {
       // Keep an auditable "Failed" row in the activity log, then surface the error.
       const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
       const failed = this.windowOf(thread.id, [...hist, { role: 'assistant', content: body, manual: true, failed: true, at: new Date().toISOString(), ...sig }], (thread as unknown as { summary?: string | null }).summary ?? null);
@@ -3068,7 +3078,11 @@ export class MessengerService implements OnModuleInit {
         where: { id: thread.id },
         data: { history: failed as unknown as Prisma.InputJsonValue },
       }).catch(() => undefined);
-      throw new BadRequestException(out.error?.message || 'Facebook rejected the message (the 24h messaging window may have closed).');
+      // rt227: say it in words a receptionist can act on, not "(#551) This person isn't available".
+      const e551 = out.error?.code === 551 || out.error?.error_subcode === 1545041;
+      const onlyComment = e551 && !!commentOnly((Array.isArray(thread.history) ? thread.history : []) as never);
+      const friendly = onlyComment ? COMMENT_ONLY_REASON : e551 ? UNREACHABLE_REASON : readSendRefusal(res.status, out.error as never).reason;
+      throw new BadRequestException(friendly || out.error?.message || 'Facebook rejected the message (the 24h messaging window may have closed).');
     }
     const sentAtIso = new Date().toISOString(); // single timestamp: history row === API response
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
@@ -3159,6 +3173,31 @@ export class MessengerService implements OnModuleInit {
    * window is decided here from the database, a person's reply takes the
    * conversation from the AI, and the send is audited.
    */
+  /**
+   * rt227 — the private reply to a commenter (see ./comment-reply). Finds the
+   * post from Meta's own notice in the conversation, the customer's comment on
+   * it, and sends ONE message to that comment. Null when any step is missing.
+   */
+  private async privateReplyToComment(thread: { pageId?: string | null; senderId?: string | null; senderName?: string | null; history?: unknown }, token: string, text: string): Promise<{ message_id?: string } | null> {
+    const only = commentOnly((Array.isArray(thread.history) ? thread.history : []) as never);
+    if (!only) return null;
+    const postId = postIdFromNotice(only.notice);
+    if (!postId) return null;
+    const cr = await fetch(`${GRAPH}/${encodeURIComponent(postId)}/comments?fields=id,message,from{id,name},created_time&order=reverse_chronological&limit=100&access_token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(8_000) });
+    const cj = (await cr.json().catch(() => ({}))) as { data?: GraphComment[]; error?: { message?: string } };
+    if (cj.error || !Array.isArray(cj.data)) { this.logger.warn(`private reply: comments of ${postId} unreadable: ${(cj.error?.message ?? '').slice(0, 120)}`); return null; }
+    const c = pickComment(cj.data, { psid: thread.senderId ?? null, name: thread.senderName ?? null, text: only.commentText });
+    if (!c) return null;
+    const r = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(token)}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ recipient: { comment_id: c.id }, message: { text: text.slice(0, 1900) } }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const j = (await r.json().catch(() => ({}))) as { message_id?: string; error?: { message?: string } };
+    if (!r.ok || j.error) { this.logger.warn(`private reply refused: ${(j.error?.message ?? '').slice(0, 160)}`); return null; }
+    return { message_id: j.message_id };
+  }
+
   async sendManualPhoto(user: AuthenticatedUser, threadId: string, url: string) {
     const tenantId = this.tenantId(user);
     if (!/^https:\/\/[^\s"'<>]+$/i.test(String(url ?? ''))) throw new BadRequestException('Not a photo address.');

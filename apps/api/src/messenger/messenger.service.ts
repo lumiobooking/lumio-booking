@@ -3082,6 +3082,7 @@ export class MessengerService implements OnModuleInit {
       const e551 = out.error?.code === 551 || out.error?.error_subcode === 1545041;
       const onlyComment = e551 && !!commentOnly((Array.isArray(thread.history) ? thread.history : []) as never);
       const friendly = onlyComment ? COMMENT_ONLY_REASON : e551 ? UNREACHABLE_REASON : readSendRefusal(res.status, out.error as never).reason;
+      this.logger.warn(`manual send refused thread=${thread.id} page=${thread.pageId} window=${win.kind} code=${out.error?.code ?? res.status}/${out.error?.error_subcode ?? ''}`);
       throw new BadRequestException(friendly || out.error?.message || 'Facebook rejected the message (the 24h messaging window may have closed).');
     }
     const sentAtIso = new Date().toISOString(); // single timestamp: history row === API response

@@ -40,6 +40,10 @@ export function commentOnly(history: { role?: string; content?: unknown; source?
   let idx = -1;
   for (let i = history.length - 1; i >= 0; i -= 1) if (isCommentNotice(history[i]?.content)) { idx = i; break; }
   if (idx < 0) return null;
+  // rt227b: a customer who has written to the Page before is NOT comment-only,
+  // whatever Meta's note says — the owner caught this on Lien Vo, who had a
+  // long conversation with the salon above the note.
+  if (history.slice(0, idx).some((t) => t && t.role === 'user' && !isCommentNotice(t.content) && String(t.content ?? '').trim())) return null;
   const after = history.slice(idx + 1).filter((t) => t && t.role === 'user');
   // The comment itself comes through as the customer's line right after the
   // notice; a second line of theirs means they wrote on Messenger — ordinary.
@@ -61,4 +65,4 @@ export function pickComment(comments: GraphComment[], who: { psid?: string | nul
 }
 
 export const COMMENT_ONLY_REASON = 'Khách này mới BÌNH LUẬN bài viết, chưa nhắn tin cho Page — Meta không cho gửi tin Messenger thường. Lumio đã thử gửi 1 tin riêng qua bình luận nhưng không được (Meta chỉ cho 1 tin, trong 7 ngày kể từ lúc khách bình luận). Hãy trả lời ngay dưới bình luận của khách trên bài viết; khi khách nhắn lại, trả lời ở đây bình thường.';
-export const UNREACHABLE_REASON = 'Khách hiện không nhận tin từ Page (đã chặn Page, khoá tài khoản, hoặc chưa từng nhắn cho Page). Tin này KHÔNG đến được khách — gọi điện hoặc liên hệ cách khác nếu có số.';
+export const UNREACHABLE_REASON = 'Meta báo tài khoản của khách hiện KHÔNG nhận được tin từ Page này (mã #551). Đây không phải lỗi quá 24 giờ — nhân viên vẫn được trả lời trong 7 ngày. Thường là: khách đã chặn/tắt tin nhắn của Page, tài khoản khách bị khoá/tạm ẩn, hoặc khách từng nhắn với Page KHÁC của tiệm chứ không phải Page này. Thử gửi cùng tin trong Meta Business Suite: nếu ở đó gửi được thì báo Lumio kiểm tra; nếu ở đó cũng không gửi được thì là do phía tài khoản khách — gọi điện nếu có số.';

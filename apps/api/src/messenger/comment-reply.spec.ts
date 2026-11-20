@@ -18,6 +18,8 @@ describe('rt227 — a customer who only commented (#551)', () => {
     expect(commentOnly([...h, { role: 'assistant', content: 'Chào chị' }])).not.toBeNull();
     expect(commentOnly([...h, { role: 'assistant', content: 'Chào chị' }, { role: 'user', content: 'Dạ em muốn hỏi giá' }])).toBeNull();
     expect(commentOnly([{ role: 'user', content: 'Hello' }])).toBeNull();
+    // rt227b: someone who wrote to the Page before is an ordinary conversation.
+    expect(commentOnly([{ role: 'user', content: 'Cho em hỏi giá' }, { role: 'assistant', content: 'Dạ' }, ...h])).toBeNull();
   });
 
   it('finds the customer’s comment by id, then name, then words', () => {

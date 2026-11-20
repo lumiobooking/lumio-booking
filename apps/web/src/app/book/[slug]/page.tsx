@@ -1343,7 +1343,7 @@ export default function PublicBookingPage() {
 
               {step === 1 && (
                 <>
-                  <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} today={dayKey(todayInZone(salon?.timezone))} />
+                  <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} today={dayKey(todayInZone(salon?.timezone))} accent={accent} />
                   {offerCode && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#ecfdf5', border: '1px solid var(--c6ee7b7)', borderRadius: 12, padding: '11px 14px', marginBottom: 12 }}>
                       <span style={{ fontSize: 18 }}>🎁</span>
@@ -3359,7 +3359,13 @@ function ProgramBanner({ fv, gr, today }: {
   );
 }
 
-function DealsBanner({ wd, dd, categories, today }: { wd?: WeekdayDiscounts; dd?: DateDiscounts; categories: { id: string; name: string }[]; today: string }) {
+/**
+ * rt228 — the deals line wears the SALON's colour, not a fixed green, and takes
+ * one slim strip instead of a tall gradient card ("chiếm diện tích khá lớn,
+ * chưa đẹp mắt và hài hoà"). A light wash of the accent behind, the accent for
+ * the words, small chips on the same line that wrap only when there are many.
+ */
+function DealsBanner({ wd, dd, categories, today, accent = '#4f46e5' }: { wd?: WeekdayDiscounts; dd?: DateDiscounts; categories: { id: string; name: string }[]; today: string; accent?: string }) {
   // Only what can still be booked: a program past its last day, or a sale
   // whose dates are behind us, is not a deal any more.
   const wdOn = !!(wd?.enabled && wd.rules?.length && !windowEnded(wd, today));
@@ -3371,14 +3377,13 @@ function DealsBanner({ wd, dd, categories, today }: { wd?: WeekdayDiscounts; dd?
   const ddSorted = ddOn ? [...ddLive].sort((a, b) => a.startDate.localeCompare(b.startDate) || b.percent - a.percent) : [];
   const fmtOne = (s: string) => { try { return new Date(s + 'T00:00:00').toLocaleDateString(bookLocale(), { month: 'short', day: 'numeric' }); } catch { return s; } };
   const fmtRange = (r: DateRule) => (r.endDate && r.endDate !== r.startDate ? `${fmtOne(r.startDate)}–${fmtOne(r.endDate)}` : fmtOne(r.startDate));
-  const chip: React.CSSProperties = { background: '#fff', border: '1px solid var(--c6ee7b7)', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, color: '#065f46', fontWeight: 600 };
+  const tint = (pct: number) => `color-mix(in srgb, ${accent} ${pct}%, transparent)`;
+  const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, background: tint(12), borderRadius: 999, padding: '3px 10px', fontSize: 12, color: accent, fontWeight: 700, whiteSpace: 'nowrap' };
   return (
-    <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 12, background: 'linear-gradient(90deg,#ecfdf5,var(--cd1fae5))', border: '1px solid var(--c6ee7b7)' }}>
-      <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 8, fontSize: 14.5 }}>💸 {(wdOn && wd!.message) || bt('Save on select days!')}</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {wdSorted.map((r, i) => <span key={`w${i}`} style={chip}>{btf('{day}: −{percent}% off {what}', { day: bt(WEEKDAY_NAMES[r.day]), percent: r.percent, what: catName(r.categoryId) })}{windowSpan(wd, today)}</span>)}
-        {ddSorted.map((r, i) => <span key={`d${i}`} style={chip}>{r.label ? `${r.label} · ` : ''}{btf('{when}: −{percent}% off {what}', { when: fmtRange(r), percent: r.percent, what: catName(r.categoryId) })}</span>)}
-      </div>
+    <div style={{ marginBottom: 12, padding: '8px 10px', borderRadius: 10, background: tint(6), border: `1px solid ${tint(28)}`, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontWeight: 800, color: accent, fontSize: 13, marginRight: 2 }}>🏷️ {(wdOn && wd!.message) || bt('Save on select days!')}</span>
+      {wdSorted.map((r, i) => <span key={`w${i}`} style={chip}>{btf('{day}: −{percent}% off {what}', { day: bt(WEEKDAY_NAMES[r.day]), percent: r.percent, what: catName(r.categoryId) })}{windowSpan(wd, today)}</span>)}
+      {ddSorted.map((r, i) => <span key={`d${i}`} style={chip}>{r.label ? `${r.label} · ` : ''}{btf('{when}: −{percent}% off {what}', { when: fmtRange(r), percent: r.percent, what: catName(r.categoryId) })}</span>)}
     </div>
   );
 }

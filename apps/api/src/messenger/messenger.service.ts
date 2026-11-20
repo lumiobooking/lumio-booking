@@ -2449,18 +2449,31 @@ export class MessengerService implements OnModuleInit {
     if (row.channel === 'web' || isWebPage(row.pageId)) return null; // a visitor has no picture; initials stand
 
     const cacheKey = `${row.pageId}:${row.senderId}`;
+    if (this.avatarCache.size > 5000) this.avatarCache.clear(); // rt224: bounded on a 512 MB box
     const hit = this.avatarCache.get(cacheKey);
     // Six hours. Long enough that scrolling the inbox costs Meta nothing, short
     // enough that somebody who changes their picture is not stuck for a week.
     if (hit && Date.now() - hit.at < 6 * 3_600_000) return hit.body ? { body: hit.body, contentType: hit.contentType } : null;
 
-    const pg = row.pageId
-      ? await this.prisma.messengerPage.findUnique({ where: { pageId: String(row.pageId) }, select: { pageToken: true } }).catch(() => null)
-      : null;
-    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
-    const token = pg?.pageToken || conn?.pageToken;
+    // rt224: the Page token is looked up once per 10 minutes, not twice per
+    // face (a list of faces was two database trips each, in the same pool as
+    // everything else). Keyed by salon AND Page so one salon's token can never
+    // serve another's.
+    const tokKey = `${tenantId}|${row.pageId ?? ''}`;
+    const tokHit = this.avatarTokens.get(tokKey);
+    let token: string | null | undefined = tokHit && Date.now() - tokHit.at < 600_000 ? tokHit.token : undefined;
+    if (token === undefined) {
+      const [pg, conn] = await Promise.all([
+        row.pageId ? this.prisma.messengerPage.findFirst({ where: { pageId: String(row.pageId), tenantId }, select: { pageToken: true } }).catch(() => null) : Promise.resolve(null),
+        this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageToken: true } }).catch(() => null),
+      ]);
+      token = pg?.pageToken || conn?.pageToken || null;
+      this.avatarTokens.set(tokKey, { at: Date.now(), token });
+      if (this.avatarTokens.size > 2000) this.avatarTokens.clear();
+    }
     if (!token) return null;
 
+    const release = await this.avatarSlot();
     try {
       // Zalo has no picture endpoint: the User Detail call names the CDN URL
       // and we fetch that. Same cache, same refusal memory as Graph.
@@ -2487,7 +2500,21 @@ export class MessengerService implements OnModuleInit {
     } catch {
       this.avatarCache.set(cacheKey, { at: Date.now(), body: null, contentType: '' });
       return null;
+    } finally {
+      release();
     }
+  }
+
+  /** rt224: Page tokens for pictures, per salon+Page, 10 minutes. */
+  private readonly avatarTokens = new Map<string, { at: number; token: string | null }>();
+  /** rt224: at most 6 picture downloads from Meta at once for the whole API. */
+  private avatarBusy = 0;
+  private readonly avatarQueue: (() => void)[] = [];
+  private async avatarSlot(): Promise<() => void> {
+    if (this.avatarBusy >= 6) await new Promise<void>((r) => this.avatarQueue.push(r));
+    this.avatarBusy += 1;
+    let done = false;
+    return () => { if (done) return; done = true; this.avatarBusy -= 1; this.avatarQueue.shift()?.(); };
   }
 
   /**

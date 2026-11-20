@@ -15,10 +15,34 @@ import { inboxBus, inboxWrite, tenantOf } from '../messenger/inbox-events';
  * Step 3) supplies that tenantId, and repository helpers will enforce it so a
  * developer cannot accidentally query across tenants.
  */
+/**
+ * rt224 — the size of the connection pool. Prisma's default is "CPUs × 2 + 1",
+ * which on a Render Starter box (half a CPU) is about 3 connections for the
+ * whole API: with the inbox asking a dozen questions at once (rt223), every
+ * screen queued behind the others. When the connection string names no
+ * `connection_limit`, Lumio asks for 10 (and waits up to 20 s for one rather
+ * than 10). A value the owner set in DATABASE_URL always wins.
+ */
+export function pooledUrl(raw: string | undefined): string | undefined {
+  if (!raw) return raw;
+  try {
+    const u = new URL(raw);
+    if (!/^postgres(ql)?:$/.test(u.protocol)) return raw;
+    if (!u.searchParams.has('connection_limit')) u.searchParams.set('connection_limit', '10');
+    if (!u.searchParams.has('pool_timeout')) u.searchParams.set('pool_timeout', '20');
+    return u.toString();
+  } catch { return raw; }
+}
+
+function poolOptions(): { datasources: { db: { url: string } } } | undefined {
+  const url = pooledUrl(process.env.DATABASE_URL);
+  return url && url !== process.env.DATABASE_URL ? { datasources: { db: { url } } } : undefined;
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
-    super();
+    super(poolOptions());
     // Realtime: after a write to a table a live screen shows, nudge that
     // salon's open screens (common/live-writes.ts). After the write, never
     // inside it; a failure here can never fail the write.

@@ -199,9 +199,18 @@ const Avatar = memo(function Avatar(
   // Already fetched? Then paint it on frame one. This is what removes the
   // flash; memo above is what removes the remount that caused it.
   const [pic, setPic] = useState<string | null>(() => apiImageCached(src) ?? null);
+  // rt224: only a face that is on screen is fetched.
+  const boxRef = useRef<HTMLSpanElement | null>(null);
+  const [seen, setSeen] = useState(() => apiImageCached(src) !== undefined || typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    if (seen || !boxRef.current) return;
+    const io = new IntersectionObserver((e) => { if (e.some((x) => x.isIntersecting)) { setSeen(true); io.disconnect(); } }, { rootMargin: '200px 0px' });
+    io.observe(boxRef.current);
+    return () => io.disconnect();
+  }, [seen]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !seen) return;
     const cached = apiImageCached(src);
     if (cached !== undefined) { setPic(cached); return; }
     let gone = false;
@@ -210,10 +219,10 @@ const Avatar = memo(function Avatar(
     // for a great many people - and then the initials stand.
     void apiImage(src, token).then((u) => { if (!gone) setPic(u); });
     return () => { gone = true; };
-  }, [src, token]);
+  }, [src, token, seen]);
 
   return (
-    <span style={{ position: 'relative', flexShrink: 0, width: size, height: size, display: 'inline-block' }}>
+    <span ref={boxRef} style={{ position: 'relative', flexShrink: 0, width: size, height: size, display: 'inline-block' }}>
       {pic ? (
         <img
           src={pic}

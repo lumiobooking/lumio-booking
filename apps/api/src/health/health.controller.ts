@@ -64,10 +64,42 @@ export class HealthController {
     return state;
   }
 
+  /**
+   * rt224 — how far away the database is. Every Lumio screen asks the database
+   * a dozen questions; each costs one round trip, so this number times twelve
+   * is roughly the floor of a screen. Three pings, the fastest one reported
+   * (the first can include opening a connection). Plus WHERE it is and HOW we
+   * reach it, read from the connection string's host — the region code and
+   * whether it is Neon's pooled endpoint, never the host, user or password.
+   */
+  private async dbLink(): Promise<{ pingMs: number | null; region: string | null; pooled: boolean | null; connectionLimit: number | null }> {
+    let best: number | null = null;
+    for (let i = 0; i < 3; i += 1) {
+      const t0 = Date.now();
+      const ok = await Promise.race([
+        this.prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false),
+        new Promise<boolean>((r) => { const t = setTimeout(() => r(false), 2000); t.unref?.(); }),
+      ]);
+      if (!ok) break;
+      const ms = Date.now() - t0;
+      best = best === null ? ms : Math.min(best, ms);
+    }
+    let region: string | null = null; let pooled: boolean | null = null; let connectionLimit: number | null = null;
+    try {
+      const u = new URL(String(process.env.DATABASE_URL ?? ''));
+      region = (u.hostname.match(/\b((?:us|eu|ap|sa|ca|me|af)-[a-z]+-\d)\b/) ?? [])[1] ?? null;
+      pooled = /-pooler\./.test(u.hostname);
+      const cl = u.searchParams.get('connection_limit');
+      connectionLimit = cl ? Number(cl) : null;
+    } catch { /* not a URL: say nothing */ }
+    return { pingMs: best, region, pooled, connectionLimit };
+  }
+
   // GET /api/health -> liveness, plus what it could learn about the database.
   @Get()
   async check() {
     const database = await this.databaseState();
+    const dbLink = database === 'up' ? await this.dbLink() : null;
 
     return {
       // 'ok' reports THIS PROCESS. The database gets its own field on purpose:
@@ -87,6 +119,7 @@ export class HealthController {
       // mistake the whole split exists to prevent.
       market: (process.env.MARKET || 'US').toUpperCase(),
       db: dbFingerprint(),
+      dbLink,
       /**
        * WHETHER THE BRAIN IS ANSWERING.
        *

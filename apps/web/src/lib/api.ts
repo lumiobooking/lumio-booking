@@ -106,9 +106,37 @@ export function apiImageCached(path: string): string | null | undefined {
   return imageCache.get(path);
 }
 
+/**
+ * rt224 — at most 4 pictures in flight. The inbox asked for every face on the
+ * list at once (239 avatar requests in a few minutes, 1.7 s each), and those
+ * stood in the same queue as opening a conversation or sending a message.
+ * Pictures now wait their turn; real work never waits behind them.
+ */
+const IMAGE_SLOTS = 4;
+let imagesInFlight = 0;
+const imageWaiters: (() => void)[] = [];
+const imagePending = new Map<string, Promise<string | null>>();
+async function imageSlot(): Promise<() => void> {
+  if (imagesInFlight >= IMAGE_SLOTS) await new Promise<void>((r) => imageWaiters.push(r));
+  imagesInFlight += 1;
+  return () => { imagesInFlight -= 1; imageWaiters.shift()?.(); };
+}
+
 export async function apiImage(path: string, token: string): Promise<string | null> {
   // Cached per path for the life of the page: scrolling a list must not refetch
   // the same face, and switching filters must not either.
+  if (imageCache.has(path)) return imageCache.get(path) ?? null;
+  const pending = imagePending.get(path);
+  if (pending) return pending;
+  const p = (async () => {
+    const release = await imageSlot();
+    try { return await apiImageNow(path, token); } finally { release(); imagePending.delete(path); }
+  })();
+  imagePending.set(path, p);
+  return p;
+}
+
+async function apiImageNow(path: string, token: string): Promise<string | null> {
   if (imageCache.has(path)) return imageCache.get(path) ?? null;
   try {
     const res = await fetch(`${API_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });

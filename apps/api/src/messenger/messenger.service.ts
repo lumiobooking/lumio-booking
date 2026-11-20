@@ -2,6 +2,7 @@ import { rescueOpen } from './turn-shift';
 import { FOLD_FROM, FOLD_TO, searchPattern } from './thread-search';
 import { customerEmailFrom, customerPhoneFrom, phoneKeyOf, prospectContact, prospectDays } from './prospects';
 import { logRowsFrom, olderThan, turnsFromLog, type LogRow } from './message-log';
+import { personWindowReason, shutByMeta } from './window-shut';
 import { GRAPH_MSG_FIELDS, GRAPH_MSG_FIELDS_PLAIN, graphLine, isRateLimited, isTooMuchData, resumable, smallerPage, PULL_CHECKPOINT, PULL_DONE, PULL_STARTED, type GraphMsg, type PullCheckpoint } from './history-pull';
 import { COMMENT_ONLY_REASON, UNREACHABLE_REASON, commentOnly, pickComment, postIdFromNotice, type GraphComment } from './comment-reply';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
@@ -2237,6 +2238,10 @@ export class MessengerService implements OnModuleInit {
     }
 
     const localTurns = (Array.isArray(row.history) ? row.history : []) as Turn[];
+    // rt230: when our row does not know when the customer last wrote, the
+    // permanent log may (one indexed lookup, only in that case).
+    const lastLoggedIn = customerLastWroteAt((row as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt, row.history)
+      ? null : await this.lastLoggedCustomerAt(tenantId, String(row.id));
     // 'partial' = the fast paint (never asked Meta) · 'meta' = full transcript
     // · 'local' = asked Meta and was REFUSED, showing our 12-turn buffer. The
     // inbox tells the person which one they are reading — twelve messages
@@ -2434,14 +2439,17 @@ export class MessengerService implements OnModuleInit {
       // the send path enforces with. One rule, two readers - so the box can
       // never be open on a send the server is about to refuse.
       window: (() => {
-        const w = windowState(
-          customerLastWroteAt(
-            (row as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt,
-            (row as { history?: unknown }).history,
-          ),
-          view.state === 'human' ? 'human' : 'bot',
-          now,
-        );
+        // rt230: not knowing when the customer last wrote is no longer "open".
+        const w = shutByMeta((row as { history?: unknown }).history)
+          ? { kind: 'closed' as const, daysLeft: 0, canSend: false, code: 'window_closed' as const }
+          : windowState(
+            customerLastWroteAt(
+              (row as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt,
+              (row as { history?: unknown }).history,
+            ) ?? lastLoggedIn,
+            view.state === 'human' ? 'human' : 'bot',
+            now,
+          );
         // Who the reply will be signed by. In the human-agent window that is
         // the person who pressed Take over - the same person the tag is a
         // promise about - so the composer can say it out loud.
@@ -3023,14 +3031,14 @@ export class MessengerService implements OnModuleInit {
     // the database column, and nothing the browser sends is trusted.
     const sendNow = new Date();
     const ownerView = ownershipOf(thread as never, { now: sendNow });
-    const win = windowState(
-      customerLastWroteAt(
-        (thread as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt,
-        thread.history,
-      ),
-      ownerView.state === 'human' ? 'human' : 'bot',
-      sendNow,
-    );
+    // rt230: our row may not know when the customer last wrote (an imported
+    // conversation): the permanent log is asked; and once Meta has refused a
+    // person's message as "window closed", it stays shut until the customer writes.
+    const knownIn = customerLastWroteAt((thread as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt, thread.history)
+      ?? await this.lastLoggedCustomerAt(tenantId, thread.id);
+    const win = shutByMeta(thread.history)
+      ? windowState(new Date(0), 'human', sendNow)
+      : windowState(knownIn, ownerView.state === 'human' ? 'human' : 'bot', sendNow);
     if (!win.canSend || !win.body) {
       const code = win.code ?? 'window_closed';
       // Every refusal is on the record with the three things an audit asks:
@@ -3090,7 +3098,14 @@ export class MessengerService implements OnModuleInit {
       // rt227: say it in words a receptionist can act on, not "(#551) This person isn't available".
       const e551 = out.error?.code === 551 || out.error?.error_subcode === 1545041;
       const onlyComment = e551 && !!commentOnly((Array.isArray(thread.history) ? thread.history : []) as never);
-      const friendly = onlyComment ? COMMENT_ONLY_REASON : e551 ? UNREACHABLE_REASON : readSendRefusal(res.status, out.error as never).reason;
+      const refusal = readSendRefusal(res.status, out.error as never);
+      // rt230: a PERSON sent this — never "Meta không cho bot gửi"; and the
+      // conversation is marked shut so the box says so before the next try.
+      const friendly = onlyComment ? COMMENT_ONLY_REASON : e551 ? UNREACHABLE_REASON : refusal.windowClosed ? personWindowReason(win.ageHours) : refusal.reason;
+      if (refusal.windowClosed) {
+        const marked = failed.map((t, i) => (i === failed.length - 1 ? { ...t, windowShut: true, sendError: friendly } : t));
+        await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { history: marked as unknown as Prisma.InputJsonValue } }).catch(() => undefined);
+      }
       this.logger.warn(`manual send refused thread=${thread.id} page=${thread.pageId} window=${win.kind} code=${out.error?.code ?? res.status}/${out.error?.error_subcode ?? ''}`);
       throw new BadRequestException(friendly || out.error?.message || 'Facebook rejected the message (the 24h messaging window may have closed).');
     }
@@ -4252,6 +4267,14 @@ export class MessengerService implements OnModuleInit {
    * twenty without ever distilling it — which is one of the ways the bot
    * came to ask for a phone number it had been given.
    */
+  /** rt230: the newest customer line in the permanent log, or null. One salon's own rows only. */
+  private async lastLoggedCustomerAt(tenantId: string, threadId: string): Promise<string | null> {
+    const r = await (this.prisma as unknown as { messengerMessageLog: { findFirst: (a: unknown) => Promise<{ at: Date } | null> } }).messengerMessageLog
+      .findFirst({ where: { tenantId, threadId, role: 'customer' }, orderBy: { at: 'desc' }, select: { at: true } })
+      .catch(() => null);
+    return r?.at ? new Date(r.at).toISOString() : null;
+  }
+
   private windowOf(threadId: string, full: Turn[], summary: string | null): Turn[] {
     const next = cleanTurns(full.slice(-MAX_TURNS));
     const dropped = full.slice(0, full.length - next.length);

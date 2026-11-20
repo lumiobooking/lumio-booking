@@ -604,7 +604,7 @@ export function windowNotice(
   return {
     tone: 'red',
     banner: vi
-      ? 'Quá 7 ngày kể từ tin nhắn của khách — Meta đã đóng cửa sổ. Gọi điện hoặc nhắn SMS cho khách.'
+      ? 'Khách không nhắn Page đã hơn 7 ngày — theo luật Meta, không ai nhắn được khách lúc này (cả nhân viên, cả Business Suite), không phải lỗi bot. Khách nhắn lại là trả lời được ngay; cần liên hệ trước thì gọi điện hoặc nhắn SMS.'
       : 'More than 7 days since they wrote — Meta has closed the window. Call or text them instead.',
     placeholder: vi ? 'Không gửi được — cửa sổ 7 ngày đã đóng' : 'Cannot send — the 7-day window has closed',
     blocked: true,

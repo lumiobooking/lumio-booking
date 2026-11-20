@@ -410,7 +410,7 @@ function BacklogBox({ token, vi }: { token: string | null; vi: boolean }) {
  * days brought into the inbox, in the background; then "Chia khách cũ" gives
  * them out. Nothing is answered by the AI; nobody's phone rings for these.
  */
-type HistJob = { running: boolean; days: number; scanned: number; imported: number; updated: number; error: string | null; finishedAt: string | null } | null;
+type HistJob = { running: boolean; days: number; scanned: number; imported: number; updated: number; error: string | null; finishedAt: string | null; resumed?: boolean; pages?: number; waiting?: string | null } | null;
 function HistoryImportBox({ token, vi }: { token: string | null; vi: boolean }) {
   const T = (v: string, e: string) => (vi ? v : e);
   const [days, setDays] = useState(90);
@@ -447,8 +447,11 @@ function HistoryImportBox({ token, vi }: { token: string | null; vi: boolean }) 
           {job?.running ? T('Đang kéo…', 'Pulling…') : T('Kéo tin cũ', 'Pull')}
         </button>
       </span>
-      {job?.running && <span style={{ fontSize: 12.5, color: 'var(--ink-link)', fontWeight: 600 }}>{T(`Đang kéo về… đã quét ${job.scanned} cuộc trò chuyện. Có thể mất vài phút — anh/chị cứ làm việc khác.`, `Pulling… ${job.scanned} conversations scanned. This can take a few minutes.`)}</span>}
-      {job && !job.running && job.finishedAt && <span style={{ fontSize: 12.5, color: 'var(--ink-good)', fontWeight: 600 }}>{T(`Xong (${job.days ? `${job.days} ngày` : 'tất cả'}): thêm ${job.imported} cuộc mới, cập nhật ${job.updated} cuộc.`, `Done (${job.days} days): ${job.imported} new, ${job.updated} updated.`)}</span>}
+      {job?.running && <span style={{ fontSize: 12.5, color: 'var(--ink-link)', fontWeight: 600 }}>{T(`Đang kéo về… đã quét ${job.scanned} cuộc trò chuyện (thêm ${job.imported} mới, cập nhật ${job.updated}). Mỗi trang kéo về được lưu ngay; máy chủ khởi động lại thì tự kéo tiếp từ chỗ dừng.`, `Pulling… ${job.scanned} conversations scanned (${job.imported} new, ${job.updated} updated). Each page is saved as it comes; a restart carries on where it stopped.`)}</span>}
+      {job?.running && job.waiting && <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{job.waiting}</span>}
+      {job && !job.running && job.finishedAt && <span style={{ fontSize: 12.5, color: job.error ? 'var(--ink-bad)' : 'var(--ink-good)', fontWeight: 600 }}>{job.error
+        ? T(`Dừng giữa chừng (${job.days ? `${job.days} ngày` : 'tất cả'}): đã quét ${job.scanned} cuộc, thêm ${job.imported} mới, cập nhật ${job.updated}. Bấm “Kéo tin cũ” lần nữa để kéo tiếp.`, `Stopped part-way: ${job.scanned} scanned, ${job.imported} new, ${job.updated} updated. Press Pull again to continue.`)
+        : T(`Xong (${job.days ? `${job.days} ngày` : 'tất cả'}): đã quét ${job.scanned} cuộc trên Meta, thêm ${job.imported} cuộc mới, cập nhật ${job.updated} cuộc.`, `Done (${job.days ? `${job.days} days` : 'all'}): ${job.scanned} scanned on Meta, ${job.imported} new, ${job.updated} updated.`)}</span>}
       {(job?.error || err) && <span style={{ fontSize: 12, color: 'var(--ink-bad)' }}>{job?.error || err}</span>}
     </div>
   );

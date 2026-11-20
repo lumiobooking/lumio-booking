@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
 import { apiFetch, apiStream } from '../lib/api';
+import { threadList } from '../lib/thread-list';
 import {
   AlertRow, Alert, AlertMemory, emptyMemory, nextAlerts, unreadCount, tabTitle, alertHeadline,
 } from '../lib/inbox-alerts';
@@ -154,7 +155,7 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox', compact = 
   const refresh = useCallback(async () => {
     if (!token) return;
     try {
-      const rows = await apiFetch<AlertRow[]>('/messenger/threads', { token });
+      const rows = await threadList<AlertRow>(token);
       const list = Array.isArray(rows) ? rows : [];
       const n = unreadCount(list);
       setCount(n);

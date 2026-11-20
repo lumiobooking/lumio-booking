@@ -28,6 +28,7 @@ import { TurnBadge } from './TurnBadge';
 import { MessengerAlertCard } from './MessengerAlertCard';
 import { fmtInTz } from '../lib/datetime';
 import { useAuth } from '../lib/auth';
+import { threadList } from '../lib/thread-list';
 import { apiFetch, apiStream, apiImage, apiImageCached } from '../lib/api';
 import { wallToInstantISO, instantToWall, dayKeyInTz } from '../lib/datetime';
 import { ui } from '../lib/ui';
@@ -648,7 +649,7 @@ export function InboxView() {
   const loadList = useCallback(async () => {
     if (!token) return;
     try {
-      const r = await apiFetch<InboxRow[]>('/messenger/threads', { token, quiet: true });
+      const r = await threadList<InboxRow>(token);
       const next = Array.isArray(r) ? r : [];
       // Nothing new -> nothing repaints. See `same` and `keepRows` above: this
       // is the difference between a list that sits still and one that blinks
@@ -819,7 +820,12 @@ export function InboxView() {
         if (id) {
           const row = (next ?? rowsRef.current).find((r) => r.id === id);
           const stamp = row ? String(row.updatedAt) : '';
-          if (!openStamp || openStamp.id !== id || openStamp.at !== stamp) {
+          // rt229: a conversation just opened is already being read by the
+          // click (loadThread) — the first refresh after it only notes its
+          // stamp. It used to read it in full a second time right away.
+          if (!openStamp || openStamp.id !== id) {
+            openStamp = { id, at: stamp };
+          } else if (openStamp.at !== stamp) {
             openStamp = { id, at: stamp };
             // A poll is not a person: mark read only when there is something
             // unread and the person has not parked it as unread (rt221).

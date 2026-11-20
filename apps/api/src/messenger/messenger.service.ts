@@ -2,6 +2,7 @@ import { rescueOpen } from './turn-shift';
 import { FOLD_FROM, FOLD_TO, searchPattern } from './thread-search';
 import { customerEmailFrom, customerPhoneFrom, phoneKeyOf, prospectContact, prospectDays } from './prospects';
 import { logRowsFrom, olderThan, turnsFromLog, type LogRow } from './message-log';
+import { GRAPH_MSG_FIELDS, GRAPH_MSG_FIELDS_PLAIN, graphLine, isRateLimited, isTooMuchData, resumable, smallerPage, PULL_CHECKPOINT, PULL_DONE, PULL_STARTED, type GraphMsg, type PullCheckpoint } from './history-pull';
 import { COMMENT_ONLY_REASON, UNREACHABLE_REASON, commentOnly, pickComment, postIdFromNotice, type GraphComment } from './comment-reply';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { onSale, salePrice } from '../common/discount';
@@ -132,6 +133,9 @@ function wallToUtcISO(local: string, tz: string): string {
   }
 }
 
+/** rt229: how a "Kéo tin cũ" pull is going (the status the owner sees). */
+type HistoryJob = { running: boolean; days: number; startedAt: string; finishedAt: string | null; scanned: number; imported: number; updated: number; error: string | null; resumed: boolean; pages: number; waiting: string | null };
+
 type Turn = {
   role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean;
   /** Meta's refusal of this reply, in plain words (./send-errors). */
@@ -254,6 +258,11 @@ export class MessengerService implements OnModuleInit {
       }
     }, 90 * 1000); // well after boot
     t.unref?.();
+    // rt229: a "Kéo tin cũ" a deploy cut short carries on by itself.
+    if (process.env.HISTORY_PULL_RESUME !== '0') {
+      const r = setTimeout(() => void this.resumeHistoryPulls().catch((e) => this.logger.warn(`history pull resume failed: ${String(e).slice(0, 120)}`)), 2 * 60 * 1000);
+      r.unref?.();
+    }
     // "Learn, then answer": a change anywhere in the salon's data re-reads its
     // open conversations (bot-refresh.ts). Debounced per salon so ten edits in
     // a row become one pass, 20 s after the last.
@@ -3541,13 +3550,8 @@ export class MessengerService implements OnModuleInit {
     const take = Math.min(100, Math.max(1, Math.round(opts.limit ?? 50) || 50));
     const lines = Math.min(20, Math.max(1, Math.round(opts.lines ?? 20) || 20));
     const reply = opts.reply !== false;
-    // How long an unanswered customer line may wait before the sync treats it as
-    // missed by the webhook: the live path answers within ~20 s (4 s gather +
-    // the model), so 45 s leaves no room for a double reply.
-    const MISSED_AFTER_MS = 45_000;
     let imported = 0, updated = 0, skipped = 0, answered = 0;
     const errors: string[] = [];
-    const sameTurn = (hist: Turn[], t: Turn) => hist.some((h) => h.role === t.role && h.content === t.content && Math.abs(new Date(h.at || 0).getTime() - new Date(t.at || 0).getTime()) < 120_000);
     // Instagram DMs are mirrored too (they used to depend on the webhook alone,
     // so one DM the webhook dropped was a DM nobody ever saw).
     const igOn = process.env.FB_ENABLE_INSTAGRAM === '1' || process.env.FB_ENABLE_INSTAGRAM === 'true';
@@ -3557,8 +3561,8 @@ export class MessengerService implements OnModuleInit {
         ...(igOn && pg.igId ? [{ platform: 'instagram' as const, channel: 'instagram' as Channel, own: [pg.igId, pg.pageId], entry: pg.igId, key: `${pg.pageId}:ig` }] : []),
       ];
       for (const src of sources) {
-      const url = `${GRAPH}/${pg.pageId}/conversations?platform=${src.platform}&limit=${take}&fields=id,updated_time,participants,messages.limit(${lines}){message,from,created_time}&access_token=${encodeURIComponent(pg.pageToken)}`;
-      let json: { data?: { id: string; updated_time?: string; participants?: { data?: { id: string; name?: string; username?: string }[] }; messages?: { data?: { message?: string; from?: { id: string; name?: string }; created_time?: string }[] } }[]; error?: { message?: string; code?: number }; paging?: { next?: string } };
+      const url = `${GRAPH}/${pg.pageId}/conversations?platform=${src.platform}&limit=${take}&fields=id,updated_time,participants,messages.limit(${lines}){${GRAPH_MSG_FIELDS}}&access_token=${encodeURIComponent(pg.pageToken)}`;
+      let json: { data?: { id: string; updated_time?: string; participants?: { data?: { id: string; name?: string; username?: string }[] }; messages?: { data?: GraphMsg[] } }[]; error?: { message?: string; code?: number }; paging?: { next?: string } };
       try {
         const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
         json = (await res.json().catch(() => ({}))) as typeof json;
@@ -3591,73 +3595,108 @@ export class MessengerService implements OnModuleInit {
         }
       }
       const seenBefore = opts.incremental ? this.syncSeen.get(src.key) ?? null : null;
-      let newest = seenBefore ?? '';
-      for (const conv of json.data || []) {
-        if (conv.updated_time && conv.updated_time > newest) newest = conv.updated_time;
-        // Unchanged since the last tick: nothing to read.
-        if (seenBefore && conv.updated_time && conv.updated_time <= seenBefore) { skipped++; continue; }
-        if (opts.since && conv.updated_time && conv.updated_time < opts.since) { skipped++; continue; }
-        const other = src.platform === 'instagram'
-          ? igCustomer(conv.participants?.data, src.entry, pg.pageId)
-          : (() => { const o = (conv.participants?.data || []).find((p) => p.id !== pg.pageId); return o ? { id: o.id, name: o.name || null } : null; })();
-        if (!other) { skipped++; continue; }
-        const msgs = [...(conv.messages?.data || [])].filter((m) => m.message && m.created_time).reverse(); // oldest first
-        if (!msgs.length) { skipped++; continue; }
-        // A line sent by the Page outside Lumio (a person in Business Suite,
-        // Meta's Business Agent, another tool) is NOT the bot's: it is marked
-        // like a staff reply, with its origin, so the inbox never shows it as "AI".
-        const turns: Turn[] = msgs.map((m) => (src.own.includes(m.from?.id ?? '')
-          ? { role: 'assistant' as const, content: cutText(m.message, 2000), at: new Date(m.created_time!).toISOString(), manual: true, source: 'page' as const }
-          : { role: 'user' as const, content: cutText(m.message, 2000), at: new Date(m.created_time!).toISOString() }));
-        const last = turns[turns.length - 1];
-        const lastAgeMs = Date.now() - new Date(last.at!).getTime();
-        const existing = await this.prisma.messengerThread.findUnique({ where: { pageId_senderId: { pageId: pg.pageId, senderId: other.id } } }).catch(() => null);
-        const hist = existing ? ((Array.isArray(existing.history) ? existing.history : []) as Turn[]) : [];
-        const fresh = turns.filter((t) => !sameTurn(hist, t));
-        if (!fresh.length) { skipped++; continue; }
-        // A customer line nobody answered, two minutes old and unknown to us:
-        // the webhook missed it. Hand it to the live path — recorded, pushed,
-        // and answered by the bot when the salon has it on.
-        // Never a line older than Meta's 24-hour window: on a first mirror that would
-        // "answer" a customer who wrote in May (see ./rescue-stuck).
-        const pending = reply && last.role === 'user' && fresh.includes(last) && mayAnswerMirrored(lastAgeMs, MISSED_AFTER_MS) && !(existing as { handoff?: boolean } | null)?.handoff;
-        const toWrite = pending ? fresh.filter((t) => t !== last) : fresh;
-        if (existing) {
-          if (toWrite.length) {
-            await this.appendTurns(existing.id, hist, this.threadSummary(existing), toWrite);
-            const lastCustomer = [...toWrite].reverse().find((t) => t.role === 'user');
-            await this.prisma.messengerThread.update({
-              where: { id: existing.id },
-              data: { lastText: cutText(toWrite[toWrite.length - 1].content, 300), lastMessageAt: new Date(toWrite[toWrite.length - 1].at!), ...(lastCustomer ? { lastCustomerAt: new Date(lastCustomer.at!) } : {}), ...(other.name && !existing.senderName ? { senderName: other.name } : {}) } as never,
-            }).catch(() => undefined);
-            updated++;
-          }
-        } else if (toWrite.length) {
-          const lastCustomer = [...toWrite].reverse().find((t) => t.role === 'user');
-          await this.prisma.messengerThread.create({
-            data: {
-              tenantId, pageId: pg.pageId, senderId: other.id, senderName: other.name || null, channel: src.channel,
-              lastText: cutText(toWrite[toWrite.length - 1].content, 300),
-              // The conversation's own clock, so a mirrored chat from September
-              // sits where September belongs — not at the top as "just now".
-              lastMessageAt: new Date(toWrite[toWrite.length - 1].at!),
-              lastCustomerAt: lastCustomer ? new Date(lastCustomer.at!) : null,
-              history: cleanTurns(toWrite) as unknown as Prisma.InputJsonValue,
-              status: 'open',
-            } as never,
-          });
-          imported++;
-        }
-        if (pending) {
-          answered++;
-          await this.handleMessage(src.entry, other.id, last.content, new Date(last.at!).getTime(), src.channel).catch((e) => this.logger.warn(`sync reply failed: ${String(e).slice(0, 160)}`));
-        }
-      }
+      const r = await this.mirrorConversations(tenantId, pg, src, json.data || [], { seenBefore, since: opts.since, reply });
+      imported += r.imported; updated += r.updated; skipped += r.skipped; answered += r.answered;
+      const newest = r.newest;
       if (newest) this.syncSeen.set(src.key, newest);
       }
     }
     if (imported || updated) this.events.publish(tenantId, 'message');
     return { imported, updated, skipped, answered, errors };
+  }
+
+  /**
+   * rt229: one page of Meta's conversation list written into the inbox —
+   * shared by the minute-by-minute mirror and "Kéo tin cũ" (which saves each
+   * page as it arrives instead of holding the whole walk in memory).
+   */
+  private async mirrorConversations(
+    tenantId: string,
+    pg: { pageId: string },
+    src: { platform: 'messenger' | 'instagram'; channel: Channel; own: string[]; entry: string },
+    convs: { id: string; updated_time?: string; participants?: { data?: { id: string; name?: string; username?: string }[] }; messages?: { data?: GraphMsg[] } }[],
+    opts: { seenBefore: string | null; since?: string; reply: boolean },
+  ): Promise<{ imported: number; updated: number; skipped: number; answered: number; newest: string }> {
+    // How long an unanswered customer line may wait before the sync treats it as
+    // missed by the webhook: the live path answers within ~20 s (4 s gather +
+    // the model), so 45 s leaves no room for a double reply.
+    const MISSED_AFTER_MS = 45_000;
+    const sameTurn = (hist: Turn[], t: Turn) => hist.some((h) => h.role === t.role && h.content === t.content && Math.abs(new Date(h.at || 0).getTime() - new Date(t.at || 0).getTime()) < 120_000);
+    const seenBefore = opts.seenBefore;
+    const reply = opts.reply;
+    let imported = 0, updated = 0, skipped = 0, answered = 0;
+    let newest = seenBefore ?? '';
+    for (const conv of convs) {
+      if (conv.updated_time && conv.updated_time > newest) newest = conv.updated_time;
+      // Unchanged since the last tick: nothing to read.
+      if (seenBefore && conv.updated_time && conv.updated_time <= seenBefore) { skipped++; continue; }
+      if (opts.since && conv.updated_time && conv.updated_time < opts.since) { skipped++; continue; }
+      const other = src.platform === 'instagram'
+        ? igCustomer(conv.participants?.data, src.entry, pg.pageId)
+        : (() => { const o = (conv.participants?.data || []).find((p) => p.id !== pg.pageId); return o ? { id: o.id, name: o.name || null } : null; })();
+      if (!other) { skipped++; continue; }
+      // rt229: a photo, a sticker, a voice note counts too — a customer who
+      // only sent pictures used to be skipped, and pictures went missing.
+      const turns: Turn[] = [];
+      for (const m of [...(conv.messages?.data || [])].reverse()) { // oldest first
+        if (!m?.created_time) continue;
+        const ours = src.own.includes(m.from?.id ?? '');
+        const line = graphLine(m, ours);
+        if (!line) continue;
+        const pics = line.images.length ? { images: line.images } : {};
+        // A line sent by the Page outside Lumio (a person in Business Suite,
+        // Meta's Business Agent, another tool) is NOT the bot's: it is marked
+        // like a staff reply, with its origin, so the inbox never shows it as "AI".
+        turns.push(ours
+          ? { role: 'assistant' as const, content: cutText(line.content, 2000), at: new Date(m.created_time).toISOString(), manual: true, source: 'page' as const, ...pics } as Turn
+          : { role: 'user' as const, content: cutText(line.content, 2000), at: new Date(m.created_time).toISOString(), ...pics } as Turn);
+      }
+      if (!turns.length) { skipped++; continue; }
+      const last = turns[turns.length - 1];
+      const lastAgeMs = Date.now() - new Date(last.at!).getTime();
+      const existing = await this.prisma.messengerThread.findUnique({ where: { pageId_senderId: { pageId: pg.pageId, senderId: other.id } } }).catch(() => null);
+      const hist = existing ? ((Array.isArray(existing.history) ? existing.history : []) as Turn[]) : [];
+      const fresh = turns.filter((t) => !sameTurn(hist, t));
+      if (!fresh.length) { skipped++; continue; }
+      // A customer line nobody answered, two minutes old and unknown to us:
+      // the webhook missed it. Hand it to the live path — recorded, pushed,
+      // and answered by the bot when the salon has it on.
+      // Never a line older than Meta's 24-hour window: on a first mirror that would
+      // "answer" a customer who wrote in May (see ./rescue-stuck).
+      const pending = reply && last.role === 'user' && fresh.includes(last) && mayAnswerMirrored(lastAgeMs, MISSED_AFTER_MS) && !(existing as { handoff?: boolean } | null)?.handoff;
+      const toWrite = pending ? fresh.filter((t) => t !== last) : fresh;
+      if (existing) {
+        if (toWrite.length) {
+          await this.appendTurns(existing.id, hist, this.threadSummary(existing), toWrite);
+          const lastCustomer = [...toWrite].reverse().find((t) => t.role === 'user');
+          await this.prisma.messengerThread.update({
+            where: { id: existing.id },
+            data: { lastText: cutText(toWrite[toWrite.length - 1].content, 300), lastMessageAt: new Date(toWrite[toWrite.length - 1].at!), ...(lastCustomer ? { lastCustomerAt: new Date(lastCustomer.at!) } : {}), ...(other.name && !existing.senderName ? { senderName: other.name } : {}) } as never,
+          }).catch(() => undefined);
+          updated++;
+        }
+      } else if (toWrite.length) {
+        const lastCustomer = [...toWrite].reverse().find((t) => t.role === 'user');
+        await this.prisma.messengerThread.create({
+          data: {
+            tenantId, pageId: pg.pageId, senderId: other.id, senderName: other.name || null, channel: src.channel,
+            lastText: cutText(toWrite[toWrite.length - 1].content, 300),
+            // The conversation's own clock, so a mirrored chat from September
+            // sits where September belongs — not at the top as "just now".
+            lastMessageAt: new Date(toWrite[toWrite.length - 1].at!),
+            lastCustomerAt: lastCustomer ? new Date(lastCustomer.at!) : null,
+            history: cleanTurns(toWrite) as unknown as Prisma.InputJsonValue,
+            status: 'open',
+          } as never,
+        });
+        imported++;
+      }
+      if (pending) {
+        answered++;
+        await this.handleMessage(src.entry, other.id, last.content, new Date(last.at!).getTime(), src.channel).catch((e) => this.logger.warn(`sync reply failed: ${String(e).slice(0, 160)}`));
+      }
+    }
+    return { imported, updated, skipped, answered, newest };
   }
 
   /**
@@ -3668,7 +3707,7 @@ export class MessengerService implements OnModuleInit {
    * it. Runs in the background, one job per salon; nothing is answered by the
    * AI and nobody's phone rings for these. The owner only.
    */
-  private readonly historyJobs = new Map<string, { running: boolean; days: number; startedAt: string; finishedAt: string | null; scanned: number; imported: number; updated: number; error: string | null }>();
+  private readonly historyJobs = new Map<string, HistoryJob>();
   historyJob(user: AuthenticatedUser) {
     return this.historyJobs.get(this.tenantId(user)) ?? null;
   }
@@ -3678,24 +3717,137 @@ export class MessengerService implements OnModuleInit {
     const days = [0, 30, 90, 180, 365].includes(Number(daysRaw)) ? Number(daysRaw) : 90;
     const cur = this.historyJobs.get(tenantId);
     if (cur?.running) return cur;
-    const job = { running: true, days, startedAt: new Date().toISOString(), finishedAt: null as string | null, scanned: 0, imported: 0, updated: 0, error: null as string | null };
+    // rt229: the same pull stopped part-way (Meta refused, a deploy) carries
+    // on from where it was instead of walking Meta from the top again.
+    const left = await this.pullLeftHalfway(tenantId);
+    if (left && left.days === days) return this.runHistoryPull(tenantId, { ...left, userId: user.userId }, true);
+    await this.audit(tenantId, PULL_STARTED, { userId: user.userId, metadata: { days } });
+    const since = days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString() : null;
+    return this.runHistoryPull(tenantId, { days, since, startedAt: new Date().toISOString(), at: {}, done: [], scanned: 0, imported: 0, updated: 0, userId: user.userId });
+  }
+
+  /**
+   * rt229 — the pull itself. Page by page per source (each Page's Messenger,
+   * its Instagram), each page written into the inbox as it arrives. A page
+   * Meta refuses as too big is asked again smaller; a rate limit is waited
+   * out; the place reached is written to the audit log every few pages, and
+   * a restart (a deploy) carries on from there (resumeHistoryPulls).
+   */
+  private runHistoryPull(tenantId: string, cp: PullCheckpoint, resumed = false): HistoryJob {
+    const job: HistoryJob = { running: true, days: cp.days, startedAt: cp.startedAt, finishedAt: null, scanned: cp.scanned, imported: cp.imported, updated: cp.updated, error: null, resumed, pages: 0, waiting: null };
     this.historyJobs.set(tenantId, job);
-    await this.audit(tenantId, 'messenger.history_import_started', { userId: user.userId, metadata: { days } });
-    const since = days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString() : undefined;
+    const save = (action: string) => this.audit(tenantId, action, { userId: cp.userId ?? null, metadata: { ...cp, scanned: job.scanned, imported: job.imported, updated: job.updated } as unknown as Record<string, unknown> }).catch(() => undefined);
+    const sleep = (ms: number) => new Promise((r) => { const t = setTimeout(r, ms); t.unref?.(); });
     void (async () => {
+      const errors: string[] = [];
       try {
-        const r = await this.syncConversations(tenantId, { limit: 100, lines: 20, reply: false, pages: days > 0 ? 60 : 150, since, onProgress: (n) => { job.scanned = n; } });
-        job.imported = r.imported; job.updated = r.updated;
-        if (r.errors.length) job.error = r.errors.slice(0, 2).join(' · ');
+        const pages = await this.prisma.messengerPage.findMany({ where: { tenantId, enabled: true }, select: { pageId: true, pageToken: true, pageName: true, igId: true } }).catch(() => [] as { pageId: string; pageToken: string; pageName: string | null; igId: string | null }[]);
+        const conn = pages.length ? null : await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageId: true, pageToken: true, pageName: true, igId: true } }).catch(() => null);
+        const targets = (pages.length ? pages : conn?.pageId && conn.pageToken ? [{ pageId: conn.pageId, pageToken: conn.pageToken, pageName: conn.pageName, igId: conn.igId }] : [])
+          .filter((p) => !isWebPage(p.pageId) && !p.pageId.startsWith('zalo:'));
+        if (!targets.length) throw new Error('Chưa kết nối Fanpage nào');
+        const igOn = process.env.FB_ENABLE_INSTAGRAM === '1' || process.env.FB_ENABLE_INSTAGRAM === 'true';
+        const maxPages = cp.days > 0 ? 400 : 1000;
+        for (const pg of targets) {
+          const sources: { platform: 'messenger' | 'instagram'; channel: Channel; own: string[]; entry: string; key: string }[] = [
+            { platform: 'messenger', channel: 'messenger', own: [pg.pageId], entry: pg.pageId, key: pg.pageId },
+            ...(igOn && pg.igId ? [{ platform: 'instagram' as const, channel: 'instagram' as Channel, own: [pg.igId, pg.pageId], entry: pg.igId, key: `${pg.pageId}:ig` }] : []),
+          ];
+          for (const src of sources) {
+            if (cp.done.includes(src.key)) continue;
+            const label = `${pg.pageName || pg.pageId}${src.platform === 'instagram' ? ' (Instagram)' : ''}`;
+            let size = 25;
+            let tries = 0;
+            let n = 0;
+            let failed = false;
+            for (;;) {
+              if (n >= maxPages) break;
+              const after = cp.at[src.key];
+              const url = `${GRAPH}/${pg.pageId}/conversations?platform=${src.platform}&limit=${size}`
+                + `&fields=id,updated_time,participants,messages.limit(20){${GRAPH_MSG_FIELDS}}`
+                + (after ? `&after=${encodeURIComponent(after)}` : '')
+                + `&access_token=${encodeURIComponent(pg.pageToken)}`;
+              type ConvPage = { data?: { id: string; updated_time?: string; participants?: { data?: { id: string; name?: string; username?: string }[] }; messages?: { data?: GraphMsg[] } }[]; error?: { message?: string; code?: number }; paging?: { next?: string; cursors?: { after?: string } } };
+              let json: ConvPage | null = null;
+              let timedOut = false;
+              try {
+                const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+                json = (await res.json().catch(() => ({}))) as ConvPage;
+              } catch { timedOut = true; }
+              const err = json?.error ?? null;
+              if (timedOut || err) {
+                tries += 1;
+                if (isRateLimited(err) && tries <= 6) { job.waiting = 'Meta yêu cầu chậm lại — đợi 1 phút rồi kéo tiếp'; await sleep(60_000); job.waiting = null; continue; }
+                if (isTooMuchData(err, timedOut) && tries <= 6) { size = smallerPage(size); await sleep(2_000); continue; }
+                errors.push(`${label}: ${timedOut ? 'Meta không trả lời' : (err?.message || 'lỗi Graph')}${err?.code != null ? ` (code ${err.code})` : ''}`);
+                failed = true;
+                break;
+              }
+              tries = 0;
+              const data = Array.isArray(json?.data) ? json!.data! : [];
+              n += 1; job.pages += 1;
+              if (data.length) {
+                const r = await this.mirrorConversations(tenantId, pg, src, data, { seenBefore: null, since: cp.since ?? undefined, reply: false });
+                job.imported += r.imported; job.updated += r.updated; job.scanned += data.length;
+                if (r.imported || r.updated) this.events.publish(tenantId, 'message');
+              }
+              const tail = data[data.length - 1]?.updated_time ?? '';
+              const nextAfter = json?.paging?.next ? json?.paging?.cursors?.after : undefined;
+              if (!data.length || !nextAfter || (cp.since && tail && tail < cp.since)) break;
+              cp.at[src.key] = nextAfter;
+              // Back up to a steady size after a refusal, a little at a time.
+              if (size < 25) size = Math.min(25, size + 5);
+              if (n % 4 === 0) await save(PULL_CHECKPOINT);
+            }
+            // A source Meta refused stays open: its place is kept, so the next
+            // "Kéo tin cũ" (or a restart) carries on from there.
+            if (!failed) { cp.done.push(src.key); delete cp.at[src.key]; }
+            await save(PULL_CHECKPOINT);
+          }
+        }
       } catch (e) {
-        job.error = String((e as Error)?.message ?? e).slice(0, 200);
+        errors.push(String((e as Error)?.message ?? e).slice(0, 200));
       } finally {
         job.running = false;
+        job.waiting = null;
         job.finishedAt = new Date().toISOString();
-        await this.audit(tenantId, 'messenger.history_import_done', { userId: user.userId, metadata: { days, imported: job.imported, updated: job.updated } }).catch(() => undefined);
+        if (errors.length) job.error = errors.slice(0, 2).join(' · ');
+        // Stopped part-way: the checkpoint written above stays the newest row,
+        // and the next press of the button continues from it.
+        if (!errors.length) await this.audit(tenantId, PULL_DONE, { userId: cp.userId ?? null, metadata: { days: cp.days, imported: job.imported, updated: job.updated, scanned: job.scanned, pages: job.pages, resumed, errors: errors.slice(0, 3) } }).catch(() => undefined);
       }
     })();
     return job;
+  }
+
+  private async pullLeftHalfway(tenantId: string): Promise<PullCheckpoint | null> {
+    const rows = await this.prisma.auditLog.findMany({
+      where: { tenantId, action: { in: [PULL_STARTED, PULL_CHECKPOINT, PULL_DONE] }, createdAt: { gte: new Date(Date.now() - 12 * 3600_000) } },
+      orderBy: { createdAt: 'desc' }, take: 5,
+      select: { action: true, createdAt: true, metadata: true },
+    }).catch(() => [] as { action: string; createdAt: Date; metadata: unknown }[]);
+    return resumable(rows);
+  }
+
+  /** rt229: after a restart, every pull left half-way in the last 12 hours carries on. */
+  async resumeHistoryPulls(): Promise<number> {
+    const rows = await this.prisma.auditLog.findMany({
+      where: { action: { in: [PULL_STARTED, PULL_CHECKPOINT, PULL_DONE] }, createdAt: { gte: new Date(Date.now() - 12 * 3600_000) } },
+      orderBy: { createdAt: 'desc' }, take: 2000,
+      select: { tenantId: true, action: true, createdAt: true, metadata: true },
+    }).catch(() => [] as { tenantId: string | null; action: string; createdAt: Date; metadata: unknown }[]);
+    const byTenant = new Map<string, typeof rows>();
+    for (const r of rows) { if (!r.tenantId) continue; const l = byTenant.get(r.tenantId) ?? []; l.push(r); byTenant.set(r.tenantId, l); }
+    let n = 0;
+    for (const [tenantId, list] of byTenant) {
+      if (this.historyJobs.get(tenantId)?.running) continue;
+      const cp = resumable(list);
+      if (!cp) continue;
+      this.logger.log(`history pull: carrying on for ${tenantId} (${cp.scanned} scanned so far)`);
+      this.runHistoryPull(tenantId, cp, true);
+      n += 1;
+    }
+    return n;
   }
 
   /** The status page's button: the same mirror, for this salon, now. */
@@ -8209,17 +8361,21 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     try {
       // user_id narrows the Page's conversation list to this one customer, so
       // this is a single request rather than a walk over every conversation.
-      const url = `${GRAPH}/${encodeURIComponent(pageId)}/conversations`
+      // rt229: photos, stickers and voice notes too — they used to be dropped,
+      // and a conversation of nail pictures read as a handful of words. If Meta
+      // refuses the richer ask, the plain one is tried before giving up.
+      const ask = (fields: string) => `${GRAPH}/${encodeURIComponent(pageId)}/conversations`
         + `?platform=${platform}&user_id=${encodeURIComponent(psid)}`
-        + `&fields=messages.limit(100){id,message,from,created_time}`
+        + `&fields=messages.limit(100){${fields}}`
         + `&access_token=${encodeURIComponent(pageToken)}`;
-      // rt225: never wait on Meta for ever — a hung Graph call held the whole
-      // conversation on "loading" (the permanent log fills in meanwhile).
-      const r = await fetch(url, { signal: AbortSignal.timeout(7_000) });
-      const j = (await r.json().catch(() => ({}))) as {
-        data?: { messages?: { data?: { id?: string; message?: string; created_time?: string; from?: { id?: string } }[]; paging?: { next?: string } } }[];
+      type MetaPage = {
+        data?: { messages?: { data?: (GraphMsg & { from?: { id?: string } })[]; paging?: { next?: string } } }[];
         error?: { message?: string };
       };
+      // rt225: never wait on Meta for ever — a hung Graph call held the whole
+      // conversation on "loading" (the permanent log fills in meanwhile).
+      let j = (await fetch(ask(GRAPH_MSG_FIELDS), { signal: AbortSignal.timeout(7_000) }).then((r) => r.json()).catch(() => ({}))) as MetaPage;
+      if (j.error) j = (await fetch(ask(GRAPH_MSG_FIELDS_PLAIN), { signal: AbortSignal.timeout(6_000) }).then((r) => r.json()).catch(() => ({}))) as MetaPage;
       if (j.error) {
         this.logger.warn(`history fetch failed for ${pageId}/${psid}: ${(j.error.message || '').slice(0, 140)}`);
         return null;
@@ -8237,7 +8393,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       for (let page = 1; next && page < 5 && Date.now() < until; page += 1) {
         try {
           const r2 = await fetch(next, { signal: AbortSignal.timeout(6_000) });
-          const j2 = (await r2.json().catch(() => ({}))) as { data?: { id?: string; message?: string; created_time?: string; from?: { id?: string } }[]; paging?: { next?: string } };
+          const j2 = (await r2.json().catch(() => ({}))) as { data?: (GraphMsg & { from?: { id?: string } })[]; paging?: { next?: string } };
           if (!Array.isArray(j2.data) || !j2.data.length) break;
           msgs.push(...j2.data.slice(0, 100));
           next = j2.paging?.next;
@@ -8250,9 +8406,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // Vietnamese to an American customer. They are Meta's, not ours: dropped.
       const metaNote = /(đã trả lời (một )?quảng cáo|replied to (your|an|the) ad\b|responded to (your|an|the) ad\b|đã phản hồi quảng cáo)/i;
       const turns: Turn[] = msgs
-        .filter((m) => String(m?.message ?? '').trim())
-        .filter((m) => !(metaRole(m.from?.id, psid, own) === 'assistant' && metaNote.test(String(m.message))))
-        .map((m) => ({
+        .map((m) => ({ m, line: graphLine(m, metaRole(m.from?.id, psid, own) === 'assistant') }))
+        .filter((x): x is { m: typeof msgs[number]; line: { content: string; images: string[] } } => !!x.line)
+        .filter(({ m }) => !(metaRole(m.from?.id, psid, own) === 'assistant' && metaNote.test(String(m.message ?? ''))))
+        .map(({ m, line }) => ({
           // Anything the salon sent — the bot's replies and the staff's
           // replies both go out through the Page (or the IG account), so Meta
           // cannot tell them apart and neither can this. They are merged back
@@ -8260,7 +8417,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           // writes as its IG id, and the Page-id test tagged every bot reply
           // as the customer's.
           role: metaRole(m.from?.id, psid, own) as Turn['role'],
-          content: String(m.message).trim(),
+          content: line.content,
+          ...(line.images.length ? { images: line.images } : {}),
           at: m.created_time ? new Date(m.created_time).toISOString() : undefined,
           // Carried so mergeHistory can say which Page messages a PERSON typed
           // by matching ids instead of matching text. Text matching marked

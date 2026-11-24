@@ -3,6 +3,7 @@ import { FOLD_FROM, FOLD_TO, searchPattern } from './thread-search';
 import { customerEmailFrom, customerPhoneFrom, phoneKeyOf, prospectContact, prospectDays } from './prospects';
 import { logRowsFrom, olderThan, turnsFromLog, type LogRow } from './message-log';
 import { personWindowReason, shutByMeta } from './window-shut';
+import { answeredDoubleTap, personAnsweredSince } from './reply-guard';
 import { GRAPH_MSG_FIELDS, GRAPH_MSG_FIELDS_PLAIN, graphLine, isRateLimited, isTooMuchData, resumable, smallerPage, PULL_CHECKPOINT, PULL_DONE, PULL_STARTED, type GraphMsg, type PullCheckpoint } from './history-pull';
 import { COMMENT_ONLY_REASON, UNREACHABLE_REASON, commentOnly, pickComment, postIdFromNotice, type GraphComment } from './comment-reply';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
@@ -4013,6 +4014,11 @@ export class MessengerService implements OnModuleInit {
         const senderId = ev.sender?.id;
         if (!senderId) continue;
         this.traceWebhook(entryId, ev.message?.is_echo ? 'echo' : ev.message || ev.postback ? 'messaging' : 'other', ev.message?.text || ev.postback?.title || '');
+        // rt231: when this customer wrote, known the moment Meta tells us —
+        // before the name lookup and the database write that follow. The
+        // Page's own automation (an FAQ answer to an ice-breaker) echoes ~2 s
+        // later and must be recognised as automation, not as staff taking over.
+        if (!ev.message?.is_echo && (ev.message || ev.postback)) this.noteCustomerArrival(entryId, senderId, ev.timestamp);
         // A team member talking to Lumio through the Page ("LUMIO 123456",
         // "vào ca", "Nhận khách") — handled here, never a customer conversation.
         if (!ev.message?.is_echo && channel === 'messenger' && this.staffAlerts && await this.staffMessage(entryId, senderId, ev).catch(() => false)) continue;
@@ -4215,7 +4221,8 @@ export class MessengerService implements OnModuleInit {
       notice, metaAi,
       nowMs: now,
       lastNoticeMs: notice ? null : maxOf(this.noticeAt.get(thread.id), fromHist),
-      lastCustomerMs: custAt ? new Date(custAt).getTime() : null,
+      // rt231: the arrival noted on the webhook counts too (the column may not be written yet).
+      lastCustomerMs: maxOf(custAt ? new Date(custAt).getTime() : null, this.customerArrival(entryId, customerId)),
       metaAiMs: metaAi ? null : maxOf(this.metaAiThreads.get(thread.id), aiHist),
     });
     if (metaAi) void this.noteMetaAi(page.tenantId, thread.id, body);
@@ -4968,6 +4975,16 @@ export class MessengerService implements OnModuleInit {
   private readonly graceTimers = new Map<string, NodeJS.Timeout>();
   /** Thread → when one of Meta's notices last echoed in (./automation-echo). */
   private readonly noticeAt = new Map<string, number>();
+  /** rt231: page:customer → when the customer's last message reached the webhook (ms). */
+  private readonly arrivals = new Map<string, number>();
+  private noteCustomerArrival(entryId: string, senderId: string, ts?: number): void {
+    const at = typeof ts === 'number' && Number.isFinite(ts) ? Math.min(ts, Date.now()) : Date.now();
+    this.arrivals.set(`${entryId}:${senderId}`, Math.max(at, this.arrivals.get(`${entryId}:${senderId}`) ?? 0));
+    if (this.arrivals.size > 5000) this.arrivals.delete(this.arrivals.keys().next().value as string);
+  }
+  private customerArrival(entryId: string, senderId: string): number | null {
+    return this.arrivals.get(`${entryId}:${senderId}`) ?? null;
+  }
   /** Thread → when Meta's Business AI last announced itself there. */
   private readonly metaAiThreads = new Map<string, number>();
   /** Tenant → when its owner was last told Meta's AI is answering. */
@@ -5430,6 +5447,21 @@ export class MessengerService implements OnModuleInit {
     if (this.reasking.has(threadId)) {
       this.reasking.delete(threadId);
       if (isUnknownReply(reply) || agentFailed) { this.logger.log(`catch-up: still no answer on thread ${threadId}, staying quiet`); return; }
+    }
+    // rt231: last look before the reply goes out (./reply-guard).
+    {
+      const inMs = eventTs && Number.isFinite(eventTs) ? eventTs : Date.now();
+      const nowTh = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { history: true } as never }).catch(() => null) as unknown as { history?: unknown } | null;
+      const nowHist = (Array.isArray(nowTh?.history) ? nowTh!.history : history) as Turn[];
+      const metaLine = (s2: string) => isMetaAdGreeting(s2) || isMetaSystemLine(s2);
+      const why = personAnsweredSince(nowHist as never, inMs, metaLine) ? 'a person answered while the AI was writing'
+        : answeredDoubleTap(prior as never, text, inMs) ? 'the same words again, already answered' : null;
+      if (why) {
+        this.logger.log(`reply dropped on thread ${threadId}: ${why}`);
+        if (!userAlready) await this.appendTurns(threadId, nowHist, memory, [{ role: 'user', content: text, at: new Date(inMs).toISOString(), ...imgTurn }]);
+        this.events.publish(conn.tenantId, 'message');
+        return;
+      }
     }
     const sendStart = Date.now();
     const customerAt = eventTs && Number.isFinite(eventTs) ? eventTs

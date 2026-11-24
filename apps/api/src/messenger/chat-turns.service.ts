@@ -8,6 +8,7 @@ import { isOnDuty, isOnShift, pickAgent, reassignDue, type PickReason } from './
 import { StaffAlertsService } from './staff-alerts.service';
 import { escalationDue, isAdThread, unrepliedMinsFor, windowOpen } from './staff-alerts';
 import { STANDARD_TEAM, firstEnable, standardColumns } from './turn-standard';
+import { SKIPS_KEY, skipSummary, tallySkips, type SkipBook } from './turn-skips';
 import { SHIFT_PREFIX, cleanShift, remindDue, rescueOpen, shiftActive, shiftExpired, shiftKey, shiftUntil, type Shift } from './turn-shift';
 import { DEFAULT_TEAM, REPORT_SENT_KEY, TEAM_KEY, adWaits, cleanTeam, nightText, pickWeighted, poolsFor, scoreboard, sourceOf, type LogRow, type TeamConfig, type ThreadFacts } from './turn-team';
 
@@ -119,7 +120,8 @@ export type TurnMiss = { at: string; customer: string | null; why: 'rules-off' |
 const INBOX_ROLES = [UserRole.SALON_ADMIN, UserRole.STAFF] as const;
 const TICK_MS = 60_000;
 /** Log rows that are not a live turn given to someone (fairness counts and "turns today"). */
-const NOT_TURNS = ['unassign', 'first-reply', 'backlog', 'opened', 'prospect', 'customer-back'];
+// rt231: 'took-by-reply' = someone answered a customer nobody held (a follow-up they chose to do) — not a turn the rotation gave them, so it no longer pushes them back in the queue.
+const NOT_TURNS = ['unassign', 'first-reply', 'backlog', 'opened', 'prospect', 'customer-back', 'took-by-reply'];
 /** A turn passed on from someone who did not act: not opened, not answered, or skipped on Messenger. */
 const MISS_REASONS = ['reassign-unread', 'reassign-unreplied', 'skip'];
 
@@ -178,7 +180,11 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     // costs the same whether it waits in line or not).
     const since = new Date(Date.now() - 24 * 3600_000);
     const pPresence = Promise.resolve().then(() => this.db.chatAgentPresence?.findMany({ where: { tenantId }, select: { userId: true, status: true, lastSeenAt: true } }) ?? []).catch(() => []);
-    const pOpen = Promise.resolve().then(() => this.db.messengerThread.groupBy({ by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null } }, _count: true })).catch(() => []);
+    // rt231: "đang giữ" = live conversations only — the customer wrote in the last
+    // 24 hours and it is not an old customer given out to follow up (hops 99).
+    // Follow-ups and long-dead chats used to count, so whoever had been given
+    // old customers stayed "full" and every new customer went to someone else.
+    const pOpen = Promise.resolve().then(() => this.db.messengerThread.groupBy({ by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null }, assignHops: { lt: 99 }, lastCustomerAt: { gte: since } }, _count: true })).catch(() => []);
     const pLogs = Promise.resolve().then(() => this.db.chatAssignmentLog?.groupBy({ by: ['userId'], where: { tenantId, createdAt: { gte: since }, userId: { not: null }, reason: { notIn: NOT_TURNS } }, _count: true, _max: { createdAt: true } }) ?? []).catch(() => []);
     const pClock = this.salonClock(tenantId).catch(() => null);
     const pLinks = this.staff ? this.staff.linksOf(tenantId).catch(() => ({})) : Promise.resolve({});
@@ -321,6 +327,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
         if (p.userId) { pick = p; break; }
         pick = p;
       }
+      void this.noteSkips(tenantId, pool, pick.userId);
       if (!pick.userId) {
         const team2 = team;
         const all2 = all.map((a) => ({ name: a.name, blockers: [...a.blockers, ...((team2.members[a.userId]?.weight ?? 1) <= 0 && set.rotation === 'weighted' ? ['weight-zero' as TurnBlocker] : [])] }));
@@ -375,6 +382,20 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
 
   /** The last customer this salon's rules could not give to anyone, and why — shown on the Chia turn tab. */
   private readonly misses = new Map<string, TurnMiss>();
+  /** rt231: who in the list was passed over for this customer, and why (./turn-skips). Never throws. */
+  private async noteSkips(tenantId: string, pool: { userId: string; name: string; blockers: TurnBlocker[]; inRotation: boolean }[], pickedId: string | null): Promise<void> {
+    try {
+      if (!pool.some((a) => a.userId !== pickedId && a.blockers.some((b) => b !== 'not-in-list'))) return;
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: SKIPS_KEY } } }).catch(() => null);
+      const book = tallySkips(row?.value as unknown as SkipBook | null, pool, pickedId);
+      await this.prisma.setting.upsert({ where: { tenantId_key: { tenantId, key: SKIPS_KEY } }, create: { tenantId, key: SKIPS_KEY, value: book as never }, update: { value: book as never } });
+    } catch { /* counting must never cost a customer their turn */ }
+  }
+  private async skipsOf(tenantId: string) {
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: SKIPS_KEY } } }).catch(() => null);
+    return skipSummary(row?.value as unknown as SkipBook | null);
+  }
+
   private noteMiss(tenantId: string, m: TurnMiss): void {
     this.misses.set(tenantId, m);
     if (this.misses.size > 2000) this.misses.delete(this.misses.keys().next().value as string);
@@ -797,7 +818,7 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const recent = await pRecent;
     const me = agents.find((a) => a.userId === user.userId) ?? null;
     const team = await pTeam;
-    return { settings, agents, me, recent, team, sources: await pSources, canEdit: isAdmin, pushOn: this.push?.enabled() ?? false, lastMiss: isAdmin ? this.lastMiss(tenantId) : null };
+    return { settings, agents, me, recent, team, sources: await pSources, canEdit: isAdmin, pushOn: this.push?.enabled() ?? false, lastMiss: isAdmin ? this.lastMiss(tenantId) : null, skips: isAdmin ? await this.skipsOf(tenantId) : [] };
   }
 
   async updateSettings(user: AuthenticatedUser, dto: Record<string, unknown>) {

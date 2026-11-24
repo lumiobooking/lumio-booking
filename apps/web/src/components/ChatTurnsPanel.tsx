@@ -54,6 +54,8 @@ export interface TurnsView {
   pushOn?: boolean;
   /** rt206: the last customer nobody could be given, and why. */
   lastMiss?: { at: string; customer: string | null; why: string; agents: { name: string; blockers: string[] }[] } | null;
+  /** rt231: last 7 days — how often each person was passed over, and why. */
+  skips?: { userId: string; name: string; total: number; why: Record<string, number> }[];
   recent: { id: string; threadId: string; userId: string | null; fromUserId: string | null; reason: string; createdAt: string; thread?: { senderName?: string | null } | null }[];
 }
 
@@ -317,6 +319,17 @@ export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolea
               ))}
               {!view.agents.length && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{T('Chưa có nhân viên nào có tài khoản đăng nhập.', 'No team member has a login yet.')}</div>}
             </div>
+            {(view.skips ?? []).length > 0 && (
+              <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--line)', fontSize: 12.5, lineHeight: 1.55 }}>
+                <b>{T('Vì sao có người nhận ít khách hơn (7 ngày)', 'Why some people get fewer customers (7 days)')}</b>
+                <div style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '2px 0 6px' }}>{T('Mỗi lần chia khách, ai trong danh sách không nhận được thì được đếm kèm lý do. Lumio chỉ chia cho người đang trực — nhắc các bạn bấm “Vào ca” (điện thoại tắt màn hình vẫn nhận) và bật thông báo.', 'Each time a customer is given out, anyone listed who could not take it is counted with the reason. Lumio only gives customers to people on duty — remind them to press “Vào ca” (works with the phone locked) and turn on alerts.')}</div>
+                {(view.skips ?? []).map((k) => (
+                  <div key={k.userId}>
+                    <b>{k.name}</b>: {T(`bị bỏ qua ${k.total} lần`, `passed over ${k.total} times`)} — {Object.entries(k.why).sort((a, b) => b[1] - a[1]).map(([b, n]) => `${(vi ? BLOCK[b]?.[0] : BLOCK[b]?.[1]) ?? b} ${n}`).join(' · ')}
+                  </div>
+                ))}
+              </div>
+            )}
             {/* rt200: add people to the team right here — link + Facebook, no accounts to create. */}
             {view.canEdit && <HistoryImportBox token={token} vi={vi} />}
             {view.canEdit && <BacklogBox token={token} vi={vi} />}

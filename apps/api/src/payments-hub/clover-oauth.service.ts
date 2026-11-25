@@ -33,10 +33,20 @@ export class CloverOAuthService implements OnModuleInit {
   /** Is the Clover app configured (approved and its keys set)? */
   available(): boolean { return !!this.cfg(); }
 
-  connectUrl(user: AuthenticatedUser): { url: string } {
+  /** rt233: while on Clover's sandbox, only the salons in CLOVER_TEST_TENANTS (ids or slugs). */
+  private async isTester(tenantId: string): Promise<boolean> {
+    const list = String(process.env.CLOVER_TEST_TENANTS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (!list.length) return false;
+    if (list.includes(tenantId)) return true;
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } }).catch(() => null);
+    return !!t?.slug && list.includes(t.slug);
+  }
+
+  async connectUrl(user: AuthenticatedUser): Promise<{ url: string }> {
     const c = this.cfg();
     if (!c) throw new ServiceUnavailableException('Clover device connection is not available yet');
     if (!user.tenantId) throw new BadRequestException('Open a salon first');
+    if (c.env === 'sandbox' && !(await this.isTester(user.tenantId))) throw new ServiceUnavailableException('Clover device connection is not available yet');
     return { url: authorizeUrl(c, signState({ tenantId: user.tenantId, userId: user.userId }, this.secret())) };
   }
 

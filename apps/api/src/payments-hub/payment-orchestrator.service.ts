@@ -52,12 +52,29 @@ export class PaymentOrchestrator {
     return user.tenantId;
   }
 
-  status(user?: AuthenticatedUser) {
+  /** rt233: tenant ids allowed to see the sandbox Clover device (CLOVER_TEST_TENANTS = ids or slugs). */
+  private readonly cloverTesters = new Set<string>();
+  private cloverTestersLoaded = false;
+  async loadCloverTesters(): Promise<void> {
+    if (this.cloverTestersLoaded) return;
+    this.cloverTestersLoaded = true;
+    const list = String(process.env.CLOVER_TEST_TENANTS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (!list.length) return;
+    const rows = await this.prisma.tenant.findMany({ where: { OR: [{ id: { in: list } }, { slug: { in: list } }] }, select: { id: true } }).catch(() => [] as { id: string }[]);
+    for (const r of rows) this.cloverTesters.add(r.id);
+  }
+  isCloverTester(tenantId: string): boolean { return this.cloverTesters.has(tenantId); }
+
+  async status(user?: AuthenticatedUser) {
+    await this.loadCloverTesters();
     // Clover (deposits) and Stripe (terminal events) sign webhooks to a per-salon
     // address; the settings screen shows it so the owner can paste it there.
     const tid = user?.tenantId ?? null;
     const webhookBase = tid ? `${oauthBase()}/api/payments-hub/webhook/{provider}/${tid}` : null;
-    return { enabled: this.enabled(), encryption: encConfigured(), providers: this.registry.supported(), webhookBase };
+    // rt233: while Lumio's Clover app is still on Clover's sandbox, only the
+    // test salons listed in CLOVER_TEST_TENANTS (ids, comma-separated) see it.
+    const providers = this.registry.supported().filter((p) => p !== 'clover_device' || process.env.CLOVER_ENV !== 'sandbox' || (!!tid && this.cloverTesters.has(tid)));
+    return { enabled: this.enabled(), encryption: encConfigured(), providers, webhookBase };
   }
 
   async listConnections(user: AuthenticatedUser) {

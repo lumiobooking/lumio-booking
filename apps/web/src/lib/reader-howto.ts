@@ -7,6 +7,16 @@ export function readerHowTo(provider: string, vi: boolean): { needsCode: boolean
   const add = vi ? 'Thêm máy' : 'Add reader';
   const codeLabel = vi ? 'Mã trên màn hình máy' : 'Code shown on the reader';
   switch (provider) {
+    case 'clover_device':
+      return { needsCode: true, codeLabel: vi ? 'Số serial máy Clover' : 'Clover device serial number', codePlaceholder: vi ? 'vd. C046UQ51057292' : 'e.g. C046UQ51057292', button: add, steps: vi ? [
+        'Trên máy Clover (Flex / Mini / Compact): mở More Tools → tìm "Cloud Pay Display" → Connect (cài miễn phí). Mở Cloud Pay Display và bấm Start — để app chạy thì máy mới nhận lệnh từ Lumio.',
+        'Số serial: trên máy vào Settings → About device, hoặc Clover Dashboard → Account & Setup → Devices. Gõ số đó vào ô bên dưới rồi bấm Thêm máy.',
+        'Bấm "Kiểm tra máy": máy online là xong — từ giờ chọn máy này ở bước Thanh toán thẻ, số tiền (kèm tip) tự hiện trên máy Clover.',
+      ] : [
+        'On the Clover device (Flex / Mini / Compact): More Tools → search "Cloud Pay Display" → Connect (free). Open Cloud Pay Display and tap Start — it must be running for the device to take payments from Lumio.',
+        'Serial number: on the device Settings → About device, or Clover Dashboard → Account & Setup → Devices. Type it below and press Add reader.',
+        'Press "Test terminal": once online, pick this device at card checkout and the amount (with tip) appears on the Clover device.',
+      ] };
     case 'helcim':
       return { needsCode: true, codeLabel, codePlaceholder: vi ? 'vd. A1B2' : 'e.g. A1B2', button: add, steps: vi ? [
         'Lần đầu: nhờ Helcim bật quyền API / chế độ Paired cho tài khoản (gọi hoặc gửi ticket cho Helcim).',

@@ -16,6 +16,9 @@ import { SquareTerminalConnector } from './connectors/square-terminal.connector'
 import { SumUpConnector } from './connectors/sumup.connector';
 import { PaypalConnector } from './connectors/paypal.connector';
 import { CloverConnector } from './connectors/clover.connector';
+import { CloverDeviceConnector } from './connectors/clover-device.connector';
+import { CloverOAuthService } from './clover-oauth.service';
+import { CloverOAuthController } from './clover-oauth.controller';
 import { DejavooSpinCloudAdapter } from './adapters/dejavoo-spin-cloud.adapter';
 import { UsbTerminalAdapter, BluetoothTerminalAdapter } from './adapters/placeholder.adapters';
 import { StripeTerminalAdapter, SquareTerminalAdapter } from './adapters/existing-cloud.adapters';
@@ -25,7 +28,7 @@ import { StripeTerminalAdapter, SquareTerminalAdapter } from './adapters/existin
  * PAYMENTS_HUB_ENABLED flag is on, so it cannot affect existing flows.
  */
 @Module({
-  controllers: [PaymentsHubController, PaymentsHubWebhookController, AgentAdminController, AgentRuntimeController, TerminalRequestsController, TerminalRequestsAdminController],
+  controllers: [PaymentsHubController, PaymentsHubWebhookController, AgentAdminController, AgentRuntimeController, TerminalRequestsController, TerminalRequestsAdminController, CloverOAuthController],
   providers: [
     PaymentOrchestrator,
     TerminalRequestsService,
@@ -41,6 +44,8 @@ import { StripeTerminalAdapter, SquareTerminalAdapter } from './adapters/existin
     SumUpConnector,
     PaypalConnector,
     CloverConnector,
+    CloverDeviceConnector,
+    CloverOAuthService,
     // Terminal adapters — Dejavoo is the only one enabled in phase 1.
     DejavooSpinCloudAdapter,
     StripeTerminalAdapter,

@@ -9,6 +9,8 @@ export type ProviderId =
   // Online-only (deposits / pay online): no card terminal driven from Lumio.
   | 'paypal'
   | 'clover'
+  // rt233: the salon's Clover device at the counter (OAuth app, REST Pay Display).
+  | 'clover_device'
   // Placeholder ids for the USB / Bluetooth adapters (phases 2 and 3).
   | 'usb'
   | 'bluetooth';

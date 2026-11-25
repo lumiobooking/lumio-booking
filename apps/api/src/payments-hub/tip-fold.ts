@@ -8,7 +8,8 @@
  * $10 less than the sale Lumio recorded. Every other provider now gets one
  * total. Pure.
  */
-export const ITEMIZES_TIP: ReadonlySet<string> = new Set(['dejavoo']);
+// rt233: Clover records the tip as a tip (final sale with tipAmount).
+export const ITEMIZES_TIP: ReadonlySet<string> = new Set(['dejavoo', 'clover_device']);
 
 export function chargeAmounts(provider: string, amountCents: number, tipCents?: number | null): { amountCents: number; tipCents?: number } {
   const tip = typeof tipCents === 'number' && tipCents > 0 ? Math.round(tipCents) : 0;

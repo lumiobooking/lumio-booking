@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { packPair } from './connectors/pair-secret';
+import { packDeviceSecret } from './connectors/clover-device';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptSecret, encryptSecret, maskHint } from './crypto.util';
 import { ConnectResult, ProviderId } from './connectors/connector.types';
@@ -22,6 +23,10 @@ export interface Credential {
   amountIncludesTip?: boolean;
   /** PayPal: Client ID. Clover: Merchant ID. Packed into `secret` on the way out (pair-secret.ts). */
   publicId?: string;
+  /** rt233 Clover device (OAuth): refresh token and expirations (ms). */
+  refreshToken?: string;
+  accessExp?: number;
+  refreshExp?: number;
 }
 
 /**
@@ -32,6 +37,10 @@ export interface Credential {
 @Injectable()
 export class CredentialStore {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** rt233: providers whose stored token must be refreshed before use (Clover OAuth). */
+  private readonly refreshers = new Map<string, (tenantId: string, cred: Credential) => Promise<Credential>>();
+  setRefresher(provider: ProviderId, fn: (tenantId: string, cred: Credential) => Promise<Credential>): void { this.refreshers.set(provider, fn); }
 
   async save(tenantId: string, provider: ProviderId, cred: Credential, result: ConnectResult, label?: string) {
     const data = {
@@ -72,6 +81,11 @@ export class CredentialStore {
     // PayPal and Clover: the id + the secret + sandbox/live travel as one string.
     if (provider === 'paypal' || provider === 'clover') {
       cred.secret = packPair({ id: cred.publicId, secret: cred.secret, env: cred.environment });
+    }
+    // rt233 Clover device: a fresh OAuth token + the merchant + sandbox/live.
+    if (provider === 'clover_device') {
+      const fresh = this.refreshers.has(provider) ? await this.refreshers.get(provider)!(tenantId, cred) : cred;
+      return { ...fresh, secret: packDeviceSecret({ mid: fresh.publicId, token: fresh.secret, env: fresh.environment }) };
     }
     return cred;
   }

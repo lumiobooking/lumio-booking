@@ -8,6 +8,7 @@ import { SquareTerminalConnector } from './connectors/square-terminal.connector'
 import { SumUpConnector } from './connectors/sumup.connector';
 import { PaypalConnector } from './connectors/paypal.connector';
 import { CloverConnector } from './connectors/clover.connector';
+import { CloverDeviceConnector } from './connectors/clover-device.connector';
 import { ProviderId } from './connectors/connector.types';
 import { DejavooSpinCloudAdapter } from './adapters/dejavoo-spin-cloud.adapter';
 import { TerminalAdapter } from './adapters/terminal-adapter.interface';
@@ -40,9 +41,12 @@ export class ProviderRegistry {
     squareAdapter: SquareTerminalAdapter,
     paypal: PaypalConnector,
     clover: CloverConnector,
+    cloverDevice: CloverDeviceConnector,
   ) {
     // Order matters: the first entry is the default shown in Payment settings.
     for (const c of [stripe, dejavoo, helcim, square, sumup, adyen, paypal, clover, mock]) this.map.set(c.id, c);
+    // rt233: only once Clover has approved Lumio's app and its keys are set.
+    if (process.env.CLOVER_APP_ID && process.env.CLOVER_APP_SECRET) this.map.set(cloverDevice.id, cloverDevice);
     for (const a of [dejavoo, stripeAdapter, squareAdapter, usbAdapter, btAdapter]) this.adapters.set(a.id, a);
   }
 

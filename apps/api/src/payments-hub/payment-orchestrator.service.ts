@@ -457,7 +457,7 @@ export class PaymentOrchestrator {
         if (res.status !== record.status) {
           const u = await this.prisma.paymentIntentRecord.update({
             where: { id: record.id },
-            data: { status: res.status, succeededAt: res.status === 'SUCCEEDED' ? new Date() : record.succeededAt },
+            data: { status: res.status, lastError: res.error ?? null, providerRaw: (res.raw as any) ?? undefined, succeededAt: res.status === 'SUCCEEDED' ? new Date() : record.succeededAt },
           });
           return this.intentView(u);
         }

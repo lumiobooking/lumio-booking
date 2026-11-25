@@ -8,6 +8,7 @@ import { StripeTerminalConnector } from './connectors/stripe-terminal.connector'
 import { SquareTerminalConnector } from './connectors/square-terminal.connector';
 import { PaypalConnector } from './connectors/paypal.connector';
 import { CloverConnector } from './connectors/clover.connector';
+import { CloverDeviceConnector } from './connectors/clover-device.connector';
 import { SumUpConnector } from './connectors/sumup.connector';
 import { HelcimConnector } from './connectors/helcim.connector';
 import { AdyenConnector } from './connectors/adyen.connector';
@@ -79,7 +80,7 @@ describe('PaymentOrchestrator (Payment Hub)', () => {
     const registry = new ProviderRegistry(
       new HelcimConnector(), stripe, square, new SumUpConnector(), new AdyenConnector(), new DejavooSpinCloudAdapter(), mock,
       new UsbTerminalAdapter(), new BluetoothTerminalAdapter(), new StripeTerminalAdapter(stripe), new SquareTerminalAdapter(square),
-      new PaypalConnector(), new CloverConnector(),
+      new PaypalConnector(), new CloverConnector(), new CloverDeviceConnector(),
     );
     hub = new PaymentOrchestrator(prisma, registry, new CredentialStore(prisma));
   });

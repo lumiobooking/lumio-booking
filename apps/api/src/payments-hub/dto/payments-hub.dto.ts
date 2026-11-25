@@ -1,6 +1,6 @@
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
 
-export const PROVIDERS = ['stripe', 'dejavoo', 'helcim', 'mock', 'square', 'sumup', 'adyen', 'paypal', 'clover'] as const;
+export const PROVIDERS = ['stripe', 'dejavoo', 'helcim', 'mock', 'square', 'sumup', 'adyen', 'paypal', 'clover', 'clover_device'] as const;
 
 export const SPIN_ENVIRONMENTS = ['sandbox', 'production'] as const;
 

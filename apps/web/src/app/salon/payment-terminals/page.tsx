@@ -55,10 +55,19 @@ const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help:
   clover: {
     name: 'Clover (cọc online)',
     help: {
-      en: 'Clover Dashboard → Account & Setup → Ecommerce API Tokens → create a Hosted Checkout (private) token; Merchant ID is under Account & Setup → Merchants. Then Settings → Ecommerce → Hosted Checkout → Webhook: paste the webhook address below, generate the signing secret and paste it here (required — it is how Clover proves a deposit was paid). The Clover device at the counter is not driven from Lumio yet: ring card sales on it and pick CARD in Lumio.',
-      vi: 'Clover Dashboard → Account & Setup → Ecommerce API Tokens → tạo token Hosted Checkout (private); Merchant ID ở Account & Setup → Merchants. Sau đó Settings → Ecommerce → Hosted Checkout → Webhook: dán địa chỉ webhook bên dưới, tạo signing secret rồi dán vào đây (bắt buộc — Clover dùng nó để xác nhận khách đã trả cọc). Máy Clover tại quầy chưa điều khiển từ Lumio: bán trên máy rồi chọn CARD trong Lumio.',
+      en: 'Clover Dashboard → Account & Setup → Ecommerce API Tokens → create a Hosted Checkout (private) token; Merchant ID is under Account & Setup → Merchants. Then Settings → Ecommerce → Hosted Checkout → Webhook: paste the webhook address below, generate the signing secret and paste it here (required — it is how Clover proves a deposit was paid). For the Clover device at the counter, also connect "Clover (máy quẹt tại quầy)" when it is in the list; until then ring card sales on the device and pick CARD in Lumio.',
+      vi: 'Clover Dashboard → Account & Setup → Ecommerce API Tokens → tạo token Hosted Checkout (private); Merchant ID ở Account & Setup → Merchants. Sau đó Settings → Ecommerce → Hosted Checkout → Webhook: dán địa chỉ webhook bên dưới, tạo signing secret rồi dán vào đây (bắt buộc — Clover dùng nó để xác nhận khách đã trả cọc). Máy Clover tại quầy: kết nối thêm "Clover (máy quẹt tại quầy)" khi mục này có trong danh sách; khi chưa có thì bán trên máy rồi chọn CARD trong Lumio.',
     },
     fields: ['publicId', 'secret', 'currency', 'environment', 'webhookSecret'],
+  },
+  // rt233: the Clover device at the counter — signed in with "Connect with Clover" (OAuth), no key to paste.
+  clover_device: {
+    name: 'Clover (máy quẹt tại quầy)',
+    help: {
+      en: 'Press "Connect with Clover", sign in with the salon\'s Clover account and approve Lumio. Then install and start Cloud Pay Display on each Clover device and add it here by its serial number. The till sends the amount (with tip) to the device; the result comes back to the ticket. Online deposits stay on "Clover (cọc online)".',
+      vi: 'Bấm "Kết nối với Clover", đăng nhập tài khoản Clover của tiệm và đồng ý cho Lumio. Sau đó cài và mở Cloud Pay Display trên từng máy Clover rồi thêm máy ở đây bằng số serial. Quầy gửi số tiền (kèm tip) sang máy; kết quả tự về hoá đơn. Thu cọc online vẫn dùng "Clover (cọc online)".',
+    },
+    fields: [],
   },
   mock: {
     name: 'Mock (sandbox test)',
@@ -184,6 +193,23 @@ function Inner() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Connect failed'); }
     finally { setBusy(false); }
   }
+  // rt233: Clover's own sign-in page; it sends the owner back here with ?clover=connected.
+  async function doCloverConnect() {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      const r = await apiFetch<{ url: string }>('/payments-hub/clover/connect', { token });
+      if (r?.url) window.location.href = r.url;
+    } catch (e) { setError(e instanceof Error ? e.message : 'Connect failed'); setBusy(false); }
+  }
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const q = new URLSearchParams(window.location.search);
+    const c = q.get('clover');
+    if (!c) return;
+    if (c === 'connected') setMsg(vi ? 'Đã kết nối Clover ✓ — giờ thêm từng máy bằng số serial (mở Cloud Pay Display trên máy trước).' : 'Clover connected ✓ — now add each device by its serial number (start Cloud Pay Display on it first).');
+    else setError(vi ? `Chưa kết nối được Clover (${q.get('msg') ?? 'lỗi'}). Bấm "Kết nối với Clover" để thử lại.` : `Clover was not connected (${q.get('msg') ?? 'error'}). Press "Connect with Clover" to try again.`);
+    window.history.replaceState(null, '', window.location.pathname);
+  }, [vi]);
   async function doTest(p: string) {
     setError(null); setMsg(null);
     try { const r = await apiFetch<{ ok: boolean; error?: string }>(`/payments-hub/test/${p}`, { method: 'POST', token }); setMsg(r.ok ? (vi ? 'Kết nối OK ✓' : 'Connection OK ✓') : `✗ ${r.error ?? 'error'}`); await load(); }
@@ -301,7 +327,17 @@ function Inner() {
             {connType !== 'cloud' && (
               <p style={{ color: 'var(--ca5b4fc)', fontSize: 12, background: 'var(--c1e293b)', padding: 10, borderRadius: 8, margin: '8px 0 0' }}>{L.agentNote}</p>
             )}
-            {(
+            {provider === 'clover_device' && (
+              <>
+                <p style={{ fontSize: 12, color: 'var(--ca5b4fc)', background: 'var(--c1e293b)', padding: 10, borderRadius: 8, lineHeight: 1.5 }}>
+                  <strong>{L.howTo}:</strong> {vi ? meta.help.vi : meta.help.en}
+                </p>
+                <button onClick={doCloverConnect} disabled={busy || !status?.enabled} style={{ ...ui.primaryBtn, marginTop: 6, opacity: busy || !status?.enabled ? 0.6 : 1 }}>
+                  {busy ? '…' : vi ? 'Kết nối với Clover' : 'Connect with Clover'}
+                </button>
+              </>
+            )}
+            {provider !== 'clover_device' && (
               <>
                 <p style={{ fontSize: 12, color: 'var(--ca5b4fc)', background: 'var(--c1e293b)', padding: 10, borderRadius: 8, lineHeight: 1.5 }}>
                   <strong>{L.howTo}:</strong> {vi ? meta.help.vi : meta.help.en}

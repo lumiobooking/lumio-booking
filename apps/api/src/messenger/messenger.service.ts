@@ -6215,6 +6215,24 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         description: "The AUTHORITATIVE price list for the booking software itself — Lumio's own plans, read live from the platform. Call this BEFORE answering any question about the price of the booking system or of a feature inside it (the AI on Messenger, online booking, POS, reminders, payroll). Returns each plan's monthly price and what it includes, so you can quote the CHEAPEST plan that actually contains what they asked about. These prices outrank anything in the FACTS: the FACTS describe the monthly marketing SERVICE, this describes the software PRODUCT.",
         input_schema: { type: 'object', properties: {}, required: [] },
       },
+      // rt232: the agency page shows its work too — sample designs, websites,
+      // posts, client results — from its own "Ảnh gửi khách" library (same
+      // rules as a salon's: labels, approval, no repeats, consent), else its
+      // own recent posts. Before this, "cho xem mẫu" got words only.
+      {
+        name: 'send_photos',
+        description: "Send real pictures of OUR work, in the chat, BEFORE your text reply: sample designs, websites, social posts, Google Maps profiles, ads, or client results ('service', serviceName = what they want to see in their words, e.g. 'website', 'bài đăng', 'thiết kế menu', 'Google Maps'); our newest posts ('posts'); or our price sheet image ('price_list'). Use it when they ask to SEE examples, samples, a portfolio or results. Up to 3 pictures. Never describe pictures you have not sent; if the tool says none exist, say the team will send examples and keep going (capture the lead).",
+        input_schema: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['service', 'posts', 'price_list'] },
+            serviceName: { type: 'string', description: "What they want to see, in their words: 'website', 'bài đăng', 'logo', 'Google Maps', 'quảng cáo'." },
+            style: { type: 'string', description: 'Their industry or look if they said it (e.g. "nail", "nhà hàng", "tông hồng").' },
+            query: { type: 'string', description: "For 'posts': a word to look for in our recent posts. Empty = the latest." },
+          },
+          required: ['kind'],
+        },
+      },
       {
         name: 'send_price_cards',
         description: 'Send the packages as swipeable visual cards (native Messenger carousel) — ALWAYS use this instead of typing a list when the customer asks about pricing or packages in general. After SUCCESS, follow with ONE short line asking which fits.',
@@ -6301,7 +6319,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
      * the API's prefix, so the one breakpoint below covers them as well.
      */
     const brainStatic = brainOut ? `\n${[brainOut.blocks.persona, brainOut.blocks.booking, brainOut.blocks.handoffNote].filter(Boolean).join('\n')}` : '';
-    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + brainStatic + personaRule + (tradeRule ? `\n${tradeRule}` : '') + readingRule + voiceRule + formatRule + channelRule + closingRule + `\n${CORRECTION_RULE}` + (owner?.block ? `\n${owner.block}` : '');
+    // rt232: showing beats telling — samples of our work when they ask to see them.
+    const salesPhotoRule = ctx.mode === 'sales'
+      ? '\nSAMPLES: when they ask to see examples, samples, a portfolio, "mẫu", "hình", or results, call send_photos first (kind service, serviceName = what they want to see), then ONE short line and keep qualifying (shop name, area, phone). Do not send pictures they did not ask for, and never more than once for the same thing.'
+      : '';
+    const staticSystem = (ctx.mode === 'sales' ? salesSystem + salesPhotoRule : bookingSystem) + brainStatic + personaRule + (tradeRule ? `\n${tradeRule}` : '') + readingRule + voiceRule + formatRule + channelRule + closingRule + `\n${CORRECTION_RULE}` + (owner?.block ? `\n${owner.block}` : '');
     const clockLine = ctx.mode === 'sales'
       ? `\nThe current time is ${nowLocal} (timezone ${tz}).`
       : `\nThe salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.`;
@@ -6361,7 +6383,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         },
       }] : []),
     ];
-    const tools = [...(ctx.mode === 'sales' ? (quotes ? salesTools : salesTools.filter((t) => !PRICE_TOOLS.has((t as { name: string }).name))) : bookingTools), ...styleTools];
+    // rt232: a page that never names a price never sends its price sheet as a picture either.
+    const noPriceSheet = (t: unknown) => ((t as { name: string }).name === 'send_photos'
+      ? { ...(t as object), input_schema: { type: 'object', properties: { ...((t as { input_schema: { properties: Record<string, unknown> } }).input_schema.properties), kind: { type: 'string', enum: ['service', 'posts'] } }, required: ['kind'] } }
+      : t);
+    const tools = [...(ctx.mode === 'sales' ? (quotes ? salesTools : salesTools.filter((t) => !PRICE_TOOLS.has((t as { name: string }).name)).map(noPriceSheet)) : bookingTools), ...styleTools];
 
     // Meta's own notices ("X replied to an ad." / "X đã trả lời một quảng cáo.")
     // sit in the transcript as if the Page had said them. They are not our
@@ -8086,6 +8112,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (name === 'send_photos') {
         if (!ctx?.pageToken || !ctx.senderId) return 'Could not send pictures in this chat.';
         const kind = String(input.kind || '');
+        // rt232: on a sales page only our work and our posts — a price sheet only where prices may be named.
+        if (ctx.mode === 'sales' && kind === 'storefront') return 'NONE — not available here. Answer in words.';
+        if (ctx.mode === 'sales' && kind === 'price_list' && !(await this.salesMayQuote(tenantId))) return 'NONE — prices are given by the team after they look at the shop. Do not state a price; capture the lead.';
         // The salon's picture library first (by labels); a salon that has not
         // started one keeps the old sources below, unchanged.
         const lib = await this.libraryPhotos(tenantId, ctx, kind, input, dry).catch((e) => {
@@ -8176,6 +8205,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * already sent in this conversation, an expired promotion, a price list
    * older than the prices, or a flagged picture without consent.
    */
+  /** rt232: may this sales page name prices (owner chose "from the facts")? One salon's own row. */
+  private async salesMayQuote(tenantId: string): Promise<boolean> {
+    const c = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as unknown as { quotePolicy?: string } | null;
+    return c?.quotePolicy === 'facts';
+  }
+
   private async libraryPhotos(
     tenantId: string,
     ctx: { pageToken?: string; senderId?: string; channel?: string; threadId?: string; photos?: { urls: string[]; label: string }[] },

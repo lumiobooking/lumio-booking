@@ -106,6 +106,10 @@ export function PhotoLibrary({ token, vi, canEdit }: { token: string | null; vi:
         {L(vi, 'AI chỉ gửi ảnh trong thư viện này, chọn theo loại, dịch vụ và nhãn (kiểu, màu, độ dài) — không theo chữ trong bài đăng. Ảnh có mặt người, số điện thoại hay tên tiệm khác bị khoá tới khi anh/chị xác nhận.',
           'The AI only sends pictures from this library, chosen by kind, service and labels (style, colour, length) — never by the words in a post. Pictures with a face, a phone number or another shop’s name stay locked until you confirm.')}
       </p>
+      <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>
+        {L(vi, 'Trang bán dịch vụ (như agency): thêm ảnh loại “Mẫu” cho sản phẩm của mình — mẫu website, bài đăng, thiết kế, hồ sơ Google Maps — và ghi nhãn đúng thứ khách sẽ hỏi (website, bài đăng, logo, nail, nhà hàng…). Khách hỏi “cho xem mẫu” là AI gửi tối đa 3 ảnh khớp rồi xin tên tiệm và số điện thoại.',
+          'Pages that sell a service (like an agency): add “Sample” pictures of your work — websites, posts, designs, Google Maps profiles — labelled with what customers will ask for (website, post, logo, nail, restaurant…). When someone asks to see examples, the AI sends up to 3 matching pictures, then asks for their shop and phone.')}
+      </p>
       <SubTabs label={L(vi, 'Thư viện ảnh', 'Photo library')} value={page} onChange={setPage}
         tabs={[{ id: 'library', label: L(vi, 'Thư viện', 'Library'), count: data.items.length }, { id: 'rules', label: L(vi, 'Cài đặt gửi ảnh', 'Sending rules') }]} />
 

@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { orderTax } from './order-tax';
 import { cleanDiscount } from '../common/discount';
 import {
   AppointmentStatus,
@@ -421,10 +422,8 @@ export class PosService {
 
     const subtotal = lines.reduce((s, l) => s + l.lineTotalCents, 0);
     const manualDiscount = Math.min(dto.discountCents ?? 0, subtotal);
-    const productBase = lines
-      .filter((l) => l.kind === OrderItemKind.PRODUCT)
-      .reduce((s, l) => s + l.lineTotalCents, 0);
-    const taxCents = Math.round((productBase * taxRate) / 100);
+    // rt238: retail at the retail rate; services at the salon's service rate (0 = not taxed).
+    const { taxCents } = orderTax(lines, taxRate, (pos as { serviceTaxRatePercent?: number }).serviceTaxRatePercent ?? 0);
     const tipCents = lines.reduce((s, l) => s + l.tipCents, 0);
 
     // Loyalty redemption: validate + value the points as an extra discount.

@@ -1,4 +1,5 @@
 import { currencyCode, moneyLookOnChange } from '../common/money';
+import { cleanRate } from '../pos/order-tax';
 import { dialCodeFor } from '../common/phone';
 import { PARTY_DEPOSIT_KEY, PartyDeposit, cleanPartyDeposit } from '../payments/party-deposit';
 import { CHAT_FOLLOWUP_KEY, followUpSettingsFrom, type FollowUpSettings } from '../messenger/followup';
@@ -462,6 +463,7 @@ export class SettingsService implements OnApplicationBootstrap {
     user: AuthenticatedUser,
     dto: {
       taxRatePercent?: number;
+      serviceTaxRatePercent?: number;
       receiptFooter?: string;
       primaryCardGateway?: string;
       cardSurchargePercent?: number;
@@ -491,6 +493,8 @@ export class SettingsService implements OnApplicationBootstrap {
         : cur.paymentDetails,
       taxRatePercent:
         typeof dto.taxRatePercent === 'number' && dto.taxRatePercent >= 0 ? dto.taxRatePercent : cur.taxRatePercent,
+      // rt238: services VAT, 0–30 %. Not sent = keep.
+      serviceTaxRatePercent: typeof dto.serviceTaxRatePercent === 'number' ? cleanRate(dto.serviceTaxRatePercent) : (cur.serviceTaxRatePercent ?? 0),
       receiptFooter: typeof dto.receiptFooter === 'string' ? dto.receiptFooter : cur.receiptFooter,
       primaryCardGateway:
         typeof dto.primaryCardGateway === 'string' ? dto.primaryCardGateway : cur.primaryCardGateway,

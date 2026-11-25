@@ -74,7 +74,7 @@ interface SettingsData {
     /** Lumio's shared VN Zalo/SMS channel is live on the server — nothing to set up. */
     sharedVn?: { active: boolean; zns: boolean; sms: boolean } | null;
   };
-  pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; requireShift?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>; bankAccount?: { bin: string; accountNo: string; accountName: string } | null; printPayQr?: boolean };
+  pos?: { taxRatePercent: number; serviceTaxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; requireShift?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>; bankAccount?: { bin: string; accountNo: string; accountName: string } | null; printPayQr?: boolean };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
   deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number; refundHours?: number; holdMinutes?: number; provider?: string | null; allowPayInFull?: boolean; fullLateKeep?: 'deposit' | 'all' };
@@ -797,6 +797,17 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       </Panel>
       )}
 
+      {/* rt238: each salon's own tax — retail, and services when the salon must charge VAT on them. */}
+      <Panel
+        title={lang === 'vi' ? 'Thuế / VAT' : 'Tax / VAT'}
+        badge={(data.pos?.serviceTaxRatePercent ?? 0) > 0 || (data.pos?.taxRatePercent ?? 0) > 0
+          ? { text: [(data.pos?.serviceTaxRatePercent ?? 0) > 0 ? `${lang === 'vi' ? 'DV' : 'Svc'} ${data.pos?.serviceTaxRatePercent}%` : '', (data.pos?.taxRatePercent ?? 0) > 0 ? `${lang === 'vi' ? 'Hàng' : 'Retail'} ${data.pos?.taxRatePercent}%` : ''].filter(Boolean).join(' · '), color: 'var(--ink-good)' }
+          : { text: lang === 'vi' ? 'Không thu' : 'None', color: 'var(--c64748b)' }}
+        hint={ind(lang === 'vi' ? 'Thu thuế trên dịch vụ và/hoặc hàng bán lẻ' : 'Charge tax on services and/or retail')}
+      >
+        <TaxConfig data={data} onSave={onSave} />
+      </Panel>
+
       {/* A US "cash discount" model; in Vietnam it only adds noise unless a shop already uses it. */}
       {(!isVN || !!data.pos?.cardSurchargeEnabled) && (
       <Panel
@@ -906,6 +917,46 @@ function ShiftConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
           : 'Shifts are always available from the POS (⋯ menu → Cashier shift): open with a counted float, log cash in/out, count the drawer at close, print the hand-over sheet. With this on, the cashier must open a shift before charging; sales saved while offline still sync normally. Past shifts are under "Shift history".'}
       </p>
       <button style={ui.primaryBtn} onClick={() => onSave('pos', { requireShift: on }, lang === 'vi' ? 'Ca thu ngân' : 'Cashier shifts')}>{lang === 'vi' ? 'Lưu' : 'Save'}</button>
+    </div>
+  );
+}
+
+function TaxConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const { lang } = useLang();
+  const vi = lang === 'vi';
+  const [svcOn, setSvcOn] = useState((data.pos?.serviceTaxRatePercent ?? 0) > 0);
+  const [svc, setSvc] = useState(String((data.pos?.serviceTaxRatePercent ?? 0) > 0 ? data.pos?.serviceTaxRatePercent : 8));
+  const [retail, setRetail] = useState(String(data.pos?.taxRatePercent ?? 0));
+  const clamp = (v: string) => Math.min(30, Math.max(0, parseFloat(v.replace(',', '.')) || 0));
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <label style={{ position: 'relative', display: 'inline-block', width: 42, height: 24, flexShrink: 0 }}>
+          <input type="checkbox" checked={svcOn} onChange={(e) => setSvcOn(e.target.checked)} aria-label={vi ? 'Thu VAT trên dịch vụ' : 'Charge tax on services'} style={{ opacity: 0, width: 0, height: 0 }} />
+          <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: svcOn ? '#6366f1' : 'var(--c334155)', borderRadius: 24, transition: '.2s' }} />
+          <span style={{ position: 'absolute', height: 18, width: 18, left: svcOn ? 21 : 3, top: 3, background: '#fff', borderRadius: '50%', transition: '.2s' }} />
+        </label>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{ind(vi ? 'Thu VAT / thuế trên dịch vụ' : 'Charge VAT / tax on services')}</div>
+      </div>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
+        {vi
+          ? 'Mặc định TẮT (nhiều nơi dịch vụ nail không chịu thuế). Bật nếu tiệm phải thu VAT của khách trên dịch vụ: giá dịch vụ giữ nguyên, khi tính tiền hệ thống cộng thêm % này và in rõ dòng "Thuế VAT" trên hoá đơn. Không tính trên tiền tip.'
+          : 'OFF by default (nail services are tax-exempt in many places). Turn on if the salon must charge tax on services: prices stay as listed, and at checkout the % is added and printed as its own line. Never on the tip.'}
+      </p>
+      {svcOn && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{vi ? 'Thuế dịch vụ' : 'Service tax'}</span>
+          <input type="number" min={0} max={30} step="0.01" inputMode="decimal" value={svc} onChange={(e) => setSvc(e.target.value)} style={{ ...ui.input, width: 110 }} aria-label={vi ? 'Thuế dịch vụ %' : 'Service tax %'} />
+          <span style={{ color: 'var(--c94a3b8)' }}>%</span>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{vi ? 'Thuế hàng bán lẻ' : 'Retail tax'}</span>
+        <input type="number" min={0} max={30} step="0.01" inputMode="decimal" value={retail} onChange={(e) => setRetail(e.target.value)} style={{ ...ui.input, width: 110 }} aria-label={vi ? 'Thuế hàng bán %' : 'Retail tax %'} />
+        <span style={{ color: 'var(--c94a3b8)' }}>%</span>
+        <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{vi ? '0 = không thu' : '0 = none'}</span>
+      </div>
+      <button style={ui.primaryBtn} onClick={() => onSave('pos', { serviceTaxRatePercent: svcOn ? clamp(svc) : 0, taxRatePercent: clamp(retail) }, vi ? 'Thuế / VAT' : 'Tax / VAT')}>{vi ? 'Lưu' : 'Save'}</button>
     </div>
   );
 }

@@ -366,6 +366,8 @@ export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
 // bottom of every receipt.
 export interface PosSettings {
   taxRatePercent: number; // e.g. 8.25 for 8.25% sales tax on retail
+  /** rt238: VAT / sales tax on services. 0 or missing = services not taxed (the default). */
+  serviceTaxRatePercent?: number;
   receiptFooter: string;
   primaryCardGateway: string; // which enabled gateway the POS "Card" button uses ('' = none)
   // Dual pricing: menu prices are the CASH price; when the customer pays by

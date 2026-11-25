@@ -245,6 +245,7 @@ export class SettingsController {
     @Body()
     dto: {
       taxRatePercent?: number;
+      serviceTaxRatePercent?: number;
       receiptFooter?: string;
       primaryCardGateway?: string;
       cardSurchargePercent?: number;

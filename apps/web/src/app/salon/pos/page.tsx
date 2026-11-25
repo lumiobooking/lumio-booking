@@ -39,7 +39,7 @@ interface Staff { id: string; firstName: string; lastName: string | null; isActi
 interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; email?: string | null; loyaltyPoints?: number }
 interface CatalogCache {
   services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
-  taxRate: number; cardSurchargePct: number; cardSurchargeOn: boolean; transferInfo: string; transferQr: string; currency: string;
+  taxRate: number; serviceTaxRate?: number; cardSurchargePct: number; cardSurchargeOn: boolean; transferInfo: string; transferQr: string; currency: string;
   payDetails?: Record<string, { instructions?: string; qrUrl?: string }>;
   /** The one bank account (VietQR): the till draws a QR with the exact amount from it. */
   bankAccount?: { bin: string; accountNo: string; accountName: string } | null;
@@ -257,6 +257,7 @@ function Register() {
   const [addons, setAddons] = useState<Addon[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [taxRate, setTaxRate] = useState(0);
+  const [serviceTaxRate, setServiceTaxRate] = useState(0);
   const [cardSurchargePct, setCardSurchargePct] = useState(0);
   const [cardSurchargeOn, setCardSurchargeOn] = useState(false);
   // Whether this salon asks for a tip at all. True everywhere it always was;
@@ -444,7 +445,7 @@ function Register() {
 
   const applyCatalog = (c: CatalogCache) => {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
-    setTaxRate(c.taxRate); setCardSurchargePct(c.cardSurchargePct ?? 0); setCardSurchargeOn(!!c.cardSurchargeOn); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setPayDetails(c.payDetails ?? {}); setBankAccount(c.bankAccount ?? null); setCurrency(c.currency);
+    setTaxRate(c.taxRate); setServiceTaxRate(c.serviceTaxRate ?? 0); setCardSurchargePct(c.cardSurchargePct ?? 0); setCardSurchargeOn(!!c.cardSurchargeOn); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setPayDetails(c.payDetails ?? {}); setBankAccount(c.bankAccount ?? null); setCurrency(c.currency);
     setLoyalty(c.loyalty);
     setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1'); setSalonWelcome(c.salonWelcome ?? '');
     setReceiptProfile(c.receipt ?? null);
@@ -465,7 +466,7 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>; bankAccount?: { bin: string; accountNo: string; accountName: string } | null }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; serviceTaxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>; bankAccount?: { bin: string; accountNo: string; accountName: string } | null }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
       ]);
       // The bill's header + the owner's design. Any cashier may read it; if it
       // cannot be fetched the till still prints (salon name, default layout).
@@ -477,6 +478,7 @@ function Register() {
         // The technicians a service line can be credited to — never the front desk.
         staff: st.filter(isBookable),
         taxRate: settings.pos?.taxRatePercent ?? 0,
+        serviceTaxRate: settings.pos?.serviceTaxRatePercent ?? 0,
         cardSurchargePct: settings.pos?.cardSurchargePercent ?? 0,
         cardSurchargeOn: settings.pos?.cardSurchargeEnabled ?? false,
         transferInfo: settings.pos?.transferInstructions ?? '',
@@ -926,7 +928,9 @@ function Register() {
       ? (promo.kind === 'percent' ? Math.round((subtotal * Math.min(90, promo.value)) / 100) : promo.value)
       : 0;
     const discount = Math.min(typedDiscount + promoCents, subtotal);
-    const tax = Math.round((productBase * taxRate) / 100);
+    // rt238: same sums as the server (api pos/order-tax): retail rate on products, the salon's service rate on services.
+    const serviceBase = cart.filter((l) => l.kind === 'SERVICE').reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
+    const tax = Math.round((productBase * taxRate) / 100) + Math.round((serviceBase * serviceTaxRate) / 100);
     const tip = cart.reduce((s, l) => s + l.tipCents, 0);
     // Loyalty redemption (only when enabled, a customer is attached, and >= min).
     // Redeeming points needs a live balance check, so it's only available online.
@@ -955,7 +959,7 @@ function Register() {
     const change = split ? Math.max(0, splitCents - due) : (payMethod === 'CASH' ? Math.max(0, tenderedCents - due) : 0);
     const splitRemaining = due - splitCents; // >0 = still owed, <0 = change
     return { subtotal, itemSavings, discount, typedDiscount, promoCents, tax, tip, total, savings, giftApplied, depositApplied, due, tenderedCents, change, redeemDiscount, redeemPts, splitCents, splitRemaining, cardSurcharge };
-  }, [cart, orderDiscount, discountMode, promo, taxRate, tendered, payMethod, cardSurchargePct, cardSurchargeOn, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts, prepaidCents]);
+  }, [cart, orderDiscount, discountMode, promo, taxRate, serviceTaxRate, tendered, payMethod, cardSurchargePct, cardSurchargeOn, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts, prepaidCents]);
 
   // The server credits the same amount (pos.service prepaidCents); this only shows it.
   useEffect(() => {
@@ -2196,7 +2200,7 @@ function Register() {
       <div style={totRow}><span>{t('po.subtotal')}</span><span>{fmt(money.subtotal)}</span></div>
       {money.discount > 0 && <div style={totRow}><span>{L('Giảm giá', 'Discount')}</span><span>−{fmt(money.discount)}</span></div>}
       {money.redeemDiscount > 0 && <div style={totRow}><span>{t('po.pointsDiscount').replace('{n}', String(money.redeemPts))}</span><span>−{fmt(money.redeemDiscount)}</span></div>}
-      {money.tax > 0 && <div style={totRow}><span>{t('po.tax').replace('{r}', String(taxRate))}</span><span>{fmt(money.tax)}</span></div>}
+      {money.tax > 0 && <div style={totRow}><span>{serviceTaxRate > 0 ? (lang === 'vi' ? `Thuế VAT (dịch vụ ${serviceTaxRate}%${taxRate > 0 ? ` · hàng bán ${taxRate}%` : ''})` : `Tax (services ${serviceTaxRate}%${taxRate > 0 ? ` · retail ${taxRate}%` : ''})`) : t('po.tax').replace('{r}', String(taxRate))}</span><span>{fmt(money.tax)}</span></div>}
       {tipsOn && svcBase > 0 && <div style={totRow}><span>Tip</span><span>{money.tip > 0 ? fmt(money.tip) : L('Khách chọn khi thanh toán', 'Chosen at payment')}</span></div>}
       {money.giftApplied > 0 && <div style={totRow}><span>{L('Thẻ quà', 'Gift card')}</span><span>−{fmt(money.giftApplied)}</span></div>}
       {money.depositApplied > 0 && <div style={totRow}><span>{L('Đã cọc online', 'Paid online (deposit)')}</span><span>−{fmt(money.depositApplied)}</span></div>}

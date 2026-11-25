@@ -137,7 +137,7 @@ interface Salon {
   branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string; cartArt?: string; cartTitle?: string; cartHint?: string; buttonColor?: string; buttonTextColor?: string; socialStyle?: string }; booking?: BookingRules;
   /** The salon's connected channels (api common/social-links) — follow buttons. */
   social?: SocialLink[];
-  weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy; cardFee?: { enabled: boolean; percent: number };
+  weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy; cardFee?: { enabled: boolean; percent: number }; tax?: { servicePercent: number };
   partyDeposit?: { enabled: boolean; fromParty: number; perPersonCents: number };
   firstVisit?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] } & PromoWindow;
   groupDiscount?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] } & PromoWindow;
@@ -592,7 +592,8 @@ export default function PublicBookingPage() {
   const depositOnlyDueCents = depositCents + (depositCents > 0 && salon?.cardFee?.enabled ? Math.round((depositCents * salon.cardFee.percent) / 100) : 0);
   // The salon lets the client pay everything now instead (one person, one
   // visit, every price known — the server checks the same and charges its own figure).
-  const canPayFull = Boolean(dep?.allowPayInFull) && depositCents > 0 && !isGroup && visitCart.length === 0 && unpricedN === 0 && totalCents > depositCents;
+  // rt238b: VAT is worked out at the till, so "pay everything now" would not be everything — offered only when the salon charges no VAT on services.
+  const canPayFull = Boolean(dep?.allowPayInFull) && depositCents > 0 && !isGroup && visitCart.length === 0 && unpricedN === 0 && totalCents > depositCents && !((salon?.tax?.servicePercent ?? 0) > 0);
   const fullDueCents = totalCents + (salon?.cardFee?.enabled ? Math.round((totalCents * salon.cardFee.percent) / 100) : 0);
   const depositDueCents = canPayFull && payFull ? fullDueCents : depositOnlyDueCents;
 
@@ -1411,7 +1412,7 @@ export default function PublicBookingPage() {
                         : g));
                       setSlot(null);
                     }}
-                    fmt={fmt} accent={accent} cardFee={salon?.cardFee} dealFor={menuDeal}
+                    fmt={fmt} accent={accent} cardFee={salon?.cardFee} vatPct={salon?.tax?.servicePercent ?? 0} dealFor={menuDeal}
                     subscribe={subscribe} pinning={pinning} stickyTop={fullscreen ? 58 : 64}
                     renderAfter={addonBlockFor}
                   />
@@ -1723,6 +1724,9 @@ function CartPanel({ unpriced, today, salon, lines, fmt, totalCents, fullCents, 
               : <span style={{ fontWeight: 700, color: INK, fontSize: 15 }}>{bt('Price at salon')}</span>}
           </span>
         </div>}
+        {(salon?.tax?.servicePercent ?? 0) > 0 && totalCents > 0 && (
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{btf('+ {percent}% VAT at checkout', { percent: salon!.tax!.servicePercent })}</div>
+        )}
         {!party && <UnpricedNote cents={totalCents} unpriced={unpriced ?? 0} />}
         {grand && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8, padding: '9px 12px', borderRadius: 10, background: tint(accent, 0.08), border: `1.4px solid ${tint(accent, 0.4)}` }}>
@@ -2034,7 +2038,7 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
 // Step 1 · Services: sticky category tabs + one section per category.
 // Scrolling moves the tabs (scroll-spy); tapping a tab scrolls to the section.
 // ---------------------------------------------------------------------------
-function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, cardFee, dealFor, subscribe, pinning, stickyTop, renderAfter }: {
+function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, cardFee, vatPct, dealFor, subscribe, pinning, stickyTop, renderAfter }: {
   services: Service[]; categories: Category[]; selectedIds: string[];
   /** What sits right under a picked service's card (its add-ons). */
   renderAfter?: (s: Service) => React.ReactNode;
@@ -2044,6 +2048,8 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
   /** Dual pricing (US nail-salon "cash discount" model): when the salon passes
    *  card fees on, the menu shows BOTH prices up-front so customers can choose. */
   cardFee?: { enabled: boolean; percent: number };
+  /** rt238b: the salon's VAT on services (prices on the menu are before it). */
+  vatPct?: number;
   /** Embed only: the host page's viewport feed. The tabs follow the scroll and stay
    *  pinned with it, even though the iframe itself never scrolls. */
   subscribe: (fn: HostSub) => () => void;
@@ -2188,6 +2194,11 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
         </div>
       )}
 
+      {(vatPct ?? 0) > 0 && (
+        <div style={{ margin: '2px 8px 14px 0', fontSize: 12.5, color: '#5b6b85', fontWeight: 600, background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px', display: 'inline-block' }}>
+          {btf('Prices are before {percent}% VAT', { percent: vatPct as number })}
+        </div>
+      )}
       {dualPct > 0 && (
         <div style={{ margin: '2px 0 14px', fontSize: 12.5, color: '#5b6b85', fontWeight: 600, background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px', display: 'inline-block' }}>
           {btf('💵 Cash price · 💳 Card price (+{percent}%)', { percent: dualPct })}
@@ -2691,6 +2702,18 @@ function ConfirmStep({ unpriced, salon, slot, employee, lines, fmt, totalCents, 
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, fontWeight: 700, color: INK, fontSize: 15 }}>
           <span>{party ? `👥 ${btf('Total · group of {n}', { n: party.length })}` : bt("Total")}</span><span>{totalMoney(totalCents, unpriced ?? 0, fmt)}</span>
         </div>
+        {(salon?.tax?.servicePercent ?? 0) > 0 && totalCents > 0 && (() => {
+          // rt238b: the salon charges VAT on services — said here in numbers, paid at the salon.
+          const pct = salon!.tax!.servicePercent;
+          const vat = Math.round((totalCents * pct) / 100);
+          return (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6, fontSize: 13.5, color: '#475569' }}><span>{btf('VAT {percent}%', { percent: pct })}</span><span>{fmt(vat)}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, fontWeight: 700, color: INK, fontSize: 15 }}><span>{bt('Total incl. VAT')}</span><span>{fmt(totalCents + vat)}</span></div>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{bt('VAT is added when you pay at the salon')}</div>
+            </>
+          );
+        })()}
         <UnpricedNote cents={totalCents} unpriced={unpriced ?? 0} />
         {salon?.firstVisit?.enabled && (salon.firstVisit.rules?.length ?? 0) > 0 && (
           <div style={{ fontSize: 12, color: '#7c5c22', background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 8, padding: '7px 11px', marginTop: 8, lineHeight: 1.5 }}>

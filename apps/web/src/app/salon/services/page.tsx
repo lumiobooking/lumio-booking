@@ -58,6 +58,8 @@ export default function ServicesPage() {
 
 function ServicesInner() {
   const { token } = useAuth();
+  // rt238b: the salon's VAT on services — menu prices stay as entered; the tax is added at checkout.
+  const [vatPct, setVatPct] = useState(0);
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const isMobile = useIsMobile();
@@ -124,6 +126,7 @@ function ServicesInner() {
         apiFetch<{ booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } } & SettingsPromos>('/settings', { token }).catch(() => ({})),
       ]);
       setPromos(promosFrom(settings as SettingsPromos));
+      setVatPct(Math.max(0, Number((settings as { pos?: { serviceTaxRatePercent?: number } }).pos?.serviceTaxRatePercent ?? 0) || 0));
       // Who performs a service: technicians, never the front desk.
       setStaff(staffList.filter(isBookable));
       const b = (settings as { booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } }).booking ?? {};
@@ -248,6 +251,13 @@ function ServicesInner() {
         counts={{ services: services.length, promos: activePromoCount(promos), categories: categories.length }} />
 
       {error && <div style={ui.banner}>{error}</div>}
+      {vatPct > 0 && tab === 'services' && (
+        <div role="note" style={{ margin: '0 0 12px', padding: '9px 14px', borderRadius: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ccbd5e1)', fontSize: 13, lineHeight: 1.5 }}>
+          🧾 {lang === 'vi'
+            ? `Giá dịch vụ ở đây là giá CHƯA gồm VAT ${vatPct}%. VAT được cộng khi tính tiền (POS) và hiện trên hoá đơn; trang đặt lịch online ghi "Giá chưa gồm ${vatPct}% VAT" và hiện tổng gồm VAT. Đổi mức ở Cài đặt › Thanh toán › Thuế / VAT.`
+            : `Prices here are BEFORE the ${vatPct}% VAT. The tax is added at checkout (POS) and printed on the receipt; the online booking page says "Prices are before ${vatPct}% VAT" and shows the total with VAT. Change it under Settings › Payments › Tax / VAT.`}
+        </div>
+      )}
       {notice && (
         <div role="status" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 12px', padding: '10px 14px', borderRadius: 12, background: 'var(--wash-amber)', color: 'var(--ink-warn)', fontSize: 13.5, lineHeight: 1.45 }}>
           <span style={{ flex: 1 }}>{notice}</span>

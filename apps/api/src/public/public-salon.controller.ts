@@ -264,6 +264,8 @@ export class PublicSalonController {
       groupDiscount: groupDiscount.enabled && groupDiscount.tiers.length > 0 && appliesOn(groupDiscount, 'online') ? groupDiscount : { enabled: false, message: '', tiers: [] },
       // Card surcharge (dual pricing) — only the two public-safe fields, no secrets.
       cardFee: { enabled: !!pos?.cardSurchargeEnabled && (pos?.cardSurchargePercent ?? 0) > 0, percent: pos?.cardSurchargePercent ?? 0 },
+      // rt238b: the salon's VAT on services, so the page can say prices are before tax and show it in the total.
+      tax: { servicePercent: Math.max(0, Number((pos as { serviceTaxRatePercent?: number } | null)?.serviceTaxRatePercent ?? 0) || 0) },
       analytics,
       rating,
       industry: resolveIndustry(industryRow?.value ?? null, tenant.businessType),

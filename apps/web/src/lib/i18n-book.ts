@@ -75,6 +75,11 @@ const VI: Record<string, string> = {
   'Add guest': 'Thêm người',
   'Popular': 'Phổ biến',
   'Total': 'Tổng cộng',
+  'Prices are before {percent}% VAT': 'Giá chưa gồm {percent}% VAT',
+  'VAT {percent}%': 'VAT {percent}%',
+  'Total incl. VAT': 'Tổng gồm VAT',
+  '+ {percent}% VAT at checkout': '+ {percent}% VAT khi thanh toán',
+  'VAT is added when you pay at the salon': 'VAT được cộng khi thanh toán tại tiệm',
   'Cash price': 'Giá tiền mặt',
   'Card price': 'Giá thẻ',
 

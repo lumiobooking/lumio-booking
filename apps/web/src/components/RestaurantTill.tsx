@@ -1820,22 +1820,23 @@ function PayModal({ vi, token, check, dueCents: dueFull, taxCents, currency, fmt
   const [inv, setInv] = useState<InvoiceInfo>(() => ({ ...EMPTY_INVOICE, ...(check.invoiceInfo ?? {}) }));
   const [showInv, setShowInv] = useState(() => !!check.invoiceInfo);
   const single = parts.length === 1;
-  // One method: an empty amount means "exactly the total"; cash can be more (change).
-  const amounts = parts.map((p) => (p.amount.trim() ? parseMoney(p.amount, currency) : single ? dueCents : 0));
+  // rt235: what already came in by bank transfer is not asked for again, and never counted as cash.
+  const bankPaid = check.bankPaidCents ?? 0;
+  const owed = Math.max(0, dueCents - bankPaid);
+  // One method: an empty amount means "exactly what is still owed"; cash can be more (change).
+  const amounts = parts.map((p) => (p.amount.trim() ? parseMoney(p.amount, currency) : single ? owed : 0));
   const tendered = amounts.reduce((a, b) => a + b, 0);
   const cashIn = parts.reduce((s, p, i) => s + (p.method === 'CASH' ? amounts[i] : 0), 0);
   const nonCash = tendered - cashIn;
-  const short = tendered < dueCents;
-  const overNonCash = nonCash > dueCents;
-  const change = !short && cashIn > 0 ? Math.min(cashIn, tendered - dueCents) : 0;
+  const short = tendered < owed;
+  const overNonCash = nonCash > owed;
+  const change = !short && cashIn > 0 ? Math.min(cashIn, tendered - owed) : 0;
   const info = single ? (payInfo[parts[0].method] ?? {}) : {};
   const setPart = (i: number, p: Partial<Part>) => setParts((xs) => xs.map((x, j) => (j === i ? { ...x, ...p } : x)));
-  const splitEven = (n: number) => setParts(evenShares(dueCents, n).map((c) => ({ method: first, amount: toInput(c, currency) })));
+  const splitEven = (n: number) => setParts(evenShares(owed, n).map((c) => ({ method: first, amount: toInput(c, currency) })));
 
   // The bank QR asks for exactly what is still owed and carries the bill code;
   // with SePay / Casso connected the money shows up here by itself.
-  const bankPaid = check.bankPaidCents ?? 0;
-  const owed = Math.max(0, dueCents - bankPaid);
   // MoMo / ZaloPay scan a VietQR too: without their own QR image, the bank one is shown.
   const bankPick = single && (parts[0].method === 'VIETQR' || parts[0].method === 'TRANSFER'
     || ((parts[0].method === 'MOMO' || parts[0].method === 'ZALOPAY') && !payInfo[parts[0].method]?.qrUrl));
@@ -1863,6 +1864,8 @@ function PayModal({ vi, token, check, dueCents: dueFull, taxCents, currency, fmt
     setBusy(true); setErr('');
     try {
       const tenders = parts.map((p, i) => ({ method: p.method, amountCents: amounts[i] })).filter((t) => t.amountCents > 0);
+      // rt235: the transfer already received goes in as its own bank line.
+      if (bankPaid > 0) tenders.push({ method: bankMethod ?? 'TRANSFER', amountCents: Math.min(bankPaid, dueCents) });
       const invoice = showInv && (inv.company.trim() || inv.taxCode.trim()) ? inv : undefined;
       const r = await apiFetch<{ order: { id: string; orderNumber?: number } }>(`/restaurant/checks/${check.id}/pay`, {
         method: 'POST', token, body: { tenders, allowUnsent: true, ...(manual > 0 ? { manualDiscountCents: manual } : {}), ...(invoice ? { invoice } : {}) },
@@ -1990,10 +1993,10 @@ function PayModal({ vi, token, check, dueCents: dueFull, taxCents, currency, fmt
             <>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ fontSize: 12.5, color: C.muted, fontWeight: 600 }}>{L('Khách đưa', 'Cash given')}</span>
-                <input inputMode="decimal" value={parts[0].amount} onChange={(e) => setPart(0, { amount: e.target.value })} placeholder={fmt(dueCents)} style={{ ...field, minHeight: 50, fontSize: 20, fontWeight: 700 }} />
+                <input inputMode="decimal" value={parts[0].amount} onChange={(e) => setPart(0, { amount: e.target.value })} placeholder={fmt(owed)} style={{ ...field, minHeight: 50, fontSize: 20, fontWeight: 700 }} />
               </label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {cashQuickAmounts(dueCents, currency).map((a) => <button key={a} type="button" onClick={() => setPart(0, { amount: toInput(a, currency) })} style={chip(parts[0].amount !== '' && amounts[0] === a)}>{fmt(a)}</button>)}
+                {cashQuickAmounts(owed, currency).map((a) => <button key={a} type="button" onClick={() => setPart(0, { amount: toInput(a, currency) })} style={chip(parts[0].amount !== '' && amounts[0] === a)}>{fmt(a)}</button>)}
               </div>
             </>
           )}
@@ -2028,7 +2031,7 @@ function PayModal({ vi, token, check, dueCents: dueFull, taxCents, currency, fmt
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 17 }}>
         <span>{short ? L('Còn thiếu', 'Still due') : L('Tiền thối', 'Change')}</span>
-        <span style={{ color: short ? 'var(--ink-bad)' : 'var(--ink-good)' }}>{short ? fmt(dueCents - tendered) : fmt(change)}</span>
+        <span style={{ color: short ? 'var(--ink-bad)' : 'var(--ink-good)' }}>{short ? fmt(owed - tendered) : fmt(change)}</span>
       </div>
       {overNonCash && <span style={{ color: 'var(--ink-bad)', fontSize: 13 }}>{L('Thẻ / chuyển khoản không được vượt số phải thu.', 'Card / transfer cannot exceed the amount due.')}</span>}
       <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

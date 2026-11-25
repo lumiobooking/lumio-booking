@@ -15,6 +15,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { hasCapability } from '../auth/capabilities';
 import { cleanLayout, withDefaults } from '../tables/floor';
 import { lowersPrintedBill, reasonOf, shortOfPrinted, voidNeedsReason } from './prebill-guard';
+import { foldBankCredit } from './bank-fold';
 import {
   CALL_REASONS, CallReason, DEFAULT_SETTINGS, Lang, LineLike, RestaurantSettings, SETTINGS_KEY, bankCredits, checkLabel, checkTotals, chosenOf,
   cleanGuestOrder, cleanNote, cleanOptionGroups, cleanSettings, clockText, groupForSend, langFor, moneyText, optionsKey, payCodeIn, payCodeOf,
@@ -831,7 +832,12 @@ export class RestaurantService {
     if (!live.length) throw new BadRequestException('EMPTY_CHECK');
     if (!dto.allowUnsent && live.some((l) => l.state === 'UNSENT')) throw new ConflictException('UNSENT_LINES');
     const invoice = cleanInvoice(dto.invoice);
-    const tenders = Array.isArray(dto.tenders) ? dto.tenders.filter((t) => t && Number(t.amountCents) >= 0) : [];
+    const sent = Array.isArray(dto.tenders) ? dto.tenders.filter((t) => t && Number(t.amountCents) >= 0) : [];
+    if (!sent.length) throw new BadRequestException('TENDER_REQUIRED');
+    // rt235: what the bank already received for this bill is a bank tender, never cash.
+    const folded = foldBankCredit(sent.map((t) => ({ method: String(t.method), amountCents: Math.round(Number(t.amountCents)) })), check.bankPaidCents ?? 0,
+      sent.some((t) => String(t.method) === 'TRANSFER') ? 'TRANSFER' : 'VIETQR');
+    const tenders = folded.tenders as { method: PaymentMethod; amountCents: number }[];
     if (!tenders.length) throw new BadRequestException('TENDER_REQUIRED');
     if ((dto.manualDiscountCents ?? 0) > 0 && !hasCapability(user.role, user.staffRole, 'pos.discount', user.staffCaps)) {
       throw new ForbiddenException('DISCOUNT_NOT_ALLOWED');
@@ -878,6 +884,9 @@ export class RestaurantService {
       throw e;
     }
     await this.prisma.tableCheck.updateMany({ where: { id, tenantId, status: 'PAYING' }, data: { status: 'PAID', orderId: order.id, closedAt: new Date(), ...(invoice ? { invoiceInfo: invoice as never } : {}) } });
+    if (folded.addedCents > 0) {
+      await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.bank_tender_folded', resourceType: 'table_check', resourceId: id, metadata: { orderId: order.id, bankCents: folded.addedCents, sent: sent.map((t) => ({ method: t.method, amountCents: t.amountCents })) } });
+    }
     await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.check_paid', resourceType: 'table_check', resourceId: id, metadata: { orderId: order.id, orderNumber: order.orderNumber, ...(manual ? { manualDiscountCents: manual } : {}), ...(parts.promo ? { promo: parts.promo } : {}), ...(parts.surcharge ? { surcharge: parts.surcharge } : {}) } });
     // rt234: rung up for less than the last guest check the guest was shown.
     if (check.preBilledAt) {

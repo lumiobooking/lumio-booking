@@ -45,12 +45,12 @@ import {
   InboxRow, InboxFilter, channelBrand, channelLabel, channelMark, stateLabel, stateOf,
   sortRows, filterRows, sourcesFrom, waitingCount, composerNotice, displayName, pageColor, initialsOf,
   InboxLabel, followUpState, followUpLabel, followUpCount, channelCounts, channelOf, humanAgentNotice,
-  windowNotice, type WindowInfo, spamCount, isSpamRow, systemEventOf, systemEventLabel,
+  windowNotice, nativeInboxUrl, type WindowInfo, spamCount, isSpamRow, systemEventOf, systemEventLabel,
 } from '../lib/inbox-view';
 import { ind } from '../lib/ui-industry';
 import { TeachAiPanel, canTeachAi, type InsChannel } from './TeachAiPanel';
 import { NudgeTextPanel } from './NudgeTextPanel';
-import { inboxSections, pileLabel, pileOf, queueCounts, waitText, aiWhyText, type InboxQueue, type PileTone } from '../lib/inbox-queues';
+import { closingInHours, inboxSections, pileLabel, pileOf, queueCounts, waitText, aiWhyText, type InboxQueue, type PileTone } from '../lib/inbox-queues';
 
 /**
  * Avatar with the channel mark tucked into its corner, coloured by PAGE.
@@ -1428,6 +1428,7 @@ export function InboxView() {
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: PILE_INK[l.tone], whiteSpace: 'nowrap' }}>
         {(l.tone === 'bad' || l.tone === 'warn') && <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: l.tone === 'bad' ? '#dc2626' : '#d97706', flexShrink: 0 }} />}
         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.text}</span>
+        {closingInHours(r) !== null && <span style={{ flexShrink: 0, color: 'var(--ink-bad)', fontWeight: 700 }}>· {vi ? `còn ${closingInHours(r)}h để nhắn` : `${closingInHours(r)}h left to message`}</span>}
       </span>
     );
   };
@@ -1522,13 +1523,14 @@ export function InboxView() {
   // ─── The views + channels column (desktop) ────────────────────────────────
   // ---- v2: the queues (lib/inbox-queues) ----
   const queueName = (q: InboxQueue) => ({
-    needs: vi ? 'Cần trả lời' : 'Needs a reply', ai: vi ? 'AI đang lo' : 'AI has it', followup: vi ? 'Hẹn theo dõi' : 'Follow-ups',
+    needs: vi ? 'Cần trả lời' : 'Needs a reply', ai: vi ? 'AI đang lo' : 'AI has it', followup: vi ? 'Hẹn theo dõi' : 'Follow-ups', closing: vi ? 'Sắp hết hạn nhắn' : 'Window closing',
     mine: vi ? 'Giao cho tôi' : 'Assigned to me', done: vi ? 'Đã xong' : 'Done', all: vi ? 'Tất cả' : 'All', spam: 'Spam',
   })[q];
   const QUEUE_ICON: Record<InboxQueue, React.ReactNode> = {
     needs: svg(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>, 2.2),
     ai: svg(<><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z" /><path d="M19 15l.8 1.9 1.9.8-1.9.8L19 20.4l-.8-1.9-1.9-.8 1.9-.8z" /></>),
     followup: svg(<><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></>),
+    closing: svg(<><path d="M6 2h12M6 22h12M7 2c0 5 10 5 10 10S7 17 7 22M17 2c0 5-10 5-10 10s10 5 10 10" /></>),
     mine: svg(<><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 12 0v1" /></>),
     done: svg(<path d="M5 12.5l4.5 4.5L19 7.5" />, 2.2),
     all: svg(<><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.5 5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-7A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1z" /></>),
@@ -1565,6 +1567,7 @@ export function InboxView() {
       {queueItem('followup', (
         <span style={{ fontSize: 12, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{counts.followup}{counts.due > 0 && <> · <span style={{ color: 'var(--ink-bad)', fontWeight: 700 }}>{counts.due} {vi ? 'tới hạn' : 'due'}</span></>}</span>
       ))}
+      {(counts.closing > 0 || queue === 'closing') && queueItem('closing', counts.closing > 0 ? hotCount(counts.closing) : railCount(0))}
       {queueItem('mine', railCount(counts.mine))}
       {queueItem('done', railCount(counts.done))}
       {queueItem('all', railCount(!prospectMode && !query.trim() && source === 'any' && total != null ? Math.max(counts.all, total) : counts.all))}
@@ -1667,6 +1670,7 @@ export function InboxView() {
       {slimQueue('needs', vi ? 'Cần trả lời' : 'Reply', { n: counts.needs, bg: '#d97706' })}
       {slimQueue('ai', vi ? 'AI lo' : 'AI')}
       {slimQueue('followup', vi ? 'Theo dõi' : 'Follow-up', { n: counts.due, bg: '#dc2626' })}
+      {(counts.closing > 0 || queue === 'closing') && slimQueue('closing', vi ? 'Sắp hết hạn' : 'Closing', { n: counts.closing, bg: '#dc2626' })}
       {slimQueue('mine', vi ? 'Của tôi' : 'Mine')}
       {slimQueue('done', vi ? 'Xong' : 'Done')}
       {slimQueue('all', vi ? 'Tất cả' : 'All')}
@@ -1759,9 +1763,9 @@ export function InboxView() {
         )}
         {v2 ? (narrow ? (
           <div className="no-bar" role="group" aria-label={vi ? 'Hàng chờ' : 'Queues'} style={{ display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            {(['needs', 'ai', 'followup', 'mine', 'done', 'all', ...((counts.spam > 0 || queue === 'spam') ? ['spam'] : [])] as InboxQueue[]).map((q) => {
+            {(['needs', 'ai', 'followup', ...((counts.closing > 0 || queue === 'closing') ? ['closing'] : []), 'mine', 'done', 'all', ...((counts.spam > 0 || queue === 'spam') ? ['spam'] : [])] as InboxQueue[]).map((q) => {
               const on = queue === q;
-              const n = q === 'needs' ? counts.needs : q === 'ai' ? counts.ai : q === 'followup' ? counts.followup : q === 'mine' ? counts.mine : q === 'done' ? counts.done : q === 'all' ? counts.all : counts.spam;
+              const n = q === 'needs' ? counts.needs : q === 'ai' ? counts.ai : q === 'followup' ? counts.followup : q === 'closing' ? counts.closing : q === 'mine' ? counts.mine : q === 'done' ? counts.done : q === 'all' ? counts.all : counts.spam;
               return (
                 <button key={q} onClick={() => setQueue(q)} aria-pressed={on} style={{ flexShrink: 0, minHeight: 44, padding: '0 14px', borderRadius: 999, fontSize: 13.5, fontWeight: on ? 700 : 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8,
                   border: `1px solid ${on ? '#4f46e5' : 'var(--c334155)'}`, background: on ? 'var(--c1e1b4b)' : 'var(--c0f172a)', color: on ? 'var(--ca5b4fc)' : 'var(--ccbd5e1)' }}>
@@ -2275,6 +2279,16 @@ export function InboxView() {
               background: notice.blocked || noticeTone === 'red' ? 'var(--wash-red)' : 'var(--wash-amber-3)', color: notice.blocked || noticeTone === 'red' ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
               <span>{notice.text}</span>
+            </div>
+          )}
+
+          {notice.blocked && detail && nativeInboxUrl(detail) && (
+            <div style={{ flexShrink: 0, margin: narrow ? '8px 12px 0' : '8px 18px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+              <a href={nativeInboxUrl(detail)!} target="_blank" rel="noopener noreferrer"
+                style={{ minHeight: 40, padding: '0 14px', borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, fontWeight: 700, textDecoration: 'none', background: '#1877f2', color: '#fff' }}>
+                {vi ? 'Nhắn trong Business Suite ↗' : 'Reply in Business Suite ↗'}
+              </a>
+              <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? 'Mở đúng hội thoại này trên Facebook để nhắn tay — Meta cho phép, không giới hạn ngày.' : 'Opens this conversation on Facebook to reply by hand — Meta allows it, no day limit.'}</span>
             </div>
           )}
 

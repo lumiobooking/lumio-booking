@@ -93,7 +93,7 @@ describe('the queues', () => {
   });
 
   it('counts each pile once and keeps spam out of everything', () => {
-    expect(queueCounts(rows, 'u-hoa', NOW)).toEqual({ needs: 3, ai: 3, followup: 1, due: 1, mine: 2, done: 1, all: 8, spam: 1, longest: 300 });
+    expect(queueCounts(rows, 'u-hoa', NOW)).toEqual({ needs: 3, ai: 3, followup: 1, due: 1, closing: 0, mine: 2, done: 1, all: 8, spam: 1, longest: 300 });
   });
 
   it('"mine" leaves out what I already closed', () => {

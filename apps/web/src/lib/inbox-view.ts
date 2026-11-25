@@ -519,8 +519,8 @@ export function humanAgentNotice(
     return {
       blocked: true,
       text: vi
-        ? 'Quá 7 ngày kể từ tin nhắn của khách — Meta đóng hẳn cửa sổ. Gọi điện hoặc nhắn SMS cho khách.'
-        : 'More than 7 days since they wrote — Meta has closed the window. Call or text them instead.',
+        ? 'Quá 7 ngày kể từ tin nhắn của khách — Meta không cho phần mềm (API) gửi nữa. Nhắn tay trong Meta Business Suite, hoặc gọi điện / SMS.'
+        : 'More than 7 days since they wrote — Meta no longer lets apps (the API) send. Reply by hand in Meta Business Suite, or call / text them.',
     };
   }
   // 'open' and 'unknown' are the ordinary case; the older notice already
@@ -604,8 +604,8 @@ export function windowNotice(
   return {
     tone: 'red',
     banner: vi
-      ? 'Khách không nhắn Page đã hơn 7 ngày — theo luật Meta, không ai nhắn được khách lúc này (cả nhân viên, cả Business Suite), không phải lỗi bot. Khách nhắn lại là trả lời được ngay; cần liên hệ trước thì gọi điện hoặc nhắn SMS.'
-      : 'More than 7 days since they wrote — Meta has closed the window. Call or text them instead.',
+      ? 'Khách không nhắn Page đã hơn 7 ngày — luật Meta không cho phần mềm nào gửi qua API nữa (Lumio, chatbot đều vậy), không phải lỗi. Bấm "Nhắn trong Business Suite" để nhắn tay ngay trên Facebook, hoặc gọi điện / SMS. Khách nhắn lại là trả lời ở đây được ngay.'
+      : 'More than 7 days since they wrote — Meta no longer lets any app send through the API. Tap "Reply in Business Suite" to write by hand on Facebook, or call / text them.',
     placeholder: vi ? 'Không gửi được — cửa sổ 7 ngày đã đóng' : 'Cannot send — the 7-day window has closed',
     blocked: true,
   };
@@ -693,4 +693,21 @@ export function systemEventLabel(kind: SystemEvent, vi: boolean): string {
   if (kind === 'meta-nudge') return vi ? 'Meta nhắc Page trả lời khách' : 'Meta reminded the Page to reply';
   if (kind === 'meta-ai') return vi ? '⚠ AI của Meta nhận trả lời cuộc này (Lumio nhường)' : '⚠ Meta’s AI took this chat (Lumio stood back)';
   return vi ? 'Khách mở cuộc trò chuyện' : 'Opened the chat';
+}
+
+/**
+ * rt236: the same conversation in Meta's own inbox (Business Suite). Meta's
+ * 24-hour / 7-day limits bind apps sending through the API, not a person
+ * typing in Facebook's own inbox, so a closed conversation can still be
+ * answered there by hand. Null when the row has no page or customer id, or
+ * is not Messenger / Instagram.
+ */
+export function nativeInboxUrl(row: { pageId?: string | null; senderId?: string | null; channel?: unknown } | null | undefined): string | null {
+  const page = String(row?.pageId ?? '').trim();
+  const who = String(row?.senderId ?? '').trim();
+  if (!/^\d{5,25}$/.test(page) || !/^\d{5,25}$/.test(who)) return null;
+  const ch = channelOf(row?.channel);
+  if (ch !== 'messenger' && ch !== 'instagram') return null;
+  const box = ch === 'instagram' ? 'instagram_direct' : 'messenger';
+  return `https://business.facebook.com/latest/inbox/${box}?asset_id=${page}&mailbox_id=${page}&selected_item_id=${who}`;
 }

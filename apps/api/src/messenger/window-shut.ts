@@ -4,8 +4,9 @@
  * Meta's rule is about the CUSTOMER's last message, not about who presses
  * Send: a Page may message a person only within 24 hours of that person's
  * last message, and a human may stretch it to 7 days (HUMAN_AGENT). After 7
- * days nobody can — not the bot, not a receptionist in Lumio, not the owner in
- * Meta Business Suite — until the customer writes again.
+ * days no app can send through the API — not the bot, not a receptionist in
+ * Lumio. rt236: a person typing in Meta's own inbox (Business Suite) is not
+ * bound by this; the inbox links to the conversation there.
  *
  * What went wrong on Lumio Agency (Nguyễn Việt, last activity 27/08): Lumio did
  * not know when the customer last wrote (an imported conversation with no
@@ -48,5 +49,5 @@ export function personWindowReason(ageHours: number | null | undefined): string 
   if (days !== null && days < 7) {
     return `${when}Quá 24 giờ, Meta chỉ nhận tin của người thật (nhãn Human Agent) trong 7 ngày — lần này Meta vẫn từ chối. Anh/chị trả lời khách trong Meta Business Suite, hoặc gọi/nhắn SMS nếu có số.`;
   }
-  return `${when}Luật của Meta: Page chỉ được nhắn khách trong 7 ngày kể từ tin cuối của KHÁCH — sau đó không ai nhắn được (cả nhân viên, cả trong Business Suite), không phải lỗi bot hay lỗi Lumio. Khi khách nhắn lại là trả lời được ngay; muốn liên hệ trước thì gọi điện, nhắn SMS hoặc email.`;
+  return `${when}Luật của Meta: Page chỉ được nhắn khách trong 7 ngày kể từ tin cuối của KHÁCH — sau đó Meta không cho phần mềm nào gửi qua API nữa (Lumio, chatbot, mọi phần mềm dùng API chính thức), không phải lỗi bot hay lỗi Lumio. Bấm "Nhắn trong Business Suite" để nhắn tay ngay trên Facebook, hoặc gọi điện / SMS / email. Khi khách nhắn lại là trả lời ở đây được ngay.`;
 }

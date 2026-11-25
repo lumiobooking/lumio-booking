@@ -44,7 +44,8 @@ describe('the composer, word for word as the submission quotes it', () => {
     const n = en({ kind: 'closed', daysLeft: 0, canSend: false, code: 'window_closed' })!;
     expect(n.placeholder).toBe('Cannot send — the 7-day window has closed');
     expect(n.placeholder).not.toContain('24 hours');
-    expect(n.banner).toBe('More than 7 days since they wrote — Meta has closed the window. Call or text them instead.');
+    // rt236: the API is closed, Facebook's own inbox is not.
+    expect(n.banner).toBe('More than 7 days since they wrote — Meta no longer lets any app send through the API. Tap "Reply in Business Suite" to write by hand on Facebook, or call / text them.');
     expect(n.tone).toBe('red');
     expect(n.blocked).toBe(true);
   });

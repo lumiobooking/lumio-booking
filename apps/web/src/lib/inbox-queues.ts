@@ -21,7 +21,7 @@
  */
 import { followUpState, isSpamRow, stateOf, systemEventOf, type InboxRow } from './inbox-view';
 
-export type InboxQueue = 'needs' | 'ai' | 'followup' | 'mine' | 'done' | 'all' | 'spam';
+export type InboxQueue = 'needs' | 'ai' | 'followup' | 'closing' | 'mine' | 'done' | 'all' | 'spam';
 export type Pile = 'needs' | 'ai' | 'held' | 'done' | 'spam';
 export type PileWhy =
   | 'unclaimed' | 'holder' | 'ai-off' | 'ai-missed'   // needs
@@ -32,6 +32,22 @@ export type PileWhy =
 export const AI_MISSED_AFTER_MIN = 5;
 /** Past Meta's seven-day window nobody can reply at all — it is not work any more. */
 export const STALE_AFTER_MIN = 7 * 24 * 60;
+
+/** rt236: show a conversation as "closing" when Meta's 7-day window shuts within this many hours. */
+export const CLOSING_WITHIN_H = 48;
+
+/**
+ * rt236 — Hours until Lumio can no longer message this customer (Meta's 7
+ * days from the CUSTOMER's last message), or null when not in the last
+ * CLOSING_WITHIN_H hours of it. Whoever wrote last does not matter: the clock
+ * runs from the customer's message.
+ */
+export function closingInHours(row: Pick<InboxRow, 'lastCustomerAt'>, now: Date = new Date()): number | null {
+  const at = Date.parse(String(row.lastCustomerAt ?? ''));
+  if (!Number.isFinite(at)) return null;
+  const left = (at + STALE_AFTER_MIN * 60_000 - now.getTime()) / 3_600_000;
+  return left > 0 && left <= CLOSING_WITHIN_H ? Math.max(1, Math.floor(left)) : null;
+}
 
 /** How long the customer has been waiting on their own last message, in minutes. Null when they did not write last. */
 export function waitedMinutes(row: Pick<InboxRow, 'customerLast' | 'lastCustomerAt'>, now: Date = new Date()): number | null {
@@ -101,6 +117,8 @@ export function queueRows(rows: InboxRow[], queue: InboxQueue, meId: string | nu
     case 'needs': return live.filter((r) => pileOf(r, now).pile === 'needs').sort(byWait(now));
     case 'ai': return live.filter((r) => pileOf(r, now).pile === 'ai');
     case 'done': return live.filter((r) => pileOf(r, now).pile === 'done');
+    case 'closing': return live.filter((r) => pileOf(r, now).pile !== 'done' && closingInHours(r, now) !== null)
+      .sort((a, b) => (closingInHours(a, now) ?? 0) - (closingInHours(b, now) ?? 0));
     case 'followup': return live.filter((r) => followUpState(r.followUpAt, now) !== 'none')
       .sort((a, b) => (Date.parse(String(a.followUpAt)) || 0) - (Date.parse(String(b.followUpAt)) || 0));
     // With no id to compare against, "mine" would be silently empty; everything is the honest failure.
@@ -109,10 +127,10 @@ export function queueRows(rows: InboxRow[], queue: InboxQueue, meId: string | nu
   }
 }
 
-export interface QueueCounts { needs: number; ai: number; followup: number; due: number; mine: number; done: number; all: number; spam: number; longest: number }
+export interface QueueCounts { needs: number; ai: number; followup: number; due: number; closing: number; mine: number; done: number; all: number; spam: number; longest: number }
 
 export function queueCounts(rows: InboxRow[], meId: string | null | undefined, now: Date = new Date()): QueueCounts {
-  const c: QueueCounts = { needs: 0, ai: 0, followup: 0, due: 0, mine: 0, done: 0, all: 0, spam: 0, longest: 0 };
+  const c: QueueCounts = { needs: 0, ai: 0, followup: 0, due: 0, closing: 0, mine: 0, done: 0, all: 0, spam: 0, longest: 0 };
   for (const r of rows ?? []) {
     const p = pileOf(r, now);
     if (p.pile === 'spam') { c.spam += 1; continue; }
@@ -124,6 +142,7 @@ export function queueCounts(rows: InboxRow[], meId: string | null | undefined, n
     if (fu !== 'none') c.followup += 1;
     if (fu === 'overdue' || fu === 'today') c.due += 1;
     if (meId && r.assignedUserId === meId && p.pile !== 'done') c.mine += 1;
+    if (p.pile !== 'done' && closingInHours(r, now) !== null) c.closing += 1;
   }
   return c;
 }

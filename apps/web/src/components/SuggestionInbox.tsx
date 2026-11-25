@@ -347,17 +347,24 @@ function Card({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutA
   onClose: () => void; onPutAway: () => void; actions: React.ReactNode;
 }) {
   const T = (v: string, e: string) => ind(vi ? v : e);
+  // rt237: an offer request or a note has no file — the text IS the content, so show
+  // more of it, and open the whole thing on a click (the card only fits two lines).
+  const [open, setOpen] = useState(false);
+  const textOnly = !s.media?.length;
   return (
     <div style={{ background: 'var(--c0f172a)', border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <Thumb media={s.media} vi={vi} />
+      {!textOnly && <Thumb media={s.media} vi={vi} />}
+      {open && <DetailModal s={s} vi={vi} onClose={() => setOpen(false)} />}
       <div style={{ padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-        <div style={{ minWidth: 0 }}>
+        <div role="button" tabIndex={0} onClick={() => setOpen(true)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(true); } }}
+          title={T('Xem đầy đủ', 'See it all')} style={{ minWidth: 0, cursor: 'pointer' }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, color: s.fromShop ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
             {s.fromShop ? `📤 ${T('TIỆM TỰ GỬI', 'SENT BY SHOP')}` : T('TRẢ LỜI ĐỀ XUẤT', 'ANSWERS A REQUEST')}
             <span style={{ fontWeight: 500, color: 'var(--c64748b)' }}> · {ago(s.doneAt ?? s.createdAt, vi)}</span>
           </div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.4, marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.title}</div>
-          {s.note && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45, marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.note}</div>}
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.4, marginTop: 2, display: '-webkit-box', WebkitLineClamp: textOnly ? 3 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.title}</div>
+          {s.note && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45, marginTop: 2, whiteSpace: 'pre-line', display: '-webkit-box', WebkitLineClamp: textOnly ? 8 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.note}</div>}
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ca5b4fc)', marginTop: 4 }}>{T('Xem chi tiết ›', 'Details ›')}</div>
           {s.status === 'working' && (
             <div style={{ fontSize: 11.5, color: 'var(--ca5b4fc)', marginTop: 3 }}>
               🙋 {me(s.workingByName) || 'Lumio'} · {s.workingAt ? ago(s.workingAt, vi) : ''}
@@ -380,6 +387,61 @@ function Card({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutA
         ) : (
           <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>{actions}</div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** rt237: everything the shop sent on one card — the full text, every file, and a copy button. */
+function DetailModal({ s, vi, onClose }: { s: TeamSuggestion; vi: boolean; onClose: () => void }) {
+  const T = (v: string, e: string) => ind(vi ? v : e);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
+  const text = [s.title, s.note ?? ''].filter(Boolean).join('\n\n');
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* the text is selectable */ }
+  };
+  return (
+    <div role="dialog" aria-modal="true" aria-label={s.title} onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(2,6,23,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(640px, 100%)', maxHeight: '85vh', overflowY: 'auto', boxSizing: 'border-box', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 14, padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: s.fromShop ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
+              {s.fromShop ? `📤 ${T('TIỆM TỰ GỬI', 'SENT BY SHOP')}` : T('TRẢ LỜI ĐỀ XUẤT', 'ANSWERS A REQUEST')} · {ago(s.doneAt ?? s.createdAt, vi)}
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', lineHeight: 1.4, marginTop: 4, overflowWrap: 'anywhere' }}>{s.title}</div>
+          </div>
+          <button onClick={onClose} aria-label={T('Đóng', 'Close')} style={{ ...btn, minWidth: 40 }}>✕</button>
+        </div>
+        {s.note && <div style={{ fontSize: 14, color: 'var(--ccbd5e1)', lineHeight: 1.6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', userSelect: 'text' }}>{s.note}</div>}
+        {s.media.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
+            {s.media.map((m, i) => {
+              const src = m.thumbUrl ?? (m.kind === 'image' ? m.url : null);
+              return (
+                <a key={i} href={m.driveUrl ?? m.url} target="_blank" rel="noopener noreferrer" style={{ position: 'relative', display: 'block', aspectRatio: '1 / 1', borderRadius: 8, overflow: 'hidden', background: 'var(--c1e293b)' }}>
+                  {src
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={src} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', fontSize: 26 }}>🎬</div>}
+                  {m.kind === 'video' && <span style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', fontSize: 24, color: '#fff' }}>▶</span>}
+                </a>
+              );
+            })}
+          </div>
+        )}
+        {(s.sourceUrl || s.refUrl) && (
+          <a href={(s.sourceUrl || s.refUrl)!} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: 'var(--ca5b4fc)', overflowWrap: 'anywhere' }}>🔗 {s.sourceLabel || T('Mở liên kết', 'Open the link')}</a>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => void copy()} style={{ ...btn, flex: 1, minHeight: 40 }}>{copied ? T('Đã chép ✓', 'Copied ✓') : T('📋 Chép nội dung', '📋 Copy the text')}</button>
+          <button onClick={onClose} style={{ ...btn, minHeight: 40 }}>{T('Đóng', 'Close')}</button>
+        </div>
       </div>
     </div>
   );

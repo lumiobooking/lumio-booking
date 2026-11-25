@@ -173,6 +173,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
   const [choose, setChoose] = useState<FloorCheck[] | null>(null);
   const [optionsFor, setOptionsFor] = useState<Dish | null>(null);
   const [voidLine, setVoidLine] = useState<CheckLine | null>(null);
+  const [cutAsk, setCutAsk] = useState<{ line: CheckLine; to: number } | null>(null);
   const [noteLine, setNoteLine] = useState<CheckLine | null>(null);
   const [padLine, setPadLine] = useState<CheckLine | null>(null);
   const [showMove, setShowMove] = useState(false);
@@ -348,10 +349,12 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
     const c = await call<CheckView>(`/restaurant/checks/${check.id}/lines`, 'POST', { menuItemId: d.id, quantity: 1, ...(options ? { options } : {}) });
     if (c) setCheck(c);
   }
-  async function setQty(l: CheckLine, n: number) {
+  async function setQty(l: CheckLine, n: number, guard?: { reason: string; approvalPin: string }) {
     if (!check) return;
-    const c = await call<CheckView>(`/restaurant/checks/${check.id}/lines/${l.id}`, 'PATCH', { quantity: Math.max(0, n) });
-    if (c) setCheck(c);
+    // rt234: after the guest check was printed, taking a dish off asks why (and a manager's PIN where turned on).
+    if (!guard && check.preBilledAt && Math.max(0, n) < l.quantity) { setCutAsk({ line: l, to: Math.max(0, n) }); return; }
+    const c = await call<CheckView>(`/restaurant/checks/${check.id}/lines/${l.id}`, 'PATCH', { quantity: Math.max(0, n), ...(guard ? { reason: guard.reason, ...(guard.approvalPin ? { approvalPin: guard.approvalPin } : {}) } : {}) });
+    if (c) { setCheck(c); setCutAsk(null); }
   }
   async function saveNote(l: CheckLine, note: string) {
     if (!check) return;
@@ -1099,6 +1102,9 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
           const c = await call<CheckView>(`/restaurant/checks/${check.id}/lines/${voidLine.id}/void`, 'POST', { quantity, reason, ...(approvalPin ? { approvalPin } : {}) });
           if (c) { setCheck(c); setVoidLine(null); say(true, L('Đã huỷ món, bếp nhận phiếu huỷ.', 'Cancelled; the kitchen got a cancel ticket.')); }
         }} />}
+      {cutAsk && <PrebillCutModal vi={vi} line={cutAsk.line} to={cutAsk.to} count={check.preBillCount ?? 1} needPin={!!floor?.settings.voidNeedsApproval && !canVoid} busy={busy} fmt={fmt}
+        onClose={() => setCutAsk(null)}
+        onConfirm={(reason, approvalPin) => void setQty(cutAsk.line, cutAsk.to, { reason, approvalPin })} />}
       {showGuests && (
         <Modal vi={vi} title={L('Số khách', 'Guests')} onClose={() => setShowGuests(false)}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 8 }}>
@@ -1146,7 +1152,7 @@ export function RestaurantTill({ onQuickSale }: { onQuickSale: () => void }) {
           const r = await call<{ from: CheckView; to: CheckView }>(`/restaurant/checks/${check.id}/split`, 'POST', { lines });
           if (r) { setShowSplit(false); setCheck(r.from); void loadFloor(); say(true, L(`Đã tách sang bill #${r.to.number} (${fmt(r.to.subtotalCents)}).`, `Split onto bill #${r.to.number} (${fmt(r.to.subtotalCents)}).`)); }
         }} />}
-      {showVoidCheck && <VoidCheckModal vi={vi} hasSent={check.sentCount > 0} needPin={!!floor?.settings.voidNeedsApproval && !canVoid && check.sentCount > 0} busy={busy}
+      {showVoidCheck && <VoidCheckModal vi={vi} hasSent={check.sentCount > 0} printed={!!check.preBilledAt} needPin={!!floor?.settings.voidNeedsApproval && !canVoid && (check.sentCount > 0 || !!check.preBilledAt)} busy={busy}
         onClose={() => setShowVoidCheck(false)}
         onConfirm={async (reason, approvalPin) => {
           const c = await call<CheckView>(`/restaurant/checks/${check.id}/void`, 'POST', { ...(reason ? { reason } : {}), ...(approvalPin ? { approvalPin } : {}) });
@@ -1533,17 +1539,42 @@ function VoidModal({ vi, line, needPin, busy, fmt, onClose, onConfirm }: { vi: b
   );
 }
 
-function VoidCheckModal({ vi, hasSent, needPin, busy, onClose, onConfirm }: { vi: boolean; hasSent: boolean; needPin: boolean; busy: boolean; onClose: () => void; onConfirm: (reason: string, pin: string) => void }) {
+function VoidCheckModal({ vi, hasSent, printed, needPin, busy, onClose, onConfirm }: { vi: boolean; hasSent: boolean; printed?: boolean; needPin: boolean; busy: boolean; onClose: () => void; onConfirm: (reason: string, pin: string) => void }) {
   const L = (v: string, e: string) => (vi ? v : e);
   const [reason, setReason] = useState('');
   const [pin, setPin] = useState('');
-  const ok = (!hasSent || reason.trim().length >= 2) && (!needPin || pin.trim().length >= 4);
+  const guarded = hasSent || !!printed;
+  const ok = (!guarded || reason.trim().length >= 2) && (!needPin || pin.trim().length >= 4);
   return (
     <Modal vi={vi} title={L('Huỷ cả bill', 'Void the whole bill')} onClose={onClose}>
-      <span>{hasSent ? L('Bill có món đã báo bếp. Cần lý do; bếp nhận phiếu huỷ.', 'Dishes were sent. A reason is required; the kitchen gets cancel tickets.') : L('Bill chưa báo bếp món nào. Huỷ để trả bàn trống.', 'Nothing was sent. Voiding frees the table.')}</span>
+      <span>{printed
+        ? L('Bill đã in tạm tính cho khách. Huỷ cần lý do và được báo cho chủ tiệm.', 'The guest check was printed. Voiding needs a reason and the owner is told.')
+        : hasSent ? L('Bill có món đã báo bếp. Cần lý do; bếp nhận phiếu huỷ.', 'Dishes were sent. A reason is required; the kitchen gets cancel tickets.') : L('Bill chưa báo bếp món nào. Huỷ để trả bàn trống.', 'Nothing was sent. Voiding frees the table.')}</span>
       <input value={reason} maxLength={140} onChange={(e) => setReason(e.target.value)} placeholder={L('Lý do (VD: khách bỏ về, mở nhầm bàn)', 'Reason (guests left, wrong table)')} aria-label={L('Lý do', 'Reason')} style={field} />
       {needPin && <input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} placeholder={L('PIN quản lý', 'Manager PIN')} aria-label={L('PIN quản lý', 'Manager PIN')} style={{ ...field, minHeight: 48, fontSize: 18 }} />}
       <button type="button" disabled={!ok || busy} onClick={() => onConfirm(reason.trim(), pin.trim())} style={{ ...btn, minHeight: 52, border: 'none', background: '#b91c1c', color: '#fff', opacity: ok ? 1 : 0.5 }}>{L('Huỷ bill', 'Void bill')}</button>
+    </Modal>
+  );
+}
+
+/** rt234: taking a dish off (or fewer of it) after the guest check was printed. */
+function PrebillCutModal({ vi, line, to, count, needPin, busy, fmt, onClose, onConfirm }: { vi: boolean; line: CheckLine; to: number; count: number; needPin: boolean; busy: boolean; fmt: (c: number) => string; onClose: () => void; onConfirm: (reason: string, pin: string) => void }) {
+  const L = (v: string, e: string) => (vi ? v : e);
+  const reasons = vi ? ['Khách đổi ý', 'Nhập nhầm món', 'Hết món', 'Gọi trùng'] : ['Guest changed mind', 'Wrong dish entered', 'Sold out', 'Entered twice'];
+  const [reason, setReason] = useState('');
+  const [pin, setPin] = useState('');
+  const off = line.quantity - to;
+  const ok = reason.trim().length >= 2 && (!needPin || pin.trim().length >= 4);
+  return (
+    <Modal vi={vi} title={L('Bớt món sau khi in tạm tính', 'Take a dish off after the guest check')} onClose={onClose}>
+      <span>{L(`Khách đã cầm phiếu tạm tính (in ${count} lần). Bớt ${off} × ${line.name} (−${fmt(off * line.unitPriceCents)}) cần lý do, và được ghi vào nhật ký.`, `The guest has the check (printed ${count}×). Taking off ${off} × ${line.name} (−${fmt(off * line.unitPriceCents)}) needs a reason and goes in the log.`)}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 8 }}>
+        {reasons.map((r) => <button key={r} type="button" onClick={() => setReason(r)} style={{ ...btn, minHeight: 48, ...picked(reason === r) }}>{r}</button>)}
+      </div>
+      <input value={reason} maxLength={140} onChange={(e) => setReason(e.target.value)} placeholder={L('Hoặc gõ lý do khác', 'Or type another reason')} aria-label={L('Lý do', 'Reason')} style={field} />
+      {needPin && <input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} placeholder={L('PIN quản lý', 'Manager PIN')} aria-label={L('PIN quản lý', 'Manager PIN')} style={{ ...field, minHeight: 48, fontSize: 18 }} />}
+      <button type="button" disabled={!ok || busy} onClick={() => onConfirm(reason.trim(), pin.trim())} style={{ ...btn, minHeight: 52, border: 'none', background: '#b45309', color: '#fff', opacity: ok ? 1 : 0.5 }}>{L('Bớt món', 'Take off')}</button>
+      <span style={{ fontSize: 12.5, color: C.muted }}>{L('Nhớ in lại tạm tính cho khách sau khi bớt.', 'Reprint the guest check after this.')}</span>
     </Modal>
   );
 }

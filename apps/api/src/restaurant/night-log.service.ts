@@ -207,6 +207,12 @@ export class NightLogService implements OnModuleInit, OnModuleDestroy {
         const o = input.resourceId ? (await this.orders(tenantId, [input.resourceId])).get(input.resourceId) : undefined;
         return send(key, alertText(key, input.action, { ...base, orderNumber: o?.orderNumber, table: o?.note ? o.note.split('·')[0].trim() : null, amountCents: num(meta.amountCents) ?? num(meta.totalCents) ?? o?.totalCents, reason: str(meta.reason) }), log);
       }
+      // rt234: an edit after the guest check alerts only when it lowered the bill.
+      if (input.action === 'restaurant.after_prebill_change' && meta.lowered !== true) return;
+      if (input.action === 'restaurant.after_prebill_change' || input.action === 'restaurant.paid_below_prebill') {
+        const c2 = input.resourceId ? (await this.checks(tenantId, [input.resourceId])).get(input.resourceId) : undefined;
+        return send(key, alertText(key, input.action, { ...base, table: c2?.table, checkNumber: c2?.number, orderNumber: num(meta.orderNumber), amountCents: num(meta.minusCents) ?? num(meta.amountCents), reason: str(meta.reason) }), log);
+      }
       const c = input.resourceId ? (await this.checks(tenantId, [input.resourceId])).get(input.resourceId) : undefined;
       let amount: number | null = null;
       if (input.action === 'restaurant.check_voided' && input.resourceId) {
@@ -277,6 +283,10 @@ export class NightLogService implements OnModuleInit, OnModuleDestroy {
       if (r.action === 'restaurant.check_paid') amountCents = o?.totalCents ?? null;
       else if (r.action === 'restaurant.item_voided' || r.action === 'order.refunded' || r.action === 'pos.cash_in' || r.action === 'pos.cash_out') amountCents = num(m.amountCents);
       else if (r.action === 'order.voided') amountCents = num(m.totalCents);
+      else if (r.action === 'restaurant.paid_below_prebill') amountCents = num(m.amountCents);
+      else if (r.action === 'pos.held_discarded') amountCents = num(m.amountCents);
+      else if (r.action === 'restaurant.after_prebill_change') amountCents = num(m.minusCents);
+      else if (r.action === 'restaurant.check_voided') amountCents = num(m.printedCents);
       else if (r.action === 'pos.shift_opened') amountCents = num(m.openingCents);
       else if (r.action === 'pos.shift_closed') amountCents = num(m.varianceCents);
       else if (r.action === 'restaurant.bank_credit') amountCents = num(m.amount);
@@ -296,12 +306,16 @@ export class NightLogService implements OnModuleInit, OnModuleDestroy {
         discountPct: r.action === 'restaurant.check_paid' && o?.discountCents && o.subtotalCents ? Math.round((o.discountCents * 100) / o.subtotalCents) : null,
         method: r.action === 'restaurant.check_paid' ? this.methodLabel(ctx.vi, o?.tenders) : null,
         reason: str(m.reason),
-        name: str(m.name),
+        name: str(m.name) ?? str(m.label),
         quantity: num(m.quantity),
         guests: num(m.guests),
         expectedCents: num(m.expectedCashCents),
         countedCents: num(m.countedCents),
         takeaway: m.takeaway === true,
+        // rt234
+        afterPrebill: m.afterPrebill === true || r.action === 'restaurant.paid_below_prebill' || (r.action === 'restaurant.after_prebill_change' && m.lowered === true),
+        printedCents: num(m.printedCents),
+        what: str(m.what),
       };
     });
     const counts = { all: events.length, void: 0, money: 0, shift: 0, table: 0, cash: 0, discount: 0 } as Record<string, number>;

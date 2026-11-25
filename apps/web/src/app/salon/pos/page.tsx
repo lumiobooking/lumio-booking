@@ -866,7 +866,8 @@ function Register() {
     if (pp.appointmentId) setAppointmentId(pp.appointmentId);
     setOrderDiscount(pp.orderDiscount ?? ''); setDiscountMode(pp.discountMode ?? 'AMOUNT');
     setShowHeld(false);
-    apiFetch(`/pos/held/${h.id}`, { method: 'DELETE', token }).then(loadHeld).catch(() => {});
+    // rt234: taken back to the till, not thrown away (the server logs only a discard).
+    apiFetch(`/pos/held/${h.id}?recalled=1`, { method: 'DELETE', token }).then(loadHeld).catch(() => {});
   }
   async function deleteHeld(id: string) {
     try { await apiFetch(`/pos/held/${id}`, { method: 'DELETE', token }); await loadHeld(); } catch { /* ignore */ }

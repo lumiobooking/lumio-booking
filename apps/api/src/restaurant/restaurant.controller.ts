@@ -8,7 +8,7 @@ import { RestaurantService } from './restaurant.service';
 import { NightLogService } from './night-log.service';
 import {
   AcceptQrDto, AddLineDto, BankFeedDto, HoldDto, MergeCheckDto, ReadyDto, SendDto, MoveCheckDto, OpenCheckDto, PayCheckDto, PrebillDto, SaveRestaurantSettingsDto, SoldOutDto, SplitCheckDto,
-  UpdateCheckDto, UpdateLineDto, VoidCheckDto, VoidLineDto,
+  UpdateCheckDto, UpdateLineDto, RemoveLineDto, VoidCheckDto, VoidLineDto,
 } from './dto/restaurant.dto';
 
 /**
@@ -92,8 +92,8 @@ export class RestaurantController {
   }
 
   @Delete('checks/:id/lines/:lineId')
-  removeLine(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('lineId') lineId: string) {
-    return this.svc.removeLine(user, id, lineId);
+  removeLine(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('lineId') lineId: string, @Body() dto: RemoveLineDto) {
+    return this.svc.removeLine(user, id, lineId, dto ?? {});
   }
 
   @Post('checks/:id/send')

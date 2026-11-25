@@ -14,6 +14,7 @@ import { PushService } from '../push/push.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { hasCapability } from '../auth/capabilities';
 import { cleanLayout, withDefaults } from '../tables/floor';
+import { lowersPrintedBill, reasonOf, shortOfPrinted, voidNeedsReason } from './prebill-guard';
 import {
   CALL_REASONS, CallReason, DEFAULT_SETTINGS, Lang, LineLike, RestaurantSettings, SETTINGS_KEY, bankCredits, checkLabel, checkTotals, chosenOf,
   cleanGuestOrder, cleanNote, cleanOptionGroups, cleanSettings, clockText, groupForSend, langFor, moneyText, optionsKey, payCodeIn, payCodeOf,
@@ -328,10 +329,24 @@ export class RestaurantService {
   }
 
   /** A change after the guest check was printed is allowed, and remembered. */
-  private async touchAfterPrebill(tenantId: string, user: AuthenticatedUser, check: { id: string; preBilledAt: Date | null; changedAfterPrebill: boolean }, what: string) {
+  private async touchAfterPrebill(tenantId: string, user: AuthenticatedUser, check: { id: string; preBilledAt: Date | null; changedAfterPrebill: boolean }, what: string, extra: Record<string, unknown> = {}) {
     if (!check.preBilledAt) return;
     if (!check.changedAfterPrebill) await this.prisma.tableCheck.updateMany({ where: { id: check.id, tenantId }, data: { changedAfterPrebill: true } });
-    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.after_prebill_change', resourceType: 'table_check', resourceId: check.id, metadata: { what } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.after_prebill_change', resourceType: 'table_check', resourceId: check.id, metadata: { what, ...extra } });
+  }
+
+  /** rt234: the bill amount on the last guest check printed for this bill (null when none). */
+  private async lastPrintedCents(tenantId: string, checkId: string): Promise<number | null> {
+    let row: { metadata: unknown } | null = null;
+    try {
+      row = await this.prisma.auditLog.findFirst({
+        where: { tenantId, action: 'restaurant.prebill_printed', resourceType: 'table_check', resourceId: checkId },
+        orderBy: { createdAt: 'desc' }, select: { metadata: true },
+      });
+    } catch { row = null; }
+    const m = (row?.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<string, unknown>;
+    const v = typeof m.billCents === 'number' ? m.billCents : typeof m.totalCents === 'number' ? m.totalCents : null;
+    return v;
   }
 
   async addLine(user: AuthenticatedUser, id: string, dto: { menuItemId?: unknown; quantity?: unknown; note?: unknown; options?: unknown }) {
@@ -372,11 +387,20 @@ export class RestaurantService {
   }
 
   /** Only a dish the kitchen has not seen can be edited. Quantity 0 removes it. */
-  async updateLine(user: AuthenticatedUser, id: string, lineId: string, dto: { quantity?: unknown; note?: unknown }) {
+  async updateLine(user: AuthenticatedUser, id: string, lineId: string, dto: { quantity?: unknown; note?: unknown; reason?: unknown; approvalPin?: unknown }) {
     const tenantId = this.tenantId(user);
     const check = await this.loadCheck(tenantId, id);
     this.assertOpen(check);
     const line = await this.unsentLine(tenantId, id, lineId);
+    // rt234: after the guest check was printed, taking dishes off needs a reason (and approval where turned on).
+    const newQty = dto.quantity !== undefined ? Math.max(0, Math.round(Number(dto.quantity)) || 0) : line.quantity;
+    let guard: Record<string, unknown> = {};
+    if (dto.quantity !== undefined && lowersPrintedBill(check, line.quantity, newQty)) {
+      const reason = reasonOf(dto.reason);
+      if (!reason) throw new BadRequestException('PREBILL_REASON_REQUIRED');
+      const approverId = await this.approval(user, tenantId, await this.getSettings(tenantId), dto.approvalPin);
+      guard = { reason, approvedBy: approverId, minusCents: (line.quantity - newQty) * line.unitPriceCents, name: line.name, quantity: line.quantity - newQty, lowered: true };
+    }
     if (dto.quantity !== undefined && Math.round(Number(dto.quantity)) === 0) {
       await this.prisma.tableCheckLine.deleteMany({ where: { id: line.id, tenantId, state: 'UNSENT' } });
     } else {
@@ -389,12 +413,12 @@ export class RestaurantService {
       if (dto.note !== undefined) data.note = cleanNote(dto.note);
       await this.prisma.tableCheckLine.updateMany({ where: { id: line.id, tenantId, state: 'UNSENT' }, data });
     }
-    await this.touchAfterPrebill(tenantId, user, check, `edit ${line.name}`);
+    await this.touchAfterPrebill(tenantId, user, check, `edit ${line.name}`, guard);
     return this.getCheck(user, id);
   }
 
-  async removeLine(user: AuthenticatedUser, id: string, lineId: string) {
-    return this.updateLine(user, id, lineId, { quantity: 0 });
+  async removeLine(user: AuthenticatedUser, id: string, lineId: string, dto: { reason?: unknown; approvalPin?: unknown } = {}) {
+    return this.updateLine(user, id, lineId, { quantity: 0, reason: dto.reason, approvalPin: dto.approvalPin });
   }
 
   /**
@@ -598,7 +622,7 @@ export class RestaurantService {
     if (dto.print !== false) {
       await this.prisma.printJob.create({ data: { tenantId, station: null, title: `${ctx.lang === 'vi' ? 'Tạm tính' : 'Guest check'} · ${label} · #${check.number}`, text, createdById: user.userId } });
     }
-    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.prebill_printed', resourceType: 'table_check', resourceId: id, metadata: { count, totalCents: totals.subtotalCents } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.prebill_printed', resourceType: 'table_check', resourceId: id, metadata: { count, totalCents: totals.subtotalCents, billCents: bill } });
     return { text, check: await this.getCheck(user, id) };
   }
 
@@ -692,7 +716,8 @@ export class RestaurantService {
           const still = await tx.tableCheck.updateMany({ where: { id, tenantId, status: 'OPEN' }, data: { guests: check.guests } });
           if (still.count === 0) throw new ConflictException('CHECK_CLOSED');
           const created = await tx.tableCheck.create({
-            data: { tenantId, number: await this.nextNumber(tenantId), tableIds: check.tableIds, guests: 1, serverUserId: user.userId, serverName, note: check.note, splitFrom: check.id },
+            // rt234: a bill split off a printed one stays "printed", so it cannot be voided without a reason.
+            data: { tenantId, number: await this.nextNumber(tenantId), tableIds: check.tableIds, guests: 1, serverUserId: user.userId, serverName, note: check.note, splitFrom: check.id, ...(check.preBilledAt ? { preBilledAt: check.preBilledAt, changedAfterPrebill: true } : {}) },
             select: { id: true },
           });
           for (const [lineId, n] of picks) {
@@ -748,10 +773,12 @@ export class RestaurantService {
     const reason = cleanNote(dto.reason);
     const settings = await this.getSettings(tenantId);
     let approverId: string | null = null;
-    if (cooking.length) {
+    // rt234: a printed guest check counts like dishes in the kitchen: reason + approval.
+    if (voidNeedsReason(check, cooking.length)) {
       if (!reason || reason.length < 2) throw new BadRequestException('VOID_REASON_REQUIRED');
       approverId = await this.approval(user, tenantId, settings, dto.approvalPin);
     }
+    const printedCents = check.preBilledAt ? await this.lastPrintedCents(tenantId, id) : null;
     const [ctx, names, by] = await Promise.all([this.context(tenantId), this.tableNames(tenantId), this.nameOf(user)]);
     const now = new Date();
     const label = checkLabel(check.tableIds, names, check.number, ctx.lang);
@@ -773,7 +800,7 @@ export class RestaurantService {
         }
       }
     });
-    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.check_voided', resourceType: 'table_check', resourceId: id, metadata: { reason, approvedBy: approverId, sentLines: cooking.length } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.check_voided', resourceType: 'table_check', resourceId: id, metadata: { reason, approvedBy: approverId, sentLines: cooking.length, ...(check.preBilledAt ? { afterPrebill: true, prebillCount: check.preBillCount, printedCents } : {}) } });
     return this.getCheck(user, id);
   }
 
@@ -852,6 +879,14 @@ export class RestaurantService {
     }
     await this.prisma.tableCheck.updateMany({ where: { id, tenantId, status: 'PAYING' }, data: { status: 'PAID', orderId: order.id, closedAt: new Date(), ...(invoice ? { invoiceInfo: invoice as never } : {}) } });
     await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.check_paid', resourceType: 'table_check', resourceId: id, metadata: { orderId: order.id, orderNumber: order.orderNumber, ...(manual ? { manualDiscountCents: manual } : {}), ...(parts.promo ? { promo: parts.promo } : {}), ...(parts.surcharge ? { surcharge: parts.surcharge } : {}) } });
+    // rt234: rung up for less than the last guest check the guest was shown.
+    if (check.preBilledAt) {
+      const printedCents = await this.lastPrintedCents(tenantId, id);
+      const short = shortOfPrinted(printedCents, parts.billCents - manual);
+      if (short > 0) {
+        await this.audit.log({ tenantId, userId: user.userId, action: 'restaurant.paid_below_prebill', resourceType: 'table_check', resourceId: id, metadata: { orderId: order.id, orderNumber: order.orderNumber, printedCents, paidCents: parts.billCents - manual, amountCents: short, prebillCount: check.preBillCount, ...(manual ? { manualDiscountCents: manual } : {}) } });
+      }
+    }
     return { order, check: await this.getCheck(user, id) };
   }
 

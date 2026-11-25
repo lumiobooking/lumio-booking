@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
 export interface CreateHeldBill {
@@ -13,7 +14,7 @@ export interface CreateHeldBill {
 /** Parked POS carts ("bill chờ"). Tenant-scoped so any register can recall them. */
 @Injectable()
 export class HeldBillsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, @Optional() private readonly audit?: AuditService) {}
 
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -39,11 +40,22 @@ export class HeldBillsService {
     });
   }
 
-  async remove(user: AuthenticatedUser, id: string) {
+  /**
+   * rt234: taken back to the till (recalled) or thrown away. Throwing a held
+   * bill away is written to the audit log (who, how much, when), so a bill
+   * shown to a customer and then dropped can be found later.
+   */
+  async remove(user: AuthenticatedUser, id: string, opts: { recalled?: boolean } = {}) {
     const tenantId = this.tenantId(user);
     const existing = await this.prisma.heldBill.findFirst({ where: { id, tenantId } });
     if (!existing) throw new NotFoundException('Held bill not found');
-    await this.prisma.heldBill.delete({ where: { id } });
+    await this.prisma.heldBill.deleteMany({ where: { id, tenantId } });
+    if (!opts.recalled) {
+      await this.audit?.log({
+        tenantId, userId: user.userId, action: 'pos.held_discarded', resourceType: 'held_bill', resourceId: id,
+        metadata: { label: existing.label, amountCents: existing.totalCents, heldBy: existing.createdByUserId, heldAt: existing.createdAt },
+      });
+    }
     return { ok: true };
   }
 }

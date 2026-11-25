@@ -96,8 +96,12 @@ export const LOG_ACTIONS: Record<string, LogKind> = {
   'restaurant.check_reopened': 'void',
   'restaurant.check_voided': 'void',
   'restaurant.item_voided': 'void',
+  // rt234: after the guest check was printed.
+  'restaurant.after_prebill_change': 'void',
+  'restaurant.paid_below_prebill': 'void',
   'order.voided': 'void',
   'order.refunded': 'void',
+  'pos.held_discarded': 'void',
   'pos.cash_in': 'cash',
   'pos.cash_out': 'cash',
 };
@@ -114,7 +118,9 @@ export function alertKeyOf(action: string): AlertKey | null {
     case 'restaurant.check_voided':
     case 'order.voided':
     case 'order.refunded':
-    case 'restaurant.check_reopened': return 'checkVoid';
+    case 'restaurant.check_reopened':
+    case 'restaurant.after_prebill_change': // only when it lowered the bill (night-log.service decides)
+    case 'restaurant.paid_below_prebill': return 'checkVoid';
     case 'restaurant.item_voided': return 'itemVoids';
     case 'restaurant.check_opened': return 'tableOpen';
     case 'restaurant.check_paid': return 'paid';
@@ -188,6 +194,18 @@ export function alertText(kind: AlertKey | 'bigDiscount', action: string, f: Ale
     case 'checkVoid': {
       if (action === 'order.refunded') {
         return { title: L(`Hoàn tiền bill #${f.orderNumber ?? '?'} · ${m(f.amountCents)}`, `Refund on bill #${f.orderNumber ?? '?'} · ${m(f.amountCents)}`), body: L(`${who} hoàn tiền${ok}.`, `${who} refunded${ok}.`) + why };
+      }
+      if (action === 'restaurant.paid_below_prebill') {
+        return {
+          title: L(`Thu ít hơn tạm tính${f.orderNumber ? ` · bill #${f.orderNumber}` : ''} · thiếu ${m(f.amountCents)}`, `Paid less than the guest check${f.orderNumber ? ` · bill #${f.orderNumber}` : ''} · ${m(f.amountCents)} short`),
+          body: L(`${where ? where + ' · ' : ''}${who} thu tiền.`, `${where ? where + ' · ' : ''}${who} took payment.`) + why,
+        };
+      }
+      if (action === 'restaurant.after_prebill_change') {
+        return {
+          title: L(`Bớt món sau khi in tạm tính · ${m(f.amountCents)}`, `Dish taken off after the guest check · ${m(f.amountCents)}`),
+          body: L(`${where ? where + ' · ' : ''}${who} bớt${ok}.`, `${where ? where + ' · ' : ''}${who} took it off${ok}.`) + why,
+        };
       }
       if (action === 'restaurant.check_reopened') {
         return { title: L(`Mở lại bill đã thu${f.orderNumber ? ` #${f.orderNumber}` : ''}`, `Paid bill reopened${f.orderNumber ? ` #${f.orderNumber}` : ''}`), body: L(`${where ? where + ' · ' : ''}${who} mở lại.`, `${where ? where + ' · ' : ''}${who} reopened it.`) + why };

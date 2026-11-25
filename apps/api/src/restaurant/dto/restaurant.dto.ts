@@ -28,6 +28,14 @@ export class AddLineDto {
 export class UpdateLineDto {
   @IsOptional() @IsInt() @Min(0) @Max(999) quantity?: number;
   @IsOptional() @IsString() @MaxLength(140) note?: string;
+  /** rt234: taking a dish off after the guest check was printed. */
+  @IsOptional() @IsString() @MaxLength(140) reason?: string;
+  @IsOptional() @IsString() @MaxLength(12) approvalPin?: string;
+}
+
+export class RemoveLineDto {
+  @IsOptional() @IsString() @MaxLength(140) reason?: string;
+  @IsOptional() @IsString() @MaxLength(12) approvalPin?: string;
 }
 
 export class VoidLineDto {

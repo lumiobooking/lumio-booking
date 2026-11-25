@@ -10,6 +10,8 @@ export interface LogEvent {
   amountCents: number | null; discountCents: number | null; discountPct: number | null; method: string | null;
   reason: string | null; name: string | null; quantity: number | null; guests: number | null;
   expectedCents: number | null; countedCents: number | null; takeaway: boolean;
+  /** rt234: happened after a guest check (tạm tính) was printed. */
+  afterPrebill?: boolean; printedCents?: number | null; what?: string | null;
 }
 export interface LogResp { mine: boolean; truncated: boolean; discountPct: number; counts: Record<string, number>; events: LogEvent[] }
 export interface ShiftResp { shift: { status: string; openedByName: string | null; openedAt: string; openingCents: number } | null; summary: { byMethod: { cashCents: number; cardCents: number; otherCents: number }; changeCents: number; expectedCashCents: number; voidedItems?: { count: number; totalCents: number } } | null }
@@ -51,10 +53,23 @@ export function describe(e: LogEvent, vi: boolean, money: (c: number) => string)
     }
     case 'restaurant.bank_credit': return { icon: '🏦', tone: 'g', title: L(`Tiền vào ngân hàng${e.checkNumber ? ` · phiếu ${e.checkNumber}` : ''}`, `Bank credit${e.checkNumber ? ` · check ${e.checkNumber}` : ''}`), amount: m(e.amountCents), sub: e.table ?? '', alarm: false };
     case 'restaurant.item_voided': return { icon: '↩️', tone: 'y', title: L(`Huỷ ${e.quantity ?? 1} × ${e.name ?? 'món'}`, `Took back ${e.quantity ?? 1} × ${e.name ?? 'dish'}`), amount: m(e.amountCents), amountTone: 'warn', sub: `${where ? where + ' · ' : ''}${who}${ok}${why}`, alarm: false };
-    case 'restaurant.check_voided': return { icon: '⛔', tone: 'b', title: L(`Huỷ ${e.checkNumber ? `phiếu ${e.checkNumber}` : 'bàn'}`, `Voided ${e.checkNumber ? `check ${e.checkNumber}` : 'table'}`), amount: null, sub: `${e.table ? e.table + ' · ' : ''}${who}${ok}${why}`, alarm: true };
+    case 'restaurant.check_voided': return {
+      icon: '⛔', tone: 'b',
+      title: L(`Huỷ ${e.checkNumber ? `phiếu ${e.checkNumber}` : 'bàn'}${e.afterPrebill ? ' · đã in tạm tính' : ''}`, `Voided ${e.checkNumber ? `check ${e.checkNumber}` : 'table'}${e.afterPrebill ? ' · guest check printed' : ''}`),
+      amount: e.afterPrebill ? m(e.amountCents) : null, amountTone: 'bad', sub: `${e.table ? e.table + ' · ' : ''}${who}${ok}${why}`, alarm: true,
+    };
+    case 'restaurant.paid_below_prebill': return {
+      icon: '🚩', tone: 'b', title: L(`Thu ít hơn tạm tính${e.orderNumber ? ` · bill #${e.orderNumber}` : ''}`, `Paid less than the guest check${e.orderNumber ? ` · bill #${e.orderNumber}` : ''}`),
+      amount: e.amountCents !== null ? `−${m(e.amountCents)}` : null, amountTone: 'bad',
+      sub: [where, who, e.printedCents ? L(`tạm tính ${money(e.printedCents)}`, `check showed ${money(e.printedCents)}`) : null].filter(Boolean).join(' · '), alarm: true,
+    };
+    case 'restaurant.after_prebill_change': return e.afterPrebill
+      ? { icon: '✂️', tone: 'y', title: L(`Bớt ${e.quantity ?? 1} × ${e.name ?? 'món'} sau tạm tính`, `Took off ${e.quantity ?? 1} × ${e.name ?? 'dish'} after the check`), amount: m(e.amountCents), amountTone: 'warn', sub: `${where ? where + ' · ' : ''}${who}${ok}${why}`, alarm: true }
+      : { icon: '✏️', tone: 'n', title: L('Sửa bill sau tạm tính', 'Bill edited after the check'), amount: null, sub: `${where ? where + ' · ' : ''}${who}`, alarm: false };
     case 'order.voided': return { icon: '⛔', tone: 'b', title: L(`Huỷ bill đã thu #${e.orderNumber ?? '?'}`, `Paid bill voided #${e.orderNumber ?? '?'}`), amount: m(e.amountCents), amountTone: 'bad', sub: `${who}${ok}${why}`, alarm: true };
     case 'order.refunded': return { icon: '💸', tone: 'b', title: L(`Hoàn tiền bill #${e.orderNumber ?? '?'}`, `Refund on bill #${e.orderNumber ?? '?'}`), amount: m(e.amountCents), amountTone: 'bad', sub: `${who}${ok}${why}`, alarm: true };
     case 'restaurant.check_reopened': return { icon: '⚠️', tone: 'y', title: L(`Mở lại bill đã thu${e.orderNumber ? ` #${e.orderNumber}` : ''}`, `Paid bill reopened${e.orderNumber ? ` #${e.orderNumber}` : ''}`), amount: null, sub: `${where ? where + ' · ' : ''}${who}${why}`, alarm: true };
+    case 'pos.held_discarded': return { icon: '🗑️', tone: 'y', title: L(`Xoá bill chờ${e.name ? ` · ${e.name}` : ''}`, `Held bill thrown away${e.name ? ` · ${e.name}` : ''}`), amount: m(e.amountCents), amountTone: 'warn', sub: who, alarm: false };
     case 'pos.cash_in': return { icon: '➕', tone: 'n', title: L('Thu thêm vào két', 'Cash in'), amount: m(e.amountCents), sub: `${who}${why}`, alarm: false };
     case 'pos.cash_out': return { icon: '➖', tone: 'y', title: L('Chi tiền từ két', 'Cash out'), amount: m(e.amountCents), amountTone: 'warn', sub: `${who}${why}`, alarm: false };
     default: return { icon: '•', tone: 'n', title: e.action, amount: m(e.amountCents), sub: who, alarm: false };

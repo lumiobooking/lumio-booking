@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { IsInt, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { HeldBillsService } from './held-bills.service';
@@ -31,7 +31,7 @@ export class HeldBillsController {
   }
 
   @Delete(':id')
-  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.held.remove(user, id);
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query('recalled') recalled?: string) {
+    return this.held.remove(user, id, { recalled: recalled === '1' });
   }
 }

@@ -108,8 +108,10 @@ export function SuggestionInbox({
   const [page, setPage] = useState(0);
   const [workPage, setWorkPage] = useState(0);
   const [donePage, setDonePage] = useState(0);
-  const [showDone, setShowDone] = useState(false);
   const [closing, setClosing] = useState<string | null>(null);
+  // rt237b: one lane at a time, as tabs — and "Take it" moves you to where the card went.
+  const [tab, setTab] = useState<'new' | 'work' | 'wait' | 'done' | null>(null);
+  const [flash, setFlash] = useState<{ id: string; text: string } | null>(null);
   const [note, setNote] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
@@ -120,6 +122,7 @@ export function SuggestionInbox({
   }, [token, onCount]);
   useEffect(() => { load(); }, [load]);
   useLive(load, 45_000, Boolean(token));
+  useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(null), 6000); return () => clearTimeout(t); }, [flash]);
 
   async function putAway(id: string) {
     if (!token) return;
@@ -128,6 +131,7 @@ export function SuggestionInbox({
       await apiFetch(`/content/suggestions/${id}/used`, { method: 'POST', token, body: { note } });
       setClosing(null); setNote('');
       await load();
+      setFlash({ id, text: T('Đã cất — xem lại ở tab "Đã xử lý"', 'Put away — see it under "Handled"') });
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'error');
     } finally { setBusy(null); }
@@ -139,6 +143,8 @@ export function SuggestionInbox({
     try {
       await apiFetch(`/content/suggestions/${id}${path}`, { method, token });
       await load();
+      if (path === '/claim') { setTab('work'); setFlash({ id, text: T('Đã nhận — thẻ chuyển sang "Đang làm"', 'Taken — the card is now under "In progress"') }); }
+      if (path === '/release') { setTab('new'); setFlash({ id, text: T('Đã trả về "Mới nhận"', 'Back under "Received"') }); }
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'error');
     } finally { setBusy(null); }
@@ -176,96 +182,91 @@ export function SuggestionInbox({
   const doneL = paged(done, donePage);
   const me = (name: string | null | undefined) => (name ? name.split('@')[0] : '');
 
+  const lanes: { key: 'new' | 'work' | 'wait' | 'done'; label: string; n: number; dot: string }[] = [
+    { key: 'new', label: T('Mới nhận', 'Received'), n: feed.ready.length, dot: '#22c55e' },
+    { key: 'work', label: T('Đang làm', 'In progress'), n: working.length, dot: '#6366f1' },
+    { key: 'wait', label: T('Chờ tiệm', 'Waiting on shop'), n: feed.waitingOnShop.length, dot: '#94a3b8' },
+    { key: 'done', label: T('Đã xử lý', 'Handled'), n: done.length, dot: '#64748b' },
+  ];
+  const cur = tab ?? (feed.ready.length ? 'new' : working.length ? 'work' : feed.waitingOnShop.length ? 'wait' : 'done');
+  const cardProps = (s: TeamSuggestion) => ({
+    s, vi, me, closing: closing === s.id, note, setNote, busy: busy === s.id, lit: flash?.id === s.id,
+    onClose: () => { setClosing(null); setNote(''); }, onPutAway: () => putAway(s.id),
+  });
+
   return (
     <div style={{
       background: 'var(--c1e293b)', border: `1px solid ${feed.ready.length ? '#22c55e' : 'var(--c334155)'}`,
-      borderRadius: 12, padding: 14, marginBottom: 14,
+      borderRadius: 12, padding: 12, marginBottom: 14,
     }}>
-      {/* ---- header ---- */}
-      <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap', marginBottom: 3 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
+      {/* ---- header: title, the four lanes as tabs, Drive ---- */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ce2e8f0)', marginRight: 4 }}
+          title={T('Đồ tiệm gửi là đồ thô. Nhận làm → dựng bài → ✓ Xong (ghi một dòng). File gốc trên Drive.', 'What the shop sends is raw. Take it → make the post → ✓ Done (one line). Originals on Drive.')}>
           📨 {T('Tiệm đã gửi', 'From the shop')}
         </div>
-        {feed.ready.length > 0 && (
-          <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: 'var(--c14532d)', border: '1px solid #22c55e', color: 'var(--c86efac)' }}>
-            {feed.ready.length} {T('mới nhận', 'new')}
-          </span>
-        )}
-        {working.length > 0 && (
-          <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: 'rgba(99,102,241,.15)', border: '1px solid #6366f1', color: 'var(--ca5b4fc)' }}>
-            {working.length} {T('đang làm', 'in progress')}
-          </span>
-        )}
+        <div role="tablist" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {lanes.map((l) => {
+            const on = cur === l.key;
+            return (
+              <button key={l.key} role="tab" aria-selected={on} onClick={() => setTab(l.key)}
+                style={{ ...btn, minHeight: 32, padding: '0 10px', borderRadius: 999, fontSize: 12.5, fontWeight: on ? 700 : 500, display: 'inline-flex', alignItems: 'center', gap: 6,
+                  background: on ? 'var(--c0f172a)' : 'transparent', borderColor: on ? l.dot : 'var(--c334155)', color: on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)' }}>
+                <span style={{ width: 7, height: 7, borderRadius: 4, background: l.dot }} />
+                {l.label}
+                <span style={{ fontWeight: 700, color: l.n && l.key === 'new' ? 'var(--ink-good)' : l.n && l.key === 'work' ? 'var(--ca5b4fc)' : 'inherit' }}>{l.n}</span>
+              </button>
+            );
+          })}
+        </div>
         {feed.driveFolderUrl && (
           <a href={feed.driveFolderUrl} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: 'var(--ca5b4fc)', textDecoration: 'none' }}>
-            📁 {T('Folder Drive của tiệm', 'Shop’s Drive folder')} →
+            📁 Drive →
           </a>
         )}
       </div>
-      <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.55, marginBottom: 10 }}>
-        {T('Đồ tiệm gửi là đồ thô. Mới nhận → bấm "Nhận làm" để ghi tên mình lên → dựng xong bấm ✓ ghi một dòng rồi cất. File gốc nằm trên Drive; "Dựng bài" chỉ chép bản sao sang kho đăng trong 1 tháng.',
-           'What the shop sends is raw. New → "Take it" puts your name on it → when the post is made press ✓, note it, put it away. Originals live on Drive; "Make a post" stages a month-long copy on the hosting.')}
-      </div>
-      {err && <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', marginBottom: 8 }}>{err}</div>}
+      {flash && <div role="status" style={{ marginTop: 8, fontSize: 12.5, color: 'var(--c86efac)', background: 'rgba(34,197,94,.1)', border: '1px solid #166534', borderRadius: 8, padding: '6px 10px' }}>✓ {flash.text}</div>}
+      {err && <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', marginTop: 8 }}>{err}</div>}
 
-      {/* ---- lane 1: received ---- */}
-      {feed.ready.length > 0 && (
-        <Lane title={T('MỚI NHẬN', 'RECEIVED')} count={feed.ready.length} color="#22c55e" vi={vi}>
-          <Grid>
-            {newL.slice.map((s) => (
-              <Card key={s.id} s={s} vi={vi} border="#166534" me={me}
-                closing={closing === s.id} note={note} setNote={setNote} busy={busy === s.id}
-                onClose={() => { setClosing(null); setNote(''); }} onPutAway={() => putAway(s.id)}
-                actions={(
-                  <>
-                    <button onClick={() => act(s.id, '/claim')} disabled={busy === s.id} style={{ ...btn, flex: 1, background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 700 }}>
-                      {busy === s.id ? '…' : `🙋 ${T('Nhận làm', 'Take it')}`}
-                    </button>
-                    <button onClick={() => makePost(s)} disabled={busy === s.id} title={T('Mở trình soạn với file đính sẵn', 'Open the composer with the files attached')} style={{ ...btn, background: '#22c55e', borderColor: '#22c55e', color: '#052e16', fontWeight: 700 }}>✎</button>
-                    <button onClick={() => { setClosing(s.id); setNote(''); }} title={T('Không cần dựng — ghi một dòng rồi cất', 'Nothing to make — note it and put away')} style={btn}>✓</button>
-                  </>
-                )}
-              />
-            ))}
-          </Grid>
-          {newL.pages > 1 && <Pager page={newL.p} pages={newL.pages} onPage={setPage} vi={vi} />}
-        </Lane>
-      )}
+      <div style={{ marginTop: 10 }}>
+        {/* ---- received ---- */}
+        {cur === 'new' && (feed.ready.length === 0 ? <Empty text={T('Không có gì mới từ tiệm.', 'Nothing new from the shop.')} /> : (
+          <>
+            <Items list={newL.slice} render={(s) => (
+              <Card key={s.id} {...cardProps(s)} border="#166534" actions={(
+                <>
+                  <button onClick={() => act(s.id, '/claim')} disabled={busy === s.id} style={{ ...btn, background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 700 }}>
+                    {busy === s.id ? '…' : `🙋 ${T('Nhận làm', 'Take it')}`}
+                  </button>
+                  <button onClick={() => makePost(s)} disabled={busy === s.id} title={T('Dựng bài với file đính sẵn', 'Open the composer with the files attached')} style={{ ...btn, background: '#22c55e', borderColor: '#22c55e', color: '#052e16', fontWeight: 700 }}>✎</button>
+                  <button onClick={() => { setClosing(s.id); setNote(''); }} title={T('Không cần dựng — ghi một dòng rồi cất', 'Nothing to make — note it and put away')} style={btn}>✓</button>
+                </>
+              )} />
+            )} />
+            {newL.pages > 1 && <Pager page={newL.p} pages={newL.pages} onPage={setPage} vi={vi} />}
+          </>
+        ))}
 
-      {/* ---- lane 2: in progress ---- */}
-      {working.length > 0 && (
-        <Lane title={T('ĐANG LÀM', 'IN PROGRESS')} count={working.length} color="#6366f1" vi={vi}>
-          <Grid>
-            {workL.slice.map((s) => (
-              <Card key={s.id} s={s} vi={vi} border="#4338ca" me={me}
-                closing={closing === s.id} note={note} setNote={setNote} busy={busy === s.id}
-                onClose={() => { setClosing(null); setNote(''); }} onPutAway={() => putAway(s.id)}
-                actions={(
-                  <>
-                    <button onClick={() => makePost(s)} disabled={busy === s.id} style={{ ...btn, flex: 1, background: '#22c55e', borderColor: '#22c55e', color: '#052e16', fontWeight: 700 }}>
-                      {busy === s.id ? '…' : `✎ ${T('Dựng bài', 'Make a post')}`}
-                    </button>
-                    <button onClick={() => { setClosing(s.id); setNote(''); }} title={T('Xong — ghi một dòng rồi cất', 'Done — note it and put away')} style={{ ...btn, background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 700 }}>✓ {T('Xong', 'Done')}</button>
-                    <button onClick={() => act(s.id, '/release')} disabled={busy === s.id} title={T('Trả về Mới nhận', 'Back to received')} style={btn}>↩</button>
-                  </>
-                )}
-              />
-            ))}
-          </Grid>
-          {workL.pages > 1 && <Pager page={workL.p} pages={workL.pages} onPage={setWorkPage} vi={vi} />}
-        </Lane>
-      )}
+        {/* ---- in progress ---- */}
+        {cur === 'work' && (working.length === 0 ? <Empty text={T('Chưa ai nhận làm thẻ nào.', 'Nobody has taken a card yet.')} /> : (
+          <>
+            <Items list={workL.slice} render={(s) => (
+              <Card key={s.id} {...cardProps(s)} border="#4338ca" actions={(
+                <>
+                  <button onClick={() => makePost(s)} disabled={busy === s.id} style={{ ...btn, background: '#22c55e', borderColor: '#22c55e', color: '#052e16', fontWeight: 700 }}>
+                    {busy === s.id ? '…' : `✎ ${T('Dựng bài', 'Make a post')}`}
+                  </button>
+                  <button onClick={() => { setClosing(s.id); setNote(''); }} title={T('Xong — ghi một dòng rồi cất', 'Done — note it and put away')} style={{ ...btn, background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 700 }}>✓ {T('Xong', 'Done')}</button>
+                  <button onClick={() => act(s.id, '/release')} disabled={busy === s.id} title={T('Trả về Mới nhận', 'Back to received')} style={btn}>↩</button>
+                </>
+              )} />
+            )} />
+            {workL.pages > 1 && <Pager page={workL.p} pages={workL.pages} onPage={setWorkPage} vi={vi} />}
+          </>
+        ))}
 
-      {/* ---- waiting on the shop ---- */}
-      {!!feed.waitingOnShop.length && (
-        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '.5px', color: 'var(--c64748b)', marginBottom: 3 }}>
-            {T('ĐANG CHỜ TIỆM', 'WAITING ON THE SHOP')} · {feed.waitingOnShop.length}
-          </div>
-          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginBottom: 6 }}>
-            {T('Đề xuất team đã gửi mà tiệm chưa quay/chưa trả lời. Tiệm gửi file thì nó nhảy lên "Mới nhận"; tiệm bấm "Không hợp" thì xuống "Đã xử lý". Gửi nhầm thì ✕ thu hồi.',
-               'Requests the team sent that the shop has not answered. When files arrive it moves to Received; a decline goes to Handled. Sent by mistake? ✕ withdraws it.')}
-          </div>
+        {/* ---- waiting on the shop ---- */}
+        {cur === 'wait' && (feed.waitingOnShop.length === 0 ? <Empty text={T('Không có đề xuất nào đang chờ tiệm.', 'No requests waiting on the shop.')} /> : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {feed.waitingOnShop.map((s) => (
               <span key={s.id} title={s.title} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--c94a3b8)', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '4px 6px 4px 9px', maxWidth: 320 }}>
@@ -280,71 +281,115 @@ export function SuggestionInbox({
               </span>
             ))}
           </div>
-        </div>
-      )}
+        ))}
 
-      {/* ---- handled: what was done with each, by whom ---- */}
-      {done.length > 0 && (
-        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
-          <button onClick={() => setShowDone((v) => !v)} style={{ ...btn, border: 'none', padding: 0, fontSize: 11.5, fontWeight: 600, letterSpacing: '.5px', color: 'var(--c64748b)' }}>
-            {showDone ? '▾' : '▸'} {T('ĐÃ XỬ LÝ', 'HANDLED')} · {done.length}
-          </button>
-          {showDone && (
-            <>
-              <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', marginTop: 8 }}>
-                {doneL.slice.map((s) => (
-                  <div key={s.id} style={{ display: 'flex', gap: 8, background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 9, padding: 8, opacity: 0.85, position: 'relative' }}>
-                    {canDelete && (
-                      <button
-                        onClick={() => { if (window.confirm(T(`Xoá hẳn "${s.title}"? Ghi chú và lịch sử mất; file gốc trên Drive vẫn còn.`, `Delete "${s.title}" for good? The note and history go; the Drive originals stay.`))) void act(s.id, '', 'DELETE'); }}
-                        disabled={busy === s.id} title={T('Xoá (chỉ tài khoản quyền cao)', 'Delete (senior accounts only)')}
-                        style={{ ...btn, position: 'absolute', top: 4, right: 4, padding: '0 6px', fontSize: 11, lineHeight: '18px', color: 'var(--cf87171)', borderColor: 'transparent' }}
-                      >✕</button>
-                    )}
-                    <Thumb media={s.media} vi={vi} small />
-                    <div style={{ minWidth: 0, flex: 1, paddingRight: canDelete ? 14 : 0 }}>
-                      <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.title}</div>
-                      <div style={{ fontSize: 11.5, color: s.status === 'skipped' ? 'var(--ink-bad)' : 'var(--ink-good)', marginTop: 3, lineHeight: 1.4 }}>
-                        {s.status === 'skipped' ? `✕ ${T('Tiệm từ chối', 'Shop declined')}` : `✓ ${s.usedNote || T('Đã dùng', 'Used')}`}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: 'var(--c64748b)', marginTop: 2 }}>
-                        {s.usedByName ? `${s.usedByName.split('@')[0]} · ` : ''}{ago(s.usedAt ?? s.doneAt ?? s.createdAt, vi)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {doneL.pages > 1 && <Pager page={doneL.p} pages={doneL.pages} onPage={setDonePage} vi={vi} />}
-            </>
-          )}
-        </div>
-      )}
+        {/* ---- handled: what was done with each, by whom ---- */}
+        {cur === 'done' && (done.length === 0 ? <Empty text={T('Chưa có thẻ nào được cất.', 'Nothing put away yet.')} /> : (
+          <>
+            <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+              {doneL.slice.map((s) => <DoneRow key={s.id} s={s} vi={vi} lit={flash?.id === s.id} canDelete={!!canDelete} busy={busy === s.id}
+                onDelete={() => { if (window.confirm(T(`Xoá hẳn "${s.title}"? Ghi chú và lịch sử mất; file gốc trên Drive vẫn còn.`, `Delete "${s.title}" for good? The note and history go; the Drive originals stay.`))) void act(s.id, '', 'DELETE'); }} />)}
+            </div>
+            {doneL.pages > 1 && <Pager page={doneL.p} pages={doneL.pages} onPage={setDonePage} vi={vi} />}
+          </>
+        ))}
+      </div>
     </div>
   );
 }
 
-function Lane({ title, count, color, vi, children }: { title: string; count: number; color: string; vi: boolean; children: React.ReactNode }) {
-  void vi;
+function Empty({ text }: { text: string }) {
+  return <div style={{ fontSize: 12.5, color: 'var(--c64748b)', padding: '6px 2px' }}>{text}</div>;
+}
+
+/** Text-only cards (an offer request, an ad approval) as compact rows; cards with files in a picture grid. */
+function Items({ list, render }: { list: TeamSuggestion[]; render: (s: TeamSuggestion) => React.ReactNode }) {
+  const text = list.filter((s) => !s.media?.length);
+  const pics = list.filter((s) => s.media?.length);
   return (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={{ width: 8, height: 8, borderRadius: 4, background: color }} />
-        <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.5px', color: 'var(--c94a3b8)' }}>{title} · {count}</span>
-      </div>
-      {children}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {text.length > 0 && <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 420px), 1fr))' }}>{text.map(render)}</div>}
+      {pics.length > 0 && <Grid>{pics.map(render)}</Grid>}
+    </div>
+  );
+}
+
+/** A handled card: one line of what, one of what was done, who and when; opens in full. */
+function DoneRow({ s, vi, lit, canDelete, busy, onDelete }: { s: TeamSuggestion; vi: boolean; lit: boolean; canDelete: boolean; busy: boolean; onDelete: () => void }) {
+  const T = (v: string, e: string) => ind(vi ? v : e);
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--c0f172a)', border: `1px solid ${lit ? '#22c55e' : 'var(--line)'}`, borderRadius: 9, padding: '6px 8px', position: 'relative' }}>
+      {open && <DetailModal s={s} vi={vi} onClose={() => setOpen(false)} />}
+      {s.media?.length ? <Thumb media={s.media} vi={vi} small /> : null}
+      <button onClick={() => setOpen(true)} style={{ ...btn, border: 'none', background: 'transparent', padding: 0, textAlign: 'left', minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</div>
+        <div style={{ fontSize: 11.5, color: s.status === 'skipped' ? 'var(--ink-bad)' : 'var(--ink-good)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {s.status === 'skipped' ? `✕ ${T('Tiệm từ chối', 'Shop declined')}` : `✓ ${s.usedNote || T('Đã dùng', 'Used')}`}
+          <span style={{ color: 'var(--c64748b)' }}> · {s.usedByName ? `${s.usedByName.split('@')[0]} · ` : ''}{ago(s.usedAt ?? s.doneAt ?? s.createdAt, vi)}</span>
+        </div>
+      </button>
+      {canDelete && (
+        <button onClick={onDelete} disabled={busy} title={T('Xoá (chỉ tài khoản quyền cao)', 'Delete (senior accounts only)')}
+          style={{ ...btn, padding: '0 6px', fontSize: 11, lineHeight: '18px', color: 'var(--cf87171)', borderColor: 'transparent' }}>✕</button>
+      )}
     </div>
   );
 }
 
 function Grid({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>{children}</div>;
+  return <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}>{children}</div>;
 }
 
 /** One card: the picture, the shop's words, who has it, and the lane's buttons. */
-function Card({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutAway, actions }: {
+function Card({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutAway, actions, lit }: {
   s: TeamSuggestion; vi: boolean; border: string; me: (n: string | null | undefined) => string;
   closing: boolean; note: string; setNote: (v: string) => void; busy: boolean;
-  onClose: () => void; onPutAway: () => void; actions: React.ReactNode;
+  onClose: () => void; onPutAway: () => void; actions: React.ReactNode; lit?: boolean;
+}) {
+  if (!s.media?.length) return <TextRow s={s} vi={vi} border={border} me={me} closing={closing} note={note} setNote={setNote} busy={busy} onClose={onClose} onPutAway={onPutAway} actions={actions} lit={lit} />;
+  return <PicCard s={s} vi={vi} border={border} me={me} closing={closing} note={note} setNote={setNote} busy={busy} onClose={onClose} onPutAway={onPutAway} actions={actions} lit={lit} />;
+}
+
+/** rt237b: a card with no file is one compact row — the title, one line of the note, who has it, the buttons. */
+function TextRow({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutAway, actions, lit }: {
+  s: TeamSuggestion; vi: boolean; border: string; me: (n: string | null | undefined) => string;
+  closing: boolean; note: string; setNote: (v: string) => void; busy: boolean;
+  onClose: () => void; onPutAway: () => void; actions: React.ReactNode; lit?: boolean;
+}) {
+  const T = (v: string, e: string) => ind(vi ? v : e);
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ background: 'var(--c0f172a)', border: `1px solid ${lit ? '#22c55e' : border}`, boxShadow: lit ? '0 0 0 2px rgba(34,197,94,.35)' : 'none', borderRadius: 10, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {open && <DetailModal s={s} vi={vi} onClose={() => setOpen(false)} />}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button onClick={() => setOpen(true)} title={T('Xem đầy đủ', 'See it all')} style={{ ...btn, border: 'none', background: 'transparent', padding: 0, textAlign: 'left', minWidth: 0, flex: '1 1 220px' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {s.fromShop ? `📤 ${T('Tiệm gửi', 'Shop')}` : T('Trả lời đề xuất', 'Answer')} · {ago(s.doneAt ?? s.createdAt, vi)}
+            {s.status === 'working' && <span style={{ color: 'var(--ca5b4fc)' }}> · 🙋 {me(s.workingByName) || 'Lumio'}</span>}
+            <span style={{ color: 'var(--ca5b4fc)', fontWeight: 600 }}> · {T('Xem chi tiết ›', 'Details ›')}</span>
+          </div>
+        </button>
+        {!closing && <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>{actions}</div>}
+      </div>
+      {closing && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <input autoFocus value={note} onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onPutAway(); if (e.key === 'Escape') onClose(); }}
+            placeholder={T('Đã làm gì? — vd: đã lên bài ưu đãi', 'What was done? — e.g. posted the offer')} style={{ ...inp, flex: '1 1 200px' }} />
+          <button onClick={onPutAway} disabled={busy} style={{ ...btn, background: '#6366f1', borderColor: '#6366f1', color: '#fff' }}>✓ {T('Cất đi', 'Put away')}</button>
+          <button onClick={onClose} style={btn}>{T('Huỷ', 'Cancel')}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PicCard({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutAway, actions, lit }: {
+  s: TeamSuggestion; vi: boolean; border: string; me: (n: string | null | undefined) => string;
+  closing: boolean; note: string; setNote: (v: string) => void; busy: boolean;
+  onClose: () => void; onPutAway: () => void; actions: React.ReactNode; lit?: boolean;
 }) {
   const T = (v: string, e: string) => ind(vi ? v : e);
   // rt237: an offer request or a note has no file — the text IS the content, so show
@@ -352,7 +397,7 @@ function Card({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutA
   const [open, setOpen] = useState(false);
   const textOnly = !s.media?.length;
   return (
-    <div style={{ background: 'var(--c0f172a)', border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ background: 'var(--c0f172a)', border: `1px solid ${lit ? '#22c55e' : border}`, boxShadow: lit ? '0 0 0 2px rgba(34,197,94,.35)' : 'none', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       {!textOnly && <Thumb media={s.media} vi={vi} />}
       {open && <DetailModal s={s} vi={vi} onClose={() => setOpen(false)} />}
       <div style={{ padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>

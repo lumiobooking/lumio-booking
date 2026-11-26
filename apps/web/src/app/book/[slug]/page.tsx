@@ -210,6 +210,18 @@ function svcNetCents(s: Service | null): number { return s ? salePrice(s) : 0; }
  * zone) and returns the matching UTC instant — so 3:00 PM means 3 PM at the salon
  * no matter what timezone the customer's phone is set to.
  */
+/** rt242: "Times are salon time (Calgary, now 1:20 PM there)." — only when this device is in another zone. */
+function salonZoneHint(tz: string | null | undefined): string {
+  if (!tz) return '';
+  try {
+    const now = new Date();
+    const at = (zone?: string) => now.toLocaleTimeString(bookLocale(), { hour: 'numeric', minute: '2-digit', ...(zone ? { timeZone: zone } : {}) });
+    if (at(tz) === at()) return '';
+    const city = (tz.split('/').pop() || tz).replace(/_/g, ' ');
+    return btf('Times are the salon\'s local time ({city}, now {time} there).', { city, time: at(tz) });
+  } catch { return ''; }
+}
+
 function wallTimeToISO(local: Date, timeZone: string): string {
   const y = local.getFullYear(), mo = local.getMonth(), d = local.getDate(), h = local.getHours(), mi = local.getMinutes();
   const naiveUTC = Date.UTC(y, mo, d, h, mi);
@@ -1174,10 +1186,13 @@ export default function PublicBookingPage() {
     step === 3 ? bt('Select time') :
     step === 4 ? bt('Confirm booking') : '';
 
+  // rt242: a customer whose phone is in another time zone (travelling, next
+  // province, a VPN) is told the times are the SALON's — which is what they get.
+  const zoneHint = salonZoneHint(salon?.timezone);
   const stepHint =
     step === 1 ? bt('Tap ＋ to add a service. You can pick more than one.') :
     step === 2 ? bt('Go with the person you know, or let us give you the first one free.') :
-    step === 3 ? `Every time below is really free${totalDuration ? ` for ${fmtDur(totalDuration)}` : ''}${employee ? ` with ${employee.firstName}` : ''}.` :
+    step === 3 ? `Every time below is really free${totalDuration ? ` for ${fmtDur(totalDuration)}` : ''}${employee ? ` with ${employee.firstName}` : ''}.${zoneHint ? ` ${zoneHint}` : ''}` :
     '';
 
   const barTitle =
@@ -2668,7 +2683,7 @@ function ConfirmStep({ unpriced, salon, slot, employee, lines, fmt, totalCents, 
       <Card title={bt("APPOINTMENT")}>
         <InfoRow icon="🏪" label={bt("Location")} value={salon?.name ?? ''} sub={salon?.address ?? undefined} />
         <InfoRow icon="📅" label={bt("Date")} value={slot.start.toLocaleDateString(bookLocale())} />
-        <InfoRow icon="🕐" label={bt("Time")} value={slot.end.getTime() > slot.start.getTime() ? `${fmtTime(slot.start)} – ${fmtTime(slot.end)}` : fmtTime(slot.start)} />
+        <InfoRow icon="🕐" label={bt("Time")} value={`${slot.end.getTime() > slot.start.getTime() ? `${fmtTime(slot.start)} – ${fmtTime(slot.end)}` : fmtTime(slot.start)}${salonZoneHint(salon?.timezone) ? ` (${btf('{city} time', { city: (salon!.timezone!.split('/').pop() || '').replace(/_/g, ' ') })})` : ''}`} />
         <InfoRow icon="👤" label={bt("Technician")} value={employee ? `${employee.firstName} ${employee.lastName ?? ''}`.trim() : bt('Any available')} last />
       </Card>
 

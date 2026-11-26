@@ -75,6 +75,8 @@ const VI: Record<string, string> = {
   'Add guest': 'Thêm người',
   'Popular': 'Phổ biến',
   'Total': 'Tổng cộng',
+  "Times are the salon's local time ({city}, now {time} there).": 'Giờ hiển thị là giờ địa phương của tiệm ({city}, bây giờ ở tiệm là {time}).',
+  '{city} time': 'giờ {city}',
   'Prices are before {percent}% VAT': 'Giá chưa gồm {percent}% VAT',
   'VAT {percent}%': 'VAT {percent}%',
   'Total incl. VAT': 'Tổng gồm VAT',

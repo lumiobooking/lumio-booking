@@ -1,4 +1,5 @@
 import { currencyCode, moneyLookOnChange } from '../common/money';
+import { windowProblem } from './booking-window';
 import { cleanRate } from '../pos/order-tax';
 import { dialCodeFor } from '../common/phone';
 import { PARTY_DEPOSIT_KEY, PartyDeposit, cleanPartyDeposit } from '../payments/party-deposit';
@@ -1725,6 +1726,11 @@ export class SettingsService implements OnApplicationBootstrap {
       businessHours: dto.businessHours ? normalizeHours(dto.businessHours) : current.businessHours,
       daysOff: dto.daysOff ?? current.daysOff,
     } as BookingRules;
+    // rt240: refuse a window that leaves no bookable time at all.
+    // Only when this save changes one of the two, so an unrelated save (opening hours) is never blocked.
+    const touchesWindow = (dto as { minLeadHours?: unknown }).minLeadHours !== undefined || (dto as { maxAdvanceDays?: unknown }).maxAdvanceDays !== undefined;
+    const bad = touchesWindow ? windowProblem(merged.minLeadHours, merged.maxAdvanceDays) : null;
+    if (bad) throw new BadRequestException(bad);
     await this.writeKey(tenantId, BOOKING_RULES_KEY, merged);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.booking_updated', resourceType: 'tenant', resourceId: tenantId });
     // This form can carry the currency too — the menu follows it the same way.

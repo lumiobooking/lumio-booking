@@ -464,6 +464,22 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
           </select>
         </Field>
       </div>
+      {/* rt240: say in words what the two numbers allow — and warn when they allow nothing. */}
+      {(() => {
+        const lead = Number(f.minLeadHours) || 0;
+        const days = Number(f.maxAdvanceDays) || 0;
+        const vi = lang === 'vi';
+        const dead = days >= 1 && lead >= days * 24;
+        const leadTxt = lead >= 24 ? (vi ? `${lead} giờ (≈ ${Math.round((lead / 24) * 10) / 10} ngày)` : `${lead} hours (≈ ${Math.round((lead / 24) * 10) / 10} days)`) : (vi ? `${lead} giờ` : `${lead} hours`);
+        return (
+          <div role={dead ? 'alert' : undefined} style={{ fontSize: 12.5, marginTop: 8, lineHeight: 1.5, padding: dead ? '8px 12px' : 0, borderRadius: 8,
+            color: dead ? 'var(--cfca5a5)' : 'var(--c94a3b8)', background: dead ? 'rgba(239,68,68,.1)' : 'transparent', border: dead ? '1px solid #7f1d1d' : 'none' }}>
+            {dead
+              ? (vi ? `⚠️ Với "tối thiểu ${leadTxt} trước" và "tối đa ${days} ngày trước", khách KHÔNG đặt được giờ nào. Giảm số giờ (vd 1–2) hoặc tăng số ngày. Lưu ý ô này tính bằng GIỜ, không phải phút.` : `⚠️ With "at least ${leadTxt} before" and "at most ${days} days ahead", customers can't book any time. Lower the hours (e.g. 1–2) or raise the days. This box is in HOURS, not minutes.`)
+              : (vi ? `Khách đặt được từ ${leadTxt} sau bây giờ, tới tối đa ${days} ngày tới.` : `Customers can book from ${leadTxt} from now up to ${days} days ahead.`)}
+          </div>
+        );
+      })()}
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6, lineHeight: 1.5 }}>{t('se.ru.bufferHint')}</div>
       <div style={{ marginTop: 10 }}>
         <Toggle on={f.allowCustomerChooseStaff} onChange={(v) => setF({ ...f, allowCustomerChooseStaff: v })} label={t('se.ru.chooseStaff')} />

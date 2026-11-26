@@ -238,7 +238,8 @@ function Inner() {
     if (!token) return;
     apiFetch<{ company?: { timezone?: string }; booking?: { businessHours?: HoursDay[]; daysOff?: string[] } }>('/settings', { token })
       .then((s) => {
-        const z = s.company?.timezone || undefined; setTz(z); if (z) { try { window.localStorage.setItem('lumio_tz', z); } catch { /* ignore */ } }
+        // rt241: never drop back to the DEVICE's zone because this answer lacked one.
+        const z = s.company?.timezone || undefined; if (z) { setTz(z); try { window.localStorage.setItem('lumio_tz', z); } catch { /* ignore */ } }
         setHours({ week: s.booking?.businessHours ?? null, daysOff: s.booking?.daysOff ?? [] });
       })
       .catch(() => undefined);
@@ -246,8 +247,13 @@ function Inner() {
 
   useEffect(() => {
     if (!token) return;
-    apiFetch<{ businessType?: string }>('/me/tenant', { token })
-      .then((r) => { const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); try { window.localStorage.setItem('lumio_is_restaurant', on ? '1' : '0'); } catch { /* ignore */ } })
+    apiFetch<{ businessType?: string; timezone?: string }>('/me/tenant', { token })
+      .then((r) => {
+        const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); try { window.localStorage.setItem('lumio_is_restaurant', on ? '1' : '0'); } catch { /* ignore */ }
+        // rt241: the salon's own zone (every role can read this) — so a phone set
+        // to another zone, or a desk account, still sees salon time.
+        if (r?.timezone) { setTz((cur) => cur || r.timezone); try { if (!window.localStorage.getItem('lumio_tz')) window.localStorage.setItem('lumio_tz', r.timezone); } catch { /* ignore */ } }
+      })
       .catch(() => undefined);
   }, [token]);
   const fmtT = useCallback(
@@ -532,6 +538,22 @@ function Inner() {
   };
   // The day's blocks, one line each — tap to manage them.
   const dayBlocks = mode === 'month' ? [] : blocks.filter((b) => onDay(b, cellKey(dayDate)));
+  // rt241: when this device's clock is in another zone than the salon, say so —
+  // the times shown are the SALON's, which is what the customer booked.
+  const tzNote = (() => {
+    if (!tz) return null;
+    try {
+      const now = new Date();
+      const hm = (zone?: string) => now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', ...(zone ? { timeZone: zone } : {}) });
+      if (hm(tz) === hm()) return null;
+      const city = tz.split('/').pop()?.replace(/_/g, ' ') ?? tz;
+      return (
+        <div role="note" style={{ fontSize: 12.5, color: C.sub, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '6px 12px', marginBottom: 10 }}>
+          🕐 {L(`Giờ trên lịch là giờ của tiệm (${city}, bây giờ ${hm(tz)}). Máy này đang để múi giờ khác (${hm()}).`, `Times are the salon's (${city}, now ${hm(tz)}). This device is set to another zone (${hm()}).`)}
+        </div>
+      );
+    } catch { return null; }
+  })();
   const blocksBar = dayBlocks.length > 0 && (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
       {dayBlocks.map((b) => (
@@ -676,6 +698,7 @@ function Inner() {
         </div>
       )}
       {error && <div style={ui.banner}>{error}</div>}
+      {tzNote}
       {!isRestaurant && <CallbackStrip token={token} vi={vi} isMobile={isMobile} />}
       {mode !== 'day' && mode !== 'floor' && <UnassignedBanner bookings={bookings} vi={vi} onDone={load} />}
       {blocksBar}
@@ -746,6 +769,7 @@ function Inner() {
       )}
       {mode !== 'floor' && mode !== 'day' && nF > 0 && <div style={{ marginBottom: 12 }}><ActiveChips f={filters} set={setFilters} staff={staffList} vi={vi} pad="8px 12px" rounded /></div>}
       {error && <div style={ui.banner}>{error}</div>}
+      {tzNote}
       {!isRestaurant && <CallbackStrip token={token} vi={vi} isMobile={isMobile} />}
       {mode !== 'day' && mode !== 'floor' && <UnassignedBanner bookings={bookings} vi={vi} onDone={load} />}
       {blocksBar}

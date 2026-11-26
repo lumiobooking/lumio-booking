@@ -18,6 +18,7 @@ import { publicWebBase } from '../common/public-url.util';
 import { Public } from '../auth/decorators/public.decorator';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { verifyCaptcha } from '../common/security/turnstile';
+import { onlineBookingsPerPhoneDay, phoneTail } from '../notifications/sms-spend-guard';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { seoTrade } from './seo-trade';
 import { appliesOn, dateRulesFor, programFor } from '../settings/promo-channel';
@@ -418,6 +419,22 @@ export class PublicSalonController {
       throw new BadRequestException('Captcha verification failed. Please try again.');
     }
     const tenantId = await this.resolveTenantId(slug);
+
+    // rt239: one phone number booking online again and again (a bot, or someone
+    // making every confirmation text cost the salon money) — a person never needs
+    // more than a few online bookings a day at one salon.
+    const tail = phoneTail(dto.customerPhone);
+    if (tail.length >= 7) {
+      let recent = 0;
+      try {
+        recent = await this.prisma.appointment.count({
+          where: { tenantId, source: { in: ['hosted', 'plugin'] }, createdAt: { gte: new Date(Date.now() - 24 * 3_600_000) }, customer: { phone: { endsWith: tail } } },
+        });
+      } catch { recent = 0; } // never block a real booking on a counting hiccup
+      if (recent >= onlineBookingsPerPhoneDay()) {
+        throw new BadRequestException('This phone number has made too many online bookings today. Please call the salon to book.');
+      }
+    }
 
     // GROUP BOOKINGS. The page used to post each friend as a separate public
     // booking with no phone — and a public booking without a phone is refused,

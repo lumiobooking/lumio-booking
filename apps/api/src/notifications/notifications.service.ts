@@ -12,6 +12,7 @@ import { senderForRecipient, twilioSenderFor, vnEsmsFor, platformEsmsFromEnv, ty
 import { toE164 } from '../common/phone';
 import { toGsm7 } from './sms-text';
 import { HOLD_LOOKBACK_MS, twilioOutcome, undeliveredError, undeliveredHold } from './sms-delivery';
+import { blockedDestination, phoneTail, spendHold, spendLimits } from './sms-spend-guard';
 import { readEsmsCallback } from './providers/esms-callback';
 import { ZnsProvider } from './providers/zns.provider';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
@@ -427,6 +428,21 @@ export class NotificationsService {
       if (plain && plain !== input.body) input = { ...input, body: plain };
     }
 
+    // rt239: spam / SMS-pumping guard on the platform account (sms-spend-guard.ts):
+    // only countries Lumio serves, and daily / hourly caps. Held texts cost nothing.
+    if (platformTwilio && sender.kind !== 'refuse') {
+      const why = await this.spendGuardFor(input.tenantId, input.recipient, toNumber);
+      if (why) {
+        return this.prisma.notification.create({
+          data: {
+            id: rowId, tenantId: input.tenantId, channel: input.channel, recipient: input.recipient,
+            subject: input.subject ?? null, body: input.body, status: NotificationStatus.FAILED,
+            provider: 'sms-guard', error: why, relatedType: input.relatedType ?? null, relatedId: input.relatedId ?? null, sentAt: null,
+          },
+        });
+      }
+    }
+
     // The last two texts to this number at this salon never arrived: stop
     // paying to send a third (sms-delivery.ts). Only platform-account texts
     // carry the delivery callback, so only they can be held.
@@ -684,6 +700,54 @@ export class NotificationsService {
       // Acknowledge and drop — a 500 only buys Twilio retries.
     }
     return { ok: true };
+  }
+
+  /** rt239: when a held text was last reported, per salon + reason (so an attack does not flood the log). */
+  private readonly spendWarned = new Map<string, number>();
+
+  /**
+   * rt239 — the spend-guard reason for a platform text, or null to send.
+   * Counts only texts really sent on the platform account (provider 'twilio').
+   * Never throws: a database hiccup must not stop a booking confirmation.
+   */
+  private async spendGuardFor(tenantId: string, recipient: string, toNumber: string | null): Promise<string | null> {
+    const limits = spendLimits(process.env);
+    const blocked = blockedDestination(toNumber, limits.allowedDial);
+    if (blocked) { this.warnSpend(tenantId, blocked, recipient); return blocked; }
+    try {
+      const tail = phoneTail(recipient);
+      const day = new Date(Date.now() - 24 * 3_600_000);
+      const hour = new Date(Date.now() - 3_600_000);
+      const base = { channel: NotificationChannel.SMS, provider: 'twilio' };
+      const [numberAtSalon24h, numberPlatform24h, salonHour, platform24h, staffPhones] = await Promise.all([
+        tail ? this.prisma.notification.count({ where: { ...base, tenantId, recipient: { endsWith: tail }, createdAt: { gte: day } } }) : 0,
+        tail ? this.prisma.notification.count({ where: { ...base, recipient: { endsWith: tail }, createdAt: { gte: day } } }) : 0,
+        this.prisma.notification.count({ where: { ...base, tenantId, createdAt: { gte: hour } } }),
+        this.prisma.notification.count({ where: { ...base, createdAt: { gte: day } } }),
+        tail ? Promise.all([
+          this.prisma.user.count({ where: { tenantId, phone: { endsWith: tail } } }),
+          this.prisma.staffMember.count({ where: { tenantId, phone: { endsWith: tail } } }),
+        ]).then(([a, b]) => a + b) : 0,
+      ]);
+      const why = spendHold({ numberAtSalon24h, numberPlatform24h, salonHour, platform24h }, limits, { staffNumber: staffPhones > 0 });
+      if (why) this.warnSpend(tenantId, why, recipient);
+      return why;
+    } catch {
+      return null;
+    }
+  }
+
+  private warnSpend(tenantId: string, why: string, recipient: string) {
+    const key = `${tenantId}|${why.slice(0, 40)}`;
+    const last = this.spendWarned.get(key) ?? 0;
+    if (Date.now() - last < 10 * 60_000) return;
+    this.spendWarned.set(key, Date.now());
+    if (this.spendWarned.size > 2000) this.spendWarned.clear();
+    // eslint-disable-next-line no-console
+    console.warn(`[sms-guard] tenant ${tenantId} …${phoneTail(recipient).slice(-4)}: ${why}`);
+    void this.prisma.auditLog.create({
+      data: { tenantId, action: 'sms.spend_held', resourceType: 'notification', metadata: { why, to: `…${phoneTail(recipient).slice(-4)}` } as never },
+    }).catch(() => undefined);
   }
 
   /** The hold reason for the next text to this number at this salon, or null. Never throws. */

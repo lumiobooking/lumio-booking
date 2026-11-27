@@ -1,5 +1,7 @@
 'use client';
 
+import { claimTenantCache } from './tenant-ui-cache';
+import { resetUiIndustry } from './ui-industry';
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { apiFetch, setUnauthorizedHandler, setSessionTenant } from './api';
 import { readSession, clearAllSessions, AUTH_KEY, leaveSupportSession, planForRefusal, renewSupportSession } from './support-session';
@@ -48,6 +50,11 @@ interface AuthState {
 const STORAGE_KEY = AUTH_KEY;
 const AuthContext = createContext<AuthState | null>(null);
 
+/** rt250: the device's cached facts about a business belong to that business only. */
+function ownCache(tenantId: string | null | undefined) {
+  try { if (typeof window !== 'undefined' && claimTenantCache(window.localStorage, tenantId)) resetUiIndustry(); } catch { /* storage refused */ }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -62,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(parsed.accessToken);
       setUser(parsed.user as unknown as AuthUser);
       setSessionTenant(parsed.user.tenantId ?? null);
+      ownCache(parsed.user.tenantId);
     }
     setReady(true);
   }, []);
@@ -113,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(res.accessToken);
     setUser(res.user);
     setSessionTenant(res.user.tenantId ?? null);
+    ownCache(res.user.tenantId);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(res));
     localStorage.removeItem('lumio_active_branch'); // a fresh login starts at the home branch
     return res.user;
@@ -122,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(res.accessToken);
     setUser(res.user);
     setSessionTenant(res.user.tenantId ?? null);
+    ownCache(res.user.tenantId);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(res));
     localStorage.removeItem('lumio_active_branch');
     return res.user;

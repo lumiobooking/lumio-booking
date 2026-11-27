@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { adsInlineSnippet } from '../../../lib/ads-tag';
 import { staticMenuHtml, type SeoPolicy } from '../../../lib/static-menu';
 import { seoText } from '../../../lib/booking-seo';
+import { FixedPalette } from '../../../components/FixedPalette';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 /** Just the scheme + host of the API, for the preconnect hint. */
@@ -167,6 +168,8 @@ export default async function BookSlugLayout({ children, params }: { children: R
   const adsSnippet = adsInlineSnippet(s?.analytics?.adsId ?? '');
   return (
     <>
+      {/* rt249: the booking page has its own fixed light design — never the device's light/dark switch. */}
+      <FixedPalette />
       {/* The booking page is the only thing a customer ever sees of the salon —
           it gets a real typeface, not the OS default. Plus Jakarta Sans is
           geometric, friendly and (unlike Poppins) ships a Vietnamese subset, so

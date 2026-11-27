@@ -12,14 +12,15 @@ import { apiFetch } from '../lib/api';
  * receptionist wants light on the sun-lit front desk iPad and dark on her own
  * phone at night. Applying is one attribute on <html> — every colour in the
  * product is a CSS variable keyed off that attribute, so there is nothing else
- * to notify and nowhere for a stale colour to hide. Default is dark, exactly
- * what every existing salon has been looking at.
+ * to notify and nowhere for a stale colour to hide. rt249: the default is
+ * LIGHT; dark only for someone who switched to it. The choice is kept on the
+ * device and on the account (below), so nobody switches twice.
  */
 /** Every switch on the page shows the same state (the phone header and the menu sheet both carry one). */
 const EVT = 'lumio-theme';
 const KEY = 'lumio.theme';
 
-/** Paint the page in one theme and remember it on this device. Dark is the default (no attribute). */
+/** Paint the page in one theme and remember it on this device. Light = the attribute; dark = none (the :root palette). rt249: light is the default. */
 export function applyTheme(light: boolean) {
   if (light) document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;

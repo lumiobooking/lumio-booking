@@ -223,3 +223,12 @@ export function ind(text: string): string {
   cache.set(text, out);
   return out;
 }
+
+/** rt250: forget the line of business shown — another business signed in on this device. */
+export function resetUiIndustry(): void {
+  loaded = true;
+  if (current === 'NAIL') return;
+  current = 'NAIL';
+  cache.clear();
+  for (const fn of listeners) { try { fn(); } catch { /* next */ } }
+}

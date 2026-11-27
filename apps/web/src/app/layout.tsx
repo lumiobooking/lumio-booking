@@ -6,6 +6,7 @@ import { ThemeSync } from '../components/ThemeToggle';
 import { LangProvider } from '../lib/i18n';
 import { PwaRegister } from '../components/PwaRegister';
 import { themeCss } from '../lib/theme';
+import { THEME_BOOT_SCRIPT } from '../lib/theme-boot';
 import { FeedbackToasts } from '../components/FeedbackToasts';
 import { NavProgress } from '../components/NavProgress';
 import { NativeBridge } from '../components/NativeBridge';
@@ -87,9 +88,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* Runs before paint. Reading localStorage after hydration would show
             a dark flash to every light-mode user on every single page load —
             the kind of flicker people describe as "the app feels broken". */}
-        <script dangerouslySetInnerHTML={{ __html:
-          `try{var t=localStorage.getItem('lumio.theme');if(t==='light'){document.documentElement.dataset.theme='light';}}catch(e){}`,
-        }} />
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body
         style={{

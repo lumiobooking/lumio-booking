@@ -93,3 +93,13 @@ describe('rt252 freeing a location an old link holds', () => {
     expect(deleted).toEqual([]);
   });
 });
+
+describe('rt253 a deleted salon does not keep a location taken', () => {
+  it('only salons not deleted are asked for their Google links', async () => {
+    const calls: unknown[] = [];
+    const prisma = { setting: { findMany: jest.fn(async (a: unknown) => { calls.push(a); return []; }) } };
+    const svc = new GoogleReviewsService(prisma as never, {} as never, {} as never);
+    await expect(svc.releaseLocation({ userId: 'u', tenantId: 'A', role: 'SALON_ADMIN', supportSession: true } as never, 'locations/1')).resolves.toEqual({ released: false, from: null });
+    expect(calls[0]).toMatchObject({ where: { key: 'googleReviews', tenant: { deletedAt: null } } });
+  });
+});

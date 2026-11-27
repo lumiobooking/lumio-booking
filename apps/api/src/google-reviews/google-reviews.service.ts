@@ -696,14 +696,19 @@ export class GoogleReviewsService {
   }
 
   /** Google locations linked to any OTHER salon (bare "locations/…" ids). */
-  /** rt251/252: Google location (bare id) → the OTHER salon holding it, and the name it saved. */
+  /**
+   * rt251/252: Google location (bare id) → the OTHER salon holding it, and the name it saved.
+   * rt253: only salons that still exist. A deleted salon's settings row stays until the
+   * hard purge, and its old link kept a location "taken" — The Hanoi Vietnamese Eatery
+   * showed as linked to a deleted "Lux Nail Spa" while the live Lux sat on its own place.
+   */
   private async locationLinksOtherThan(tenantId: string) {
-    const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY }, select: { tenantId: true, value: true } }).catch(() => [] as { tenantId: string; value: unknown }[]);
+    const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY, tenant: { deletedAt: null } }, select: { tenantId: true, value: true } }).catch(() => [] as { tenantId: string; value: unknown }[]);
     return takenLocationLinks(rows, tenantId);
   }
 
   private async locationsTakenByOthers(tenantId: string): Promise<Set<string>> {
-    const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY }, select: { tenantId: true, value: true } }).catch(() => [] as { tenantId: string; value: unknown }[]);
+    const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY, tenant: { deletedAt: null } }, select: { tenantId: true, value: true } }).catch(() => [] as { tenantId: string; value: unknown }[]);
     return takenLocations(rows, tenantId);
   }
 
@@ -1130,7 +1135,8 @@ export class GoogleReviewsService {
    *  location and turned ON auto-processing, pull new reviews (draft/alert). One
    *  tenant failing (expired token, quota) never blocks the others. */
   async syncAllConnected(): Promise<{ tenants: number; drafted: number; alerted: number; posted: number }> {
-    const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY } });
+    // rt253: a deleted salon is not synced (its rows linger until the hard purge).
+    const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY, tenant: { deletedAt: null } } });
     let tenants = 0, drafted = 0, alerted = 0, posted = 0;
     for (const row of rows) {
       const s = { ...DEFAULTS, ...((row.value ?? {}) as Partial<GbrSettings>) };

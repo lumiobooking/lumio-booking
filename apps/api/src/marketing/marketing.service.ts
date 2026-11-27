@@ -569,7 +569,7 @@ export class MarketingService {
     const [tenant, own, rows] = await Promise.all([
       this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
       this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'googleReviews' } }, select: { value: true } }),
-      this.prisma.setting.findMany({ where: { key: 'googleReviews' }, select: { tenantId: true, value: true } }),
+      this.prisma.setting.findMany({ where: { key: 'googleReviews', tenant: { deletedAt: null } }, select: { tenantId: true, value: true } }),
     ]);
     const ownV = (own?.value ?? {}) as { locationId?: string; locationTitle?: string };
     const loc = bareLocation(g.location || ownV.locationId);

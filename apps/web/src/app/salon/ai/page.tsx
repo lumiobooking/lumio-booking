@@ -330,6 +330,7 @@ function Inner() {
             {tab === 'knowledge' && <Knowledge brain={brain} patch={patch} vi={vi} canEdit={canEdit} token={token} pageConnected={view.channels.messenger.connected} />}
             {tab === 'booking' && <Booking brain={brain} patch={patch} vi={vi} canEdit={canEdit} />}
             {tab === 'chat' && <ChatSection brain={brain} patch={patch} vi={vi} canEdit={canEdit} view={view} token={token} />}
+            {tab === 'chat' && <AutoPhotoSwitch brain={brain} patch={patch} vi={vi} canEdit={canEdit} />}
             {tab === 'voice' && <VoiceSection brain={brain} patch={patch} vi={vi} canEdit={canEdit} view={view} />}
             {tab === 'memory' && <Memory token={token} vi={vi} canEdit={canEdit} />}
             {tab === 'photos' && <AutoPhotoSwitch brain={brain} patch={patch} vi={vi} canEdit={canEdit} />}

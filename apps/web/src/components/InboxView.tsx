@@ -24,6 +24,8 @@
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PhotoPicker, PhotoWaiting, SaveToLibrary, usePhotoSuggest } from './photos/PhotoPicker';
+import { PastedPhotos } from './photos/PastedPhotos';
+import { dragHasFiles, imageFiles, MAX_PASTED, splitSendable } from '../lib/pasted-photos';
 import { TurnBadge } from './TurnBadge';
 import { MessengerAlertCard } from './MessengerAlertCard';
 import { fmtInTz } from '../lib/datetime';
@@ -1080,6 +1082,34 @@ export function InboxView() {
       await loadThread(detail.id, false).catch(() => undefined);
     } finally { setBusy(false); if (photoRef.current) photoRef.current.value = ''; }
   }
+  // rt244: photos pasted (Ctrl/Cmd+V) or dropped onto the reply box wait for one tap.
+  const [pasted, setPasted] = useState<File[]>([]);
+  const [dropHot, setDropHot] = useState(false);
+  useEffect(() => { setPasted([]); setDropHot(false); }, [detail?.id]);
+  function queuePhotos(files: File[]) {
+    if (!files.length) return;
+    const { ok, bad } = splitSendable(files);
+    if (bad.length) setErr(vi ? 'Chỉ gửi được ảnh JPG, PNG hoặc WebP — đã bỏ ảnh khác loại.' : 'Only JPG, PNG or WebP photos can be sent — other files were left out.');
+    if (ok.length) setPasted((cur) => [...cur, ...ok].slice(0, MAX_PASTED));
+    setPickerOpen(false);
+  }
+  async function sendPasted() {
+    const list = pasted;
+    setPasted([]);
+    for (const f of list) await sendPhoto(f);
+  }
+  const onPastePhoto = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = imageFiles(e.clipboardData);
+    if (!files.length) return;
+    // A copied picture alone: keep it out of the text box. Text + picture (from a web page): both.
+    if (!e.clipboardData.getData('text/plain').trim()) e.preventDefault();
+    queuePhotos(files);
+  };
+  const dropZone = {
+    onDragOver: (e: React.DragEvent<HTMLDivElement>) => { if (!dragHasFiles(e.dataTransfer?.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (!dropHot) setDropHot(true); },
+    onDragLeave: (e: React.DragEvent<HTMLDivElement>) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropHot(false); },
+    onDrop: (e: React.DragEvent<HTMLDivElement>) => { if (!dragHasFiles(e.dataTransfer?.types)) return; e.preventDefault(); setDropHot(false); queuePhotos(imageFiles(e.dataTransfer)); },
+  };
 
   const sources = sourcesFrom(rows);
   // Whether the Page chip on each row is worth its width.
@@ -2117,7 +2147,9 @@ export function InboxView() {
               <PhotoWaiting token={token ?? null} threadId={detail.id} vi={vi} suggest={photoSuggest} disabled={notice.blocked}
                 onSent={() => void afterLibrarySend()} onError={(m) => setErr(m)} />
             )}
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, position: 'relative' }}>
+            {!noteMode && <PastedPhotos files={pasted} vi={vi} busy={busy} disabled={notice.blocked} onSend={() => void sendPasted()} onRemove={(i) => setPasted((c) => c.filter((_, j) => j !== i))} onClear={() => setPasted([])} />}
+            <div {...(!noteMode && !notice.blocked ? dropZone : {})} style={{ display: 'flex', alignItems: 'flex-end', gap: 8, position: 'relative', borderRadius: 14, outline: dropHot ? '2px dashed #4f46e5' : 'none', outlineOffset: 3 }}>
+              {dropHot && <DropHint vi={vi} />}
               {!noteMode && pickerOpen && (
                 <PhotoPicker token={token ?? null} threadId={detail.id} vi={vi} narrow={narrow} suggest={photoSuggest} disabled={notice.blocked || busy}
                   onClose={() => setPickerOpen(false)} onSent={() => void afterLibrarySend()} onUpload={() => photoRef.current?.click()} onError={(m) => setErr(m)} />
@@ -2140,7 +2172,7 @@ export function InboxView() {
                     placeholder={ind(vi ? 'Ghi chú cho team — khách không thấy' : 'Note for the team — the customer never sees it')}
                     style={{ ...boxStyle, border: '1px solid var(--c78350f)', background: 'var(--wash-amber)' }} />
                 ) : (
-                  <textarea ref={draftRef} value={draft} onChange={(e) => setDraft(e.target.value)} rows={1} disabled={notice.blocked || busy}
+                  <textarea ref={draftRef} value={draft} onChange={(e) => setDraft(e.target.value)} rows={1} disabled={notice.blocked || busy} onPaste={onPastePhoto}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
                     placeholder={composerPlaceholder}
                     style={{ ...boxStyle, border: '1px solid var(--c334155)', background: 'var(--c0b1220)' }} />
@@ -2570,9 +2602,11 @@ export function InboxView() {
               <div style={{ padding: narrow ? '8px 12px 0' : '8px 10px 0' }}>
                 <PhotoWaiting token={token ?? null} threadId={detail.id} vi={vi} suggest={photoSuggest} disabled={notice.blocked}
                   onSent={() => void afterLibrarySend()} onError={(m) => setErr(m)} />
+                {pasted.length > 0 && <div style={{ marginTop: 6 }}><PastedPhotos files={pasted} vi={vi} busy={busy} disabled={notice.blocked} onSend={() => void sendPasted()} onRemove={(i) => setPasted((c) => c.filter((_, j) => j !== i))} onClear={() => setPasted([])} /></div>}
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: narrow ? '8px 12px 0' : '8px 10px 8px', position: 'relative' }}>
+            <div {...(composerMode === 'reply' && !notice.blocked ? dropZone : {})} style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: narrow ? '8px 12px 0' : '8px 10px 8px', position: 'relative', borderRadius: 10, outline: dropHot ? '2px dashed #4f46e5' : 'none', outlineOffset: -2 }}>
+              {dropHot && <DropHint vi={vi} />}
               {composerMode === 'reply' && pickerOpen && (
                 <PhotoPicker token={token ?? null} threadId={detail.id} vi={vi} narrow={narrow} suggest={photoSuggest} disabled={notice.blocked || busy}
                   onClose={() => setPickerOpen(false)} onSent={() => void afterLibrarySend()} onUpload={() => photoRef.current?.click()} onError={(m) => setErr(m)} />
@@ -2588,7 +2622,7 @@ export function InboxView() {
                 </>
               )}
               {composerMode === 'reply' ? (
-                <textarea ref={draftRef} value={draft} onChange={(e) => setDraft(e.target.value)}
+                <textarea ref={draftRef} value={draft} onChange={(e) => setDraft(e.target.value)} onPaste={onPastePhoto}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
                   placeholder={composerPlaceholder} disabled={notice.blocked || busy} rows={narrow ? 1 : 2} aria-label={vi ? 'Nội dung trả lời' : 'Reply'}
                   style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', minHeight: narrow ? 40 : 52, padding: narrow ? '10px 12px' : '8px 6px', borderRadius: narrow ? 12 : 8, border: narrow ? '1px solid var(--c334155)' : 'none', background: narrow ? 'var(--c0b1220)' : 'transparent', resize: 'none', fontSize: narrow ? 16 : 14, lineHeight: 1.5, color: 'var(--ce2e8f0)', outline: 'none', fontFamily: 'inherit' }} />
@@ -3145,4 +3179,13 @@ async function shrinkPhoto(file: File): Promise<string> {
   } catch {
     return asDataUrl(file);
   }
+}
+
+/** rt244: shown over the reply box while a photo is dragged onto it. */
+function DropHint({ vi }: { vi: boolean }) {
+  return (
+    <div aria-hidden style={{ position: 'absolute', inset: 0, zIndex: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'inherit', background: 'rgba(79,70,229,.14)', color: 'var(--ce2e8f0)', fontWeight: 700, fontSize: 14, pointerEvents: 'none' }}>
+      {vi ? 'Thả ảnh vào đây để gửi cho khách' : 'Drop the photo here to send it'}
+    </div>
+  );
 }

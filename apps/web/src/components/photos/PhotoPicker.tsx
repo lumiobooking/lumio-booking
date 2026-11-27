@@ -274,6 +274,13 @@ export function PhotoPicker({ token, threadId, vi, narrow, suggest, onClose, onS
             {busy ? L(vi, 'Đang gửi…', 'Sending…') : picked.length ? L(vi, `Gửi ${picked.length} ảnh`, `Send ${picked.length}`) : L(vi, 'Chọn ảnh để gửi', 'Pick photos')}
           </button>
         </div>}
+        {tab !== 'pay' && <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--c94a3b8)' }}>
+          {L(vi, 'Mẹo: dán ảnh (Ctrl+V / ⌘+V) hoặc kéo thả ảnh vào ô trả lời.', 'Tip: paste (Ctrl+V / ⌘+V) or drag a photo onto the reply box.')}
+          {typeof window !== 'undefined' && window.location.pathname.startsWith('/salon') && <>
+            {' '}{L(vi, 'Bật/tắt AI tự gửi ảnh:', 'AI sending photos on/off:')}{' '}
+            <a href="/salon/ai?tab=photos" style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{L(vi, 'Trợ lý AI › Ảnh gửi khách', 'AI assistant › Photos')}</a>
+          </>}
+        </div>}
       </div>
     </>
   );

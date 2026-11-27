@@ -91,12 +91,19 @@ export function takenLocations(rows: Array<{ tenantId: string; value: unknown }>
  */
 export function takenLocationOwners(rows: Array<{ tenantId: string; value: unknown }>, tenantId: string): Map<string, string> {
   const out = new Map<string, string>();
+  for (const [k, v] of takenLocationLinks(rows, tenantId)) out.set(k, v.tenantId);
+  return out;
+}
+
+/** rt252: the same, with the name the other salon saved for the location (to spot a stale, wrong link). */
+export function takenLocationLinks(rows: Array<{ tenantId: string; value: unknown }>, tenantId: string): Map<string, { tenantId: string; savedTitle: string }> {
+  const out = new Map<string, { tenantId: string; savedTitle: string }>();
   for (const r of rows) {
     if (r.tenantId === tenantId) continue;
-    const v = (r.value && typeof r.value === 'object' ? r.value : {}) as { connected?: boolean; locationId?: string };
+    const v = (r.value && typeof r.value === 'object' ? r.value : {}) as { connected?: boolean; locationId?: string; locationTitle?: string };
     if (v.connected !== true) continue;
     const loc = bareLocation(v.locationId);
-    if (loc && !out.has(loc)) out.set(loc, r.tenantId);
+    if (loc && !out.has(loc)) out.set(loc, { tenantId: r.tenantId, savedTitle: String(v.locationTitle ?? '').trim() });
   }
   return out;
 }

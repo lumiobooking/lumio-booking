@@ -250,9 +250,23 @@ function Inner() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [locations, setLocations] = useState<{ name: string; title: string; address: string; takenByOther?: boolean; takenBy?: string | null }[] | null>(null);
+  const [locations, setLocations] = useState<{ name: string; title: string; address: string; takenByOther?: boolean; takenBy?: string | null; takenBySlug?: string | null; takenTitle?: string | null }[] | null>(null);
   const [pickAccount, setPickAccount] = useState('');
   const [pickLoc, setPickLoc] = useState('');
+  // rt252: the Lumio team may free a location an old, wrong link holds.
+  const [canRelease, setCanRelease] = useState(false);
+  const [releasing, setReleasing] = useState<string | null>(null);
+  const [askRelease, setAskRelease] = useState<string | null>(null);
+  async function releaseLoc(name: string) {
+    setReleasing(name); setError(null);
+    try {
+      await apiFetch('/google-reviews/location/release', { method: 'POST', token, body: { locationId: name } });
+      setAskRelease(null);
+      await loadLocations();
+      setPickLoc(name);
+    } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
+    finally { setReleasing(null); }
+  }
   const [locFilter, setLocFilter] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -341,8 +355,8 @@ function Inner() {
   async function loadLocations() {
     setError(null);
     try {
-      const r = await apiFetch<{ accountId: string; locations: { name: string; title: string; address: string; takenByOther?: boolean; takenBy?: string | null }[] }>('/google-reviews/locations', { token });
-      setLocations(r.locations); setPickAccount(r.accountId);
+      const r = await apiFetch<{ accountId: string; canRelease?: boolean; locations: { name: string; title: string; address: string; takenByOther?: boolean; takenBy?: string | null; takenBySlug?: string | null; takenTitle?: string | null }[] }>('/google-reviews/locations', { token });
+      setLocations(r.locations); setPickAccount(r.accountId); setCanRelease(r.canRelease === true);
       // No silent default. The picker used to preselect locations[0] — on an
       // agency account that is whichever of 59 salons sorts first, and it was
       // saved for a shop whose owner had typed a different name into the
@@ -533,9 +547,11 @@ function Inner() {
                             )}
                             {filteredLocs.map((l) => {
                               const on = l.name === pickLoc;
+                              // rt252: the other salon saved a DIFFERENT name for this place → its link is stale.
+                              const stale = !!(l.takenByOther && l.takenTitle && l.takenTitle.trim().toLowerCase() !== l.title.trim().toLowerCase());
                               return (
+                                <div key={l.name} style={{ borderTop: '1px solid var(--line)' }}>
                                 <button
-                                  key={l.name}
                                   type="button"
                                   role="option"
                                   aria-selected={on}
@@ -545,15 +561,32 @@ function Inner() {
                                   style={{
                                     opacity: l.takenByOther ? 0.45 : 1,
                                     display: 'block', width: '100%', textAlign: 'left', cursor: l.takenByOther ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                                    padding: '10px 14px', border: 'none', borderTop: '1px solid var(--line)',
+                                    padding: '10px 14px', border: 'none',
                                     borderLeft: `4px solid ${on ? '#6366f1' : 'transparent'}`,
                                     background: on ? 'rgba(99,102,241,.16)' : 'transparent',
                                   }}
                                 >
                                   <div style={{ fontSize: 13.5, fontWeight: on ? 800 : 600, color: 'var(--ce2e8f0)' }}>{on ? '✓ ' : ''}{l.title}</div>
                                   {l.address && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>{l.address}</div>}
-                                  {l.takenByOther && <div style={{ fontSize: 11.5, color: 'var(--ink-warn)', marginTop: 2 }}>{l.takenBy ? <>Đã gắn cho tiệm <b>{l.takenBy}</b> · Linked to <b>{l.takenBy}</b></> : 'Đã gắn cho một tiệm khác · Linked to another salon'}</div>}
+                                  {l.takenByOther && <div style={{ fontSize: 11.5, color: 'var(--ink-warn)', marginTop: 2 }}>{l.takenBy ? <>Đã gắn cho tiệm <b>{l.takenBy}</b>{l.takenBySlug ? ` (${l.takenBySlug})` : ''} · Linked to <b>{l.takenBy}</b></> : 'Đã gắn cho một tiệm khác · Linked to another salon'}</div>}
                                 </button>
+                                {l.takenByOther && canRelease && (
+                                  <div style={{ padding: '0 14px 10px 18px', fontSize: 12, color: 'var(--ccbd5e1)', lineHeight: 1.5 }}>
+                                    {l.takenTitle && <div>Tiệm đó đang lưu tên địa điểm: <b>{l.takenTitle}</b>{stale ? ' — khác tên địa điểm này, nhiều khả năng là gắn nhầm cũ.' : ''}</div>}
+                                    {askRelease !== l.name ? (
+                                      <button type="button" onClick={() => setAskRelease(l.name)} style={{ ...ghostBtn, padding: '6px 10px', fontSize: 12, marginTop: 6 }}>
+                                        Gỡ khỏi {l.takenBy ?? 'tiệm kia'} để gắn cho tiệm này
+                                      </button>
+                                    ) : (
+                                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
+                                        <span>Gỡ địa điểm “{l.title}” khỏi <b>{l.takenBy ?? 'tiệm kia'}</b>? Tiệm đó sẽ phải chọn lại địa điểm của mình.</span>
+                                        <button type="button" onClick={() => void releaseLoc(l.name)} disabled={releasing === l.name} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12 }}>{releasing === l.name ? '…' : 'Gỡ và chọn cho tiệm này'}</button>
+                                        <button type="button" onClick={() => setAskRelease(null)} style={{ ...ghostBtn, padding: '6px 10px', fontSize: 12 }}>Thôi</button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                </div>
                               );
                             })}
                           </div>

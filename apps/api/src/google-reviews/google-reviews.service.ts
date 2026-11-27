@@ -1,6 +1,6 @@
 import { googleMapsUrl } from '../common/social-links';
 import { PERSPECTIVE_RULES, rememberEdit, ownNames, voiceBlock, type ReplyExample } from './review-voice';
-import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { NotificationChannel, Prisma, UserRole } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,7 +10,7 @@ import { AiUsageService } from '../common/ai-usage.service';
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { explainLocalPost404, bareLocationId } from './gbp-post-404';
-import { bareLocation, pickLocation, takenLocationOwners, takenLocations } from './location-match';
+import { bareLocation, pickLocation, takenLocationLinks, takenLocations } from './location-match';
 import { oauthBase } from '../common/public-url.util';
 
 // Status is a Prisma enum ('NEW' | 'DRAFTED' | ...). We use plain string literals
@@ -607,7 +607,7 @@ export class GoogleReviewsService {
 
   // ---- location discovery (best-effort) ------------------------------------
   /** List the connected account's locations so the salon can pick the right one. */
-  async listLocations(user: AuthenticatedUser): Promise<{ accountId: string; locations: { name: string; title: string; address: string; takenByOther?: boolean; takenBy?: string | null }[] }> {
+  async listLocations(user: AuthenticatedUser): Promise<{ accountId: string; canRelease: boolean; locations: { name: string; title: string; address: string; takenByOther?: boolean; takenBy?: string | null; takenBySlug?: string | null; takenTitle?: string | null }[] }> {
     const tenantId = this.tenantId(user);
     const s = await this.getSettings(tenantId);
     const token = await this.accessToken(s);
@@ -638,30 +638,68 @@ export class GoogleReviewsService {
     };
     // A location another salon already holds is listed but marked: picking
     // it would print that salon's reviews, numbers and keywords under this one.
-    const owners = await this.locationOwnersOtherThan(tenantId);
+    const links = await this.locationLinksOtherThan(tenantId);
+    const owners = new Map(Array.from(links.entries()).map(([k, v]) => [k, v.tenantId]));
     // rt251: WHICH salon holds it — named for the Lumio team (platform admin or a
     // support session working in this salon) who manage many salons' profiles on
     // one Google login. A salon owner is told only that another salon holds it:
     // one salon's name is not another salon's business.
     const lumioTeam = user.role === UserRole.SUPER_ADMIN || user.supportSession === true;
     const otherIds = lumioTeam ? Array.from(new Set(owners.values())) : [];
-    const named = otherIds.length ? await this.prisma.tenant.findMany({ where: { id: { in: otherIds } }, select: { id: true, name: true } }).catch(() => [] as { id: string; name: string }[]) : [];
+    const named = otherIds.length ? await this.prisma.tenant.findMany({ where: { id: { in: otherIds } }, select: { id: true, name: true, slug: true } }).catch(() => [] as { id: string; name: string; slug: string }[]) : [];
     const nameOf = new Map(named.map((t) => [t.id, t.name]));
+    const slugOf = new Map(named.map((t) => [t.id, t.slug]));
     const locations = (data.locations || [])
       .map((l) => {
         const own = owners.get(bareLocation(l.name));
-        return { name: l.name || '', title: l.title || l.name || '', address: shortAddress(l.storefrontAddress), takenByOther: !!own, takenBy: own && lumioTeam ? nameOf.get(own) ?? null : null };
+        const link = links.get(bareLocation(l.name));
+        return {
+          name: l.name || '', title: l.title || l.name || '', address: shortAddress(l.storefrontAddress), takenByOther: !!own,
+          takenBy: own && lumioTeam ? nameOf.get(own) ?? null : null,
+          // rt252: which account (slug — two salons can share a name) and the location name
+          // THAT salon saved: when it differs from this location's own name, the link is stale.
+          takenBySlug: own && lumioTeam ? slugOf.get(own) ?? null : null,
+          takenTitle: own && lumioTeam ? link?.savedTitle || null : null,
+        };
       })
       .filter((l) => l.name)
       .sort((a, b) => Number(a.takenByOther) - Number(b.takenByOther) || a.title.localeCompare(b.title));
-    return { accountId, locations };
+    return { accountId, canRelease: lumioTeam, locations };
+  }
+
+  /**
+   * rt252 — "The Hanoi Vietnamese Eatery báo đã gắn vào Lux Nail Spa trong khi Lux
+   * vẫn đúng". A location can be held by a salon through an old, wrong link (the
+   * first-location-of-the-account linking before location-match.ts, or a duplicate
+   * account with the same name). The Lumio team frees it from that salon so the
+   * right one can take it: only the location fields of THAT salon are cleared
+   * (its Google login stays), its mirrored reviews of the wrong place go, and both
+   * salons get an audit line. Lumio team only (platform admin or support session).
+   */
+  async releaseLocation(user: AuthenticatedUser, locationId: string) {
+    const tenantId = this.tenantId(user);
+    const lumioTeam = user.role === UserRole.SUPER_ADMIN || user.supportSession === true;
+    if (!lumioTeam) throw new ForbiddenException('Chỉ team Lumio được gỡ địa điểm khỏi tiệm khác.');
+    const loc = bareLocation(locationId);
+    if (!loc || loc === 'locations/') throw new BadRequestException('Thiếu địa điểm.');
+    const links = await this.locationLinksOtherThan(tenantId);
+    const link = links.get(loc);
+    if (!link) return { released: false, from: null };
+    const other = await this.getSettings(link.tenantId);
+    if (bareLocation(other.locationId) !== loc) return { released: false, from: null };
+    await this.writeSettings(link.tenantId, { locationId: '', locationTitle: '', lastSyncAt: null, placeId: '', newReviewUri: '' });
+    await this.prisma.googleReview.deleteMany({ where: { tenantId: link.tenantId } }).catch(() => undefined);
+    const from = await this.prisma.tenant.findUnique({ where: { id: link.tenantId }, select: { name: true, slug: true } }).catch(() => null);
+    await this.audit(link.tenantId, user.userId, 'google_reviews.location_released_by_lumio');
+    await this.audit(tenantId, user.userId, 'google_reviews.location_freed_for_this_salon');
+    return { released: true, from: from ? { name: from.name, slug: from.slug } : null };
   }
 
   /** Google locations linked to any OTHER salon (bare "locations/…" ids). */
-  /** rt251: Google location (bare id) → the OTHER salon holding it. */
-  private async locationOwnersOtherThan(tenantId: string): Promise<Map<string, string>> {
+  /** rt251/252: Google location (bare id) → the OTHER salon holding it, and the name it saved. */
+  private async locationLinksOtherThan(tenantId: string) {
     const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY }, select: { tenantId: true, value: true } }).catch(() => [] as { tenantId: string; value: unknown }[]);
-    return takenLocationOwners(rows, tenantId);
+    return takenLocationLinks(rows, tenantId);
   }
 
   private async locationsTakenByOthers(tenantId: string): Promise<Set<string>> {

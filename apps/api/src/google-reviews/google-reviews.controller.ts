@@ -58,6 +58,12 @@ export class GoogleReviewsController {
     return this.svc.setLocation(user, dto.accountId, dto.locationId, dto.locationTitle);
   }
 
+  /** rt252: Lumio team frees a Google location held by another salon (a stale, wrong link). */
+  @Post('location/release')
+  releaseLocation(@CurrentUser() user: AuthenticatedUser, @Body() body: { locationId?: string }) {
+    return this.svc.releaseLocation(user, typeof body?.locationId === 'string' ? body.locationId.slice(0, 200) : '');
+  }
+
   @Post('sync')
   sync(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.syncNow(user);

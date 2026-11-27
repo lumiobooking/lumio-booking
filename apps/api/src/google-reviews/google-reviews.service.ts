@@ -1,7 +1,7 @@
 import { googleMapsUrl } from '../common/social-links';
 import { PERSPECTIVE_RULES, rememberEdit, ownNames, voiceBlock, type ReplyExample } from './review-voice';
 import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import { NotificationChannel, Prisma } from '@prisma/client';
+import { NotificationChannel, Prisma, UserRole } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -10,7 +10,7 @@ import { AiUsageService } from '../common/ai-usage.service';
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { explainLocalPost404, bareLocationId } from './gbp-post-404';
-import { bareLocation, pickLocation, takenLocations } from './location-match';
+import { bareLocation, pickLocation, takenLocationOwners, takenLocations } from './location-match';
 import { oauthBase } from '../common/public-url.util';
 
 // Status is a Prisma enum ('NEW' | 'DRAFTED' | ...). We use plain string literals
@@ -607,7 +607,7 @@ export class GoogleReviewsService {
 
   // ---- location discovery (best-effort) ------------------------------------
   /** List the connected account's locations so the salon can pick the right one. */
-  async listLocations(user: AuthenticatedUser): Promise<{ accountId: string; locations: { name: string; title: string; address: string }[] }> {
+  async listLocations(user: AuthenticatedUser): Promise<{ accountId: string; locations: { name: string; title: string; address: string; takenByOther?: boolean; takenBy?: string | null }[] }> {
     const tenantId = this.tenantId(user);
     const s = await this.getSettings(tenantId);
     const token = await this.accessToken(s);
@@ -638,15 +638,32 @@ export class GoogleReviewsService {
     };
     // A location another salon already holds is listed but marked: picking
     // it would print that salon's reviews, numbers and keywords under this one.
-    const taken = await this.locationsTakenByOthers(tenantId);
+    const owners = await this.locationOwnersOtherThan(tenantId);
+    // rt251: WHICH salon holds it — named for the Lumio team (platform admin or a
+    // support session working in this salon) who manage many salons' profiles on
+    // one Google login. A salon owner is told only that another salon holds it:
+    // one salon's name is not another salon's business.
+    const lumioTeam = user.role === UserRole.SUPER_ADMIN || user.supportSession === true;
+    const otherIds = lumioTeam ? Array.from(new Set(owners.values())) : [];
+    const named = otherIds.length ? await this.prisma.tenant.findMany({ where: { id: { in: otherIds } }, select: { id: true, name: true } }).catch(() => [] as { id: string; name: string }[]) : [];
+    const nameOf = new Map(named.map((t) => [t.id, t.name]));
     const locations = (data.locations || [])
-      .map((l) => ({ name: l.name || '', title: l.title || l.name || '', address: shortAddress(l.storefrontAddress), takenByOther: taken.has(bareLocation(l.name)) }))
+      .map((l) => {
+        const own = owners.get(bareLocation(l.name));
+        return { name: l.name || '', title: l.title || l.name || '', address: shortAddress(l.storefrontAddress), takenByOther: !!own, takenBy: own && lumioTeam ? nameOf.get(own) ?? null : null };
+      })
       .filter((l) => l.name)
       .sort((a, b) => Number(a.takenByOther) - Number(b.takenByOther) || a.title.localeCompare(b.title));
     return { accountId, locations };
   }
 
   /** Google locations linked to any OTHER salon (bare "locations/…" ids). */
+  /** rt251: Google location (bare id) → the OTHER salon holding it. */
+  private async locationOwnersOtherThan(tenantId: string): Promise<Map<string, string>> {
+    const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY }, select: { tenantId: true, value: true } }).catch(() => [] as { tenantId: string; value: unknown }[]);
+    return takenLocationOwners(rows, tenantId);
+  }
+
   private async locationsTakenByOthers(tenantId: string): Promise<Set<string>> {
     const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY }, select: { tenantId: true, value: true } }).catch(() => [] as { tenantId: string; value: unknown }[]);
     return takenLocations(rows, tenantId);

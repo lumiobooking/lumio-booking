@@ -83,3 +83,20 @@ export function takenLocations(rows: Array<{ tenantId: string; value: unknown }>
   }
   return out;
 }
+
+/**
+ * rt251 — the same as takenLocations, but says WHICH salon holds each location
+ * (bare "locations/…" id → tenantId), so the Lumio team can see where a
+ * profile went. Only the Lumio team is shown the name (see listLocations).
+ */
+export function takenLocationOwners(rows: Array<{ tenantId: string; value: unknown }>, tenantId: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    if (r.tenantId === tenantId) continue;
+    const v = (r.value && typeof r.value === 'object' ? r.value : {}) as { connected?: boolean; locationId?: string };
+    if (v.connected !== true) continue;
+    const loc = bareLocation(v.locationId);
+    if (loc && !out.has(loc)) out.set(loc, r.tenantId);
+  }
+  return out;
+}

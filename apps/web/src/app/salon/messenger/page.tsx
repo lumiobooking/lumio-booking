@@ -14,6 +14,7 @@ import { ui } from '../../../lib/ui';
 import { ChatTurnsPanel } from '../../../components/ChatTurnsPanel';
 import { ProspectsBoard } from '../../../components/ProspectsBoard';
 import { TeamStats } from '../../../components/TeamStats';
+import { LeadReport } from '../../../components/LeadReport';
 import { useLang } from '../../../lib/i18n';
 import { AiNotesBox } from '../../../components/AiNotesBox';
 import { FollowUpBox } from '../../../components/FollowUpBox';
@@ -1305,6 +1306,7 @@ function Inner() {
         <div style={{ ...ui.card }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ce2e8f0)', marginBottom: 4 }}>📊 {L('Hiệu quả làm việc của nhân viên', 'Team performance')}</div>
           <p style={{ fontSize: 12.5, color: 'var(--c94a3b8)', margin: '0 0 12px', lineHeight: 1.55 }}>{L('Mỗi người nhận bao nhiêu khách, trả lời nhanh cỡ nào, bao nhiêu khách để lại số và đặt lịch, và từng lần bỏ turn / không trả lời khách. Bấm tên khách để mở cuộc trò chuyện.', 'Turns, first-answer time, customers who left a number and booked, and every turn let go.')}</p>
+          <LeadReport token={token} vi={lang === 'vi'} />
           <TeamStats token={token} vi={lang === 'vi'} />
         </div>
       )}

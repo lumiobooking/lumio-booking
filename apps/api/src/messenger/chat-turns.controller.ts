@@ -91,6 +91,12 @@ export class ChatTurnsController {
     return this.turns.scoreboardView(user, Number(days) || 1);
   }
 
+  /** rt245: leads by day / week / month — each person and the whole salon. Owner: everyone + salon; staff: their own. */
+  @Get('turns/lead-report')
+  leadReport(@CurrentUser() user: AuthenticatedUser, @Query('by') by?: string, @Query('format') format?: string) {
+    return format === 'csv' ? this.turns.leadReportCsv(user, by) : this.turns.leadReportView(user, by);
+  }
+
   /** rt216: every turn someone let go — not opened, not answered, skipped. Owner: everyone; staff: their own. */
   @Get('turns/misses')
   misses(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string, @Query('person') person?: string) {

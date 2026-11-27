@@ -10,6 +10,7 @@ import { escalationDue, isAdThread, unrepliedMinsFor, windowOpen } from './staff
 import { STANDARD_TEAM, firstEnable, standardColumns } from './turn-standard';
 import { SKIPS_KEY, skipSummary, tallySkips, type SkipBook } from './turn-skips';
 import { SHIFT_PREFIX, cleanShift, remindDue, rescueOpen, shiftActive, shiftExpired, shiftKey, shiftUntil, type Shift } from './turn-shift';
+import { leadReport, leadReportCsv, sinceFor, type Grain, type LeadReport } from './lead-report';
 import { DEFAULT_TEAM, REPORT_SENT_KEY, TEAM_KEY, adWaits, cleanTeam, nightText, pickWeighted, poolsFor, scoreboard, sourceOf, type LogRow, type TeamConfig, type ThreadFacts } from './turn-team';
 
 /**
@@ -693,6 +694,81 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
     const days = daysRaw === 7 || daysRaw === 30 ? daysRaw : 1;
     const out = await this.computeScores(tenantId, days, new Date());
     return { ...out, scores: isAdmin ? out.scores : out.scores.filter((s) => s.userId === user.userId), canSeeAll: isAdmin };
+  }
+
+  /**
+   * rt245 — "thống kê lead hàng ngày, hàng tuần, hàng tháng, từng thành viên và
+   * tổng công ty". Per person per period: conversations received, answered,
+   * on time, median answer time, turns let go, phone captured, bookings made
+   * while they held the chat; a rating against the team; and the salon's own
+   * totals (every new chat, AI-handled ones too). One salon only; staff see
+   * only their own row and no salon totals. Read-only.
+   */
+  async leadReportView(user: AuthenticatedUser, byRaw?: string) {
+    const tenantId = this.tenantOf(user);
+    const isAdmin = user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN;
+    const grain: Grain = byRaw === 'week' || byRaw === 'month' ? byRaw : 'day';
+    const now = new Date();
+    const since = sinceFor(now, grain);
+    const tRow = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    const tz = tRow?.timezone || 'America/Los_Angeles';
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null) as ConnRow;
+    const set = settingsOf(conn);
+    // A day before the range so a turn started just before still has its owner.
+    const logs = await this.db.chatAssignmentLog?.findMany({
+      where: { tenantId, createdAt: { gte: new Date(since.getTime() - 86_400_000) } },
+      select: { threadId: true, userId: true, fromUserId: true, reason: true, createdAt: true },
+      orderBy: { createdAt: 'asc' }, take: 60000,
+    }).catch(() => []) as LogRow[] ?? [];
+    const created = await this.db.messengerThread.findMany({ where: { tenantId, createdAt: { gte: since } }, select: { id: true, createdAt: true, customerId: true, adId: true, adAt: true }, take: 50000 }).catch(() => []) as { id: string; createdAt: Date; customerId: string | null; adId: string | null; adAt: Date | null }[];
+    const have = new Set(created.map((t) => t.id));
+    const extraIds = [...new Set(logs.map((l) => l.threadId))].filter((id) => !have.has(id));
+    const extra = extraIds.length ? await this.db.messengerThread.findMany({ where: { tenantId, id: { in: extraIds } }, select: { id: true, createdAt: true, customerId: true, adId: true, adAt: true } }).catch(() => []) as typeof created : [];
+    const threads = [...created, ...extra];
+    // The first booking each chat's customer made after the chat began (not cancelled / rejected).
+    const custIds = [...new Set(threads.map((t) => t.customerId).filter(Boolean) as string[])];
+    const appts = custIds.length ? await this.db.appointment?.findMany({
+      where: { tenantId, customerId: { in: custIds }, createdAt: { gte: since }, status: { notIn: ['CANCELLED', 'REJECTED'] } },
+      select: { customerId: true, createdAt: true }, orderBy: { createdAt: 'asc' }, take: 50000,
+    }).catch(() => []) as { customerId: string; createdAt: Date }[] ?? [] : [];
+    const firstBy = new Map<string, Date[]>();
+    for (const a of appts) { const l = firstBy.get(a.customerId) ?? []; l.push(a.createdAt); firstBy.set(a.customerId, l); }
+    const bookings: { threadId: string; at: Date }[] = [];
+    const usedCust = new Set<string>();
+    for (const t of [...threads].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())) {
+      if (!t.customerId || usedCust.has(t.customerId)) continue;
+      const at = (firstBy.get(t.customerId) ?? []).find((d) => d >= t.createdAt);
+      if (at) { bookings.push({ threadId: t.id, at }); usedCust.add(t.customerId); }
+    }
+    const tFacts = new Map(threads.map((t) => [t.id, t]));
+    const report = leadReport({
+      grain, tz, now, logs, bookings,
+      threads: threads.map((t) => ({ id: t.id, createdAt: t.createdAt, customerId: t.customerId })),
+      limitMins: (id) => { const f = tFacts.get(id); return f ? unrepliedMinsFor(f as never, set, now) : set.reassignUnrepliedMins; },
+    });
+    // The new-chat counts are for chats created in the range only.
+    const people = isAdmin ? report.people : report.people.filter((p) => p.userId === user.userId);
+    const users = people.length ? await this.prisma.user.findMany({ where: { tenantId, id: { in: people.map((p) => p.userId) } }, select: { id: true, firstName: true, lastName: true, email: true } }).catch(() => []) : [];
+    const nm = new Map(users.map((u) => [u.id, [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email]));
+    return {
+      grain, tz, periods: report.periods, teamConvPct: isAdmin ? report.teamConvPct : null, canSeeAll: isAdmin,
+      people: people.map((p) => ({ ...p, name: nm.get(p.userId) ?? '—' })),
+      company: isAdmin ? report.company : null,
+      companyTotal: isAdmin ? report.companyTotal : null,
+    };
+  }
+
+  /** rt245: the same report as CSV text for the owner's spreadsheet (same scope rules). */
+  async leadReportCsv(user: AuthenticatedUser, byRaw?: string) {
+    const r = await this.leadReportView(user, byRaw);
+    const rep: LeadReport = {
+      grain: r.grain, periods: r.periods, people: r.people, teamConvPct: r.teamConvPct,
+      company: r.company ?? Object.fromEntries(r.periods.map((p) => [p, { newChats: 0, withContact: 0, booked: 0, bookedByStaff: 0 }])),
+      companyTotal: r.companyTotal ?? { newChats: 0, withContact: 0, booked: 0, bookedByStaff: 0 },
+    };
+    let csv = leadReportCsv(rep, new Map(r.people.map((p) => [p.userId, p.name])));
+    if (!r.canSeeAll) csv = csv.split('\n').filter((l) => !l.includes('TỔNG TIỆM')).join('\n');
+    return { csv, filename: `lead-${r.grain}-${r.periods[r.periods.length - 1]}.csv` };
   }
 
   private async computeScores(tenantId: string, days: number, now: Date) {

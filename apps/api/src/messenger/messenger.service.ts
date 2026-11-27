@@ -11,6 +11,7 @@ import { onSale, salePrice } from '../common/discount';
 import { discountRules, promoKnowledge, type PromoInputs } from './promo-knowledge';
 import { aiPriceText } from '../common/price-label';
 import { AiBrainService } from '../ai-brain/ai-brain.service';
+import { withPhotoSwitch } from './photo-switch';
 import { conversationLanguage as brainConversationLanguage } from '../ai-brain/brain-rules';
 import type { Lang as BrainLang } from '../ai-brain/brain-settings';
 import { isPagePostChange, requestChannelSync } from '../marketing/sync-signals';
@@ -6387,7 +6388,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const noPriceSheet = (t: unknown) => ((t as { name: string }).name === 'send_photos'
       ? { ...(t as object), input_schema: { type: 'object', properties: { ...((t as { input_schema: { properties: Record<string, unknown> } }).input_schema.properties), kind: { type: 'string', enum: ['service', 'posts'] } }, required: ['kind'] } }
       : t);
-    const tools = [...(ctx.mode === 'sales' ? (quotes ? salesTools : salesTools.filter((t) => !PRICE_TOOLS.has((t as { name: string }).name)).map(noPriceSheet)) : bookingTools), ...styleTools];
+    // rt243: the owner's "AI tự gửi ảnh cho khách" switch (booking pages; the brain's chat.sendPhotos).
+    const tools = withPhotoSwitch([...(ctx.mode === 'sales' ? (quotes ? salesTools : salesTools.filter((t) => !PRICE_TOOLS.has((t as { name: string }).name)).map(noPriceSheet)) : bookingTools), ...styleTools], brainOut?.brain?.channels?.chat?.sendPhotos);
 
     // Meta's own notices ("X replied to an ad." / "X đã trả lời một quảng cáo.")
     // sit in the transcript as if the Page had said them. They are not our

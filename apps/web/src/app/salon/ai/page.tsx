@@ -332,6 +332,7 @@ function Inner() {
             {tab === 'chat' && <ChatSection brain={brain} patch={patch} vi={vi} canEdit={canEdit} view={view} token={token} />}
             {tab === 'voice' && <VoiceSection brain={brain} patch={patch} vi={vi} canEdit={canEdit} view={view} />}
             {tab === 'memory' && <Memory token={token} vi={vi} canEdit={canEdit} />}
+            {tab === 'photos' && <AutoPhotoSwitch brain={brain} patch={patch} vi={vi} canEdit={canEdit} />}
             {tab === 'photos' && <PhotoLibrary token={token} vi={vi} canEdit={canEdit} />}
             {tab === 'sandbox' && <Sandbox token={token} vi={vi} />}
           </div>
@@ -1534,6 +1535,32 @@ function OldNotes({ token, vi, info, onDone }: { token: string | null; vi: boole
         </div>
       ))}
       {err && <div style={{ color: 'var(--ink-bad)', fontSize: 13 }}>{err}</div>}
+    </div>
+  );
+}
+
+/**
+ * rt243: the switch for the AI sending pictures by itself, on top of the
+ * "Ảnh gửi khách" library it picks from. Saved with the brain (Lưu ở trên).
+ */
+function AutoPhotoSwitch({ brain, patch, vi, canEdit }: { brain: Brain; patch: (fn: (b: Brain) => Brain) => void; vi: boolean; canEdit: boolean }) {
+  const on = brain.channels.chat.sendPhotos !== false;
+  const flip = () => patch((b) => ({ ...b, channels: { ...b.channels, chat: { ...b.channels.chat, sendPhotos: !on } } }));
+  return (
+    <div style={{ border: '1px solid var(--c475569)', borderRadius: 12, padding: 14, marginBottom: 14, display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>{L(vi, 'AI tự gửi ảnh cho khách', 'AI sends pictures by itself')}</div>
+        <div style={{ fontSize: 13, lineHeight: 1.55, marginTop: 4, opacity: 0.85 }}>
+          {L(vi,
+            'Khi khách hỏi xem mẫu, bảng giá hay địa chỉ tiệm trên Messenger / Instagram, AI tự chọn tối đa 3 ảnh hợp nhất trong thư viện bên dưới (theo nhãn: Mẫu, Bảng giá, Tiệm…) và gửi trước câu trả lời. Ảnh đã gửi cho khách đó sẽ không gửi lại.',
+            'When a customer asks to see designs, the price list or where the salon is on Messenger / Instagram, the AI picks up to 3 best-matching pictures from the library below (by label: Designs, Price list, Salon…) and sends them before its reply. A picture already sent to that customer is not sent again.')}
+        </div>
+        {!on && <div style={{ fontSize: 12.5, marginTop: 6, color: 'var(--cfbbf24)' }}>{L(vi, 'Đang tắt: AI chỉ trả lời bằng chữ. Nhân viên vẫn gửi ảnh bằng nút ảnh cạnh ô trả lời trong Hộp thư.', 'Off: the AI answers in words only. Staff can still send pictures with the photo button by the reply box in the Inbox.')}</div>}
+      </div>
+      <button type="button" role="switch" aria-checked={on} disabled={!canEdit} onClick={flip}
+        style={{ ...ui.primaryBtn, minHeight: 44, padding: '10px 16px', opacity: canEdit ? 1 : 0.6, background: on ? undefined : 'var(--c475569)', color: on ? undefined : 'var(--cf1f5f9)' }}>
+        {on ? L(vi, 'Đang bật', 'On') : L(vi, 'Đang tắt', 'Off')}
+      </button>
     </div>
   );
 }

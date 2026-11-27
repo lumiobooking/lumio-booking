@@ -2564,7 +2564,29 @@ export function InboxView() {
               </div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: narrow ? '8px 12px 0' : '8px 10px 8px' }}>
+            {/* rt243: photos in this layout too — the library picker, the upload, and the
+                AI's "they asked for a photo" card (same pieces as the new layout). */}
+            {composerMode === 'reply' && (
+              <div style={{ padding: narrow ? '8px 12px 0' : '8px 10px 0' }}>
+                <PhotoWaiting token={token ?? null} threadId={detail.id} vi={vi} suggest={photoSuggest} disabled={notice.blocked}
+                  onSent={() => void afterLibrarySend()} onError={(m) => setErr(m)} />
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: narrow ? '8px 12px 0' : '8px 10px 8px', position: 'relative' }}>
+              {composerMode === 'reply' && pickerOpen && (
+                <PhotoPicker token={token ?? null} threadId={detail.id} vi={vi} narrow={narrow} suggest={photoSuggest} disabled={notice.blocked || busy}
+                  onClose={() => setPickerOpen(false)} onSent={() => void afterLibrarySend()} onUpload={() => photoRef.current?.click()} onError={(m) => setErr(m)} />
+              )}
+              {composerMode === 'reply' && (
+                <>
+                  <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={(e) => void sendPhoto(e.target.files?.[0])} />
+                  <button type="button" disabled={notice.blocked || busy} onClick={() => setPickerOpen((x) => !x)} aria-expanded={pickerOpen}
+                    aria-label={vi ? 'Gửi ảnh cho khách' : 'Send a photo to the customer'} title={vi ? 'Gửi ảnh cho khách (thư viện ảnh của tiệm hoặc ảnh từ máy)' : 'Send a photo (the salon library or a file)'}
+                    style={{ width: narrow ? 40 : 44, height: narrow ? 40 : 44, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0b1220)', color: 'var(--ccbd5e1)', flexShrink: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: (notice.blocked || busy) ? 0.5 : 1 }}>
+                    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="8.5" cy="10" r="1.6" /><path d="M21 16l-5-5-8 8" /></svg>
+                  </button>
+                </>
+              )}
               {composerMode === 'reply' ? (
                 <textarea ref={draftRef} value={draft} onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}

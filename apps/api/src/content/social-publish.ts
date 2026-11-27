@@ -732,3 +732,21 @@ export function igGrid<T extends { channels: Channel[]; media: MediaItem[]; stat
     .filter((p) => p.status !== 'cancelled' && p.status !== 'expired')
     .sort((a, b) => b.scheduledAt.getTime() - a.scheduledAt.getTime());
 }
+
+/**
+ * rt247 — why Facebook / Instagram refused to DELETE a post, in words the salon
+ * can act on, or null to fall back to the generic Meta text.
+ * Instagram deleting needs `instagram_manage_contents` on the Page connection
+ * (Meta added the delete API in 12/2025); without it every IG delete fails.
+ */
+export function deleteRefusal(network: string, e: { message?: string; code?: number; error_subcode?: number } | null | undefined): string | null {
+  if (!e) return null;
+  const msg = String(e.message ?? '');
+  const perm = e.code === 10 || e.code === 200 || /permission|not authorized|does not have/i.test(msg);
+  if (network === 'Instagram') {
+    if (e.error_subcode === 2207073) return 'Instagram: loại bài này (quảng cáo / một ảnh trong album) không gỡ được qua API — mở Instagram để xoá.';
+    if (perm) return 'Instagram: Page chưa cấp quyền xoá bài (instagram_manage_contents) — Lumio bật quyền này rồi tiệm bấm "Kết nối lại" Facebook Page một lần là gỡ được.';
+  }
+  if (network === 'Facebook' && perm) return 'Facebook: token Page chưa có quyền quản lý bài (pages_manage_posts) — tiệm bấm "Kết nối lại" Facebook Page rồi thử lại.';
+  return null;
+}

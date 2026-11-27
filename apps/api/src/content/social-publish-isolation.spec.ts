@@ -267,12 +267,11 @@ describe('taking a post off the calendar for good', () => {
   });
 
   it('lets a Lumio support session delete a published row', async () => {
-    // The salon loses its only record; Lumio staff are clearing test data and
-    // understand that the post itself stays on Facebook.
+    // rt247: Xoá takes the post down first; this row has nothing live left, so it just goes.
     const lumio = { userId: 'u1', tenantId: 'T1', role: 'SALON_ADMIN', supportSession: true, email: 'a@b.c' } as unknown as AuthenticatedUser;
     const q: Query[] = [];
     const r = await svc(q, rowOf('posted')).remove(lumio, 'p1');
-    expect(r).toEqual({ ok: true, wasPosted: true });
+    expect(r).toMatchObject({ ok: true, wasPosted: true });
     expect((q.find((x) => x.op === 'deleteMany')!.args.where as { tenantId: string }).tenantId).toBe('T1');
   });
 
@@ -285,23 +284,18 @@ describe('taking a post off the calendar for good', () => {
     expect(q.filter((x) => x.op === 'deleteMany')).toHaveLength(0);
   });
 
-  it('REFUSES to delete a post that has already gone out', async () => {
-    // Once live, the row stops being a plan and becomes the answer to "what did
-    // we actually publish?" — it carries the publish time and the links, and the
-    // weekly results count it. Delete it and the week's record quietly shrinks.
-    // And deleting it would not remove the post from Facebook anyway.
+  it('rt247: a technician / desk login cannot delete a post that went out', async () => {
+    const staff = { userId: 'u2', tenantId: 'T1', role: 'STAFF', email: 's@b.c' } as unknown as AuthenticatedUser;
     const q: Query[] = [];
-    await expect(svc(q, rowOf('posted')).remove(user('T1'), 'p1'))
-      .rejects.toThrow(/không xoá được/);
+    await expect(svc(q, rowOf('posted')).remove(staff, 'p1')).rejects.toThrow(/Chỉ chủ tiệm hoặc team Lumio/);
     expect(q.filter((x) => x.op === 'deleteMany')).toHaveLength(0);
   });
 
-  it('tells the salon where the two real options are', async () => {
-    // "No" on its own is where a support ticket comes from.
-    await expect(svc([], rowOf('posted')).remove(user('T1'), 'p1'))
-      .rejects.toThrow(/xoá trực tiếp trên Facebook\/Instagram/);
-    await expect(svc([], rowOf('posted')).remove(user('T1'), 'p1'))
-      .rejects.toThrow(/Hiện bài đã đăng/);
+  it('rt247: the owner can delete a post that went out (it is taken down first)', async () => {
+    const q: Query[] = [];
+    const r = await svc(q, rowOf('posted')).remove(user('T1'), 'p1');
+    expect(r).toMatchObject({ ok: true, wasPosted: true });
+    expect((q.find((x) => x.op === 'deleteMany')!.args.where as { tenantId: string }).tenantId).toBe('T1');
   });
 
   it('refuses to delete a post that is mid-flight', async () => {

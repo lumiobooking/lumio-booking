@@ -751,6 +751,10 @@ export class MessengerService implements OnModuleInit {
       // Instagram publishing rides on the Page connection, so it is only worth
       // asking for when the Instagram scopes are on at all.
       ...(igOn && publishOn ? ['instagram_content_publish'] : []),
+      // rt247: deleting Instagram posts from Lumio (Meta's IG delete API, 12/2025) needs
+      // instagram_manage_contents. Opt-in with FB_SCOPE_IG_DELETE=1 once the permission is
+      // added to the app — an unknown scope kills the whole dialog. Pages then reconnect once.
+      ...(igOn && publishOn && ['1', 'true', 'yes', 'on'].includes(String(process.env.FB_SCOPE_IG_DELETE ?? '').trim().toLowerCase()) ? ['instagram_manage_contents'] : []),
       // First comments under a published post (content/auto-comments.ts).
       // Standard Access is enough for Pages connected by an account with a
       // role on the app; FB_SCOPE_ENGAGE=1 once the permissions are added to

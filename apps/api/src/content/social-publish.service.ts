@@ -9,6 +9,7 @@ import { gbpPhotoOf,
   priorSuccesses, stillDue, retryable, whyWaiting, SWEEP_STALE_MS,
   type Channel, type ConnectedPage, type PublishPlan, type MediaItem, type GoogleLocation,
   metaErrorText,
+  deleteRefusal,
 } from './social-publish';
 import { planPurge, storagePathOf, DEFAULT_RETENTION_DAYS, type RetentionPost } from './media-retention';
 import { MEDIA_STORE, type MediaStore } from './media-store';
@@ -844,7 +845,7 @@ export class SocialPublishService {
       /** When this process last swept the queue — null right after a restart. */
       sweep: { lastAt: sweepWas, stale: !sweepWas || now.getTime() - sweepWas.getTime() > SWEEP_STALE_MS },
       /** True for a Lumio support session: may delete published rows too. */
-      canDeletePosted: isLumio,
+      canDeletePosted: isLumio || user.role === UserRole.SALON_ADMIN, // rt247: Xoá a posted post takes it down first
       // Taking a live post DOWN from Facebook / Instagram / Google: the owner or the Lumio team.
       canTakeDown: isLumio || user.role === UserRole.SALON_ADMIN,
       crowding: crowding(live.map((p) => ({ id: p.id, scheduledAt: p.scheduledAt, channels: p.channels }))),
@@ -1196,33 +1197,46 @@ export class SocialPublishService {
    */
   async remove(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
-    const row = await this.posts?.findFirst({ where: { id, tenantId }, select: { id: true, status: true } })
-      .catch(() => null) as { id: string; status: string } | null;
+    const row = await this.posts?.findFirst({ where: { id, tenantId } })
+      .catch(() => null) as PostRow | null;
     if (!row) throw new NotFoundException('Không tìm thấy bài này.');
-    // The Lumio team can clear a published row; the salon cannot.
-    //
-    // For the salon this row is their only account of what went up, and losing
-    // it silently shrinks the week's results. For Lumio staff it is sometimes
-    // test data that has to go, and they are the ones who understand that
-    // deleting the row does NOT take the post off Facebook.
-    const isLumio = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
-    if (row.status === 'posted' && !isLumio) {
-      throw new BadRequestException(
-        'Bài đã đăng thì không xoá được — đây là sổ ghi những gì thật sự đã lên trang. '
-        + 'Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram. '
-        + 'Muốn lịch gọn hơn thì tắt "Hiện bài đã đăng" ở lịch tháng.',
-      );
-    }
     // Mid-flight. Deleting the row now would leave a publish in progress with
     // nothing to write its result to, and possibly a live post nobody knows of.
     if (row.status === 'publishing') {
       throw new BadRequestException('Bài đang được đăng — chờ xong rồi mới xoá được.');
     }
+    /**
+     * rt247 — "xoá ở hệ thống thì trên nền tảng vẫn chưa tự xoá".
+     *
+     * Xoá a post that went up now takes it DOWN first, from every network it
+     * is still on, and only then erases the row. Before, Xoá erased Lumio's
+     * record and left the post live on Facebook / Instagram (a separate "Gỡ
+     * khỏi trang" button did the real work), so the calendar and the Page
+     * disagreed. If any network refuses, the row stays — marked with what is
+     * still up and why — so nothing live is ever left without a record.
+     * Owner or Lumio team only (the same rule as taking a post down).
+     */
+    const isLumio = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
+    let removed: string[] = [];
+    if (row.status === 'posted') {
+      if (!isLumio && user.role !== UserRole.SALON_ADMIN) {
+        throw new BadRequestException('Chỉ chủ tiệm hoặc team Lumio được xoá bài đã đăng (bài sẽ bị gỡ khỏi trang).');
+      }
+      const out = await this.takeDownRow(user, tenantId, row, []);
+      removed = out.removed;
+      if (out.failed.length) {
+        return { ok: false, wasPosted: true, kept: true, removed, failed: out.failed };
+      }
+    }
     // Scoped by tenant in the filter as well as the lookup: two checks, because
     // this one is not reversible.
     await this.posts?.deleteMany({ where: { id, tenantId } });
-    // The caller says the sentence about Facebook; this says which case it was.
-    return { ok: true, wasPosted: row.status === 'posted' };
+    if (row.status === 'posted') {
+      await this.prisma.auditLog.create({
+        data: { tenantId, userId: user.userId ?? null, action: 'content.post_deleted', resourceType: 'scheduled_post', resourceId: row.id, metadata: { removed, channels: this.channelsOf(row), postedAt: (row as { postedAt?: Date | null }).postedAt ?? null } as never } as never,
+      }).catch(() => undefined);
+    }
+    return { ok: true, wasPosted: row.status === 'posted', kept: false, removed, failed: [] };
   }
 
   /**
@@ -1245,10 +1259,17 @@ export class SocialPublishService {
     }
     const row = await this.posts?.findFirst({ where: { id, tenantId } }).catch(() => null) as PostRow | null;
     if (!row) throw new NotFoundException('Không tìm thấy bài này.');
+    const out = await this.takeDownRow(user, tenantId, row, opts.channels ?? []);
+    if (out.nothing) throw new BadRequestException('Bài này không còn trên kênh nào để gỡ.');
+    return { removed: out.removed, failed: out.failed };
+  }
+
+  /** rt247: the take-down itself, shared by "Gỡ khỏi trang" and "Xoá" of a posted post. */
+  private async takeDownRow(user: AuthenticatedUser, tenantId: string, row: PostRow, channels: string[]): Promise<{ removed: string[]; failed: { channel: string; error: string; url: string | null }[]; nothing: boolean }> {
     const results: PublishResult[] = Array.isArray(row.results) ? (row.results as PublishResult[]).map((r) => ({ ...r })) : [];
-    const asked = (opts.channels ?? []).map((c) => String(c).toLowerCase());
+    const asked = channels.map((c) => String(c).toLowerCase());
     const live = results.filter((r) => r && r.id && !r.error && !r.removedAt && (!asked.length || asked.includes(r.channel)));
-    if (!live.length) throw new BadRequestException('Bài này không còn trên kênh nào để gỡ.');
+    if (!live.length) return { removed: [], failed: [], nothing: true };
     const needsMeta = live.some((r) => r.channel === 'facebook' || r.channel === 'instagram');
     const pg = needsMeta ? await this.pageFor(tenantId) : null;
     const who = user.supportSession ? `Lumio${user.email ? ` · ${user.email}` : ''}` : (user.email ?? null);
@@ -1285,7 +1306,7 @@ export class SocialPublishService {
     await this.prisma.auditLog.create({
       data: { tenantId, userId: user.userId ?? null, action: 'content.post_taken_down', resourceType: 'scheduled_post', resourceId: row.id, metadata: { removed, failed: failed.map((f) => ({ channel: f.channel, error: f.error.slice(0, 160) })), by: who } as never } as never,
     }).catch(() => undefined);
-    return { removed, failed };
+    return { removed, failed, nothing: false };
   }
 
   /** DELETE one Page post / photo / video / IG media. Null = gone (or was already). */
@@ -1301,6 +1322,8 @@ export class SocialPublishService {
       // "Unsupported delete request / does not exist" for an object already gone counts as done.
       const e = json?.error;
       if (e && (e.code === 100 && (e.error_subcode === 33 || /does not exist|cannot be loaded/i.test(e.message ?? '')))) return null;
+      const why = deleteRefusal(network, e);
+      if (why) return why;
       return metaErrorText(e, `${network} ${res.status}`);
     } catch (e) {
       return `${network}: ${(e as Error).name === 'TimeoutError' ? 'không trả lời kịp — mở trang kiểm tra bài đã gỡ chưa' : 'lỗi mạng'}`;

@@ -36,6 +36,7 @@ function world(o: { pageTokenFor?: Record<string, string>; graph?: (url: string)
       if (op === 'findMany') return list.filter((r) => match(r, args.where));
       if (op === 'updateMany') { let n = 0; for (const r of list) if (match(r, args.where)) { Object.assign(r, args.data); n++; } return { count: n }; }
       if (op === 'create') return { id: 'new' };
+      if (op === 'deleteMany') { const before = list.length; rows[name] = list.filter((r) => !match(r, args.where)); return { count: before - rows[name].length }; }
       return null;
     },
   });
@@ -111,5 +112,47 @@ describe('Gỡ khỏi trang', () => {
     expect(w.calls).toHaveLength(0);
     const r = await w.svc.takeDown(as('t1', 'STAFF', { supportSession: true }), 'p1', { channels: ['facebook'] });
     expect(r.removed).toEqual(['facebook']);
+  });
+});
+
+describe('rt247 Xoá a posted post takes it down from the networks first', () => {
+  let w: ReturnType<typeof world>;
+  afterEach(() => w?.fetchSpy.mockRestore());
+
+  it('Facebook only: taken down, then the row is erased and the audit kept', async () => {
+    w = world();
+    w.rows.scheduledPost[0].results = [{ channel: 'facebook', id: '111_222', url: 'https://www.facebook.com/111_222', error: null }];
+    const r = await w.svc.remove(as('t1'), 'p1');
+    expect(r).toMatchObject({ ok: true, wasPosted: true, removed: ['facebook'] });
+    expect(w.calls).toEqual([expect.stringMatching(/^DELETE .*\/111_222\?access_token=TOKEN_T1$/)]);
+    expect(w.rows.scheduledPost.find((x) => x.id === 'p1')).toBeUndefined();
+    expect(w.q.some((x) => x.model === 'auditLog' && x.args.data.action === 'content.post_deleted' && x.args.data.tenantId === 't1')).toBe(true);
+  });
+
+  it('a network that refuses (TikTok): the rest come down, the row STAYS with what is still up', async () => {
+    w = world();
+    const r = await w.svc.remove(as('t1'), 'p1');
+    expect(r).toMatchObject({ ok: false, kept: true });
+    expect(r.removed.sort()).toEqual(['facebook', 'google', 'instagram']);
+    expect(r.failed.map((f) => f.channel)).toEqual(['tiktok']);
+    const row = w.rows.scheduledPost.find((x) => x.id === 'p1')!;
+    expect(row).toBeDefined();
+    expect(row.results.find((x: Row) => x.channel === 'facebook').removedAt).toBeTruthy();
+  });
+
+  it('Instagram without the delete permission says exactly what to do', async () => {
+    w = world({ graph: (u) => (u.includes('1789') ? { status: 400, json: { error: { code: 10, message: '(#10) Application does not have permission for this action' } } } : { status: 200, json: { success: true } }) });
+    w.rows.scheduledPost[0].results = [{ channel: 'instagram', id: '17890000000000001', url: 'https://www.instagram.com/p/x', error: null }];
+    const r = await w.svc.remove(as('t1'), 'p1');
+    expect(r.ok).toBe(false);
+    expect(r.failed[0].error).toMatch(/instagram_manage_contents/);
+    expect(w.rows.scheduledPost.find((x) => x.id === 'p1')).toBeDefined();
+  });
+
+  it('never touches another salon: t1 cannot delete t2\'s post, and nothing is sent to Meta', async () => {
+    w = world();
+    await expect(w.svc.remove(as('t1'), 'p2')).rejects.toThrow(/Không tìm thấy/);
+    expect(w.calls).toHaveLength(0);
+    expect(w.rows.scheduledPost.find((x) => x.id === 'p2')).toBeDefined();
   });
 });

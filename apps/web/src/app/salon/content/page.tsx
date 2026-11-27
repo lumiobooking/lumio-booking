@@ -1665,10 +1665,9 @@ function Inner() {
   /**
    * Take a post off the calendar for good.
    *
-   * The confirmation for an ALREADY PUBLISHED post says the one thing that is
-   * easy to get wrong: this removes Lumio's record, not the post on Facebook.
-   * A salon that thinks "delete" pulled an offer down will not go and pull it
-   * down, and the offer keeps running.
+   * rt247: for an ALREADY PUBLISHED post, Xoá takes it down from the networks
+   * first and erases the row only once nothing is left up — the calendar and
+   * the Page never disagree. A network that refuses keeps the row, with why.
    */
   async function removePost(id: string) {
     if (queueBusy) return;
@@ -1676,16 +1675,28 @@ function Inner() {
     // The server refuses this for a salon too. Stopping here keeps them from
     // meeting an error message for something the screen should never offer.
     if (p?.status === 'posted' && !queue?.canDeletePosted) return;
+    // rt247: Xoá a post that went up takes it DOWN from the networks first, then erases it.
+    const up = p?.status === 'posted' ? p.results.filter((r) => r.id && !r.error && !r.removedAt) : [];
+    const names = up.map((r) => CHANNEL_NAME[r.channel as Channel] ?? r.channel).join(', ');
     const msg = p?.status === 'posted'
-      ? T('Xoá bản ghi này khỏi lịch Lumio?\n\nBài trên Facebook/Instagram VẪN CÒN — muốn gỡ hẳn phải xoá trực tiếp trên trang đó.\nTiệm sẽ mất dấu vết bài này trong kết quả tuần.',
-          'Delete this record from Lumio’s calendar?\n\nThe post STAYS UP on Facebook/Instagram.\nThe salon loses this post from its weekly results.')
+      ? (up.length
+        ? T(`Xoá bài này?\n\nLumio sẽ GỠ bài khỏi ${names} trước, rồi xoá khỏi lịch. Khách hàng sẽ không còn thấy bài. KHÔNG hoàn tác được.${up.some((r) => r.channel === 'tiktok') ? '\n\nTikTok không cho phần mềm khác gỡ — Lumio sẽ đưa link để xoá trong TikTok, và giữ bài trên lịch tới khi xoá xong.' : ''}`,
+            `Delete this post?\n\nLumio will TAKE IT DOWN from ${names} first, then remove it from the calendar. Customers will no longer see it. This cannot be undone.`)
+        : T('Bài này không còn trên kênh nào. Xoá khỏi lịch Lumio?', 'This post is no longer up anywhere. Remove it from the calendar?'))
       : T('Xoá hẳn bài này khỏi lịch? Không khôi phục lại được.',
           'Delete this post from the calendar? This cannot be undone.');
     if (!window.confirm(msg)) return;
-    setQueueBusy(true); setPostErr(null);
+    setQueueBusy(true); setPostErr(null); setPostNote(null);
     try {
-      await apiFetch(`/content/posts/${id}/remove`, { method: 'DELETE', token });
-      setPostDraft((d) => (d?.id === id ? null : d));
+      const r = await apiFetch<{ ok: boolean; removed?: string[]; failed?: { channel: string; error: string; url: string | null }[] }>(`/content/posts/${id}/remove`, { method: 'DELETE', token });
+      const ok = (r.removed ?? []).map((c) => CHANNEL_NAME[c as Channel] ?? c).join(', ');
+      if (r.ok) {
+        setPostDraft((d) => (d?.id === id ? null : d));
+        setPostNote(ok ? T(`Đã gỡ khỏi ${ok} và xoá khỏi lịch.`, `Taken down from ${ok} and removed from the calendar.`) : T('Đã xoá khỏi lịch.', 'Removed from the calendar.'));
+      } else {
+        if (ok) setPostNote(T(`Đã gỡ khỏi ${ok}.`, `Taken down from ${ok}.`));
+        setPostErr(T('Chưa xoá hẳn — bài vẫn còn trên: ', 'Not fully deleted — still up on: ') + (r.failed ?? []).map((f) => `${CHANNEL_NAME[f.channel as Channel] ?? f.channel}: ${f.error}${f.url ? ` — ${f.url}` : ''}`).join('\n'));
+      }
       await loadQueue();
     } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
     finally { setQueueBusy(false); }
@@ -5365,8 +5376,8 @@ function Inner() {
                           <div>
                             <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.6 }}>
                               {queue?.canTakeDown
-                                ? T('Bài đã đăng được giữ lại làm sổ ghi. Bấm “Gỡ” cạnh từng kênh để gỡ bài khỏi Facebook / Instagram / Google (TikTok phải xoá trong app); muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
-                                    'Published posts are kept as the record. Press “Take down” next to a channel to remove it from Facebook / Instagram / Google (TikTok: delete in the app); to tidy the calendar, untick “Show published posts”.')
+                                ? T('“Xoá bài” = gỡ bài khỏi mọi trang đã đăng (Facebook / Instagram / Google) rồi xoá khỏi lịch. Chỉ muốn gỡ một kênh thì bấm “Gỡ” cạnh kênh đó. TikTok phải xoá trong app.',
+                                    '“Delete post” = take it down from every network it went to (Facebook / Instagram / Google), then remove it from the calendar. To take down one channel only, press “Take down” next to it. TikTok: delete in the app.')
                                 : T('Bài đã đăng được giữ lại làm sổ ghi. Muốn gỡ bài thì nhờ chủ tiệm bấm “Gỡ”, hoặc xoá trực tiếp trên Facebook/Instagram; muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
                                     'Published posts are kept as the record. To take one down, ask the owner to press “Take down”, or delete it on Facebook/Instagram; to tidy the calendar, untick “Show published posts”.')}
                             </div>
@@ -5379,7 +5390,7 @@ function Inner() {
                                   border: '1px solid #ef4444', background: 'transparent', color: 'var(--ink-bad)', fontWeight: 600,
                                 }}
                               >
-                                🗑 {T('Xoá khỏi lịch (Lumio)', 'Remove from calendar (Lumio)')}
+                                🗑 {T('Xoá bài (gỡ khỏi trang + xoá khỏi lịch)', 'Delete post (take down + remove)')}
                               </button>
                             )}
                           </div>

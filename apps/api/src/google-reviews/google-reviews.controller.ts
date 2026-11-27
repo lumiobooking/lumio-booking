@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { GoogleReviewsService } from './google-reviews.service';
-import { ApproveReplyDto, SetLocationDto, UpdateGbrSettingsDto } from './dto/google-reviews.dto';
+import { ApproveReplyDto, RegenerateReplyDto, SetLocationDto, UpdateGbrSettingsDto } from './dto/google-reviews.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
 import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
@@ -79,8 +79,8 @@ export class GoogleReviewsController {
   }
 
   @Post(':id/regenerate')
-  regenerate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.svc.regenerate(user, id);
+  regenerate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: RegenerateReplyDto) {
+    return this.svc.regenerate(user, id, dto?.note);
   }
 
   @Post(':id/skip')

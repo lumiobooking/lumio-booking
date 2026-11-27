@@ -22,6 +22,7 @@ interface GrSettings {
   accountId: string; locationId: string; locationTitle: string; hasLocation: boolean;
   autoMinStars: number; alertMaxStars: number; approveFirst: boolean;
   alertEmail: string; tone: string; aiInstruction: string; aiEnabled: boolean; lastSyncAt: string | null;
+  replyExamples?: { stars: number; review: string; draft: string; final: string; at: string }[];
   /** Absent on any API build from before auto-reply existed. */
   autoReply?: { live: boolean; delayMinutes: number; dailyCap: number; onForThisSalon: boolean } | null;
   clientConfigured: boolean; redirectUri: string;
@@ -79,8 +80,15 @@ const DICT: Record<string, { vi: string; en: string }> = {
   resyncFresh: { vi: '↻ Xoá & đồng bộ lại', en: '↻ Reset & re-sync' },
   resyncHint: { vi: 'Xoá toàn bộ review đã lưu và kéo lại đúng địa điểm hiện tại (dọn dữ liệu lẫn từ trước).', en: 'Wipe all stored reviews and re-pull fresh for the current location.' },
   regen: { vi: '↻ Tạo lại', en: '↻ Regenerate' },
-  aiInstr: { vi: 'Hướng dẫn AI viết trả lời (tùy chọn)', en: 'AI reply instructions (optional)' },
-  aiInstrPh: { vi: 'VD: luôn ký "Đội ngũ ABC Nails", nhắc mở cửa 7 ngày, mời khách quay lại…', en: 'e.g. always sign as "The ABC Nails Team", mention we are open 7 days…' },
+  aiInstr: { vi: 'Cách trả lời của tiệm (AI làm theo)', en: 'How the salon answers (the AI follows it)' },
+  aiInstrPh: { vi: 'VD: Khách cảm ơn nhân viên → trả lời "chúng tôi sẽ chuyển lời tới team". Luôn viết đúng tên món: bánh mì, phở. Ký "Đội ngũ Phở Hằng". Không dùng dấu chấm than…', en: 'e.g. When a guest thanks the staff, say we will pass it on to the team. Always spell our dishes right: bánh mì, phở. Sign as "The Phở Hằng Team"…' },
+  voiceTitle: { vi: '✍️ Văn phong & cách trả lời', en: '✍️ Tone & how replies read' },
+  voiceSub: { vi: 'Tiệm tự chỉnh: chọn giọng văn, ghi quy tắc riêng, và mỗi lần tiệm sửa câu AI viết rồi đăng, AI ghi nhớ để lần sau viết giống vậy. Tên món / dịch vụ của tiệm luôn được viết đúng chính tả theo menu.', en: 'Set the tone, write your own rules, and every time you fix an AI draft before posting, the AI learns from it. Your dish / service names are always spelled as on your menu.' },
+  voiceMoved: { vi: 'Giọng văn và cách trả lời: chỉnh ở mục "Văn phong & cách trả lời" ngay bên dưới.', en: 'Tone and how replies read: set in "Tone & how replies read" below.' },
+  learnedTitle: { vi: 'AI đã học từ các lần tiệm sửa', en: 'Learned from your edits' },
+  learnedSub: { vi: 'Các câu tiệm đã sửa trước khi đăng. AI viết theo giọng của những câu này. Bỏ những câu không muốn AI bắt chước.', en: 'Replies you fixed before posting. The AI writes like these. Remove any you do not want copied.' },
+  forgetOne: { vi: 'Bỏ câu này', en: 'Remove' },
+  forgetAll: { vi: 'Xoá hết', en: 'Clear all' },
   aiOn: { vi: 'AI đang bật', en: 'AI on' },
   aiOff: { vi: 'đang dùng mẫu (thêm ANTHROPIC_API_KEY để bật AI)', en: 'using templates (add ANTHROPIC_API_KEY for AI)' },
   testAi: { vi: '🧪 Thử AI viết một câu', en: '🧪 Test AI reply' },
@@ -248,6 +256,8 @@ function Inner() {
   const [locFilter, setLocFilter] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // rt246: a one-off wish per review for "Viết lại theo ý".
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [testing, setTesting] = useState(false);
   const [aiTest, setAiTest] = useState<{ ok: boolean; mode: string; sample: string; reply: string; error?: string } | null>(null);
 
@@ -356,7 +366,7 @@ function Inner() {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally { setSaving(false); }
   }
-  async function saveSettings(patch: Partial<GrSettings>) {
+  async function saveSettings(patch: Partial<GrSettings> & { forgetExample?: number }) {
     if (!s) return;
     setSaving(true); setError(null); setSaved(false);
     try {
@@ -406,10 +416,10 @@ function Inner() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setBusyId(null); }
   }
-  async function regenerate(id: string) {
+  async function regenerate(id: string, note?: string) {
     setBusyId(id); setError(null);
     try {
-      const r = await apiFetch<{ draft: string }>(`/google-reviews/${id}/regenerate`, { method: 'POST', token });
+      const r = await apiFetch<{ draft: string }>(`/google-reviews/${id}/regenerate`, { method: 'POST', token, body: note?.trim() ? { note: note.trim() } : {} });
       setDrafts((d) => ({ ...d, [id]: r.draft }));
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setBusyId(null); }
@@ -610,14 +620,6 @@ function Inner() {
                 )}
 
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ flex: '1 1 220px' }}>
-                    <label style={ui.label}>{t('tone')}</label>
-                    <select value={s.tone} onChange={(e) => saveSettings({ tone: e.target.value })} style={ui.input}>
-                      <option value="warm">{t('toneWarm')}</option>
-                      <option value="professional">{t('tonePro')}</option>
-                      <option value="short">{t('toneShort')}</option>
-                    </select>
-                  </div>
                   <div style={{ flex: '2 1 300px' }}>
                     <label style={ui.label}>{t('alertEmail')}</label>
                     <input value={s.alertEmail} placeholder={t('alertEmailPh')} onChange={(e) => setS({ ...s, alertEmail: e.target.value })}
@@ -625,31 +627,7 @@ function Inner() {
                   </div>
                 </div>
 
-                <div style={{ marginTop: 14 }}>
-                  <label style={ui.label}>
-                    {t('aiInstr')}{' '}
-                    {s.aiEnabled
-                      ? <span style={{ color: 'var(--ink-good)' }}>· ✨ {t('aiOn')}</span>
-                      : <span style={{ color: 'var(--ink-warn)' }}>· {t('aiOff')}</span>}
-                  </label>
-                  <textarea value={s.aiInstruction} placeholder={t('aiInstrPh')} rows={2}
-                    onChange={(e) => setS({ ...s, aiInstruction: e.target.value })}
-                    onBlur={(e) => saveSettings({ aiInstruction: e.target.value })}
-                    style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
-                  <div style={{ marginTop: 8 }}>
-                    <button onClick={testAi} disabled={testing} style={{ ...ghostBtn, padding: '7px 12px', fontSize: 12.5 }}>{testing ? t('testingAi') : t('testAi')}</button>
-                  </div>
-                  {aiTest && (
-                    <div style={{ marginTop: 10, background: 'var(--c0f172a)', border: `1px solid ${aiTest.ok ? 'var(--c14532d)' : 'var(--c7f1d1d)'}`, borderRadius: 10, padding: 12 }}>
-                      <div style={{ fontSize: 12, color: aiTest.ok ? 'var(--ink-good)' : 'var(--ink-warn)', fontWeight: 600, marginBottom: 6 }}>
-                        {aiTest.ok ? `✨ ${t('testOk')}` : `⚠️ ${t('testFallback')}`}
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('testSample')}: &ldquo;{aiTest.sample}&rdquo;</div>
-                      <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>💬 {aiTest.reply}</div>
-                      {aiTest.error && <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginTop: 6 }}>{aiTest.error}</div>}
-                    </div>
-                  )}
-                </div>
+                <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--c94a3b8)' }}>{t('voiceMoved')}</div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
                   <button onClick={sync} disabled={syncing || !s.connected || !s.hasLocation} style={{ ...ui.primaryBtn, opacity: (s.connected && s.hasLocation) ? 1 : 0.5 }}>
@@ -692,6 +670,70 @@ function Inner() {
           </div>
         );
       })()}
+      {/* rt246: the salon's voice — always visible, not inside the folded setup. */}
+      <div style={{ ...ui.card, marginBottom: 14 }}>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2 }}>{t('voiceTitle')}{saving ? <span style={{ color: 'var(--c94a3b8)', fontSize: 12, fontWeight: 400 }}> …</span> : saved ? <span style={{ color: 'var(--ink-good)', fontSize: 12, fontWeight: 400 }}> · {t('saved')}</span> : null}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginBottom: 12 }}>{t('voiceSub')}</div>
+        <div style={{ maxWidth: 320 }}>
+          <label style={ui.label}>{t('tone')}</label>
+          <select value={s.tone} onChange={(e) => saveSettings({ tone: e.target.value })} style={ui.input}>
+            <option value="warm">{t('toneWarm')}</option>
+            <option value="professional">{t('tonePro')}</option>
+            <option value="short">{t('toneShort')}</option>
+          </select>
+        </div>
+                <div style={{ marginTop: 14 }}>
+                  <label style={ui.label}>
+                    {t('aiInstr')}{' '}
+                    {s.aiEnabled
+                      ? <span style={{ color: 'var(--ink-good)' }}>· ✨ {t('aiOn')}</span>
+                      : <span style={{ color: 'var(--ink-warn)' }}>· {t('aiOff')}</span>}
+                  </label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '2px 0 8px' }}>
+                    {VOICE_CHIPS.map((c) => (
+                      <button key={c.en} type="button" onClick={() => { const add = lang === 'vi' ? c.vi : c.en; const next = s.aiInstruction.trim() ? `${s.aiInstruction.trim()}\n${add}` : add; setS({ ...s, aiInstruction: next }); void saveSettings({ aiInstruction: next }); }}
+                        style={{ ...ghostBtn, padding: '6px 10px', fontSize: 12, borderRadius: 999 }}>+ {lang === 'vi' ? c.label : c.labelEn}</button>
+                    ))}
+                  </div>
+                  <textarea value={s.aiInstruction} placeholder={t('aiInstrPh')} rows={4}
+                    onChange={(e) => setS({ ...s, aiInstruction: e.target.value })}
+                    onBlur={(e) => saveSettings({ aiInstruction: e.target.value })}
+                    style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+                  <div style={{ marginTop: 8 }}>
+                    <button onClick={testAi} disabled={testing} style={{ ...ghostBtn, padding: '7px 12px', fontSize: 12.5 }}>{testing ? t('testingAi') : t('testAi')}</button>
+                  </div>
+                  {aiTest && (
+                    <div style={{ marginTop: 10, background: 'var(--c0f172a)', border: `1px solid ${aiTest.ok ? 'var(--c14532d)' : 'var(--c7f1d1d)'}`, borderRadius: 10, padding: 12 }}>
+                      <div style={{ fontSize: 12, color: aiTest.ok ? 'var(--ink-good)' : 'var(--ink-warn)', fontWeight: 600, marginBottom: 6 }}>
+                        {aiTest.ok ? `✨ ${t('testOk')}` : `⚠️ ${t('testFallback')}`}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('testSample')}: &ldquo;{aiTest.sample}&rdquo;</div>
+                      <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>💬 {aiTest.reply}</div>
+                      {aiTest.error && <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginTop: 6 }}>{aiTest.error}</div>}
+                    </div>
+                  )}
+                </div>
+
+        {(s.replyExamples?.length ?? 0) > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{t('learnedTitle')} ({s.replyExamples!.length})</div>
+              <button type="button" onClick={() => void saveSettings({ forgetExample: -1 })} style={{ ...ghostBtn, padding: '5px 10px', fontSize: 12, marginLeft: 'auto' }}>{t('forgetAll')}</button>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '2px 0 8px', lineHeight: 1.5 }}>{t('learnedSub')}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {s.replyExamples!.map((x, i) => (
+                <div key={`${x.at}-${i}`} style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 10, fontSize: 12.5, lineHeight: 1.5 }}>
+                  <div style={{ color: 'var(--c94a3b8)' }}>{'★'.repeat(Math.max(0, Math.min(5, x.stars)))} “{x.review.slice(0, 140)}{x.review.length > 140 ? '…' : ''}”</div>
+                  <div style={{ color: 'var(--c94a3b8)', textDecoration: 'line-through', marginTop: 4 }}>AI: {x.draft}</div>
+                  <div style={{ color: 'var(--ce2e8f0)', marginTop: 2 }}>✓ {x.final}</div>
+                  <button type="button" onClick={() => void saveSettings({ forgetExample: i })} style={{ ...ghostBtn, padding: '4px 10px', fontSize: 11.5, marginTop: 6 }}>{t('forgetOne')}</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
       {/* Inbox */}
       <div style={{ ...ui.card }}>
         {/* WHAT THE SALON ACTUALLY HAS, BEFORE ANY TAB COUNT.
@@ -816,6 +858,7 @@ function Inner() {
                       <button onClick={() => regenerate(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('regen')}</button>
                       <button onClick={() => skip(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('skip')}</button>
                     </div>
+                    <RewriteLine vi={lang === 'vi'} value={notes[r.id] ?? ''} busy={busyId === r.id} onChange={(v) => setNotes({ ...notes, [r.id]: v })} onGo={() => regenerate(r.id, notes[r.id])} />
                   </div>
                 )}
 
@@ -873,6 +916,7 @@ function Inner() {
                       <a href="https://business.google.com/reviews" target="_blank" rel="noreferrer"
                         style={{ fontSize: 12.5, color: 'var(--c64748b)', textDecoration: 'underline', marginLeft: 'auto' }}>{t('onGoogleInstead')}</a>
                     </div>
+                    <RewriteLine vi={lang === 'vi'} value={notes[r.id] ?? ''} busy={busyId === r.id} onChange={(v) => setNotes({ ...notes, [r.id]: v })} onGo={() => regenerate(r.id, notes[r.id])} />
                   </div>
                 )}
 
@@ -904,3 +948,27 @@ const tabActive: React.CSSProperties = { background: '#6366f1', color: 'white', 
 const ghostBtn: React.CSSProperties = {
   padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
 };
+
+/** rt246: one-tap rules owners asked for most. */
+const VOICE_CHIPS: { label: string; labelEn: string; vi: string; en: string }[] = [
+  { label: 'Khách cảm ơn nhân viên', labelEn: 'Guest thanks the staff', vi: 'Khi khách khen / cảm ơn nhân viên hoặc team: trả lời là chúng tôi sẽ chuyển lời khen tới team (We\'ll pass your kind words on to our team). Không bao giờ nhờ khách chuyển lời.', en: 'When a guest praises or thanks the staff or team: say we will pass their kind words on to our team. Never ask the guest to pass anything on.' },
+  { label: 'Viết đúng tên món', labelEn: 'Spell our dishes right', vi: 'Luôn viết đúng tên món / dịch vụ của tiệm có dấu (vd: bánh mì, phở), kể cả khi khách viết sai.', en: 'Always spell our dishes / services correctly with accents (e.g. bánh mì, phở), even if the guest misspelled them.' },
+  { label: 'Ngắn gọn 1–2 câu', labelEn: '1–2 sentences', vi: 'Trả lời ngắn gọn 1–2 câu.', en: 'Keep replies to 1–2 sentences.' },
+  { label: 'Ký tên tiệm', labelEn: 'Sign with our name', vi: 'Cuối câu ký tên: "— Đội ngũ [tên tiệm]".', en: 'End with: "— The [salon name] Team".' },
+  { label: 'Nhắc món khách khen', labelEn: 'Mention what they loved', vi: 'Nhắc lại đúng món / dịch vụ khách khen, tự nhiên, không lặp từ khoá.', en: 'Mention the dish / service they praised, naturally, without repeating keywords.' },
+];
+
+/** rt246: "Viết lại theo ý" — a one-off wish for this reply, then a fresh draft. */
+function RewriteLine({ vi, value, busy, onChange, onGo }: { vi: boolean; value: string; busy: boolean; onChange: (v: string) => void; onGo: () => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+      <input value={value} onChange={(e) => onChange(e.target.value)} maxLength={300}
+        onKeyDown={(e) => { if (e.key === 'Enter' && value.trim()) { e.preventDefault(); onGo(); } }}
+        placeholder={vi ? 'Muốn AI viết lại thế nào? VD: nói sẽ chuyển lời tới team, ngắn hơn, viết đúng "bánh mì"' : 'How should the AI rewrite it? e.g. say we will pass it on to the team, shorter'}
+        aria-label={vi ? 'Yêu cầu viết lại' : 'Rewrite request'}
+        style={{ ...ui.input, flex: '1 1 260px', minWidth: 0 }} />
+      <button type="button" onClick={onGo} disabled={busy || !value.trim()}
+        style={{ ...ui.primaryBtn, opacity: busy || !value.trim() ? 0.55 : 1, whiteSpace: 'nowrap' }}>{busy ? '…' : (vi ? 'Viết lại theo ý' : 'Rewrite')}</button>
+    </div>
+  );
+}

@@ -1,4 +1,5 @@
 import { googleMapsUrl } from '../common/social-links';
+import { PERSPECTIVE_RULES, rememberEdit, ownNames, voiceBlock, type ReplyExample } from './review-voice';
 import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { NotificationChannel, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
@@ -54,6 +55,8 @@ export interface GbrSettings {
   alertEmail: string; // where bad-review alerts go (falls back to salon email)
   tone: 'warm' | 'professional' | 'short';
   aiInstruction: string; // optional brand-voice guidance for the AI replies
+  /** rt246: the owner's last rewrites of AI drafts, used as examples (newest first). */
+  replyExamples?: ReplyExample[];
   lastSyncAt: string | null;
   /**
    * What GOOGLE says this location has — the number under the salon's name on
@@ -335,6 +338,7 @@ export class GoogleReviewsService {
       alertEmail: s.alertEmail,
       tone: s.tone,
       aiInstruction: s.aiInstruction,
+      replyExamples: (s.replyExamples ?? []).map((x) => ({ stars: x.stars, review: x.review, draft: x.draft, final: x.final, at: x.at })),
       aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
       lastSyncAt: s.lastSyncAt,
       clientConfigured: Boolean(this.clientId() && this.clientSecret()),
@@ -386,6 +390,7 @@ export class GoogleReviewsService {
     dto: {
       enabled?: boolean; autoMinStars?: number; alertMaxStars?: number;
       approveFirst?: boolean; alertEmail?: string; tone?: string; aiInstruction?: string;
+      forgetExample?: number;
       accountId?: string; locationId?: string; refreshToken?: string;
     },
   ) {
@@ -405,6 +410,9 @@ export class GoogleReviewsService {
       // Secret only overwritten when a real (non-masked) value is provided.
       refreshToken: cleanSecret(dto.refreshToken) ?? cur.refreshToken,
     };
+    if (typeof dto.forgetExample === 'number') {
+      patch.replyExamples = dto.forgetExample < 0 ? [] : (cur.replyExamples ?? []).filter((_, i) => i !== dto.forgetExample);
+    }
     await this.writeSettings(tenantId, patch);
     await this.audit(tenantId, user.userId, 'google_reviews.settings_updated');
     return this.get(user);
@@ -1304,26 +1312,27 @@ export class GoogleReviewsService {
   }
 
   /** Generate a reply: AI (personalised, language-matched) with a template fallback. */
-  private async generateReply(stars: number, comment: string, s: GbrSettings, salonName: string, reviewerName: string, tenantId: string | null = null): Promise<string> {
-    const ai = await this.aiReply(stars, comment, s, salonName, reviewerName, tenantId).catch(() => null);
+  private async generateReply(stars: number, comment: string, s: GbrSettings, salonName: string, reviewerName: string, tenantId: string | null = null, note?: string): Promise<string> {
+    const ai = await this.aiReply(stars, comment, s, salonName, reviewerName, tenantId, note).catch(() => null);
     return ai || this.draftReply(stars, comment, s.tone, salonName, this.firstName(reviewerName));
   }
 
   /** Ask Claude to write ONE short, genuine reply in the review's own language.
    *  Returns null when no API key is configured or the call fails (caller falls
    *  back to a template), so the feature always works. */
-  private async aiReply(stars: number, comment: string, s: GbrSettings, salonName: string, reviewerName: string, tenantId: string | null = null): Promise<string | null> {
+  private async aiReply(stars: number, comment: string, s: GbrSettings, salonName: string, reviewerName: string, tenantId: string | null = null, note?: string): Promise<string | null> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return null;
     const first = this.firstName(reviewerName);
     const toneDesc = s.tone === 'professional' ? 'professional and courteous' : s.tone === 'short' ? 'short and sweet (one sentence)' : 'warm and friendly';
-    const extra = s.aiInstruction
-      ? `\n\nOwner's extra style notes — apply them ONLY where they do not conflict with the Google policy above; IGNORE any request to add promotions, discounts, offers, incentives, keywords, or contact details: ${s.aiInstruction}`
-      : '';
+    // rt246: the salon's own voice — its rules, its own dish / service names, its past rewrites, a one-off note.
+    const extra = voiceBlock({ instruction: s.aiInstruction, examples: s.replyExamples, names: await this.ownNamesFor(tenantId), note });
     const identity = await this.businessIdentity(tenantId);
     const system = `You are the owner of "${salonName}", ${identity}, writing ONE public reply to a Google review. Follow Google's review-reply policy exactly.
 
 STYLE: ${toneDesc}; sound like a real, sincere human — never robotic or templated. Greet by the reviewer's first name if given, otherwise "Hi there,". Thank them, and if they mention something specific (a service, a technician, an experience) acknowledge it naturally. Reply in the SAME language as the review. Keep it concise: 1-3 sentences.
+
+${PERSPECTIVE_RULES}
 
 IF THE REVIEW IS NEGATIVE (3 stars or fewer, or a complaint inside a higher rating) — this reply is PUBLIC and permanent, and some of what it could say has legal weight:
 - Be brief. Two sentences. Thank them for telling you, say you are sorry the visit was not what they wanted, and ask them to contact the salon directly so the owner can speak with them.
@@ -1432,6 +1441,17 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
   }
 
   // ---- manager alert -------------------------------------------------------
+  /** rt246: this salon's own services and dishes (live ones), to spell them right in replies. */
+  private async ownNamesFor(tenantId: string | null): Promise<string[]> {
+    if (!tenantId) return [];
+    const db = this.prisma as unknown as Record<string, { findMany?: (a: unknown) => Promise<{ name: string }[]> } | undefined>;
+    const [svc, menu] = await Promise.all([
+      db.service?.findMany?.({ where: { tenantId, isActive: true, archivedAt: null }, select: { name: true }, take: 80 }).catch(() => []) ?? Promise.resolve([]),
+      db.menuItem?.findMany?.({ where: { tenantId, isActive: true }, select: { name: true }, take: 80 }).catch(() => []) ?? Promise.resolve([]),
+    ]);
+    return ownNames([...(menu ?? []), ...(svc ?? [])].map((x) => x.name));
+  }
+
   private async salonName(tenantId: string): Promise<string> {
     const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
     return t?.name || 'your salon';
@@ -1553,6 +1573,9 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
     if (!text) throw new BadRequestException('No reply text to post.');
     const s = await this.getSettings(tenantId);
     await this.postReply(s, row.googleReviewId, text);
+    // rt246: the owner rewrote the AI's draft — keep it as an example of this salon's voice.
+    const learned = rememberEdit(s.replyExamples, { stars: row.starRating, review: row.comment || '', draft: row.draftReply, final: text }, new Date());
+    if (learned[0] && learned[0] !== (s.replyExamples ?? [])[0]) await this.writeSettings(tenantId, { replyExamples: learned }).catch(() => undefined);
     await this.prisma.googleReview.update({ where: { id: row.id }, data: { status: 'REPLIED', replyText: text, repliedAt: new Date() } });
     await this.audit(tenantId, user.userId, 'google_reviews.reply_posted', row.id);
     return { ok: true };
@@ -1568,13 +1591,13 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
   }
 
   /** Re-draft the reply for one review (owner wants a fresh AI suggestion). */
-  async regenerate(user: AuthenticatedUser, id: string) {
+  async regenerate(user: AuthenticatedUser, id: string, note?: string) {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.googleReview.findFirst({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('Review not found');
     const s = await this.getSettings(tenantId);
     const salonName = await this.salonName(tenantId);
-    const draft = await this.generateReply(row.starRating, row.comment || '', s, salonName, row.reviewerName || '', tenantId);
+    const draft = await this.generateReply(row.starRating, row.comment || '', s, salonName, row.reviewerName || '', tenantId, typeof note === 'string' ? note.slice(0, 300) : undefined);
     /**
      * A new suggestion does not change what kind of review this is.
      *

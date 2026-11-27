@@ -97,6 +97,12 @@ export class ChatTurnsController {
     return format === 'csv' ? this.turns.leadReportCsv(user, by) : this.turns.leadReportView(user, by);
   }
 
+  /** rt248: "Không nhận" — release my turn now; it goes to the next person on duty. */
+  @Post('turns/:threadId/decline')
+  decline(@CurrentUser() user: AuthenticatedUser, @Param('threadId') threadId: string) {
+    return this.turns.decline(user, threadId);
+  }
+
   /** rt216: every turn someone let go — not opened, not answered, skipped. Owner: everyone; staff: their own. */
   @Get('turns/misses')
   misses(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string, @Query('person') person?: string) {

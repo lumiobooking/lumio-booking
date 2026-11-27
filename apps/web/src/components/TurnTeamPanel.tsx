@@ -19,7 +19,7 @@ type Source = { key: string; label: string };
 type Score = { userId: string; name: string; received: number; answered: number; medianSec: number | null; onTimePct: number | null; lost: number; notOpened?: number; notReplied?: number; skipped?: number; withCustomer: number; booked?: number };
 type MissRow = { at: string; threadId: string; customer: string; fromAd: boolean; personId: string | null; person: string; why: 'not-opened' | 'not-replied' | 'skipped'; heldMins: number | null; to: string | null };
 type MissLog = { days: number; canSeeAll: boolean; waitedTooLong: number | null; totals: { personId: string; person: string; total: number; notOpened: number; notReplied: number; skipped: number; fromAd: number }[]; rows: MissRow[] };
-const whyText = (w: MissRow['why'], vi: boolean) => (w === 'not-opened' ? (vi ? 'Không mở' : 'Not opened') : w === 'skipped' ? (vi ? 'Bấm bỏ qua' : 'Skipped') : (vi ? 'Mở nhưng không trả lời' : 'Opened, no reply'));
+const whyText = (w: MissRow['why'], vi: boolean) => (w === 'not-opened' ? (vi ? 'Không mở' : 'Not opened') : w === 'skipped' ? (vi ? 'Từ chối (Không nhận)' : 'Declined') : (vi ? 'Mở nhưng không trả lời' : 'Opened, no reply'));
 const stamp = (iso: string) => { try { return new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }); } catch { return iso; } };
 type Board = { days: number; adCustomers: number; adWaiting: number; adLimitMins: number; adMoneyCents: number | null; scores: Score[]; canSeeAll: boolean };
 
@@ -127,8 +127,8 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted, statsOnly 
       </div>
 
       </>}
-      {/* Scoreboard */}
-      <div>
+      {/* Scoreboard — rt248: the team tab shows the lead report instead (same rules, by day / week / month). */}
+      {!statsOnly && <div>
         <div style={{ ...row, justifyContent: 'space-between' }}>
           <span style={ui.label}>{T('Bảng điểm', 'Scoreboard')}</span>
           <span style={{ display: 'inline-flex', gap: 4 }}>
@@ -144,7 +144,7 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted, statsOnly 
         <div style={{ overflowX: 'auto' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 800, fontSize: 12.5 }}>
             <thead><tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
-              {[T('Nhân viên', 'Person'), T('Nhận', 'Turns'), T('Trả lời đầu', 'First answer'), T('Đúng hạn', 'On time'), T('Bỏ turn', 'Let go'), T('Không mở', 'Not opened'), T('Không trả lời', 'No reply'), T('Bấm bỏ qua', 'Skipped'), T('Có SĐT/khách', 'With customer'), T('Đã đặt lịch', 'Booked')].map((h) => <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', fontWeight: 700 }}>{h}</th>)}
+              {[T('Nhân viên', 'Person'), T('Nhận', 'Turns'), T('Trả lời đầu', 'First answer'), T('Đúng hạn', 'On time'), T('Bỏ turn', 'Let go'), T('Không mở', 'Not opened'), T('Không trả lời', 'No reply'), T('Từ chối', 'Declined'), T('Có SĐT/khách', 'With customer'), T('Đã đặt lịch', 'Booked')].map((h) => <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', fontWeight: 700 }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {(board?.scores ?? []).map((s) => (
@@ -165,7 +165,7 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted, statsOnly 
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
 
       {/* rt216: the turns each person let go, one by one */}
       <div>
@@ -189,7 +189,7 @@ export function TurnTeamPanel({ token, vi, agents, canEdit, weighted, statsOnly 
             {misses.totals.map((p) => (
               <span key={p.personId} style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid var(--line)', fontSize: 12.5, color: 'var(--ccbd5e1)' }}>
                 <b style={{ color: 'var(--ce2e8f0)' }}>{p.person}</b>{T(` · bỏ ${p.total} turn`, ` · let go ${p.total}`)}
-                <span style={{ color: 'var(--c94a3b8)' }}>{T(` (không mở ${p.notOpened} · không trả lời ${p.notReplied} · bỏ qua ${p.skipped}${p.fromAd ? ` · ${p.fromAd} khách QC` : ''})`, ` (not opened ${p.notOpened} · no reply ${p.notReplied} · skipped ${p.skipped})`)}</span>
+                <span style={{ color: 'var(--c94a3b8)' }}>{T(` (không mở ${p.notOpened} · không trả lời ${p.notReplied} · từ chối ${p.skipped}${p.fromAd ? ` · ${p.fromAd} khách QC` : ''})`, ` (not opened ${p.notOpened} · no reply ${p.notReplied} · skipped ${p.skipped})`)}</span>
               </span>
             ))}
           </div>

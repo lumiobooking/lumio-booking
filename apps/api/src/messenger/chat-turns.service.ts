@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { customerEmailFrom, customerPhoneFrom } from './prospects';
 import { PushService } from '../push/push.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { InboxEventsService } from './inbox-events.service';
@@ -740,10 +742,17 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       const at = (firstBy.get(t.customerId) ?? []).find((d) => d >= t.createdAt);
       if (at) { bookings.push({ threadId: t.id, at }); usedCust.add(t.customerId); }
     }
+    // rt248: a sales page (an agency) books nobody — a lead card marked WON is its "chốt".
+    const leads = await this.db.salesLead?.findMany({ where: { tenantId, threadId: { in: threads.map((t) => t.id) } }, select: { threadId: true, phone: true, status: true, updatedAt: true }, take: 20000 }).catch(() => []) as { threadId: string | null; phone: string | null; status: string; updatedAt: Date }[] ?? [];
+    const booked = new Set(bookings.map((b) => b.threadId));
+    for (const l of leads) {
+      if (l.threadId && l.status === 'WON' && !booked.has(l.threadId) && l.updatedAt >= since) { bookings.push({ threadId: l.threadId, at: l.updatedAt }); booked.add(l.threadId); }
+    }
+    const contact = await this.contactThreads(tenantId, threads.map((t) => t.id), leads);
     const tFacts = new Map(threads.map((t) => [t.id, t]));
     const report = leadReport({
       grain, tz, now, logs, bookings,
-      threads: threads.map((t) => ({ id: t.id, createdAt: t.createdAt, customerId: t.customerId })),
+      threads: threads.map((t) => ({ id: t.id, createdAt: t.createdAt, customerId: t.customerId, hasContact: contact.has(t.id) })),
       limitMins: (id) => { const f = tFacts.get(id); return f ? unrepliedMinsFor(f as never, set, now) : set.reassignUnrepliedMins; },
     });
     // The new-chat counts are for chats created in the range only.
@@ -756,6 +765,59 @@ export class ChatTurnsService implements OnModuleInit, OnModuleDestroy {
       company: isAdmin ? report.company : null,
       companyTotal: isAdmin ? report.companyTotal : null,
     };
+  }
+
+  /**
+   * rt248 — which conversations have a way to reach the customer: a phone or an
+   * email the CUSTOMER typed (never the salon's own in a reply), saved on the
+   * linked customer, or on a lead card. The same reading as the prospects board.
+   */
+  private async contactThreads(tenantId: string, ids: string[], leads: { threadId: string | null; phone: string | null }[]): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (!ids.length) return out;
+    const digits = (v: string | null | undefined) => String(v ?? '').replace(/\D/g, '').length;
+    for (const l of leads) if (l.threadId && digits(l.phone) >= 8) out.add(l.threadId);
+    const linked = await this.db.messengerThread.findMany({ where: { tenantId, id: { in: ids }, customerId: { not: null } }, select: { id: true, customer: { select: { phone: true, email: true } } }, take: 50000 }).catch(() => []) as { id: string; customer: { phone: string | null; email: string | null } | null }[];
+    for (const t of linked) {
+      const e = t.customer?.email ?? '';
+      if (digits(t.customer?.phone) >= 8 || (/@/.test(e) && !/\.invalid$|@(noemail|example)\./i.test(e))) out.add(t.id);
+    }
+    const rest = ids.filter((id) => !out.has(id));
+    for (let i = 0; i < rest.length; i += 2000) {
+      const chunk = rest.slice(i, i + 2000);
+      const typed = await this.prisma.$queryRaw<{ id: string; texts: unknown }[]>(Prisma.sql`
+        SELECT t.id, jsonb_agg(e) AS texts
+        FROM messenger_threads t, jsonb_array_elements(CASE WHEN jsonb_typeof(t.history::jsonb) = 'array' THEN t.history::jsonb ELSE '[]'::jsonb END) e
+        WHERE t."tenantId" = ${tenantId} AND t.id IN (${Prisma.join(chunk)})
+          AND e->>'role' = 'user' AND ((e->>'content') ~ '[0-9][0-9 .()-]{7,}[0-9]' OR (e->>'content') ~ '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}')
+        GROUP BY t.id`).catch(() => [] as { id: string; texts: unknown }[]);
+      for (const r of typed ?? []) if (customerPhoneFrom(r.texts) || customerEmailFrom(r.texts)) out.add(r.id);
+    }
+    return out;
+  }
+
+  /**
+   * rt248 — "Không nhận": the person holding a turn releases it at once and it
+   * goes to the next person on duty, instead of waiting minutes for the timer.
+   * Only before they answered it; only their own turn (the owner may release
+   * anyone's). Logged as a decline ('skip'), counted apart from turns lost to
+   * the timer. One salon only.
+   */
+  async decline(user: AuthenticatedUser, threadId: string) {
+    const tenantId = this.tenantOf(user);
+    const isAdmin = user.role === UserRole.SALON_ADMIN || user.supportSession === true || user.role === UserRole.SUPER_ADMIN;
+    const t = await this.db.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { id: true, customerId: true, assignedUserId: true, assignedAt: true, assignHops: true, status: true } }) as { id: string; customerId: string | null; assignedUserId: string | null; assignedAt: Date | null; assignHops: number | null; status: string } | null;
+    if (!t) throw new NotFoundException('Không tìm thấy cuộc trò chuyện.');
+    if (!t.assignedUserId) throw new BadRequestException('Khách này chưa giao cho ai.');
+    if (t.assignedUserId !== user.userId && !isAdmin) throw new ForbiddenException('Đây không phải khách của bạn.');
+    if (t.assignedAt) {
+      const answered = await this.db.chatAssignmentLog?.findFirst({ where: { tenantId, threadId, userId: t.assignedUserId, reason: 'first-reply', createdAt: { gte: t.assignedAt } }, select: { id: true } }).catch(() => null);
+      if (answered && !isAdmin) throw new BadRequestException('Bạn đã trả lời khách này — muốn chuyển thì nhờ chủ tiệm chuyển tay.');
+    }
+    const from = t.assignedUserId;
+    const to = await this.route(tenantId, t.id, t.customerId, { excludeUserId: from, reason: 'skip' });
+    await this.prisma.auditLog.create({ data: { tenantId, userId: user.userId, action: 'messenger.turn_declined', resourceType: 'messenger_thread', resourceId: t.id, metadata: { from, to: to ?? null } as never } as never }).catch(() => undefined);
+    return { ok: !!to, to: to ?? null };
   }
 
   /** rt245: the same report as CSV text for the owner's spreadsheet (same scope rules). */

@@ -77,26 +77,17 @@ export function LeadReport({ token, vi }: { token: string | null; vi: boolean })
       {data && (
         <div>
           <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ce2e8f0)', margin: '4px 0 6px' }}>{data.canSeeAll ? L(vi, 'Từng nhân viên', 'Each person') : L(vi, 'Của tôi', 'Mine')}</div>
-          {data.teamConvPct != null && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 8, lineHeight: 1.5 }}>
-            {L(vi, `Mức của nhóm: ${data.teamConvPct}% khách nhận được chốt lịch. "Hiệu quả" = trả lời đúng hạn ≥ 80%, bỏ turn ≤ 10% và chốt ≥ mức nhóm. "Cần cải thiện" = đúng hạn < 50%, bỏ turn > 30% hoặc chốt dưới nửa mức nhóm. Dưới 10 khách thì chưa đánh giá. Bấm một người để xem chi tiết từng kỳ.`,
-              `Team bar: ${data.teamConvPct}% of chats booked. "Strong" = on time ≥ 80%, turns let go ≤ 10% and booking ≥ the team. "Needs work" = on time < 50%, turns let go > 30% or booking under half the team. Under 10 chats: not judged. Tap a person for their detail.`)}
-          </div>}
+          <Rules vi={vi} teamConvPct={data.teamConvPct} />
           {data.people.length === 0 ? (
             <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L(vi, 'Chưa có khách nào được giao cho nhân viên trong khoảng này.', 'No chats were given to staff in this range.')}</div>
           ) : (
             <div style={{ overflowX: 'auto', border: '1px solid var(--c334155)', borderRadius: 12 }}>
-              <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 760 }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 980 }}>
                 <thead>
                   <tr>
                     <th style={{ ...th, textAlign: 'left' }}>{L(vi, 'Nhân viên', 'Person')}</th>
                     <th style={{ ...th, textAlign: 'left' }}>{L(vi, 'Đánh giá', 'Rating')}</th>
-                    <th style={th}>{L(vi, 'Khách nhận', 'Chats')}</th>
-                    <th style={th}>{L(vi, 'Đúng hạn', 'On time')}</th>
-                    <th style={th}>{L(vi, 'Phản hồi', 'Answer')}</th>
-                    <th style={th}>{L(vi, 'Bỏ turn', 'Let go')}</th>
-                    <th style={th}>{L(vi, 'Có SĐT', 'Phone')}</th>
-                    <th style={th}>{L(vi, 'Đặt lịch', 'Booked')}</th>
-                    <th style={th}>{L(vi, 'Tỉ lệ chốt', 'Booking %')}</th>
+                    <Heads vi={vi} first={null} />
                   </tr>
                 </thead>
                 <tbody>
@@ -107,15 +98,9 @@ export function LeadReport({ token, vi }: { token: string | null; vi: boolean })
                         <td style={{ ...td, textAlign: 'left' }}><span style={badge(p.rating)}>{ratingLabel(p.rating, vi)}</span>
                           {p.reasons.length > 0 && <div style={{ fontSize: 11.5, color: 'var(--ink-bad)', marginTop: 3, whiteSpace: 'normal', maxWidth: 220 }}>{p.reasons.map((r) => reasonText(r, vi)).join(' · ')}</div>}
                         </td>
-                        <td style={td}>{p.total.received}</td>
-                        <td style={td}>{pctText(p.total.onTimePct)}</td>
-                        <td style={td}>{secText(p.total.medianSec, vi)}</td>
-                        <td style={{ ...td, color: p.total.lost ? 'var(--ink-warn)' : td.color }}>{p.total.lost}</td>
-                        <td style={td}>{p.total.contact}</td>
-                        <td style={{ ...td, fontWeight: 700 }}>{p.total.booked}</td>
-                        <td style={td}>{pctText(p.total.convPct)}</td>
+                        <Cells c={p.total} vi={vi} />
                       </tr>
-                      {open === p.userId && <tr><td colSpan={9} style={{ padding: 0, borderBottom: '1px solid var(--c334155)' }}><Detail p={p} data={data} vi={vi} /></td></tr>}
+                      {open === p.userId && <tr><td colSpan={12} style={{ padding: 0, borderBottom: '1px solid var(--c334155)' }}><Detail p={p} data={data} vi={vi} /></td></tr>}
                     </Fragment>
                   ))}
                 </tbody>
@@ -146,7 +131,7 @@ function Company({ data, vi }: { data: LeadReportResponse; vi: boolean }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
         {tile(L(vi, 'Chat mới', 'New chats'), String(t.newChats), L(vi, 'mọi kênh, cả khách AI tự lo', 'every channel, AI-handled too'))}
         {tile(L(vi, 'Để lại SĐT', 'Left a phone'), String(t.withContact), pctText(pct(t.withContact, t.newChats)))}
-        {tile(L(vi, 'Đặt lịch', 'Booked'), String(t.booked), L(vi, `tỉ lệ chốt ${pctText(pct(t.booked, t.newChats))}`, `${pctText(pct(t.booked, t.newChats))} booked`))}
+        {tile(L(vi, 'Chốt (đặt lịch / lead thành công)', 'Closed (booked / lead won)'), String(t.booked), L(vi, `tỉ lệ chốt ${pctText(pct(t.booked, t.newChats))}`, `${pctText(pct(t.booked, t.newChats))} closed`))}
         {tile(L(vi, 'Nhân viên chốt', 'Booked by staff'), String(t.bookedByStaff), L(vi, `còn ${t.booked - t.bookedByStaff} do AI / tự đặt`, `${t.booked - t.bookedByStaff} by AI / self`))}
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -178,7 +163,7 @@ function Company({ data, vi }: { data: LeadReportResponse; vi: boolean }) {
 
 /** One person, period by period (newest first). */
 function Detail({ p, data, vi }: { p: Person; data: LeadReportResponse; vi: boolean }) {
-  const rows = [...data.periods].reverse().map((k) => ({ k, c: p.cells[k] })).filter((r) => r.c && (r.c.received || r.c.lost || r.c.booked));
+  const rows = [...data.periods].reverse().map((k) => ({ k, c: p.cells[k] })).filter((r) => r.c && (r.c.turns || r.c.lost || r.c.booked || r.c.selfTaken || r.c.declined));
   if (!rows.length) return <div style={{ padding: 12, fontSize: 13, color: 'var(--c94a3b8)' }}>{L(vi, 'Không có hoạt động trong khoảng này.', 'No activity in this range.')}</div>;
   return (
     <div style={{ padding: '6px 10px 10px', background: 'var(--wash-blue)' }}>
@@ -186,32 +171,83 @@ function Detail({ p, data, vi }: { p: Person; data: LeadReportResponse; vi: bool
         <thead>
           <tr>
             <th style={{ ...th, textAlign: 'left' }}>{data.grain === 'day' ? L(vi, 'Ngày', 'Day') : data.grain === 'week' ? L(vi, 'Tuần', 'Week') : L(vi, 'Tháng', 'Month')}</th>
-            <th style={th}>{L(vi, 'Nhận', 'Chats')}</th>
-            <th style={th}>{L(vi, 'Đã trả lời', 'Answered')}</th>
-            <th style={th}>{L(vi, 'Đúng hạn', 'On time')}</th>
-            <th style={th}>{L(vi, 'Phản hồi', 'Answer')}</th>
-            <th style={th}>{L(vi, 'Bỏ turn', 'Let go')}</th>
-            <th style={th}>{L(vi, 'Có SĐT', 'Phone')}</th>
-            <th style={th}>{L(vi, 'Đặt lịch', 'Booked')}</th>
-            <th style={th}>{L(vi, 'Chốt', 'Booking %')}</th>
+            <Heads vi={vi} first={null} />
           </tr>
         </thead>
         <tbody>
           {rows.map(({ k, c }) => (
             <tr key={k}>
               <td style={{ ...td, textAlign: 'left' }}>{periodLabel(k, data.grain, vi)}</td>
-              <td style={td}>{c.received}</td>
-              <td style={td}>{c.answered}</td>
-              <td style={td}>{pctText(pct(c.onTime, c.received))}</td>
-              <td style={td}>{secText(c.medianSec, vi)}</td>
-              <td style={{ ...td, color: c.lost ? 'var(--ink-warn)' : td.color }}>{c.lost}</td>
-              <td style={td}>{c.contact}</td>
-              <td style={{ ...td, fontWeight: 700 }}>{c.booked}</td>
-              <td style={td}>{pctText(pct(c.booked, c.received))}</td>
+              <Cells c={c} vi={vi} />
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** rt248: the same columns for the totals row and each period. */
+function Heads({ vi }: { vi: boolean; first: null }) {
+  const h = (v: string, e: string, title: string) => <th style={th} title={title}>{L(vi, v, e)}</th>;
+  return (
+    <>
+      {h('Khách nhận', 'Customers', L(vi, 'Số khách khác nhau được giao', 'Different customers given'))}
+      {h('Lượt turn', 'Turns', L(vi, 'Khách mới + khách chuyển tới + khách của mình nhắn lại', 'New + passed on + own customer writing back'))}
+      {h('Đúng hạn', 'On time', L(vi, 'Lượt tự trả lời trước khi hết giờ / lượt giữ lại (không tính lượt từ chối)', 'Turns answered before the timer / turns kept'))}
+      {h('Phản hồi', 'Answer', L(vi, 'Thời gian trung vị từ lúc nhận tới câu trả lời đầu', 'Median time to the first answer'))}
+      {h('Quá giờ', 'Timed out', L(vi, 'Lượt bị hệ thống chuyển đi vì không mở / không trả lời kịp', 'Turns passed on for not opening / not answering in time'))}
+      {h('Từ chối', 'Declined', L(vi, 'Lượt bấm "Không nhận" — chuyển ngay cho người khác', 'Turns released with "Decline"'))}
+      {h('Tự nhận', 'Self-taken', L(vi, 'Khách chưa ai giữ mà mình chủ động trả lời (không tính là turn)', 'Unheld customers they answered on their own'))}
+      {h('Có SĐT', 'Contact', L(vi, 'Khách để lại số / email (khách gõ trong chat, đã lưu, hoặc thẻ lead)', 'Left a phone / email'))}
+      {h('Chốt', 'Closed', L(vi, 'Đặt lịch, hoặc thẻ lead chuyển "Thành công", trong lúc mình đang giữ khách', 'Booked, or lead marked won, while they held it'))}
+      {h('Tỉ lệ chốt', 'Close %', L(vi, 'Chốt / khách nhận', 'Closed / customers'))}
+    </>
+  );
+}
+
+function Cells({ c, vi }: { c: import('../lib/lead-report-view').Cell; vi: boolean }) {
+  const kept = Math.max(0, c.turns - c.declined);
+  return (
+    <>
+      <td style={td}>{c.received}</td>
+      <td style={td}>{c.turns}</td>
+      <td style={td}>{pctText(pct(c.onTime, kept))}</td>
+      <td style={td}>{secText(c.medianSec, vi)}</td>
+      <td style={{ ...td, color: c.lost ? 'var(--ink-warn)' : td.color }}>{c.lost}</td>
+      <td style={td}>{c.declined}</td>
+      <td style={td}>{c.selfTaken}</td>
+      <td style={td}>{c.contact}</td>
+      <td style={{ ...td, fontWeight: 700 }}>{c.booked}</td>
+      <td style={td}>{pctText(pct(c.booked, c.received))}</td>
+    </>
+  );
+}
+
+/** rt248: what a person must do with a turn, and how every number is counted — folded by default. */
+function Rules({ vi, teamConvPct }: { vi: boolean; teamConvPct: number | null }) {
+  const li = (t: string) => <li style={{ marginBottom: 4 }}>{t}</li>;
+  return (
+    <details style={{ marginBottom: 10, border: '1px solid var(--c334155)', borderRadius: 10, padding: '8px 12px' }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 13, color: 'var(--ce2e8f0)' }}>
+        {L(vi, 'Quy tắc nhận turn & cách tính', 'Turn rules & how it is counted')}{teamConvPct != null ? L(vi, ` · mức chốt của nhóm ${teamConvPct}%`, ` · team close rate ${teamConvPct}%`) : ''}
+      </summary>
+      <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 8 }}>
+        <b>{L(vi, 'Nhân viên khi nhận turn:', 'When a person gets a turn:')}</b>
+        <ol style={{ margin: '4px 0 8px', paddingLeft: 20 }}>
+          {li(L(vi, 'Mở cuộc trò chuyện trong thời gian "chưa mở" của tiệm, và TỰ trả lời khách trong thời gian "chưa trả lời". AI có trả lời trước thì nhân viên vẫn phải trả lời — câu của AI không tính cho nhân viên.', 'Open the chat within the salon\'s "not opened" time and reply yourself within the "not answered" time. Even when the AI answered first, the person still replies — the AI\'s answer does not count for them.'))}
+          {li(L(vi, 'Không nhận được (bận, không đúng chuyên môn): bấm "Không nhận" ở trên ô trả lời — khách chuyển ngay cho người kế tiếp, tính là "Từ chối", không tính "Quá giờ".', 'Cannot take it: press "Decline" above the reply box — it goes to the next person at once and counts as "Declined", not "Timed out".'))}
+          {li(L(vi, 'Để hết giờ mà không mở / không trả lời: hệ thống tự chuyển và tính "Quá giờ".', 'Let the timer run out: it is passed on and counted as "Timed out".'))}
+          {li(L(vi, 'Khách của mình nhắn lại sau khi mình đã trả lời: là một lượt turn mới, đồng hồ chạy lại.', 'Your customer writes again after you answered: a new turn, the clock restarts.'))}
+          {li(L(vi, 'Chủ động trả lời khách chưa ai giữ: khách thành của mình, tính "Tự nhận" (không phải turn, không tính thời gian phản hồi).', 'Answering an unheld customer: they become yours, counted as "Self-taken" (not a turn).'))}
+        </ol>
+        <b>{L(vi, 'Đánh giá (trong khoảng đang xem, cần ít nhất 10 lượt turn):', 'Rating (in this range, at least 10 turns):')}</b>
+        <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+          {li(L(vi, 'Hiệu quả: đúng hạn ≥ 80%, quá giờ ≤ 10% lượt turn, tỉ lệ chốt ≥ mức của nhóm.', 'Strong: on time ≥ 80%, timed out ≤ 10% of turns, close rate ≥ the team.'))}
+          {li(L(vi, 'Cần cải thiện: đúng hạn < 50%, quá giờ > 30%, từ chối > 40% lượt turn, hoặc tỉ lệ chốt dưới nửa mức nhóm.', 'Needs work: on time < 50%, timed out > 30%, declined > 40% of turns, or close rate under half the team.'))}
+          {li(L(vi, 'Chốt = khách đặt lịch, hoặc thẻ lead chuyển "Thành công" (trang bán hàng), tính cho người đang giữ khách lúc đó.', 'Closed = a booking, or a lead marked won (sales pages), credited to whoever held the customer then.'))}
+        </ul>
+      </div>
+    </details>
   );
 }

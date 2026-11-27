@@ -195,7 +195,7 @@ export class StaffAlertsService {
     const text = turnAlert({ customer: t?.senderName || 'Khách', lastText: t?.lastText ?? null, channel: t?.channel ?? 'messenger', ...o });
     return this.send(pg.pageToken, l!.psid, text, [
       { content_type: 'text', title: 'Nhận khách', payload: `${CLAIM_PREFIX}${threadId}` },
-      { content_type: 'text', title: 'Bỏ qua', payload: `${SKIP_PREFIX}${threadId}` },
+      { content_type: 'text', title: 'Không nhận', payload: `${SKIP_PREFIX}${threadId}` },
     ]);
   }
 

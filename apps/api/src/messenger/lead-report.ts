@@ -16,8 +16,12 @@ export type Grain = 'day' | 'week' | 'month';
 /** How many periods each view shows. */
 export const PERIODS: Record<Grain, number> = { day: 31, week: 12, month: 12 };
 
-const MISS = new Set(['reassign-unread', 'reassign-unreplied', 'skip']);
-const NOT_TURN = new Set(['unassign', 'first-reply', 'backlog', 'opened', 'prospect', 'customer-back']);
+/** Passed on because the holder did not act in time — counts against them. */
+const LOST = new Set(['reassign-unread', 'reassign-unreplied']);
+/** The holder said "Không nhận" (in Lumio or on their Messenger): released at once, counted apart. */
+const DECLINE = 'skip';
+// rt248: the same turn rules as the scoreboard (turn-team.ts NOT_TURN_REASONS).
+const NOT_TURN = new Set(['unassign', 'first-reply', 'backlog', 'opened', 'prospect', 'took-by-reply']);
 
 /** Y-M-D of an instant on the salon's wall clock. */
 export function localYmd(d: Date, tz: string): string {
@@ -68,32 +72,42 @@ export function sinceFor(now: Date, grain: Grain): Date {
 }
 
 export type Cell = {
-  /** Conversations this person was given (each counted once per period). */
+  /** Different customers this person was given (each counted once per period). */
   received: number;
-  /** Of those, answered by them. */
+  /**
+   * rt248: turns given — a new customer, a customer passed on to them, or their
+   * own customer writing back. Every percentage below is out of this.
+   */
+  turns: number;
+  /** Turns they answered (a human reply before the turn ended). */
   answered: number;
   /** Answered before the turn would have passed on. */
   onTime: number;
   /** Median seconds to the first answer. */
   medianSec: number | null;
-  /** Turns passed on from them for not acting (not opened / no answer / Bỏ qua). */
+  /** Turns passed on from them for not acting in time (not opened / not answered). */
   lost: number;
+  /** rt248: turns they released with "Không nhận" (went to the next person at once). */
+  declined: number;
+  /** rt248: customers nobody held that they answered on their own (not a turn). */
+  selfTaken: number;
   /** Conversations they held that now have a customer with a phone. */
   contact: number;
   /** Bookings made while they held the conversation. */
   booked: number;
 };
 
-export type ThreadIn = { id: string; createdAt: Date; customerId: string | null };
+/** `hasContact`: a phone / email is known (typed by the customer, saved, or on a lead card). */
+export type ThreadIn = { id: string; createdAt: Date; customerId: string | null; hasContact?: boolean };
 export type BookingIn = { threadId: string; at: Date };
 
 export type Rating = 'good' | 'ok' | 'weak' | 'few';
-export type Reason = 'slow' | 'lost' | 'lowConv' | 'noBooking';
+export type Reason = 'slow' | 'lost' | 'declines' | 'lowConv' | 'noBooking';
 
 export type PersonReport = {
   userId: string;
   cells: Record<string, Cell>;
-  total: Cell & { convPct: number | null; onTimePct: number | null; lostPct: number | null };
+  total: Cell & { convPct: number | null; onTimePct: number | null; lostPct: number | null; declinePct: number | null };
   rating: Rating;
   reasons: Reason[];
 };
@@ -112,21 +126,26 @@ export type LeadReport = {
 /** Fewer conversations than this in the whole range: too early to judge someone. */
 export const MIN_SAMPLE = 10;
 
-type Acc = { threads: Set<string>; answered: Set<string>; onTime: number; secs: number[]; lost: number; contact: Set<string>; booked: number };
-const acc = (): Acc => ({ threads: new Set(), answered: new Set(), onTime: 0, secs: [], lost: 0, contact: new Set(), booked: 0 });
+type Acc = { threads: Set<string>; turns: number; answered: number; onTime: number; secs: number[]; lost: number; declined: number; selfTaken: number; contact: Set<string>; booked: number };
+const acc = (): Acc => ({ threads: new Set(), turns: 0, answered: 0, onTime: 0, secs: [], lost: 0, declined: 0, selfTaken: 0, contact: new Set(), booked: 0 });
 const median = (xs: number[]) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return s[Math.floor((s.length - 1) / 2)]; };
-const toCell = (a: Acc): Cell => ({ received: a.threads.size, answered: a.answered.size, onTime: a.onTime, medianSec: median(a.secs), lost: a.lost, contact: a.contact.size, booked: a.booked });
+const toCell = (a: Acc): Cell => ({ received: a.threads.size, turns: a.turns, answered: a.answered, onTime: a.onTime, medianSec: median(a.secs), lost: a.lost, declined: a.declined, selfTaken: a.selfTaken, contact: a.contact.size, booked: a.booked });
 const pct = (n: number, d: number) => (d > 0 ? Math.round((n * 100) / d) : null);
 
 /** Judge one person against the team over the whole range. */
-export function rate(t: { received: number; onTime: number; answered: number; lost: number; booked: number }, teamConvPct: number | null): { rating: Rating; reasons: Reason[] } {
-  if (t.received < MIN_SAMPLE) return { rating: 'few', reasons: [] };
-  const onTimePct = pct(t.onTime, t.received) ?? 0;
-  const lostPct = pct(t.lost, t.received + t.lost) ?? 0;
+export function rate(t: { received: number; turns: number; onTime: number; answered: number; lost: number; declined: number; booked: number }, teamConvPct: number | null): { rating: Rating; reasons: Reason[] } {
+  if (t.turns < MIN_SAMPLE) return { rating: 'few', reasons: [] };
+  // Declined turns went straight to someone else: they are not judged as slow
+  // answers, so on-time is measured over the turns the person kept.
+  const kept = Math.max(0, t.turns - t.declined);
+  const onTimePct = kept ? (pct(t.onTime, kept) ?? 0) : 100;
+  const lostPct = pct(t.lost, t.turns) ?? 0;
+  const declinePct = pct(t.declined, t.turns) ?? 0;
   const conv = pct(t.booked, t.received) ?? 0;
   const reasons: Reason[] = [];
-  if (onTimePct < 50) reasons.push('slow');
+  if (kept >= MIN_SAMPLE / 2 && onTimePct < 50) reasons.push('slow');
   if (lostPct > 30) reasons.push('lost');
+  if (declinePct > 40) reasons.push('declines');
   if (teamConvPct && teamConvPct > 0 && conv < teamConvPct * 0.5) reasons.push('lowConv');
   if (t.booked === 0 && (teamConvPct ?? 0) > 0) { if (!reasons.includes('lowConv')) reasons.push('noBooking'); }
   if (reasons.length) return { rating: 'weak', reasons };
@@ -149,37 +168,56 @@ export function leadReport(o: {
   const inRange = new Set(periods);
   const key = (d: Date) => periodKey(d, o.tz, o.grain);
   const tBy = new Map(o.threads.map((t) => [t.id, t]));
+  const reach = (id: string) => { const t = tBy.get(id); return !!t && (t.hasContact ?? !!t.customerId); };
   const per = new Map<string, Map<string, Acc>>(); // user → period → acc
   const cellOf = (u: string, p: string) => { let m = per.get(u); if (!m) { m = new Map(); per.set(u, m); } let a = m.get(p); if (!a) { a = acc(); m.set(p, a); } return a; };
 
   const sorted = [...o.logs].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  const open = new Map<string, { userId: string; at: Date }>();
+  // The turn in progress on each conversation: who, since when, its period.
+  const open = new Map<string, { userId: string; at: Date; p: string }>();
   // Who held each conversation from when — to give a booking to the person holding it then.
   const holds = new Map<string, { userId: string; at: number }[]>();
+  const hold = (threadId: string, userId: string, at: Date) => { const h = holds.get(threadId) ?? []; h.push({ userId, at: at.getTime() }); holds.set(threadId, h); };
   for (const r of sorted) {
+    const p = key(r.createdAt);
+    if (r.reason === 'took-by-reply' && r.userId) {
+      // Their own initiative: not a turn, but theirs from now on.
+      if (inRange.has(p)) { const a = cellOf(r.userId, p); a.selfTaken += 1; if (reach(r.threadId)) a.contact.add(r.threadId); }
+      open.delete(r.threadId);
+      hold(r.threadId, r.userId, r.createdAt);
+      continue;
+    }
+    if (r.reason === 'backlog' || r.reason === 'prospect') {
+      // Old customers given out to follow up: theirs, no clock.
+      if (r.userId) hold(r.threadId, r.userId, r.createdAt);
+      open.delete(r.threadId);
+      continue;
+    }
     if (!NOT_TURN.has(r.reason) && r.userId) {
-      if (MISS.has(r.reason) && r.fromUserId) { const p = key(r.createdAt); if (inRange.has(p)) cellOf(r.fromUserId, p).lost += 1; }
-      open.set(r.threadId, { userId: r.userId, at: r.createdAt });
-      const h = holds.get(r.threadId) ?? []; h.push({ userId: r.userId, at: r.createdAt.getTime() }); holds.set(r.threadId, h);
-      const p = key(r.createdAt);
+      // A pass from the holder ends their turn: not acting in time, or "Không nhận".
+      const cur = open.get(r.threadId);
+      if (r.fromUserId && (LOST.has(r.reason) || r.reason === DECLINE)) {
+        const bucket = cur && cur.userId === r.fromUserId ? cur.p : p;
+        if (inRange.has(bucket)) { const f = cellOf(r.fromUserId, bucket); if (r.reason === DECLINE) f.declined += 1; else f.lost += 1; }
+      }
+      open.set(r.threadId, { userId: r.userId, at: r.createdAt, p });
+      hold(r.threadId, r.userId, r.createdAt);
       if (inRange.has(p)) {
         const a = cellOf(r.userId, p);
+        a.turns += 1;
         a.threads.add(r.threadId);
-        if (tBy.get(r.threadId)?.customerId) a.contact.add(r.threadId);
+        if (reach(r.threadId)) a.contact.add(r.threadId);
       }
     } else if (r.reason === 'first-reply' && r.userId) {
       const cur = open.get(r.threadId);
       if (cur && cur.userId === r.userId) {
-        const p = key(cur.at);
-        if (inRange.has(p)) {
-          const a = cellOf(r.userId, p);
+        if (inRange.has(cur.p)) {
+          const a = cellOf(r.userId, cur.p);
           const sec = Math.max(0, Math.round((r.createdAt.getTime() - cur.at.getTime()) / 1000));
-          if (!a.answered.has(r.threadId)) {
-            a.answered.add(r.threadId);
-            a.secs.push(sec);
-            const lim = o.limitMins(r.threadId);
-            if (!lim || sec <= lim * 60) a.onTime += 1;
-          }
+          a.answered += 1;
+          a.secs.push(sec);
+          const lim = o.limitMins(r.threadId);
+          if (!lim || sec <= lim * 60) a.onTime += 1;
         }
         open.delete(r.threadId);
       }
@@ -194,7 +232,7 @@ export function leadReport(o: {
     const p = key(t.createdAt);
     if (!company[p]) continue;
     company[p].newChats += 1;
-    if (t.customerId) company[p].withContact += 1;
+    if (t.hasContact ?? !!t.customerId) company[p].withContact += 1;
   }
   for (const b of o.bookings) {
     const p = key(b.at);
@@ -214,10 +252,10 @@ export function leadReport(o: {
     for (const p of periods) {
       const a = m.get(p);
       if (!a) continue;
-      a.threads.forEach((x) => t.threads.add(`${p}|${x}`));
-      a.answered.forEach((x) => t.answered.add(`${p}|${x}`));
+      a.threads.forEach((x) => t.threads.add(x));
       a.contact.forEach((x) => t.contact.add(x));
-      t.onTime += a.onTime; t.secs.push(...a.secs); t.lost += a.lost; t.booked += a.booked;
+      t.turns += a.turns; t.answered += a.answered; t.onTime += a.onTime; t.secs.push(...a.secs);
+      t.lost += a.lost; t.declined += a.declined; t.selfTaken += a.selfTaken; t.booked += a.booked;
     }
     totals.set(u, t);
     teamRecv += t.threads.size;
@@ -233,9 +271,9 @@ export function leadReport(o: {
     const { rating, reasons } = rate(tc, teamConvPct);
     return {
       userId: u, cells, rating, reasons,
-      total: { ...tc, convPct: pct(tc.booked, tc.received), onTimePct: pct(tc.onTime, tc.received), lostPct: pct(tc.lost, tc.received + tc.lost) },
+      total: { ...tc, convPct: pct(tc.booked, tc.received), onTimePct: pct(tc.onTime, Math.max(0, tc.turns - tc.declined)), lostPct: pct(tc.lost, tc.turns), declinePct: pct(tc.declined, tc.turns) },
     };
-  }).filter((x) => x.total.received > 0 || x.total.lost > 0 || x.total.booked > 0)
+  }).filter((x) => x.total.turns > 0 || x.total.lost > 0 || x.total.booked > 0 || x.total.selfTaken > 0)
     .sort((a, b) => b.total.booked - a.total.booked || b.total.received - a.total.received);
 
   const companyTotal = { newChats: 0, withContact: 0, booked: 0, bookedByStaff: 0 };
@@ -247,15 +285,15 @@ export function leadReport(o: {
 /** CSV for the owner's own spreadsheet: one row per person per period, plus the salon. */
 export function leadReportCsv(r: LeadReport, names: Map<string, string>): string {
   const q = (v: unknown) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const lines = [['Kỳ', 'Người', 'Khách nhận', 'Đã trả lời', 'Trả lời đúng hạn', 'Phản hồi trung vị (giây)', 'Bỏ turn', 'Có SĐT', 'Đặt lịch', 'Tỉ lệ chốt %'].join(',')];
+  const lines = [['Kỳ', 'Người', 'Khách nhận', 'Lượt turn', 'Đã trả lời', 'Trả lời đúng hạn', 'Phản hồi trung vị (giây)', 'Bỏ turn (quá giờ)', 'Từ chối', 'Tự nhận', 'Có SĐT', 'Chốt', 'Tỉ lệ chốt %'].join(',')];
   for (const p of r.periods) {
     for (const x of r.people) {
       const c = x.cells[p];
-      if (!c.received && !c.lost && !c.booked) continue;
-      lines.push([p, names.get(x.userId) ?? x.userId, c.received, c.answered, c.onTime, c.medianSec ?? '', c.lost, c.contact, c.booked, pct(c.booked, c.received) ?? ''].map(q).join(','));
+      if (!c.turns && !c.lost && !c.booked && !c.selfTaken) continue;
+      lines.push([p, names.get(x.userId) ?? x.userId, c.received, c.turns, c.answered, c.onTime, c.medianSec ?? '', c.lost, c.declined, c.selfTaken, c.contact, c.booked, pct(c.booked, c.received) ?? ''].map(q).join(','));
     }
     const c = r.company[p];
-    lines.push([p, 'TỔNG TIỆM (chat mới)', c.newChats, '', '', '', '', c.withContact, c.booked, pct(c.booked, c.newChats) ?? ''].map(q).join(','));
+    lines.push([p, 'TỔNG TIỆM (chat mới)', c.newChats, '', '', '', '', '', '', '', c.withContact, c.booked, pct(c.booked, c.newChats) ?? ''].map(q).join(','));
   }
   return lines.join('\n');
 }

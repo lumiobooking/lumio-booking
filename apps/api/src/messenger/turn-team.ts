@@ -136,7 +136,12 @@ export type AgentScore = {
   booked: number;
 };
 
-const isTurn = (r: string) => r !== 'unassign' && r !== 'first-reply' && r !== 'backlog' && r !== 'opened' && r !== 'prospect' && r !== 'customer-back'; // rt211: old customers given out to follow up are not live turns
+// rt211: old customers given out to follow up are not live turns. rt248: a customer
+// writing back to the holder IS a live turn (the clock restarts and it passes on if
+// unanswered — rt215), and answering a customer nobody held ("took-by-reply") is not
+// a turn given: it is the person's own initiative, answered at the same instant.
+export const NOT_TURN_REASONS = new Set(['unassign', 'first-reply', 'backlog', 'opened', 'prospect', 'took-by-reply']);
+const isTurn = (r: string) => !NOT_TURN_REASONS.has(r);
 
 /**
  * Score each person from the assignment log: a turn starts at an assignment

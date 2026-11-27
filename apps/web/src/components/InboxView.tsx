@@ -27,6 +27,7 @@ import { PhotoPicker, PhotoWaiting, SaveToLibrary, usePhotoSuggest } from './pho
 import { PastedPhotos } from './photos/PastedPhotos';
 import { dragHasFiles, imageFiles, MAX_PASTED, splitSendable } from '../lib/pasted-photos';
 import { TurnBadge } from './TurnBadge';
+import { TurnStrip } from './TurnStrip';
 import { MessengerAlertCard } from './MessengerAlertCard';
 import { fmtInTz } from '../lib/datetime';
 import { useAuth } from '../lib/auth';
@@ -2143,6 +2144,7 @@ export function InboxView() {
                 {narrow && <button type="button" onClick={() => setComposerMode('reply')} style={{ ...chipBase, minHeight: 36 }}>{vi ? 'Quay lại trả lời' : 'Back to reply'}</button>}
               </div>
             )}
+            {!noteMode && me && detail.assignedUserId === me && (() => { const due = rows.find((x) => x.id === detail.id)?.turnDueAt; return due ? <TurnStrip token={token ?? null} vi={vi} threadId={detail.id} dueAt={due} aiOn={aiLive} onDone={(m, ok) => { if (ok) { setErr(null); void loadList(); void loadThread(detail.id, false); } else setErr(m); }} /> : null; })()}
             {!noteMode && (
               <PhotoWaiting token={token ?? null} threadId={detail.id} vi={vi} suggest={photoSuggest} disabled={notice.blocked}
                 onSent={() => void afterLibrarySend()} onError={(m) => setErr(m)} />
@@ -2596,6 +2598,7 @@ export function InboxView() {
               </div>
             )}
 
+            {composerMode === 'reply' && <div style={{ padding: '8px 10px 0' }}>{true && me && detail.assignedUserId === me && (() => { const due = rows.find((x) => x.id === detail.id)?.turnDueAt; return due ? <TurnStrip token={token ?? null} vi={vi} threadId={detail.id} dueAt={due} aiOn={aiLive} onDone={(m, ok) => { if (ok) { setErr(null); void loadList(); void loadThread(detail.id, false); } else setErr(m); }} /> : null; })()}</div>}
             {/* rt243: photos in this layout too — the library picker, the upload, and the
                 AI's "they asked for a photo" card (same pieces as the new layout). */}
             {composerMode === 'reply' && (

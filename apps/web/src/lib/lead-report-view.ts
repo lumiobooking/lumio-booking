@@ -2,13 +2,13 @@
  * rt245 — labels and small sums for the lead report screen. Pure.
  */
 export type Grain = 'day' | 'week' | 'month';
-export type Cell = { received: number; answered: number; onTime: number; medianSec: number | null; lost: number; contact: number; booked: number };
+export type Cell = { received: number; turns: number; answered: number; onTime: number; medianSec: number | null; lost: number; declined: number; selfTaken: number; contact: number; booked: number };
 export type Rating = 'good' | 'ok' | 'weak' | 'few';
-export type Reason = 'slow' | 'lost' | 'lowConv' | 'noBooking';
+export type Reason = 'slow' | 'lost' | 'declines' | 'lowConv' | 'noBooking';
 export type Person = {
   userId: string; name: string; rating: Rating; reasons: Reason[];
   cells: Record<string, Cell>;
-  total: Cell & { convPct: number | null; onTimePct: number | null; lostPct: number | null };
+  total: Cell & { convPct: number | null; onTimePct: number | null; lostPct: number | null; declinePct: number | null };
 };
 export type CompanyCell = { newChats: number; withContact: number; booked: number; bookedByStaff: number };
 export type LeadReportResponse = {
@@ -47,8 +47,9 @@ export function ratingLabel(r: Rating, vi: boolean): string {
 
 export function reasonText(r: Reason, vi: boolean): string {
   return ({
-    slow: vi ? 'trả lời chậm (dưới 50% đúng hạn)' : 'slow (under 50% on time)',
-    lost: vi ? 'bỏ turn nhiều (trên 30%)' : 'lets many turns go (over 30%)',
+    slow: vi ? 'trả lời chậm (dưới 50% lượt giữ được trả lời đúng hạn)' : 'slow (under 50% of kept turns answered in time)',
+    lost: vi ? 'để quá giờ nhiều (trên 30% lượt turn)' : 'lets many turns time out (over 30%)',
+    declines: vi ? 'từ chối nhiều (trên 40% lượt turn)' : 'declines many turns (over 40%)',
     lowConv: vi ? 'tỉ lệ chốt dưới nửa mức của nhóm' : 'books under half the team rate',
     noBooking: vi ? 'chưa chốt được lịch nào' : 'no bookings yet',
   })[r];

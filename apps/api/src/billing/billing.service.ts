@@ -147,7 +147,7 @@ export class BillingService {
    * projected month-end total. Always available — never hidden by feature policy.
    */
   /** Platform default prices, from platform_config. Missing stays missing. */
-  private async platformRates(market?: string | null, monthStart?: Date) {
+  private async platformRates(market?: string | null, monthStart?: Date, opts?: { ungated?: boolean }) {
     const mk = String(market ?? '').toUpperCase();
     const base = ['sms_overage_cents', 'hotline_overage_cents_per_min', 'chat_overage_cents_per_reply'];
     const keys = [...base, ...(mk ? base.map((k) => `${k}_${mk.toLowerCase()}`) : []), 'usage_rates_from'];
@@ -163,7 +163,7 @@ export class BillingService {
     // so the months before it are not charged (the Usage screen says "not priced").
     const from = String(map.usage_rates_from ?? '').trim();
     const month = (monthStart ?? new Date()).toISOString().slice(0, 7);
-    if (/^\d{4}-\d{2}$/.test(from) && month < from) return cleanPlatformRates({});
+    if (!opts?.ungated && /^\d{4}-\d{2}$/.test(from) && month < from) return cleanPlatformRates({});
     return cleanPlatformRates(map);
   }
 
@@ -220,21 +220,28 @@ export class BillingService {
       where: { tenantId, channel: NotificationChannel.SMS, status: NotificationStatus.FAILED, createdAt: { gte: new Date(u.periodStart) } },
     }).catch(() => 0);
     const payment = await this.paymentMethod(tenantId);
-    const rates = await this.platformRates((tenant as { market?: string } | null)?.market);
+    // rt257: the prices are read as they WILL apply, and a month before the start month
+    // shows them with a zero charge and "starts on …" — not "not priced yet", which told
+    // the salon nothing and made the screen look broken.
+    const rates = await this.platformRates((tenant as { market?: string } | null)?.market, undefined, { ungated: true });
+    const usageStart = new Date(u.periodStart);
+    const notYet = await this.ratesGated(usageStart);
+    const startsFrom = notYet ? String((await this.platform.get('usage_rates_from').catch(() => undefined)) ?? '').trim() || null : null;
     const plan = tenant?.plan ?? null;
     const currency = plan?.currency ?? 'USD';
     const baseCents = (plan?.priceMonthlyCents || plan?.priceCents) ?? 0;
 
     // ---- AI Hotline (voice) ----
     const hotlineEnabled = !!line?.enabled;
-    const hotlineMonthlyCents = hotlineEnabled ? (line?.monthlyCents ?? 0) : 0;
+    const hotlineMonthlyListCents = hotlineEnabled ? (line?.monthlyCents ?? 0) : 0;
+    const hotlineMonthlyCents = notYet ? 0 : hotlineMonthlyListCents;
     const minIncluded = u.includedMinutes > 0 ? u.includedMinutes : this.planIncludedMinutes(plan?.name, hotlineEnabled);
     const minUsed = u.aiMinutes;
     // rt255: the salon's own per-minute price, else the platform default (as for SMS).
     const minLine = usageLine('minutes', minUsed, minIncluded, resolveRate(u.overageCentsPerMin > 0 ? u.overageCentsPerMin : null, rates.minuteCents));
     const minOver = minLine.over; // 0 when no included bucket is set (bundled/unlimited)
     const minRate = minLine.rate.centsPerUnit;
-    const minOverageCents = minLine.overageCents;
+    const minOverageCents = notYet ? 0 : minLine.overageCents;
 
     // ---- SMS (reconciled with the plan allowance) ----
     // A per-tenant override (VoiceLine.includedSms) wins; otherwise the plan's monthly SMS.
@@ -262,8 +269,11 @@ export class BillingService {
 
     // ---- Totals ----
     const fixedCents = baseCents + hotlineMonthlyCents + chatMonthlyCents;
-    const smsOverageCents = smsLine.overageCents;
-    const overageCents = minOverageCents + smsOverageCents + chatLine.overageCents;
+    const smsOverageCents = notYet ? 0 : smsLine.overageCents;
+    // Same rule as the month-end invoice (chatOverageForMonth): only the platform price waits.
+    const chatGated = notYet && chatLine.rate.source === 'platform';
+    const chatOverageCents = chatGated ? 0 : chatLine.overageCents;
+    const overageCents = minOverageCents + smsOverageCents + chatOverageCents;
     const grandTotalCents = fixedCents + overageCents;
 
     // Straight-line projection of the variable overage to month end.
@@ -295,6 +305,10 @@ export class BillingService {
         overageCentsPerMin: minRate,
         overageCents: minOverageCents,
         aiCalls: u.aiCalls,
+        /** rt257: what the minutes over would cost once prices start (this month is not charged). */
+        wouldBeCents: notYet ? minLine.overageCents : undefined,
+        /** rt257: the add-on fee that starts with the prices. */
+        monthlyListCents: hotlineMonthlyListCents,
       },
       sms: {
         included: smsLine.included,
@@ -303,9 +317,13 @@ export class BillingService {
         messages: u.smsSent,
         overage: smsLine.over,
         overageCentsPer: smsLine.rate.centsPerUnit,
-        overageCents: smsLine.overageCents,
+        overageCents: smsOverageCents,
         /** Which sentence the screen prints. Never let it improvise one. */
-        wording: smsLine.wording,
+        wording: notYet && smsLine.wording === 'priced' ? 'notYet' : smsLine.wording,
+        /** rt257: what the parts over would cost once prices start. */
+        wouldBeCents: notYet ? smsLine.overageCents : undefined,
+        /** rt257: which texts cost how many parts. */
+        byKind: u.smsByKind ?? [],
         /** Texts the carrier refused or the provider could not send — not billed. */
         failed: smsFailed,
       },
@@ -318,8 +336,9 @@ export class BillingService {
         used: chatLine.used,
         overage: chatLine.over,
         overageCentsPer: chatLine.rate.centsPerUnit,
-        overageCents: chatLine.overageCents,
-        wording: chatLine.wording,
+        overageCents: chatOverageCents,
+        wording: chatGated && chatLine.wording === 'priced' ? 'notYet' : chatLine.wording,
+        wouldBeCents: chatGated ? chatLine.overageCents : undefined,
         /** The chat line's own currency — see chatCurrency above. */
         currency: chatCurrency,
         /** Which listed tier this is, so the salon sees a name and not a sum. */
@@ -328,6 +347,8 @@ export class BillingService {
         remaining: chatPlan.includedReplies > 0 ? Math.max(0, chatPlan.includedReplies - chatLine.used) : null,
       },
       totals: { fixedCents, overageCents, grandTotalCents, projectedGrandTotalCents },
+      /** rt257: "YYYY-MM" the overage prices start from when THIS month is before it; else null. */
+      usageStartsFrom: startsFrom,
     };
   }
 

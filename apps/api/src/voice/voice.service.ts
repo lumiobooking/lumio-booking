@@ -147,6 +147,8 @@ export interface VoiceUsage {
   periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number;
   /** rt256: billable parts (segments) of those texts, as the carrier counts them. */
   smsSegments: number;
+  /** rt257: texts and parts per kind of text (appointment, campaign, rebooking…). */
+  smsByKind?: { kind: string; texts: number; parts: number; unicode: number }[];
   monthlyCents: number;
   includedMinutes: number; includedSms: number;
   overageCentsPerMin: number; overageCentsPerSms: number;
@@ -1234,18 +1236,30 @@ export class VoiceService implements OnModuleInit {
     // text has a character outside the plain alphabet), and so does the plan allowance now.
     const smsRows = await this.prisma.notification.findMany({
       where: { tenantId, channel: NotificationChannel.SMS, status: NotificationStatus.SENT, createdAt: callWindow },
-      select: { body: true },
+      select: { body: true, relatedType: true },
       take: 50000,
-    }).catch(() => [] as { body: string }[]);
+    }).catch(() => [] as { body: string; relatedType: string | null }[]);
     const smsSent = smsRows.length;
-    const smsSegmentCount = smsRows.reduce((n, r) => n + Math.max(1, smsSegments(r.body ?? '').segments), 0);
+    // rt257: the same parts, per kind of text, so a salon can see WHICH texts cost several parts.
+    const kinds = new Map<string, { kind: string; texts: number; parts: number; unicode: number }>();
+    let smsSegmentCount = 0;
+    for (const r of smsRows) {
+      const size = smsSegments(r.body ?? '');
+      const parts = Math.max(1, size.segments);
+      smsSegmentCount += parts;
+      const kind = String(r.relatedType ?? 'other').split(':')[0] || 'other';
+      const k = kinds.get(kind) ?? { kind, texts: 0, parts: 0, unicode: 0 };
+      k.texts += 1; k.parts += parts; if (size.encoding === 'UCS-2') k.unicode += 1;
+      kinds.set(kind, k);
+    }
+    const smsByKind = [...kinds.values()].sort((a, b) => b.parts - a.parts);
     const incMin = line?.includedMinutes ?? 0;
     const incSms = line?.includedSms ?? 0;
     const overageMinutes = incMin > 0 ? Math.max(0, aiMinutes - incMin) : 0;
     const overageSms = incSms > 0 ? Math.max(0, smsSent - incSms) : 0;
     const overageCents = overageMinutes * (line?.overageCentsPerMin ?? 0) + overageSms * (line?.overageCentsPerSms ?? 0);
     return {
-      periodStart: since.toISOString(), aiCalls: calls.length, aiMinutes, smsSent, smsSegments: smsSegmentCount,
+      periodStart: since.toISOString(), aiCalls: calls.length, aiMinutes, smsSent, smsSegments: smsSegmentCount, smsByKind,
       monthlyCents: line?.monthlyCents ?? 0,
       includedMinutes: incMin, includedSms: incSms,
       overageCentsPerMin: line?.overageCentsPerMin ?? 0, overageCentsPerSms: line?.overageCentsPerSms ?? 0,

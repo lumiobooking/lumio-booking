@@ -24,14 +24,24 @@ interface Summary {
     enabled: boolean; monthlyCents: number;
     includedMinutes: number; usedMinutes: number; overageMinutes: number;
     overageCentsPerMin: number; overageCents: number; aiCalls: number;
+    /** rt257: cost of the minutes over once prices start (this month not charged). */
+    wouldBeCents?: number;
+    monthlyListCents?: number;
   };
   /** `wording` tells the screen WHICH sentence to print — see api billing/usage-rates.ts. */
-  sms: { included: number; used: number; overage: number; overageCentsPer: number; overageCents: number; wording?: 'priced' | 'free' | 'unset' | 'unlimited'; failed?: number; messages?: number };
+  sms: {
+    included: number; used: number; overage: number; overageCentsPer: number; overageCents: number;
+    wording?: Wording; failed?: number; messages?: number;
+    /** rt257 */
+    wouldBeCents?: number;
+    byKind?: { kind: string; texts: number; parts: number; unicode: number }[];
+  };
   /** The AI chatbot, once the salon is on a chat plan. Absent on an older server. */
   chat?: {
     enabled: boolean; included: number; used: number; overage: number;
     overageCentsPer: number; overageCents: number; monthlyCents: number;
-    wording?: 'priced' | 'free' | 'unset' | 'unlimited';
+    wording?: Wording;
+    wouldBeCents?: number;
     /** The chat line is priced in the salon's MARKET currency, which can
      *  differ from the subscription's. Absent on an older server. */
     currency?: string;
@@ -41,7 +51,10 @@ interface Summary {
     remaining?: number | null;
   };
   totals: { fixedCents: number; overageCents: number; grandTotalCents: number; projectedGrandTotalCents: number };
+  /** rt257: "YYYY-MM" overage prices start from, when this month is before it. */
+  usageStartsFrom?: string | null;
 }
+type Wording = 'priced' | 'free' | 'unset' | 'unlimited' | 'notYet';
 
 /**
  * The stored amount, written out.
@@ -149,6 +162,38 @@ const T = {
   free: { en: 'free', vi: 'miễn phí' },
   unlimited: { en: 'unlimited', vi: 'không giới hạn' },
   loading: { en: 'Loading…', vi: 'Đang tải…' },
+  // rt257 — the usage lines written as a sum the owner can redo by hand.
+  sent: { en: 'Sent', vi: 'Đã gửi' },
+  usedCap: { en: 'Used', vi: 'Đã dùng' },
+  texts: { en: 'texts', vi: 'tin' },
+  parts: { en: 'SMS parts', vi: 'phần SMS' },
+  inPlan: { en: 'Included in your plan', vi: 'Gói có sẵn' },
+  overBy: { en: 'Over the allowance', vi: 'Vượt hạn mức' },
+  cost: { en: 'Cost', vi: 'Thành tiền' },
+  partHint: {
+    en: '1 part = up to 160 characters. A longer text counts as 2–3 parts (as the phone carrier bills it).',
+    vi: '1 phần = tối đa 160 ký tự. Tin dài hơn tính 2–3 phần (nhà mạng tính tiền như vậy).',
+  },
+  notYetBadge: { en: 'Not charged this month', vi: 'Tháng này chưa tính' },
+  notYetLine: {
+    en: 'Usage over the allowance is charged from {date}. At this month\'s usage it would be {amt}.',
+    vi: 'Phần vượt hạn mức bắt đầu tính từ {date}. Nếu tính theo mức dùng tháng này thì là {amt}.',
+  },
+  notYetHero: {
+    en: 'This month you pay only the plan fee. Usage over the allowance starts being charged on {date} — at this month\'s usage that would add {amt}.',
+    vi: 'Tháng này tiệm chỉ trả phí gói. Phần vượt hạn mức bắt đầu tính từ {date} — nếu dùng như tháng này sẽ cộng thêm {amt}.',
+  },
+  byKindTitle: { en: 'Which texts use the parts', vi: 'Loại tin nào tốn nhiều phần' },
+  kindCol: { en: 'Kind of text', vi: 'Loại tin' },
+  avgCol: { en: 'Parts per text', vi: 'Phần / tin' },
+  byKindHint: {
+    en: 'A text over 160 characters, or with emoji / special characters, uses more parts. Shorter templates cost less.',
+    vi: 'Tin dài quá 160 ký tự, hoặc có emoji / ký tự đặc biệt, sẽ tốn nhiều phần hơn. Rút gọn mẫu tin sẽ tiết kiệm.',
+  },
+  failedLine: { en: 'texts failed — not charged', vi: 'tin gửi thất bại — không tính tiền' },
+  minutes: { en: 'minutes', vi: 'phút' },
+  calls: { en: 'calls', vi: 'cuộc gọi' },
+  replies: { en: 'replies', vi: 'tin trả lời' },
   none: { en: 'No plan is assigned yet. Please contact Lumio support.', vi: 'Chưa có gói nào được gán. Vui lòng liên hệ Lumio để được hỗ trợ.' },
 };
 
@@ -186,7 +231,7 @@ export function UsageCostsPanel() {
   // charged, never that overage is free for ever.
   const smsWording = sum.sms.wording ?? (sum.sms.overageCentsPer > 0 ? 'priced' : 'unset');
   const rateLabel = (cents: number, unit: string, wording: string, curOverride?: string) =>
-    wording === 'priced' && cents > 0 ? money(cents, curOverride ?? cur) + unit
+    (wording === 'priced' || wording === 'notYet') && cents > 0 ? money(cents, curOverride ?? cur) + unit
       : wording === 'free' ? t('noCharge')
         : t('notPriced');
   const smsRate = rateLabel(sum.sms.overageCentsPer, t('perSms'), smsWording);
@@ -205,6 +250,12 @@ export function UsageCostsPanel() {
   const chatIncLabel = (sum.chat?.included ?? 0) > 0 ? String(sum.chat!.included) : t('unlimited');
   const smsIncLabel = sum.sms.included > 0 ? String(sum.sms.included) : t('unlimited');
   const minIncLabel = sum.hotline.includedMinutes > 0 ? String(sum.hotline.includedMinutes) : t('unlimited');
+  // rt257: a month before overage prices start — say so plainly, with what it WOULD cost.
+  const startDate = sum.usageStartsFrom ? new Date(`${sum.usageStartsFrom}-01T12:00:00Z`).toLocaleDateString(uiLocale(), { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }) : null;
+  const wouldBe = (sum.sms.wouldBeCents ?? 0) + (sum.hotline.wouldBeCents ?? 0) + (sum.chat?.wouldBeCents ?? 0)
+    + (startDate && sum.hotline.enabled ? (sum.hotline.monthlyListCents ?? 0) : 0);
+  const n = (v: number) => new Intl.NumberFormat(uiLocale()).format(v);
+  const smsTexts = typeof sum.sms.messages === 'number' ? sum.sms.messages : sum.sms.used;
 
   return (
     <section className="stmt" style={{ maxWidth: 780, color: 'var(--ce2e8f0)' }}>
@@ -240,6 +291,9 @@ export function UsageCostsPanel() {
         </div>
         {asOf && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 4 }} className="muted">{t('asOf')} {asOf}</div>}
         <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8 }} className="muted">{t('estNote')}</div>
+        {startDate && (
+          <div style={notYetBox}>{fill(t('notYetHero'), { date: startDate, amt: money(wouldBe, cur) })}</div>
+        )}
       </div>
 
       {/* ITEMIZED STATEMENT */}
@@ -260,23 +314,61 @@ export function UsageCostsPanel() {
 
         <div style={{ ...sectionHead, marginTop: 20 }}>{t('overageTitle')}</div>
 
-        <UsageRow
-          label={t('sms')}
-          detail={`${sum.sms.used} ${t('used')} / ${smsIncLabel} ${t('included')}${typeof sum.sms.messages === 'number' && sum.sms.messages !== sum.sms.used ? ` · ${sum.sms.messages} ${lang === 'vi' ? 'tin' : 'texts'}` : ''}${sum.sms.failed ? ` · ${sum.sms.failed} ${t('failed')}` : ''}`}
-          over={sum.sms.overage}
-          overText={`${sum.sms.overage} ${t('over')} × ${smsRate}`}
+        <Meter
+          title={t('sms')}
           amount={money(sum.sms.overageCents, cur)}
-          within={t('within')}
-        />
+          over={sum.sms.overage}
+          notYet={sum.sms.wording === 'notYet'}
+          wouldBe={money(sum.sms.wouldBeCents ?? 0, cur)}
+          t={t}
+          lines={[
+            [t('sent'), smsTexts === sum.sms.used ? `${n(sum.sms.used)} ${t('parts')}` : `${n(smsTexts)} ${t('texts')} = ${n(sum.sms.used)} ${t('parts')}`],
+            [t('inPlan'), `${smsIncLabel === t('unlimited') ? smsIncLabel : n(sum.sms.included)} ${t('parts')}`],
+            ...(sum.sms.included > 0 ? [[t('overBy'), sum.sms.overage > 0 ? `${n(sum.sms.overage)} ${t('parts')} × ${smsRate}` : '0'] as [string, string]] : []),
+          ]}
+          hint={t('partHint')}
+          foot={sum.sms.failed ? `${n(sum.sms.failed)} ${t('failedLine')}` : undefined}
+        >
+          {!!sum.sms.byKind?.length && sum.sms.used > 0 && (
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--c818cf8)', fontWeight: 600 }}>{t('byKindTitle')}</summary>
+              <div style={{ overflowX: 'auto', marginTop: 6 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
+                      <th style={th}>{t('kindCol')}</th><th style={thR}>{t('texts')}</th><th style={thR}>{t('parts')}</th><th style={thR}>{t('avgCol')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sum.sms.byKind.map((k) => (
+                      <tr key={k.kind} style={{ borderTop: '1px solid var(--c1f2937)' }}>
+                        <td style={td}>{kindLabel(k.kind, g)}</td>
+                        <td style={tdR}>{n(k.texts)}</td>
+                        <td style={tdR}>{n(k.parts)}</td>
+                        <td style={{ ...tdR, color: k.texts && k.parts / k.texts >= 1.5 ? 'var(--cfca5a5)' : undefined }}>{k.texts ? (k.parts / k.texts).toFixed(1) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }} className="muted">{t('byKindHint')}</div>
+            </details>
+          )}
+        </Meter>
 
         {sum.hotline.enabled ? (
-          <UsageRow
-            label={t('aiMin')}
-            detail={`${sum.hotline.usedMinutes} ${t('used')} / ${minIncLabel} ${t('included')} · ${sum.hotline.aiCalls} calls`}
-            over={sum.hotline.overageMinutes}
-  overText={`${sum.hotline.overageMinutes} ${t('over')} × ${minRate}`}
+          <Meter
+            title={t('aiMin')}
             amount={money(sum.hotline.overageCents, cur)}
-            within={t('within')}
+            over={sum.hotline.overageMinutes}
+            notYet={!!startDate}
+            wouldBe={money(sum.hotline.wouldBeCents ?? 0, cur)}
+            t={t}
+            lines={[
+              [t('usedCap'), `${n(sum.hotline.usedMinutes)} ${t('minutes')} · ${n(sum.hotline.aiCalls)} ${t('calls')}`],
+              [t('inPlan'), `${minIncLabel === t('unlimited') ? minIncLabel : n(sum.hotline.includedMinutes)} ${t('minutes')}`],
+              ...(sum.hotline.includedMinutes > 0 ? [[t('overBy'), sum.hotline.overageMinutes > 0 ? `${n(sum.hotline.overageMinutes)} ${t('minutes')} × ${minRate}` : '0'] as [string, string]] : []),
+            ]}
           />
         ) : (
           <div style={{ ...rowWrap, color: 'var(--c64748b)', fontSize: 13.5 }} className="muted">{t('hotOff')}</div>
@@ -286,15 +378,18 @@ export function UsageCostsPanel() {
             enabled" for a salon that has not bought it — never as a zero row,
             which reads as "you are paying for something you do not have". */}
         {sum.chat ? (sum.chat.enabled ? (
-          <UsageRow
-            label={`${t('chat')} · ${tierName}`}
-            detail={typeof sum.chat.remaining === 'number'
-              ? `${sum.chat.used} ${t('used')} / ${chatIncLabel} ${t('included')} · ${sum.chat.remaining} ${t('left')}`
-              : `${sum.chat.used} ${t('used')} / ${chatIncLabel} ${t('included')}`}
-            over={sum.chat.overage}
-            overText={`${sum.chat.overage} ${t('over')} × ${chatRate}`}
+          <Meter
+            title={`${t('chat')} · ${tierName}`}
             amount={money(sum.chat.overageCents, chatCur)}
-            within={t('within')}
+            over={sum.chat.overage}
+            notYet={sum.chat.wording === 'notYet'}
+            wouldBe={money(sum.chat.wouldBeCents ?? 0, chatCur)}
+            t={t}
+            lines={[
+              [t('usedCap'), `${n(sum.chat.used)} ${t('replies')}`],
+              [t('inPlan'), `${chatIncLabel === t('unlimited') ? chatIncLabel : n(sum.chat.included)} ${t('replies')}${typeof sum.chat.remaining === 'number' ? ` · ${n(sum.chat.remaining)} ${t('left')}` : ''}`],
+              ...(sum.chat.included > 0 ? [[t('overBy'), sum.chat.overage > 0 ? `${n(sum.chat.overage)} ${t('replies')} × ${chatRate}` : '0'] as [string, string]] : []),
+            ]}
           />
         ) : (
           <div style={{ ...rowWrap, color: 'var(--c64748b)', fontSize: 13.5 }} className="muted">{t('chatOff')}</div>
@@ -317,6 +412,7 @@ export function UsageCostsPanel() {
         <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13.5, color: 'var(--ccbd5e1)' }} className="muted">
           <li>{fill(t('howPlan'), { sms: smsIncLabel, min: minIncLabel })}</li>
           <li>{fill(t(smsWording === 'free' ? 'howSmsFree' : smsWording === 'unset' ? 'howSmsUnset' : 'howSms'), { sms: smsIncLabel, rate: smsRate })}</li>
+          {startDate && <li>{fill(t('notYetLine'), { date: startDate, amt: money(wouldBe, cur) })}</li>}
           {sum.hotline.enabled && <li>{fill(t('howMin'), { min: minIncLabel, rate: minRate })}</li>}
           {sum.chat?.enabled && <li>{fill(t('howChat'), { chat: chatIncLabel, rate: chatRate })}</li>}
           <li>{t(sum.payment?.autoUsage && sum.payment.provider === 'paypal' ? 'howBillAuto' : 'howBill')}</li>
@@ -344,22 +440,80 @@ function Row({ label, amount, subtotal }: { label: string; amount: string; subto
   );
 }
 
-function UsageRow({ label, detail, over, overText, amount, within }: { label: string; detail: string; over: number; overText: string; amount: string; within: string }) {
+/**
+ * rt257 — one metered item written as a sum the owner can redo by hand:
+ * used · included · over × price = cost. A month before overage prices start
+ * shows the cost it WOULD be, struck through, and says it is not charged.
+ */
+function Meter({ title, lines, amount, over, notYet, wouldBe, hint, foot, t, children }: {
+  title: string; lines: [string, string][]; amount: string; over: number; notYet: boolean; wouldBe: string;
+  hint?: string; foot?: string; t: (k: keyof typeof T) => string; children?: React.ReactNode;
+}) {
   return (
-    <div style={{ ...rowWrap, alignItems: 'flex-start', paddingTop: 10 }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14.5, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }} className="muted">{detail}</div>
-        {over > 0 && <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', marginTop: 2 }}>{overText}</div>}
+    <div style={{ padding: '12px 0', borderTop: '1px solid var(--c1f2937)' }}>
+      <div style={{ ...rowWrap, padding: 0, alignItems: 'baseline' }}>
+        <span style={{ fontSize: 15, color: 'var(--ce2e8f0)', fontWeight: 700 }}>{title}</span>
+        <span style={{ textAlign: 'right' }}>
+          {over <= 0
+            ? <span style={{ fontSize: 13, color: 'var(--c4ade80)', fontWeight: 600 }}>{t('within')}</span>
+            : notYet
+              ? <span><s style={{ fontSize: 13, color: 'var(--c94a3b8)', marginRight: 6 }}>{wouldBe}</s><span style={{ fontSize: 13, color: 'var(--c4ade80)', fontWeight: 600 }}>{t('notYetBadge')}</span></span>
+              : <span style={{ fontSize: 16, fontWeight: 700 }}>{amount}</span>}
+        </span>
       </div>
-      <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: 10 }}>
-        {over > 0
-          ? <span style={{ fontSize: 15, fontWeight: 600 }}>{amount}</span>
-          : <span style={{ fontSize: 12.5, color: 'var(--c4ade80)' }}>{within}</span>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, max-content) minmax(0, 1fr)', columnGap: 14, rowGap: 3, marginTop: 6, fontSize: 13.5 }}>
+        {lines.map(([k, v]) => (
+          <div key={k} style={{ display: 'contents' }}>
+            <span style={{ color: 'var(--c94a3b8)' }} className="muted">{k}</span>
+            <span style={{ color: 'var(--ce2e8f0)', fontWeight: 500, minWidth: 0 }}>{v}</span>
+          </div>
+        ))}
+        {over > 0 && (
+          <>
+            <span style={{ color: 'var(--c94a3b8)' }} className="muted">{t('cost')}</span>
+            <span style={{ fontWeight: 700, color: notYet ? 'var(--c94a3b8)' : 'var(--cfca5a5)' }}>{notYet ? `${wouldBe} — ${t('notYetBadge').toLowerCase()}` : amount}</span>
+          </>
+        )}
       </div>
+      {hint && <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 6 }} className="muted">{hint}</div>}
+      {foot && <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 2 }} className="muted">{foot}</div>}
+      {children}
     </div>
   );
 }
+
+/** rt257: what a kind of text is, in the owner's words. */
+function kindLabel(kind: string, g: Lg): string {
+  const vi = g === 'vi';
+  const m: Record<string, [string, string]> = {
+    appointment: ['Booking confirmations & reminders', 'Xác nhận & nhắc lịch hẹn'],
+    campaign: ['Promotions / campaigns', 'Khuyến mãi / chiến dịch'],
+    campaign_test: ['Campaign tests', 'Gửi thử chiến dịch'],
+    rebooking: ['Come-back invitations', 'Mời khách quay lại'],
+    review_request: ['Review requests', 'Xin đánh giá'],
+    feedback_request: ['Feedback requests', 'Xin góp ý sau dịch vụ'],
+    feedback_google_link: ['Google review links', 'Gửi link đánh giá Google'],
+    feedback_case: ['Feedback follow-ups', 'Xử lý góp ý'],
+    google_review: ['Google review links', 'Gửi link đánh giá Google'],
+    walk_in: ['Walk-in updates', 'Báo khách walk-in'],
+    waitlist: ['Waitlist', 'Danh sách chờ'],
+    client_form_link: ['Client form links', 'Gửi phiếu khách hàng'],
+    voice: ['Sent by AI Hotline', 'AI Hotline gửi'],
+    invoice: ['Invoices', 'Hoá đơn'],
+    sales_lead: ['Lead follow-ups', 'Theo dõi khách tiềm năng'],
+    marketing_report: ['Marketing reports', 'Báo cáo marketing'],
+    marketing_report_sent: ['Marketing reports', 'Báo cáo marketing'],
+    other: ['Other', 'Khác'],
+  };
+  const hit = m[kind];
+  return hit ? hit[vi ? 1 : 0] : kind;
+}
+
+const th: CSSProperties = { padding: '4px 6px', fontWeight: 600 };
+const thR: CSSProperties = { ...th, textAlign: 'right' };
+const td: CSSProperties = { padding: '5px 6px' };
+const tdR: CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
+const notYetBox: CSSProperties = { marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.35)', color: 'var(--ce2e8f0)', fontSize: 13 };
 
 const card: CSSProperties = { background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 14, padding: 20, marginTop: 16 };
 const hero: CSSProperties = { background: 'linear-gradient(150deg, var(--c1e1b4b), var(--c111827))', border: '1px solid var(--c3730a3)', borderRadius: 16, padding: '20px 22px', marginTop: 4 };

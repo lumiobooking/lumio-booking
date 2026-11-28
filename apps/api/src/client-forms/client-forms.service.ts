@@ -260,8 +260,56 @@ export class ClientFormsService {
     };
   }
 
+  /**
+   * rt254 — "intake form khách điền rồi sao giờ không lưu lại, khách đến lại phải điền lại hết".
+   *
+   * A form signed on the iPad for a walk-in who had no client record yet was
+   * saved with no client (only the ticket). When the client record was made or
+   * linked later (at checkout, on the next visit), nothing tied the old form to
+   * it: the client's file showed no intake and the next visit asked for it again.
+   * The forms were never lost, only unattached.
+   *
+   * This attaches them: forms with no client signed on a ticket / booking that now
+   * belongs to this client, or on a ticket with no client whose phone AND name
+   * match this client. One salon only; once attached they are found directly.
+   */
+  private async adoptOrphanForms(tenantId: string, customerId: string): Promise<number> {
+    try {
+      const c = await this.db.customer.findFirst({ where: { id: customerId, tenantId }, select: { id: true, firstName: true, lastName: true, phone: true } });
+      if (!c) return 0;
+      const [walks, appts] = await Promise.all([
+        this.db.walkIn.findMany({ where: { tenantId, customerId }, select: { id: true }, take: 500 }).catch(() => []),
+        this.db.appointment.findMany({ where: { tenantId, customerId }, select: { id: true }, take: 500 }).catch(() => []),
+      ]);
+      const walkIds: string[] = (walks as Row[]).map((w) => w.id);
+      const tail = String(c.phone ?? '').replace(/\D/g, '').slice(-10);
+      if (tail.length >= 7) {
+        // Tickets typed at the desk with no client record: same phone and same first name.
+        const first = String(c.firstName ?? '').trim().toLowerCase();
+        // By name in the database (phones are stored in many formats), then the phone digits here.
+        const loose: Row[] = first.length >= 2 ? await this.db.walkIn.findMany({ where: { tenantId, customerId: null, customerName: { contains: first, mode: 'insensitive' } }, select: { id: true, phone: true, customerName: true }, take: 300 }).catch(() => []) : [];
+        for (const w of loose) {
+          const wt = String(w.phone ?? '').replace(/\D/g, '').slice(-10);
+          const nm = String(w.customerName ?? '').trim().toLowerCase();
+          if (wt === tail && first && nm.includes(first)) walkIds.push(w.id);
+        }
+      }
+      const apptIds: string[] = (appts as Row[]).map((a) => a.id);
+      if (!walkIds.length && !apptIds.length) return 0;
+      const or: Row[] = [];
+      if (walkIds.length) or.push({ walkInId: { in: walkIds } });
+      if (apptIds.length) or.push({ appointmentId: { in: apptIds } });
+      const r = await this.db.clientFormEntry.updateMany({ where: { tenantId, customerId: null, signerRole: 'client', OR: or }, data: { customerId } });
+      if (r?.count) await this.audit.log({ tenantId, userId: null, action: 'client_form.attached_to_client', resourceType: 'customer', resourceId: customerId, metadata: { count: r.count } }).catch(() => undefined);
+      return r?.count ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
   /** The forms on file for this visit's client (or for the visit itself, when the client has no record). */
   private async entriesFor(tenantId: string, v: { customerId: string | null; appointmentId: string | null; walkInId: string | null }): Promise<Row[]> {
+    if (v.customerId) await this.adoptOrphanForms(tenantId, v.customerId);
     const or: Row[] = [];
     if (v.customerId) or.push({ customerId: v.customerId });
     if (v.appointmentId) or.push({ appointmentId: v.appointmentId });
@@ -336,6 +384,7 @@ export class ClientFormsService {
     if (!c) throw new NotFoundException('Client not found');
     const me = await this.staffOf(tenantId, user);
     if (access === 'tech' && !(me && (await this.served(tenantId, me.id, customerId)))) throw new ForbiddenException('Not your client');
+    await this.adoptOrphanForms(tenantId, customerId);
     const rows: Row[] = await this.db.clientFormEntry.findMany({
       where: { tenantId, customerId },
       orderBy: { signedAt: 'desc' },
@@ -666,9 +715,13 @@ export class ClientFormsService {
     const signedName = (typeof dto.signedName === 'string' && dto.signedName.trim().slice(0, 120)) || (typeof answers.name === 'string' ? answers.name : '');
     if (!signedName) throw new BadRequestException('Please type your name');
     const lang = found.lang ?? this.langOf(dto.lang);
+    // rt254: the client record may have been linked to the ticket / booking after the link was made.
+    let customerId: string | null = l.customerId ?? null;
+    if (!customerId && l.walkInId) customerId = (await this.db.walkIn.findFirst({ where: { id: l.walkInId, tenantId }, select: { customerId: true } }).catch(() => null))?.customerId ?? null;
+    if (!customerId && l.appointmentId) customerId = (await this.db.appointment.findFirst({ where: { id: l.appointmentId, tenantId }, select: { customerId: true } }).catch(() => null))?.customerId ?? null;
     const e = await this.db.clientFormEntry.create({
       data: {
-        tenantId, customerId: l.customerId ?? null, kind, templateVersion: tpl.version, lang,
+        tenantId, customerId, kind, templateVersion: tpl.version, lang,
         answers, snapshot: resolveTemplate(tpl, lang), signatureData, signedName, signerRole: 'client',
         appointmentId: l.appointmentId ?? null, walkInId: l.walkInId ?? null, linkId: l.id,
         source: l.sentAt ? 'sms' : 'salon',

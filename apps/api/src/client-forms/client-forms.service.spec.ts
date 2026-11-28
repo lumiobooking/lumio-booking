@@ -23,6 +23,7 @@ function matches(row: Row, where: Row | undefined): boolean {
     const v = row[k];
     if (cond && typeof cond === 'object' && !(cond instanceof Date) && !Array.isArray(cond)) {
       if ('in' in cond) return (cond.in as unknown[]).includes(v);
+      if ('contains' in cond) return cond.mode === 'insensitive' ? String(v ?? '').toLowerCase().includes(String(cond.contains).toLowerCase()) : String(v ?? '').includes(String(cond.contains));
       if ('not' in cond) return cond.not === null ? v != null : v !== cond.not;
       if ('gt' in cond || 'lte' in cond) return (!cond.gt || new Date(v) > cond.gt) && (!cond.lte || new Date(v) <= cond.lte);
       return false;
@@ -246,5 +247,39 @@ describe('texting the link before a visit', () => {
     const { svc, db } = build();
     db.setting.rows[0].value = 'NAIL';
     expect(await svc.visitStatus(owner('ta'), { appointmentId: 'ap-a' })).toEqual({ enabled: false });
+  });
+});
+
+describe('rt254 a form signed before the client had a record is not lost', () => {
+  const intakeEntry = (o: Row) => ({ id: `e-${Math.random().toString(36).slice(2, 7)}`, kind: 'intake', signerRole: 'client', signedAt: new Date(Date.now() - 20 * 86400_000), answers: {}, snapshot: {}, addenda: [], customerId: null, appointmentId: null, ...o });
+
+  it('signed on a ticket that now belongs to the client: shown on the client file and not asked again', async () => {
+    const { svc, db } = build();
+    db.walkIn.rows.push({ id: 'w-old', tenantId: 'ta', customerId: 'ca', customerName: 'Anna', phone: '+15125550101' });
+    db.clientFormEntry.rows.push(intakeEntry({ tenantId: 'ta', walkInId: 'w-old' }));
+    const file = await svc.customerForms(owner('ta'), 'ca') as Row;
+    expect(file.entries.map((e: Row) => e.kind)).toContain('intake');
+    expect(db.clientFormEntry.rows[0].customerId).toBe('ca');
+    const v = await svc.visitStatus(owner('ta'), { appointmentId: 'ap-a' }) as Row;
+    expect(v.needs.find((n: Row) => n.kind === 'intake').status).toBe('signed');
+  });
+
+  it('a desk ticket with no client: attached only when the phone AND the first name match', async () => {
+    const { svc, db } = build();
+    db.walkIn.rows.push({ id: 'w-anna', tenantId: 'ta', customerId: null, customerName: 'anna lee', phone: '(512) 555-0101' });
+    db.walkIn.rows.push({ id: 'w-other', tenantId: 'ta', customerId: null, customerName: 'Tom', phone: '(512) 555-0101' });
+    db.clientFormEntry.rows.push(intakeEntry({ id: 'e-anna', tenantId: 'ta', walkInId: 'w-anna' }));
+    db.clientFormEntry.rows.push(intakeEntry({ id: 'e-tom', tenantId: 'ta', walkInId: 'w-other' }));
+    await svc.customerForms(owner('ta'), 'ca');
+    expect(db.clientFormEntry.rows.find((e: Row) => e.id === 'e-anna').customerId).toBe('ca');
+    expect(db.clientFormEntry.rows.find((e: Row) => e.id === 'e-tom').customerId).toBeNull();
+  });
+
+  it('never attaches another salon\'s form, even with the same phone and name', async () => {
+    const { svc, db } = build();
+    db.walkIn.rows.push({ id: 'w-b', tenantId: 'tb', customerId: null, customerName: 'Anna', phone: '+15125550101' });
+    db.clientFormEntry.rows.push(intakeEntry({ id: 'e-b', tenantId: 'tb', walkInId: 'w-b' }));
+    await svc.customerForms(owner('ta'), 'ca');
+    expect(db.clientFormEntry.rows.find((e: Row) => e.id === 'e-b').customerId).toBeNull();
   });
 });

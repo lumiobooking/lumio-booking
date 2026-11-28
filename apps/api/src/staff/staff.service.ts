@@ -253,10 +253,29 @@ export class StaffService {
     return staff;
   }
 
+  /**
+   * rt256 — the plan's staff limit (Plan.maxStaff; null or 0 = unlimited) was
+   * shown but never checked. Counted on active staff of THIS salon only; a
+   * salon already above it keeps everyone, it just cannot add more.
+   */
+  private async assertStaffRoom(tenantId: string) {
+    let t: { billingExempt?: boolean; plan?: { name: string; maxStaff: number | null } | null } | null = null;
+    try {
+      t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { billingExempt: true, plan: { select: { name: true, maxStaff: true } } } }) as typeof t;
+    } catch { return; /* never block adding staff on a lookup failure */ }
+    const max = t?.plan?.maxStaff ?? null;
+    if (!max || max <= 0 || t?.billingExempt) return;
+    const active = await this.prisma.staffMember.count({ where: { tenantId, isActive: true } });
+    if (active >= max) {
+      throw new BadRequestException(`Gói ${t?.plan?.name ?? ''} cho tối đa ${max} nhân viên đang hoạt động (đang có ${active}). Nâng gói hoặc tắt một nhân viên cũ để thêm người mới. · Your plan allows ${max} active staff.`);
+    }
+  }
+
   async create(user: AuthenticatedUser, dto: CreateStaffDto) {
     const tenantId = this.tenantId(user);
     const serviceIds = dto.serviceIds ?? [];
     await this.assertServicesBelongToTenant(tenantId, serviceIds);
+    if (dto.isActive !== false) await this.assertStaffRoom(tenantId);
 
     // Role drives RBAC; bookable visibility defaults from role but can be set
     // explicitly (e.g. an owner/manager who also takes appointments).
@@ -342,7 +361,9 @@ export class StaffService {
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateStaffDto) {
     const tenantId = this.tenantId(user);
-    const before = await this.getById(user, id) as unknown as { staffRole: StaffRole; takesAppointments?: boolean; permissions?: unknown; userId: string | null; firstName: string; lastName: string | null }; // tenant ownership / 404
+    const before = await this.getById(user, id) as unknown as { staffRole: StaffRole; takesAppointments?: boolean; permissions?: unknown; userId: string | null; firstName: string; lastName: string | null; isActive?: boolean }; // tenant ownership / 404
+    // rt256: turning a stopped staff member back on counts against the plan's limit too.
+    if (dto.isActive === true && before.isActive === false) await this.assertStaffRoom(tenantId);
     // The role decides first: a receptionist is never a technician, whatever the form says.
     const role = dto.staffRole ?? before.staffRole;
     const takes = dto.takesAppointments === undefined && dto.staffRole === undefined

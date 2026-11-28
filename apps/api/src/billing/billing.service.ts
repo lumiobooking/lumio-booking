@@ -10,6 +10,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { StripeService } from './stripe.service';
 import { PaypalService } from './paypal.service';
 import { PlatformConfigService } from './platform-config.service';
+import { planTierOf } from '../feature-policy/feature-policy.constants';
 import { VoiceService } from '../voice/voice.service';
 import { cleanPlatformRates, resolveRate, usageLine } from './usage-rates';
 import { canAutoCharge, gatewayOf, manageCardUrl, pickGateway, subscriptionsToRetire, type Gateway } from './gateway-choice';
@@ -146,15 +147,29 @@ export class BillingService {
    * projected month-end total. Always available — never hidden by feature policy.
    */
   /** Platform default prices, from platform_config. Missing stays missing. */
-  private async platformRates() {
-    const keys = ['sms_overage_cents', 'hotline_overage_cents_per_min', 'chat_overage_cents_per_reply'];
+  private async platformRates(market?: string | null, monthStart?: Date) {
+    const mk = String(market ?? '').toUpperCase();
+    const base = ['sms_overage_cents', 'hotline_overage_cents_per_min', 'chat_overage_cents_per_reply'];
+    const keys = [...base, ...(mk ? base.map((k) => `${k}_${mk.toLowerCase()}`) : []), 'usage_rates_from'];
     const rows = await this.prisma.platformConfig
       .findMany({ where: { key: { in: keys } }, select: { key: true, value: true } })
       .catch(() => [] as { key: string; value: string }[]);
     const map: Record<string, string | undefined> = {};
     for (const r of rows) map[r.key] = r.value;
-    for (const k of keys) if (map[k] === undefined) map[k] = process.env[k.toUpperCase()];
+    for (const k of base) if (map[k] === undefined) map[k] = process.env[k.toUpperCase()];
+    // rt256: a market's own price wins (an Australian text costs Lumio ~4x a US one).
+    if (mk) for (const k of base) { const own = map[`${k}_${mk.toLowerCase()}`]; if (own !== undefined && own !== '') map[k] = own; }
+    // rt256: prices apply from a stated month on — salons were never quoted them before,
+    // so the months before it are not charged (the Usage screen says "not priced").
+    const from = String(map.usage_rates_from ?? '').trim();
+    const month = (monthStart ?? new Date()).toISOString().slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(from) && month < from) return cleanPlatformRates({});
     return cleanPlatformRates(map);
+  }
+
+  /** rt256: the AI Hotline minutes a plan includes when the salon has no minute bucket of its own. */
+  private planIncludedMinutes(planName: string | null | undefined, hotlineLive: boolean): number {
+    return hotlineLive && planTierOf(planName) === 'premium' ? 300 : 0;
   }
 
   /**
@@ -182,7 +197,7 @@ export class BillingService {
   async usageSummary(user: AuthenticatedUser) {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) return null;
-    const [tenant, line, u, rates, chatPlanRow, chatReplies] = await Promise.all([
+    const [tenant, line, u, , chatPlanRow, chatReplies] = await Promise.all([
       this.prisma.tenant.findUnique({
         where: { id: tenantId },
         select: { market: true, plan: { select: { name: true, currency: true, priceMonthlyCents: true, priceCents: true, maxSmsPerMonth: true } } },
@@ -193,7 +208,8 @@ export class BillingService {
       // lived ONLY on VoiceLine — so a salon without the AI Hotline had no
       // price for an SMS at all, was billed nothing for going over, and was
       // told on its own invoice screen that overage is free. See usage-rates.
-      this.platformRates(),
+      // rt256: read below, once the salon's market is known.
+      Promise.resolve(null),
       this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_PLAN_KEY }, select: { value: true } }).catch(() => null),
       this.chatRepliesThisMonth(tenantId).catch(() => 0),
     ]);
@@ -204,6 +220,7 @@ export class BillingService {
       where: { tenantId, channel: NotificationChannel.SMS, status: NotificationStatus.FAILED, createdAt: { gte: new Date(u.periodStart) } },
     }).catch(() => 0);
     const payment = await this.paymentMethod(tenantId);
+    const rates = await this.platformRates((tenant as { market?: string } | null)?.market);
     const plan = tenant?.plan ?? null;
     const currency = plan?.currency ?? 'USD';
     const baseCents = (plan?.priceMonthlyCents || plan?.priceCents) ?? 0;
@@ -211,7 +228,7 @@ export class BillingService {
     // ---- AI Hotline (voice) ----
     const hotlineEnabled = !!line?.enabled;
     const hotlineMonthlyCents = hotlineEnabled ? (line?.monthlyCents ?? 0) : 0;
-    const minIncluded = u.includedMinutes;
+    const minIncluded = u.includedMinutes > 0 ? u.includedMinutes : this.planIncludedMinutes(plan?.name, hotlineEnabled);
     const minUsed = u.aiMinutes;
     // rt255: the salon's own per-minute price, else the platform default (as for SMS).
     const minLine = usageLine('minutes', minUsed, minIncluded, resolveRate(u.overageCentsPerMin > 0 ? u.overageCentsPerMin : null, rates.minuteCents));
@@ -226,7 +243,8 @@ export class BillingService {
     // so it is passed as null and allowed to fall through to the platform
     // default. A real free-of-charge arrangement is set on the plan itself.
     const smsRateInfo = resolveRate(u.overageCentsPerSms > 0 ? u.overageCentsPerSms : null, rates.smsCents);
-    const smsLine = usageLine('sms', u.smsSent, smsIncluded, smsRateInfo);
+    // rt256: counted in parts (segments), as the carrier bills and the plan now states.
+    const smsLine = usageLine('sms', u.smsSegments ?? u.smsSent, smsIncluded, smsRateInfo);
 
     // ---- AI Chatbot ----
     // Priced in the MARKET's currency, not the subscription plan's. A shop in
@@ -281,6 +299,8 @@ export class BillingService {
       sms: {
         included: smsLine.included,
         used: smsLine.used,
+        /** rt256: texts sent (the allowance and overage above count their parts). */
+        messages: u.smsSent,
         overage: smsLine.over,
         overageCentsPer: smsLine.rate.centsPerUnit,
         overageCents: smsLine.overageCents,
@@ -325,39 +345,62 @@ export class BillingService {
    */
   async smsAndMinutesOverageForMonth(tenantId: string, monthStart: Date): Promise<{
     currency: string;
-    sms: { included: number; used: number; over: number; centsPer: number; overageCents: number; source: string };
+    sms: { included: number; used: number; messages: number; over: number; centsPer: number; overageCents: number; source: string };
     minutes: { included: number; used: number; over: number; centsPer: number; overageCents: number; source: string };
+    /** rt256: the AI Hotline add-on's monthly fee for that month (0 when none, or before prices applied). */
+    hotlineMonthlyCents: number;
   }> {
-    const [tenant, rates, u] = await Promise.all([
-      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: { select: { currency: true, maxSmsPerMonth: true } } } }).catch(() => null),
-      this.platformRates(),
+    const [tenant, u, line] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true, plan: { select: { name: true, currency: true, maxSmsPerMonth: true } } } }).catch(() => null) as Promise<{ market?: string | null; plan?: { name: string; currency: string; maxSmsPerMonth: number | null } | null } | null>,
       this.voice.usageForMonth(tenantId, monthStart),
+      this.prisma.voiceLine.findUnique({ where: { tenantId }, select: { enabled: true, monthlyCents: true } }).catch(() => null),
     ]);
+    const rates = await this.platformRates(tenant?.market, monthStart);
+    // Before the month prices apply from, nothing is charged — a salon's own agreed price included.
+    const priced = !(await this.ratesGated(monthStart));
     const smsIncluded = u.includedSms > 0 ? u.includedSms : (tenant?.plan?.maxSmsPerMonth ?? 0);
-    const sms = usageLine('sms', u.smsSent, smsIncluded, resolveRate(u.overageCentsPerSms > 0 ? u.overageCentsPerSms : null, rates.smsCents));
-    const min = usageLine('minutes', u.aiMinutes, u.includedMinutes, resolveRate(u.overageCentsPerMin > 0 ? u.overageCentsPerMin : null, rates.minuteCents));
+    const sms = usageLine('sms', u.smsSegments ?? u.smsSent, smsIncluded, resolveRate(u.overageCentsPerSms > 0 && priced ? u.overageCentsPerSms : null, rates.smsCents));
+    const live = !!line?.enabled;
+    const minIncluded = u.includedMinutes > 0 ? u.includedMinutes : this.planIncludedMinutes(tenant?.plan?.name, live);
+    const min = usageLine('minutes', u.aiMinutes, minIncluded, resolveRate(u.overageCentsPerMin > 0 && priced ? u.overageCentsPerMin : null, rates.minuteCents));
     return {
       currency: tenant?.plan?.currency ?? 'USD',
-      sms: { included: sms.included, used: sms.used, over: sms.over, centsPer: sms.rate.centsPerUnit, overageCents: sms.overageCents, source: sms.rate.source },
+      sms: { included: sms.included, used: sms.used, messages: u.smsSent, over: sms.over, centsPer: sms.rate.centsPerUnit, overageCents: sms.overageCents, source: sms.rate.source },
       minutes: { included: min.included, used: min.used, over: min.over, centsPer: min.rate.centsPerUnit, overageCents: min.overageCents, source: min.rate.source },
+      hotlineMonthlyCents: live && priced ? Math.max(0, line?.monthlyCents ?? 0) : 0,
     };
+  }
+
+  /** rt256: true when the month is before the month prices apply from. */
+  private async ratesGated(monthStart: Date): Promise<boolean> {
+    const from = String((await this.platform.get('usage_rates_from').catch(() => undefined)) ?? '').trim();
+    return /^\d{4}-\d{2}$/.test(from) && monthStart.toISOString().slice(0, 7) < from;
   }
 
   /** rt255 — Super Admin: the platform's default overage prices (cents; null = not priced yet). */
   async usageRatesView() {
-    const r = await this.platformRates();
-    return { smsCents: r.smsCents, minuteCents: r.minuteCents, chatReplyCents: r.chatReplyCents };
+    const g = async (k: string) => { const v = await this.platform.get(k).catch(() => undefined); const n = v === undefined || v === '' ? NaN : Number(v); return Number.isFinite(n) ? n : null; };
+    return {
+      smsCents: await g('sms_overage_cents'),
+      smsCentsAu: await g('sms_overage_cents_au'),
+      minuteCents: await g('hotline_overage_cents_per_min'),
+      chatReplyCents: await g('chat_overage_cents_per_reply'),
+      from: (await this.platform.get('usage_rates_from').catch(() => undefined)) ?? null,
+    };
   }
 
   /** rt255 — Super Admin: set the default overage prices. A salon's own agreed price still wins. */
-  async saveUsageRates(userId: string | null, dto: { smsCents?: unknown; minuteCents?: unknown; chatReplyCents?: unknown }) {
+  async saveUsageRates(userId: string | null, dto: { smsCents?: unknown; smsCentsAu?: unknown; minuteCents?: unknown; chatReplyCents?: unknown; from?: unknown }) {
     const clean = (v: unknown, max: number): string | undefined => {
       if (v === undefined || v === null || v === '') return undefined;
       const n = Number(v);
       if (!Number.isFinite(n) || n < 0 || n > max) throw new BadRequestException('Đơn giá không hợp lệ.');
       return String(Math.round(n));
     };
+    const from = typeof dto.from === 'string' && /^\d{4}-\d{2}$/.test(dto.from.trim()) ? dto.from.trim() : undefined;
     const updates = {
+      usage_rates_from: from,
+      sms_overage_cents_au: clean(dto.smsCentsAu, 100),
       sms_overage_cents: clean(dto.smsCents, 100),
       hotline_overage_cents_per_min: clean(dto.minuteCents, 500),
       chat_overage_cents_per_reply: clean(dto.chatReplyCents, 100),
@@ -370,7 +413,7 @@ export class BillingService {
   async chatOverageForMonth(tenantId: string, monthStart: Date): Promise<{ used: number; included: number; over: number; centsPer: number; overageCents: number; currency: string; tierId: string | null }> {
     const [tenant, rates, chatPlanRow, used] = await Promise.all([
       this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } }).catch(() => null),
-      this.platformRates(),
+      this.platformRates(null, monthStart),
       this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_PLAN_KEY }, select: { value: true } }).catch(() => null),
       this.chatRepliesThisMonth(tenantId, monthStart).catch(() => 0),
     ]);

@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { FEATURE_DEFS, PolicyMode, resolvePolicy } from './feature-policy.constants';
+import { FEATURE_DEFS, PolicyMode, planFeatureDefaults, resolvePolicy } from './feature-policy.constants';
 import { featureAvailableInMarket, marketOf } from '../common/markets';
 
 /**
@@ -29,10 +29,12 @@ export class FeaturePolicyService {
    * point: it makes the mistake unmakeable rather than merely unlikely.
    */
   async resolve(tenantId: string): Promise<Record<string, PolicyMode>> {
-    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { featurePolicy: true, market: true } });
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { featurePolicy: true, market: true, plan: { select: { name: true } }, voiceLine: { select: { enabled: true } } } }) as { featurePolicy: unknown; market: string | null; plan?: { name: string } | null; voiceLine?: { enabled: boolean } | null } | null;
     const raw = t?.featurePolicy;
     const stored = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? (raw as Record<string, unknown>) : {};
-    return resolvePolicy(stored, (key) => featureAvailableInMarket(t?.market, key));
+    // rt255: what the plan opens by itself; a hand-set switch still wins.
+    const opens = planFeatureDefaults(t?.plan?.name, { hotlineLive: t?.voiceLine?.enabled === true });
+    return resolvePolicy(stored, (key) => featureAvailableInMarket(t?.market, key), opens);
   }
 
   private defs(market?: string | null) {

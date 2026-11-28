@@ -107,6 +107,8 @@ export const FEATURE_DEFS: FeatureDef[] = [
 export function resolvePolicy(
   stored: Record<string, unknown> | null | undefined,
   isAvailable: (key: string) => boolean = () => true,
+  /** rt255: what the salon's plan opens when nobody set the switch (see planFeatureDefaults). */
+  planOpens: ReadonlySet<string> = new Set(),
 ): Record<string, PolicyMode> {
   const raw = stored ?? {};
   const read = (k: string): PolicyMode | null => {
@@ -115,7 +117,7 @@ export function resolvePolicy(
   };
   const out: Record<string, PolicyMode> = {};
   for (const f of FEATURE_DEFS) {
-    const resolved = read(f.key) ?? (f.fallbackKey ? read(f.fallbackKey) : null) ?? f.default;
+    const resolved = read(f.key) ?? (f.fallbackKey ? read(f.fallbackKey) : null) ?? (planOpens.has(f.key) ? 'salon' : f.default);
     out[f.key] = isAvailable(f.key) ? resolved : 'platform';
   }
   return out;
@@ -135,3 +137,36 @@ export const OPEN_BY_DEFAULT: string[] = ['postApproval'];
 export const GOVERNED_HREFS: string[] = FEATURE_DEFS.flatMap((f) => f.hrefs);
 
 export const FEATURE_KEYS = FEATURE_DEFS.map((f) => f.key);
+
+/**
+ * rt255 — "gói nào thì chỉ show đúng tính năng của gói đó".
+ *
+ * The screens a plan opens by itself, matching what the pricing page sells:
+ *  - Starter: the basics only (booking, calendar, clients, POS…) — nothing here.
+ *  - Pro: "Messenger AI booking bot", "Marketing & referrals", "Payroll & tips"
+ *    → the inbox, the Messenger bot and what it knows, marketing + its report,
+ *    reviews, payroll.
+ *  - Premium: everything in Pro + "AI Hotline included" + "Multi-branch".
+ * The AI Hotline is also opened for any plan once the salon has a live line
+ * (the Pro add-on). A switch Super Admin set by hand for one salon always wins,
+ * either way, and the market veto still applies after.
+ */
+export type PlanTier = 'starter' | 'pro' | 'premium' | null;
+
+export function planTierOf(planName: string | null | undefined): PlanTier {
+  const n = String(planName ?? '').toLowerCase();
+  if (/premium|enterprise|business/.test(n)) return 'premium';
+  if (/\bpro\b|growth|professional/.test(n)) return 'pro';
+  if (/starter|basic|free|trial/.test(n)) return 'starter';
+  return null;
+}
+
+const PRO_OPENS = ['inbox', 'messengerAi', 'aiBrain', 'marketing', 'marketingReport', 'reviews', 'googleReviews', 'payroll'];
+const PREMIUM_OPENS = [...PRO_OPENS, 'voiceAi', 'chain'];
+
+export function planFeatureDefaults(planName: string | null | undefined, opts: { hotlineLive?: boolean } = {}): Set<string> {
+  const tier = planTierOf(planName);
+  const keys = new Set<string>(tier === 'premium' ? PREMIUM_OPENS : tier === 'pro' ? PRO_OPENS : []);
+  if (opts.hotlineLive) keys.add('voiceAi');
+  return keys;
+}

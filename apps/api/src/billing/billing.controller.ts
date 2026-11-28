@@ -120,7 +120,7 @@ export class BillingController {
 
   @Roles(UserRole.SUPER_ADMIN)
   @Post('billing/usage-rates')
-  saveUsageRates(@CurrentUser() user: AuthenticatedUser, @Body() dto: { smsCents?: unknown; minuteCents?: unknown; chatReplyCents?: unknown }) {
+  saveUsageRates(@CurrentUser() user: AuthenticatedUser, @Body() dto: { smsCents?: unknown; smsCentsAu?: unknown; minuteCents?: unknown; chatReplyCents?: unknown; from?: unknown }) {
     return this.billing.saveUsageRates(user.userId ?? null, dto ?? {});
   }
 

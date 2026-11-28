@@ -26,7 +26,7 @@ interface Summary {
     overageCentsPerMin: number; overageCents: number; aiCalls: number;
   };
   /** `wording` tells the screen WHICH sentence to print — see api billing/usage-rates.ts. */
-  sms: { included: number; used: number; overage: number; overageCentsPer: number; overageCents: number; wording?: 'priced' | 'free' | 'unset' | 'unlimited'; failed?: number };
+  sms: { included: number; used: number; overage: number; overageCentsPer: number; overageCents: number; wording?: 'priced' | 'free' | 'unset' | 'unlimited'; failed?: number; messages?: number };
   /** The AI chatbot, once the salon is on a chat plan. Absent on an older server. */
   chat?: {
     enabled: boolean; included: number; used: number; overage: number;
@@ -104,8 +104,8 @@ const T = {
   // telling the salon in writing that going over costs nothing. A salon quotes
   // that sentence back when the invoice arrives, and it is right to.
   howSms: {
-    en: 'SMS — each message beyond your {sms} included is charged {rate}. Messages within the allowance are free.',
-    vi: 'SMS — mỗi tin vượt quá {sms} tin trong gói tính {rate}. Tin trong hạn mức không mất phí.',
+    en: 'SMS — counted in parts of 160 characters (70 if the text has emoji or accents), as the phone network bills them. Each part beyond your {sms} included is charged {rate}. Parts within the allowance are free.',
+    vi: 'SMS — tính theo phần 160 ký tự (70 ký tự nếu tin có emoji hoặc chữ có dấu), đúng như nhà mạng tính. Mỗi phần vượt quá {sms} phần trong gói tính {rate}. Trong hạn mức không mất phí.',
   },
   howSmsFree: {
     en: 'SMS — your plan includes {sms}, and we do not charge you for going over.',
@@ -144,7 +144,7 @@ const T = {
   notPriced: { en: 'not priced yet', vi: 'chưa có đơn giá' },
   noCharge: { en: 'not charged', vi: 'không tính phí' },
   perReply: { en: ' / reply', vi: ' / tin' },
-  perSms: { en: ' / SMS', vi: ' / SMS' },
+  perSms: { en: ' / SMS part', vi: ' / phần SMS' },
   perMin: { en: ' / min', vi: ' / phút' },
   free: { en: 'free', vi: 'miễn phí' },
   unlimited: { en: 'unlimited', vi: 'không giới hạn' },
@@ -262,7 +262,7 @@ export function UsageCostsPanel() {
 
         <UsageRow
           label={t('sms')}
-          detail={`${sum.sms.used} ${t('used')} / ${smsIncLabel} ${t('included')}${sum.sms.failed ? ` · ${sum.sms.failed} ${t('failed')}` : ''}`}
+          detail={`${sum.sms.used} ${t('used')} / ${smsIncLabel} ${t('included')}${typeof sum.sms.messages === 'number' && sum.sms.messages !== sum.sms.used ? ` · ${sum.sms.messages} ${lang === 'vi' ? 'tin' : 'texts'}` : ''}${sum.sms.failed ? ` · ${sum.sms.failed} ${t('failed')}` : ''}`}
           over={sum.sms.overage}
           overText={`${sum.sms.overage} ${t('over')} × ${smsRate}`}
           amount={money(sum.sms.overageCents, cur)}

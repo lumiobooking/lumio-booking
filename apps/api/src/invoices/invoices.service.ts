@@ -184,12 +184,16 @@ export class InvoicesService {
       if (chat.currency.toUpperCase() === cur.toUpperCase()) chatCents = chat.overageCents;
       else this.logger.warn(`Overage ${tenantId} ${monthStart.toISOString().slice(0, 7)}: chatbot overage ${chat.overageCents} ${chat.currency} not billed — invoice is in ${cur}`);
     }
-    const total = smsCents + minCents + chatCents;
+    // rt256: the AI Hotline add-on's monthly fee is billed with that month's usage, so it
+    // reaches every salon however it pays (card, PayPal subscription, or invoice link).
+    const hotlineCents = usage?.hotlineMonthlyCents ?? 0;
+    const total = smsCents + minCents + chatCents + hotlineCents;
     if (total <= 0) return null;
 
     const lineItems: LineItem[] = [];
+    if (hotlineCents > 0) lineItems.push({ label: `AI Hotline add-on — ${monthStart.toISOString().slice(0, 7)}${usage && usage.minutes.included > 0 ? ` (${usage.minutes.included} min included)` : ''}`, amountCents: hotlineCents });
     if (minCents > 0) lineItems.push({ label: `AI Hotline minutes over plan — ${minOver} × ${money(minRate, cur)} (${usage?.minutes.used ?? u.aiMinutes} used / ${usage?.minutes.included ?? u.includedMinutes} included)`, amountCents: minCents });
-    if (smsCents > 0) lineItems.push({ label: `SMS over plan — ${smsOver} × ${money(smsRate, cur)} (${usage?.sms.used ?? u.smsSent} sent / ${smsIncluded} included)`, amountCents: smsCents });
+    if (smsCents > 0) lineItems.push({ label: `SMS over plan — ${smsOver} × ${money(smsRate, cur)} (${usage ? `${usage.sms.used} parts in ${usage.sms.messages} texts` : `${u.smsSent} sent`} / ${smsIncluded} included)`, amountCents: smsCents });
     if (chatCents > 0 && chat) lineItems.push({ label: `AI Chatbot replies over plan — ${chat.over} × ${money(chat.centsPer, cur)} (${chat.used} sent / ${chat.included} included)`, amountCents: chatCents });
 
     const periodEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0));

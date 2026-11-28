@@ -65,9 +65,10 @@ export default function PlansPage() {
     if (typeof window !== 'undefined' && !window.confirm('This DELETES all current plans and creates the 3 standard plans (Starter / Pro / Premium). Salons on a deleted plan become "no plan". Continue?')) return;
     setSeeding(true); setError(null);
     const standard = [
-      { name: 'Starter', tagline: 'Small & new salons', priceMonthlyCents: 2900, priceYearlyCents: 29000, trialDays: 14, maxStaff: null, maxBookingsPerMonth: null, posEnabled: false, onlinePaymentEnabled: false, multiLocationEnabled: false, whiteLabelEnabled: false, isActive: true, publicVisible: true, highlighted: false, sortOrder: 1, features: ['Online booking 24/7', 'Calendar & customer CRM', 'Email confirmations', 'Google review QR', 'Installable app (PWA)', '100 SMS / month'] },
-      { name: 'Pro', tagline: 'Full-service salons', priceMonthlyCents: 6900, priceYearlyCents: 69000, trialDays: 14, maxStaff: null, maxBookingsPerMonth: null, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: false, whiteLabelEnabled: false, isActive: true, publicVisible: true, highlighted: true, sortOrder: 2, features: ['Everything in Starter', 'POS & checkout', 'Walk-ins & waitlist', 'Payroll & tips', 'Messenger AI booking bot', 'Marketing & referrals'] },
-      { name: 'Premium', tagline: 'Multi-location + full AI', priceMonthlyCents: 14900, priceYearlyCents: 149000, trialDays: 14, maxStaff: null, maxBookingsPerMonth: null, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: true, whiteLabelEnabled: true, isActive: true, publicVisible: true, highlighted: false, sortOrder: 3, features: ['Everything in Pro', 'AI Hotline included (300 min)', 'Multi-branch + reports', 'Priority support', 'White-label ready', '1,500 SMS / month'] },
+      // rt256: Starter keeps the basic till (76 salons check out with it); staff limits are enforced; no booking cap.
+      { name: 'Starter', tagline: 'Small & new salons', priceMonthlyCents: 2900, priceYearlyCents: 29000, trialDays: 14, maxStaff: 5, maxBookingsPerMonth: null, maxSmsPerMonth: 100, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: false, whiteLabelEnabled: false, isActive: true, publicVisible: true, highlighted: false, sortOrder: 1, features: ['Online booking 24/7', 'Calendar & customer CRM', 'Basic POS & checkout', 'Email confirmations', 'Google review QR', 'Up to 5 staff', '100 SMS / month (160 characters each)'] },
+      { name: 'Pro', tagline: 'Full-service salons', priceMonthlyCents: 6900, priceYearlyCents: 69000, trialDays: 14, maxStaff: 15, maxBookingsPerMonth: null, maxSmsPerMonth: 500, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: false, whiteLabelEnabled: false, isActive: true, publicVisible: true, highlighted: true, sortOrder: 2, features: ['Everything in Starter', 'Walk-ins & waitlist', 'Payroll & tips', 'Messenger AI booking bot + inbox', 'Marketing, reviews & referrals', 'Up to 15 staff', '500 SMS / month', 'AI Hotline add-on: $49/mo incl. 150 min'] },
+      { name: 'Premium', tagline: 'Multi-location + full AI', priceMonthlyCents: 14900, priceYearlyCents: 149000, trialDays: 14, maxStaff: null, maxBookingsPerMonth: null, maxSmsPerMonth: 1500, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: true, whiteLabelEnabled: true, isActive: true, publicVisible: true, highlighted: false, sortOrder: 3, features: ['Everything in Pro', 'AI Hotline included (300 min)', 'Multi-branch + reports', 'Unlimited staff', 'Priority support', 'White-label ready', '1,500 SMS / month'] },
     ];
     try {
       const existing = await apiFetch<Plan[]>('/tenants/plans', { token });
@@ -287,25 +288,25 @@ const chkRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap
  * price (Super Admin › salon › AI Hotline limits) still wins over these.
  */
 function UsageRates({ token }: { token: string }) {
-  const [v, setV] = useState<{ sms: string; min: string; chat: string }>({ sms: '', min: '', chat: '' });
+  const [v, setV] = useState<{ sms: string; smsAu: string; min: string; chat: string; from: string }>({ sms: '', smsAu: '', min: '', chat: '', from: '' });
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const toStr = (c: number | null) => (c == null ? '' : String(c / 100));
   useEffect(() => {
     if (!token) return;
-    apiFetch<{ smsCents: number | null; minuteCents: number | null; chatReplyCents: number | null }>('/billing/usage-rates', { token })
-      .then((r) => setV({ sms: toStr(r.smsCents), min: toStr(r.minuteCents), chat: toStr(r.chatReplyCents) }))
+    apiFetch<{ smsCents: number | null; smsCentsAu: number | null; minuteCents: number | null; chatReplyCents: number | null; from: string | null }>('/billing/usage-rates', { token })
+      .then((r) => setV({ sms: toStr(r.smsCents), smsAu: toStr(r.smsCentsAu), min: toStr(r.minuteCents), chat: toStr(r.chatReplyCents), from: r.from ?? '' }))
       .catch((e) => setMsg(e instanceof Error ? e.message : 'error'));
   }, [token]);
   const cents = (s: string) => (s.trim() === '' ? undefined : Math.round(Number(s) * 100));
   async function save() {
     setBusy(true); setMsg(null);
     try {
-      await apiFetch('/billing/usage-rates', { method: 'POST', token, body: { smsCents: cents(v.sms), minuteCents: cents(v.min), chatReplyCents: cents(v.chat) } });
+      await apiFetch('/billing/usage-rates', { method: 'POST', token, body: { smsCents: cents(v.sms), smsCentsAu: cents(v.smsAu), minuteCents: cents(v.min), chatReplyCents: cents(v.chat), from: v.from.trim() || undefined } });
       setMsg('Đã lưu. Áp dụng cho hoá đơn vượt mức từ tháng này.');
     } catch (e) { setMsg(e instanceof Error ? e.message : 'error'); } finally { setBusy(false); }
   }
-  const box = (label: string, hint: string, key: 'sms' | 'min' | 'chat') => (
+  const box = (label: string, hint: string, key: 'sms' | 'smsAu' | 'min' | 'chat') => (
     <label style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
       <span style={{ fontWeight: 600 }}>{label}</span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>$<input inputMode="decimal" value={v[key]} placeholder="chưa đặt" onChange={(e) => setV({ ...v, [key]: e.target.value })} style={{ ...inp, width: 110 }} /></span>
@@ -319,9 +320,15 @@ function UsageRates({ token }: { token: string }) {
         Tính cho phần dùng vượt số miễn phí của gói, cộng vào hoá đơn cuối tháng. Để trống = chưa tính phí (hoá đơn không thu, màn hình tiệm ghi “chưa định giá”). Giá riêng của từng tiệm (nếu có) được ưu tiên.
       </p>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        {box('Mỗi SMS vượt mức', 'Ví dụ 0.03. Chi phí Twilio Mỹ ≈ $0.014/SMS (1 phần).', 'sms')}
+        {box('Mỗi phần SMS vượt mức (Mỹ/Canada)', 'Đề xuất 0.04. Twilio Mỹ ≈ $0.014/phần (160 ký tự).', 'sms')}
+        {box('Mỗi phần SMS vượt mức (Úc)', 'Đề xuất 0.10. Twilio Úc ≈ $0.05/phần.', 'smsAu')}
         {box('Mỗi phút AI Hotline vượt mức', 'Ví dụ 0.25. Chỉ tính khi tiệm có số phút miễn phí.', 'min')}
         {box('Mỗi câu trả lời AI Chatbot vượt mức', 'Chỉ tính khi tiệm có gói chatbot có giới hạn.', 'chat')}
+        <label style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+          <span style={{ fontWeight: 600 }}>Áp dụng từ tháng</span>
+          <input type="month" value={v.from} onChange={(e) => setV({ ...v, from: e.target.value })} style={{ ...inp, width: 170 }} />
+          <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>Các tháng trước đó không tính phí vượt mức, kể cả phí AI Hotline.</span>
+        </label>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
         <button onClick={() => void save()} disabled={busy} style={primary}>{busy ? 'Đang lưu…' : 'Lưu đơn giá'}</button>

@@ -259,10 +259,12 @@ export class StaffService {
    * salon already above it keeps everyone, it just cannot add more.
    */
   private async assertStaffRoom(tenantId: string) {
-    let t: { billingExempt?: boolean; plan?: { name: string; maxStaff: number | null } | null } | null = null;
-    try {
-      t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { billingExempt: true, plan: { select: { name: true, maxStaff: true } } } }) as typeof t;
-    } catch { return; /* never block adding staff on a lookup failure */ }
+    type Room = { billingExempt?: boolean; plan?: { name: string; maxStaff: number | null } | null } | null;
+    // Never block adding staff on a lookup failure.
+    const t: Room = await Promise.resolve()
+      .then(() => this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { billingExempt: true, plan: { select: { name: true, maxStaff: true } } } }))
+      .then((x) => x as Room)
+      .catch(() => null);
     const max = t?.plan?.maxStaff ?? null;
     if (!max || max <= 0 || t?.billingExempt) return;
     const active = await this.prisma.staffMember.count({ where: { tenantId, isActive: true } });

@@ -159,15 +159,20 @@ export class InvoicesService {
     const existing = await this.prisma.invoice.findFirst({ where: { tenantId, type: InvoiceType.OVERAGE, periodStart: monthStart }, select: { id: true } });
     if (existing) return existing;
 
+    // rt255: priced exactly as the Usage screen prices it (salon's own rate, else the
+    // platform default). Reading only the AI Hotline line's per-SMS rate billed 0 for
+    // every salon without a Hotline line, while the screen showed the overage.
+    const usage = this.billing ? await this.billing.smsAndMinutesOverageForMonth(tenantId, monthStart).catch(() => null) : null;
     const u = await this.voice.usageForMonth(tenantId, monthStart);
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: { select: { currency: true, maxSmsPerMonth: true } } } });
-    const cur = tenant?.plan?.currency ?? 'USD';
-
-    // SMS allowance reconciled with the plan (per-tenant override wins).
-    const smsIncluded = u.includedSms > 0 ? u.includedSms : (tenant?.plan?.maxSmsPerMonth ?? 0);
-    const smsOver = smsIncluded > 0 ? Math.max(0, u.smsSent - smsIncluded) : 0;
-    const smsCents = smsOver * u.overageCentsPerSms;
-    const minCents = u.overageMinutes * u.overageCentsPerMin;
+    const cur = usage?.currency ?? tenant?.plan?.currency ?? 'USD';
+    const smsIncluded = usage ? usage.sms.included : (u.includedSms > 0 ? u.includedSms : (tenant?.plan?.maxSmsPerMonth ?? 0));
+    const smsOver = usage ? usage.sms.over : (smsIncluded > 0 ? Math.max(0, u.smsSent - smsIncluded) : 0);
+    const smsRate = usage ? usage.sms.centsPer : u.overageCentsPerSms;
+    const smsCents = usage ? usage.sms.overageCents : smsOver * u.overageCentsPerSms;
+    const minOver = usage ? usage.minutes.over : u.overageMinutes;
+    const minRate = usage ? usage.minutes.centsPer : u.overageCentsPerMin;
+    const minCents = usage ? usage.minutes.overageCents : u.overageMinutes * u.overageCentsPerMin;
     // AI chatbot replies over the plan. Shown on the Usage screen since the
     // chat plans existed, but never billed until now. The chat line is priced
     // in the salon's MARKET currency; an invoice has one currency, so a line
@@ -183,8 +188,8 @@ export class InvoicesService {
     if (total <= 0) return null;
 
     const lineItems: LineItem[] = [];
-    if (minCents > 0) lineItems.push({ label: `AI Hotline minutes over plan — ${u.overageMinutes} × ${money(u.overageCentsPerMin, cur)}`, amountCents: minCents });
-    if (smsCents > 0) lineItems.push({ label: `SMS over plan — ${smsOver} × ${money(u.overageCentsPerSms, cur)}`, amountCents: smsCents });
+    if (minCents > 0) lineItems.push({ label: `AI Hotline minutes over plan — ${minOver} × ${money(minRate, cur)} (${usage?.minutes.used ?? u.aiMinutes} used / ${usage?.minutes.included ?? u.includedMinutes} included)`, amountCents: minCents });
+    if (smsCents > 0) lineItems.push({ label: `SMS over plan — ${smsOver} × ${money(smsRate, cur)} (${usage?.sms.used ?? u.smsSent} sent / ${smsIncluded} included)`, amountCents: smsCents });
     if (chatCents > 0 && chat) lineItems.push({ label: `AI Chatbot replies over plan — ${chat.over} × ${money(chat.centsPer, cur)} (${chat.used} sent / ${chat.included} included)`, amountCents: chatCents });
 
     const periodEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0));

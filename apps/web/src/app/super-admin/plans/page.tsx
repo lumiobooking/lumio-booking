@@ -114,6 +114,8 @@ export default function PlansPage() {
 
       {error && <Banner>{error}</Banner>}
 
+      <UsageRates token={token} />
+
       {showForm && <PlanForm token={token} onDone={async () => { setShowForm(false); await load(); }} />}
 
       {loading ? <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p> : (
@@ -277,3 +279,54 @@ const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', paddi
 const primary: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: 'none', background: '#6366f1', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer', textDecoration: 'none', display: 'inline-block' };
 const ghost: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer', textDecoration: 'none', display: 'inline-block' };
 const chkRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 };
+
+/**
+ * rt255 — the platform's default overage prices. Until this card existed there
+ * was no screen to set them, so every salon's SMS / minute overage read "not
+ * priced yet" and month-end invoices billed nothing for it. A salon's own agreed
+ * price (Super Admin › salon › AI Hotline limits) still wins over these.
+ */
+function UsageRates({ token }: { token: string }) {
+  const [v, setV] = useState<{ sms: string; min: string; chat: string }>({ sms: '', min: '', chat: '' });
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const toStr = (c: number | null) => (c == null ? '' : String(c / 100));
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ smsCents: number | null; minuteCents: number | null; chatReplyCents: number | null }>('/billing/usage-rates', { token })
+      .then((r) => setV({ sms: toStr(r.smsCents), min: toStr(r.minuteCents), chat: toStr(r.chatReplyCents) }))
+      .catch((e) => setMsg(e instanceof Error ? e.message : 'error'));
+  }, [token]);
+  const cents = (s: string) => (s.trim() === '' ? undefined : Math.round(Number(s) * 100));
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      await apiFetch('/billing/usage-rates', { method: 'POST', token, body: { smsCents: cents(v.sms), minuteCents: cents(v.min), chatReplyCents: cents(v.chat) } });
+      setMsg('Đã lưu. Áp dụng cho hoá đơn vượt mức từ tháng này.');
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'error'); } finally { setBusy(false); }
+  }
+  const box = (label: string, hint: string, key: 'sms' | 'min' | 'chat') => (
+    <label style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+      <span style={{ fontWeight: 600 }}>{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>$<input inputMode="decimal" value={v[key]} placeholder="chưa đặt" onChange={(e) => setV({ ...v, [key]: e.target.value })} style={{ ...inp, width: 110 }} /></span>
+      <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{hint}</span>
+    </label>
+  );
+  return (
+    <section style={{ border: '1px solid var(--c334155)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+      <h2 style={{ fontSize: 16, margin: '0 0 4px' }}>Đơn giá vượt mức (mặc định toàn hệ thống)</h2>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 }}>
+        Tính cho phần dùng vượt số miễn phí của gói, cộng vào hoá đơn cuối tháng. Để trống = chưa tính phí (hoá đơn không thu, màn hình tiệm ghi “chưa định giá”). Giá riêng của từng tiệm (nếu có) được ưu tiên.
+      </p>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        {box('Mỗi SMS vượt mức', 'Ví dụ 0.03. Chi phí Twilio Mỹ ≈ $0.014/SMS (1 phần).', 'sms')}
+        {box('Mỗi phút AI Hotline vượt mức', 'Ví dụ 0.25. Chỉ tính khi tiệm có số phút miễn phí.', 'min')}
+        {box('Mỗi câu trả lời AI Chatbot vượt mức', 'Chỉ tính khi tiệm có gói chatbot có giới hạn.', 'chat')}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+        <button onClick={() => void save()} disabled={busy} style={primary}>{busy ? 'Đang lưu…' : 'Lưu đơn giá'}</button>
+        {msg && <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{msg}</span>}
+      </div>
+    </section>
+  );
+}

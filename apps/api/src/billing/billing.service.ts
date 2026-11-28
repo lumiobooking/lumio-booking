@@ -213,9 +213,11 @@ export class BillingService {
     const hotlineMonthlyCents = hotlineEnabled ? (line?.monthlyCents ?? 0) : 0;
     const minIncluded = u.includedMinutes;
     const minUsed = u.aiMinutes;
-    const minOver = u.overageMinutes; // 0 when no included bucket is set (bundled/unlimited)
-    const minRate = u.overageCentsPerMin;
-    const minOverageCents = minOver * minRate;
+    // rt255: the salon's own per-minute price, else the platform default (as for SMS).
+    const minLine = usageLine('minutes', minUsed, minIncluded, resolveRate(u.overageCentsPerMin > 0 ? u.overageCentsPerMin : null, rates.minuteCents));
+    const minOver = minLine.over; // 0 when no included bucket is set (bundled/unlimited)
+    const minRate = minLine.rate.centsPerUnit;
+    const minOverageCents = minLine.overageCents;
 
     // ---- SMS (reconciled with the plan allowance) ----
     // A per-tenant override (VoiceLine.includedSms) wins; otherwise the plan's monthly SMS.
@@ -314,6 +316,57 @@ export class BillingService {
    * prices it — so the invoice built from this and the screen the owner read
    * all month agree to the cent. Used by invoices.service at month end.
    */
+  /**
+   * rt255 — the SMS and AI-Hotline overage of one month, priced exactly as the
+   * salon's Usage screen prices it (the salon's own rate, else the platform
+   * default). The month-end invoice used to read only the AI Hotline line's
+   * per-SMS rate, so a salon without a Hotline line — almost all of them —
+   * saw "515 over plan" on screen and was invoiced nothing.
+   */
+  async smsAndMinutesOverageForMonth(tenantId: string, monthStart: Date): Promise<{
+    currency: string;
+    sms: { included: number; used: number; over: number; centsPer: number; overageCents: number; source: string };
+    minutes: { included: number; used: number; over: number; centsPer: number; overageCents: number; source: string };
+  }> {
+    const [tenant, rates, u] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: { select: { currency: true, maxSmsPerMonth: true } } } }).catch(() => null),
+      this.platformRates(),
+      this.voice.usageForMonth(tenantId, monthStart),
+    ]);
+    const smsIncluded = u.includedSms > 0 ? u.includedSms : (tenant?.plan?.maxSmsPerMonth ?? 0);
+    const sms = usageLine('sms', u.smsSent, smsIncluded, resolveRate(u.overageCentsPerSms > 0 ? u.overageCentsPerSms : null, rates.smsCents));
+    const min = usageLine('minutes', u.aiMinutes, u.includedMinutes, resolveRate(u.overageCentsPerMin > 0 ? u.overageCentsPerMin : null, rates.minuteCents));
+    return {
+      currency: tenant?.plan?.currency ?? 'USD',
+      sms: { included: sms.included, used: sms.used, over: sms.over, centsPer: sms.rate.centsPerUnit, overageCents: sms.overageCents, source: sms.rate.source },
+      minutes: { included: min.included, used: min.used, over: min.over, centsPer: min.rate.centsPerUnit, overageCents: min.overageCents, source: min.rate.source },
+    };
+  }
+
+  /** rt255 — Super Admin: the platform's default overage prices (cents; null = not priced yet). */
+  async usageRatesView() {
+    const r = await this.platformRates();
+    return { smsCents: r.smsCents, minuteCents: r.minuteCents, chatReplyCents: r.chatReplyCents };
+  }
+
+  /** rt255 — Super Admin: set the default overage prices. A salon's own agreed price still wins. */
+  async saveUsageRates(userId: string | null, dto: { smsCents?: unknown; minuteCents?: unknown; chatReplyCents?: unknown }) {
+    const clean = (v: unknown, max: number): string | undefined => {
+      if (v === undefined || v === null || v === '') return undefined;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0 || n > max) throw new BadRequestException('Đơn giá không hợp lệ.');
+      return String(Math.round(n));
+    };
+    const updates = {
+      sms_overage_cents: clean(dto.smsCents, 100),
+      hotline_overage_cents_per_min: clean(dto.minuteCents, 500),
+      chat_overage_cents_per_reply: clean(dto.chatReplyCents, 100),
+    };
+    await this.platform.setMany(updates);
+    await this.audit.log({ tenantId: null, userId, action: 'billing.usage_rates_updated', resourceType: 'platform_config', resourceId: 'usage_rates', metadata: updates as never }).catch(() => undefined);
+    return this.usageRatesView();
+  }
+
   async chatOverageForMonth(tenantId: string, monthStart: Date): Promise<{ used: number; included: number; over: number; centsPer: number; overageCents: number; currency: string; tierId: string | null }> {
     const [tenant, rates, chatPlanRow, used] = await Promise.all([
       this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } }).catch(() => null),

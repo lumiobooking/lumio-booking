@@ -111,6 +111,19 @@ export class BillingController {
     return this.billing.saveGateways(dto);
   }
 
+  /** rt255 — Super Admin: default overage prices (SMS, AI Hotline minute, chatbot reply). */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Get('billing/usage-rates')
+  usageRates() {
+    return this.billing.usageRatesView();
+  }
+
+  @Roles(UserRole.SUPER_ADMIN)
+  @Post('billing/usage-rates')
+  saveUsageRates(@CurrentUser() user: AuthenticatedUser, @Body() dto: { smsCents?: unknown; minuteCents?: unknown; chatReplyCents?: unknown }) {
+    return this.billing.saveUsageRates(user.userId ?? null, dto ?? {});
+  }
+
   /** Super Admin: live-test the configured gateways. */
   @Roles(UserRole.SUPER_ADMIN)
   @Get('billing/config/test')
